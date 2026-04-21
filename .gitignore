@@ -2,6 +2,7 @@
 
 # Compiled output
 /dist
+/dist-electron
 /tmp
 /out-tsc
 /bazel-out
@@ -42,3 +43,9 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
