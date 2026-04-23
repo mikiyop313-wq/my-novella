@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { initializeIpc } from './ipc';
+import '../db/index';
 
 let win: BrowserWindow | null;
 
