@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-
+import { ElectronService } from './core/services/electron.service';
 
 @Component({
   selector: 'app-root',
@@ -12,16 +12,14 @@ export class App {
 
   protected readonly title = signal('my-novella');
 
-  constructor() {
-    window.electronAPI.onMessage('reply', (data: any) => {
+  constructor(private electronService: ElectronService) {
+    this.electronService.on('reply', (data: any) => {
       console.log('Received reply from main:', data);
     });
   }
 
   sendToMain() {
-    window.electronAPI.sendMessage('message', 'Hello from renderer!');
+    this.electronService.send('message', 'Hello from renderer!');
   }
-
-
 
 }
