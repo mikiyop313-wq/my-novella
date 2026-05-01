@@ -1,0 +1,67 @@
+//GLOBAL COLOR THEME
+
+$colors-light: (
+    bg: #fafafa,
+    // Softer background than stark white
+    bg-gradient: linear-gradient(135deg, #fdfbfb 0%, #f0f2f5 100%),
+    // Elegant soft pearl gradient
+    text: #171717,
+    // Off-black text for better readability
+    primary: #4f46e5,
+    // Royal blue accent
+
+    // Elegant Light Card
+    card-bg: #ffffff,
+    card-border: #e5e5e5,
+    // Very subtle border
+    card-text-primary: #262626,
+    card-text-secondary: #737373,
+    card-gradient: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%),
+    card-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08) // Soft, diffuse shadow
+);
+
+$colors-dark: (
+    bg: #121212,
+
+    // Deep warm espresso brown background matching your image
+    bg-gradient: radial-gradient(circle at center, #152331, #000000),
+
+    // Elegant deep espresso gradient
+    text: #fdf8f5,
+    // Warm off-white/cream text for perfect readability and harmony
+    primary: #f472b6,
+    // Warm pinkish accent (adjust if you had a specific primary color in mind)
+
+    // Elegant Dark Card
+    card-bg: #202020,
+    // Slightly lighter brown to stand out from the background
+    card-border: rgba(255, 255, 255, 0.08),
+    // Soft glass-like border
+    card-text-primary: #faefea,
+    card-text-secondary: #bbaaaa,
+    // Warm muted tan for subdued text
+    card-gradient: linear-gradient(135deg, #46322d 0%, #3c2a26 100%),
+    card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8) // Deeper shadow for depth
+);
+
+
+@mixin theme($theme-map) {
+    @each $key, $value in $theme-map {
+        --color-#{$key}: #{$value};
+    }
+}
+
+:root {
+    @include theme($colors-light);
+}
+
+:root.dark-theme {
+    @include theme($colors-dark);
+}
+
+// Global transitions for fluid theme switching
+*, *::before, *::after {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-duration: 0.3s;
+    transition-timing-function: ease-in-out;
+}
