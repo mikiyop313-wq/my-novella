@@ -12,16 +12,20 @@ $colors-light: (
 
     // Elegant Light Card
     card-bg: #ffffff,
-    card-border: #e5e5e5,
+    card-border: rgba(255, 255, 255, 0.08),
     // Very subtle border
     card-text-primary: #262626,
     card-text-secondary: #737373,
     card-gradient: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%),
-    card-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08) // Soft, diffuse shadow
+    card-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2),
+    // Soft, diffuse shadow
+
+    menu-hover: lightgrey,
 );
 
 $colors-dark: (
     bg: #121212,
+    bg-image: url('/background/Gemini_Generated_Image_8l1k368l1k368l1k.png'),
 
     // Deep warm espresso brown background matching your image
     bg-gradient: radial-gradient(circle at center, #152331, #000000),
@@ -41,7 +45,10 @@ $colors-dark: (
     card-text-secondary: #bbaaaa,
     // Warm muted tan for subdued text
     card-gradient: linear-gradient(135deg, #46322d 0%, #3c2a26 100%),
-    card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8) // Deeper shadow for depth
+    card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8),
+    // Deeper shadow for depth
+
+    menu-hover: #ffffff14,
 );
 
 
@@ -60,7 +67,9 @@ $colors-dark: (
 }
 
 // Global transitions for fluid theme switching
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     transition-property: background-color, border-color, color, fill, stroke, box-shadow;
     transition-duration: 0.3s;
     transition-timing-function: ease-in-out;
