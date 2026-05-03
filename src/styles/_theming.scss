@@ -21,6 +21,10 @@ $colors-light: (
     // Soft, diffuse shadow
 
     menu-hover: lightgrey,
+
+    // Button Colors
+    btn-primary-bg: #171717,
+    btn-primary-text: #ffffff,
 );
 
 $colors-dark: (
@@ -43,12 +47,17 @@ $colors-dark: (
     // Soft glass-like border
     card-text-primary: #faefea,
     card-text-secondary: #bbaaaa,
+
     // Warm muted tan for subdued text
     card-gradient: linear-gradient(135deg, #46322d 0%, #3c2a26 100%),
     card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8),
     // Deeper shadow for depth
 
-    menu-hover: #ffffff14,
+    menu-hover: #ffffff25,
+
+    // Button Colors
+    btn-primary-bg: #c4c4c4,
+    btn-primary-text: #1a1a1a,
 );
 
 

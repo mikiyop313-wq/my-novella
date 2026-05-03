@@ -1,0 +1,77 @@
+<div class="overlay-modal">
+
+    <!-- Left Visual Section -->
+    <div class="modal-visual">
+        <img src="https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&q=80&w=800"
+            alt="Book Cover Art" />
+    </div>
+
+    <!-- Right Content Section -->
+    <div class="modal-content">
+        <button class="close-btn" aria-label="Close modal" (click)="onClose()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <header class="modal-header">
+            <span class="last-edited">
+                <i class="icon-calendar"></i> Last edited Oct 24, 2023
+            </span>
+            <h1 class="title">The Silence of the Spheres</h1>
+            <p class="author">By A. E. Vance</p>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <span class="label">WORDS</span>
+                <span class="value">84,201</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">CHAPTERS</span>
+                <span class="value">24</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">EST. READ</span>
+                <span class="value">6h 15m</span>
+            </div>
+        </div>
+
+        <div class="genres">
+            <span class="section-label">GENRES</span>
+            <div class="chips">
+                <span class="chip">SCI-FI</span>
+                <span class="chip">CYBERPUNK</span>
+                <span class="chip">SPACE OPERA</span>
+                <span class="chip">NOIR</span>
+                <span class="chip">SCI-FI</span>
+                <span class="chip">CYBERPUNK</span>
+                <span class="chip">SPACE OPERA</span>
+                <span class="chip">NOIR</span>
+                <span class="chip">SCI-FI</span>
+                <span class="chip">CYBERPUNK</span>
+                <span class="chip">SPACE OPERA</span>
+                <span class="chip">NOIR</span>
+
+            </div>
+        </div>
+
+        <div class="synopsis">
+            <span class="section-label">SYNOPSIS</span>
+            <p>
+                In the 26th century, humanity has pushed the boundaries of the known universe, mapping every
+                star and charting every anomaly. Yet, there remains one sector—The Void of Carina—where all
+                signals die and all ships vanish.
+            </p>
+            <p>
+                As her crew ventures deeper into the anomaly, they discover that the silence is not empty; it is
+                a profound, structural absence...
+            </p>
+        </div>
+        <footer class="modal-footer">
+            <button class="btn-primary">Continue Writing</button>
+            <button class="btn-outline">Export</button>
+        </footer>
+    </div>
+</div>
