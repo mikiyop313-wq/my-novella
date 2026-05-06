@@ -1,0 +1,210 @@
+<div class="page-container">
+  <div class="page-header">
+    <button class="back-btn" (click)="cancel()">
+      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+        <path d="m313-440 224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z" />
+      </svg>
+      Back to Library
+    </button>
+    <div class="header-titles">
+      <span class="subtitle">New Masterpiece</span>
+      <h1 class="title">Create your story</h1>
+    </div>
+  </div>
+
+  <form [formGroup]="bookForm" (ngSubmit)="onSubmit()" class="form-grid">
+    <!-- Left Column -->
+    <div class="form-column left-column">
+      <div class="input-row">
+        <div class="input-group">
+          <label for="title">Title <span class="required">*</span></label>
+          <input id="title" type="text" formControlName="title" placeholder="e.g. The Shadow of the Wind"
+            [class.error]="bookForm.get('title')?.invalid && bookForm.get('title')?.touched">
+          @if (bookForm.get('title')?.invalid && bookForm.get('title')?.touched) {
+          <span class="error-msg">Title is required</span>
+          }
+        </div>
+
+        <div class="input-group">
+          <label for="author">Author <span class="required">*</span></label>
+          <input id="author" type="text" formControlName="author" placeholder="Your name or pen name"
+            [class.error]="bookForm.get('author')?.invalid && bookForm.get('author')?.touched">
+          @if (bookForm.get('author')?.invalid && bookForm.get('author')?.touched) {
+          <span class="error-msg">Author is required</span>
+          }
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label for="language">Language</label>
+        <div class="select-wrapper">
+          <select id="language" formControlName="language">
+            @for (lang of languages; track lang.value) {
+            <option [value]="lang.value">{{lang.label}}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label for="synopsis">Synopsis</label>
+        <textarea id="synopsis" formControlName="synopsis" rows="6" placeholder="What is your story about?"></textarea>
+      </div>
+
+      <div class="tags-section">
+        <!-- Genres -->
+        <div class="input-group autocomplete-group">
+          <label>Genres</label>
+          <div class="autocomplete-wrapper">
+            <div class="dropdown-trigger" [cdkMenuTriggerFor]="genreMenu" (cdkMenuOpened)="onMenuOpened('genre')">
+              <span class="placeholder">Select or add genres...</span>
+              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
+                fill="currentColor">
+                <path d="M480-360 280-560h400L480-360Z" />
+              </svg>
+            </div>
+            <ng-template #genreMenu>
+              <div class="autocomplete-dropdown" cdkMenu>
+                <div class="dropdown-search">
+                  <input id="genreInput" type="text" [formControl]="genreInput"
+                    placeholder="Write custom genre and press Enter..." (input)="onInputChange($event, 'genre')"
+                    (keydown)="onKeyDown($event, 'genre')" (click)="$event.stopPropagation()">
+                </div>
+                <ul class="options-list">
+                  @for (option of filteredGenres; track option) {
+                  <li cdkMenuItem (click)="selectPredefinedTag('genre', option)">{{option}}</li>
+                  }
+                </ul>
+              </div>
+            </ng-template>
+          </div>
+          <div class="selected-chips">
+            @for (genre of genres.controls; track genre.value; let i = $index) {
+            <span class="chip">
+              {{genre.value}}
+              <button type="button" (click)="removeTag('genre', i); $event.stopPropagation()">&times;</button>
+            </span>
+            }
+          </div>
+        </div>
+
+        <!-- Subgenres -->
+        <div class="input-group autocomplete-group">
+          <label>Subgenres</label>
+          <div class="autocomplete-wrapper">
+            <div class="dropdown-trigger" [cdkMenuTriggerFor]="subgenreMenu" (cdkMenuOpened)="onMenuOpened('subgenre')">
+              <span class="placeholder">Select or add subgenres...</span>
+              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
+                fill="currentColor">
+                <path d="M480-360 280-560h400L480-360Z" />
+              </svg>
+            </div>
+            <ng-template #subgenreMenu>
+              <div class="autocomplete-dropdown" cdkMenu>
+                <div class="dropdown-search">
+                  <input id="subgenreInput" type="text" [formControl]="subgenreInput"
+                    placeholder="Write custom subgenre and press Enter..." (input)="onInputChange($event, 'subgenre')"
+                    (keydown)="onKeyDown($event, 'subgenre')" (click)="$event.stopPropagation()">
+                </div>
+                <ul class="options-list">
+                  @for (option of filteredSubgenres; track option) {
+                  <li cdkMenuItem (click)="selectPredefinedTag('subgenre', option)">{{option}}</li>
+                  }
+                </ul>
+              </div>
+            </ng-template>
+          </div>
+          <div class="selected-chips">
+            @for (subgenre of subgenres.controls; track subgenre.value; let i = $index) {
+            <span class="chip">
+              {{subgenre.value}}
+              <button type="button" (click)="removeTag('subgenre', i); $event.stopPropagation()">&times;</button>
+            </span>
+            }
+          </div>
+        </div>
+
+        <!-- Tropes -->
+        <div class="input-group autocomplete-group">
+          <label>Tropes</label>
+          <div class="autocomplete-wrapper">
+            <div class="dropdown-trigger" [cdkMenuTriggerFor]="tropeMenu" (cdkMenuOpened)="onMenuOpened('trope')">
+              <span class="placeholder">Select or add tropes...</span>
+              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
+                fill="currentColor">
+                <path d="M480-360 280-560h400L480-360Z" />
+              </svg>
+            </div>
+            <ng-template #tropeMenu>
+              <div class="autocomplete-dropdown" cdkMenu>
+                <div class="dropdown-search">
+                  <input id="tropeInput" type="text" [formControl]="tropeInput"
+                    placeholder="Write custom trope and press Enter..." (input)="onInputChange($event, 'trope')"
+                    (keydown)="onKeyDown($event, 'trope')" (click)="$event.stopPropagation()">
+                </div>
+                <ul class="options-list">
+                  @for (option of filteredTropes; track option) {
+                  <li cdkMenuItem (click)="selectPredefinedTag('trope', option)">{{option}}</li>
+                  }
+                </ul>
+              </div>
+            </ng-template>
+          </div>
+          <div class="selected-chips">
+            @for (trope of tropes.controls; track trope.value; let i = $index) {
+            <span class="chip">
+              {{trope.value}}
+              <button type="button" (click)="removeTag('trope', i); $event.stopPropagation()">&times;</button>
+            </span>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="form-column right-column">
+      <div class="cover-upload-section">
+        <label>Cover Image</label>
+        <div class="cover-upload" [class.drag-over]="isDragging" (dragover)="onDragOver($event)">
+          <input type="file" id="coverUpload" (change)="onFileChange($event)" accept="image/*" hidden>
+          <label for="coverUpload" class="upload-area" (dragleave)="onDragLeave($event)" (drop)="onDrop($event)">
+            @if (coverPreview()) {
+            <div class="preview-container">
+              <img [src]="coverPreview()" alt="Cover preview" class="cover-preview">
+              <button type="button" class="remove-btn" (click)="removeCoverImage($event)" title="Remove image">
+                <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                  fill="currentColor">
+                  <path
+                    d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z" />
+                </svg>
+              </button>
+            </div>
+            } @else {
+            <div class="placeholder">
+              <svg xmlns="http://www.w3.org/2000/svg" height="48px" viewBox="0 -960 960 960" width="48px"
+                fill="currentColor">
+                <path
+                  d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0-33-23.5-56.5T760-120H200Zm0-80h560v-560H200v560Zm40-80h480L570-480 450-320l-90-120-120 160Zm-40 80v-560 560Z" />
+              </svg>
+              <span>Click to upload cover</span>
+              <span class="hint">Recommended: 600x900px</span>
+            </div>
+            }
+          </label>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" (click)="cancel()">Cancel</button>
+        <button type="submit" class="btn-primary" [disabled]="bookForm.invalid || isSubmitting">
+          @if (isSubmitting) {
+          <span class="loader"></span>
+          } @else {
+          Create Novel
+          }
+        </button>
+      </div>
+    </div>
+  </form>
+</div>

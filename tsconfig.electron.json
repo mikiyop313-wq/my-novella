@@ -13,6 +13,7 @@
   "include": [
     "electron/**/*.ts",
     "db/**/*.ts",
+    "shared/**/*.ts",
     "drizzle.config.ts"
   ]
 }

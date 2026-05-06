@@ -1,0 +1,98 @@
+@keyframes fadeInGrid {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+        filter: blur(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+    }
+}
+
+.book-card {
+    opacity: 0;
+    animation: fadeInGrid 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+
+    @for $i from 1 through 12 {
+        &:nth-child(#{$i}) {
+            animation-delay: #{$i * 0.08}s;
+        }
+    }
+}
+
+
+.library-container {
+    position: relative;
+    padding: 4rem clamp(1.5rem, 6vw, 5rem);
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 32px;
+}
+
+.title {
+    font-family: var(--title-font);
+    color: var(--color-text);
+    font-size: 3.5rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 20px;
+    align-self: center;
+}
+
+.library-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: -8px;
+}
+
+.add-novel-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 22px;
+    background-color: var(--color-btn-primary-bg);
+    color: var(--color-btn-primary-text);
+    border: none;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 400;
+    font-size: 0.8rem;
+    cursor: pointer;
+    box-shadow: 0 10px 20px -10px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 15px 30px -12px rgba(0, 0, 0, 0.4);
+        background-color: var(--color-btn-primary-hover, var(--color-btn-primary-bg));
+        filter: brightness(1.1);
+    }
+
+    &:active {
+        transform: translateY(-1px) scale(0.98);
+    }
+
+    svg {
+        transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    &:hover svg {
+        transform: rotate(90deg);
+    }
+}
+
+.books-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 32px;
+    justify-items: center;
+    width: 100%;
+    margin-top: 16px;
+}

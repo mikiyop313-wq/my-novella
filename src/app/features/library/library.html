@@ -1,1 +1,25 @@
-<app-book-card></app-book-card>
+<div class="library-container">
+    @if (books().length > 0) {
+    <h1 class="title">The library</h1>
+    <app-search-bar></app-search-bar>
+
+    <div class="library-actions">
+        <button class="add-novel-btn" (click)="onCreateBook()">
+            <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px"
+                fill="currentColor">
+                <path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z" />
+            </svg>
+            <span>Add a new novel</span>
+        </button>
+    </div>
+
+    <div class="books-grid">
+        @for (book of books(); track $index) {
+        <app-book-card class="book-card"></app-book-card>
+        }
+    </div>
+    } @else {
+    <app-empty-state (onCreate)="onCreateBook()"></app-empty-state>
+    }
+
+</div>
