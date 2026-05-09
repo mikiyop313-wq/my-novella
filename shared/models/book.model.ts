@@ -2,6 +2,7 @@ export interface CategoryDto {
   id: string;
   name: string;
   type: 'genre' | 'trope' | 'demographic';
+  isCustom: boolean;
 }
 
 export interface BookTagDto {
