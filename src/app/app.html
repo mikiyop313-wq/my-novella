@@ -2,6 +2,8 @@
 
   <button (click)="sendToMain()"> Dummy button </button>
   <button (click)="toggleTheme()"> Toggle Theme </button>
-
-  <router-outlet />
+  
+  <div class="animation-container" [@routeAnimations]="getRouteAnimationData()">
+    <router-outlet />
+  </div>
 </main>
