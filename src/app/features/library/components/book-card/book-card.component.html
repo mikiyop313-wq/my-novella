@@ -1,7 +1,7 @@
 <div class="card">
     <div class="card-image-wrapper">
-        <img src="https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&q=80&w=800"
-            alt="Library with candle" class="card-image">
+        <img [src]="displayCoverImage()"
+            alt="Book Cover" class="card-image">
         <div class="card-footer">
             <button class="icon-info-btn" [appOverlayModal]="modalTemplate" #modalTrigger="appOverlayModal">
                 <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
@@ -28,5 +28,5 @@
 
 
 <ng-template #modalTemplate let-closeModal>
-    <app-book-modal [book]="book" (close)="closeModal()"></app-book-modal>
+    <app-book-modal [book]="book" (close)="closeModal()" (bookDeleted)="bookDeleted.emit($event)"></app-book-modal>
 </ng-template>

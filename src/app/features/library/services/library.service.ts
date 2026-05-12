@@ -25,4 +25,8 @@ export class LibraryService {
   async updateBook(id: string, data: UpdateBookDto): Promise<Book> {
     return await this.electronService.invoke('library:update-book', { id, data });
   }
+
+  async getLanguages(): Promise<{ languageName: string }[]> {
+    return await this.electronService.invoke('library:get-languages');
+  }
 }

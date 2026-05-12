@@ -37,31 +37,9 @@
 
       <div class="input-group autocomplete-group">
         <label for="language">Language</label>
-        <div class="autocomplete-wrapper">
-          <div class="dropdown-trigger" [cdkMenuTriggerFor]="languageMenu" (cdkMenuOpened)="onMenuOpened('language')">
-            <span [class.placeholder]="!bookForm.get('language')?.value">
-              {{getSelectedLanguageLabel()}}
-            </span>
-            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
-              fill="currentColor">
-              <path d="M480-360 280-560h400L480-360Z" />
-            </svg>
-          </div>
-          <ng-template #languageMenu>
-            <div class="autocomplete-dropdown" cdkMenu>
-              <div class="dropdown-search">
-                <input id="languageInput" type="text" [formControl]="languageInput"
-                  placeholder="Write custom language and press Enter..." (input)="onInputChange($event, 'language')"
-                  (keydown)="onKeyDown($event, 'language')" (click)="$event.stopPropagation()">
-              </div>
-              <ul class="options-list">
-                @for (lang of filteredLanguages; track lang.value) {
-                <li cdkMenuItem (click)="selectLanguage(lang.value, lang.label)">{{lang.label}}</li>
-                }
-              </ul>
-            </div>
-          </ng-template>
-        </div>
+        <app-autocomplete-dropdown [options]="config.languages()" [selectedValue]="bookForm.get('language')?.value"
+          [grouped]="true" (selectionChange)="onSelectionChange('language', $event)">
+        </app-autocomplete-dropdown>
       </div>
 
       <div class="input-group">
@@ -73,109 +51,31 @@
         <!-- Genres -->
         <div class="input-group autocomplete-group">
           <label>Genres</label>
-          <div class="autocomplete-wrapper">
-            <div class="dropdown-trigger" [cdkMenuTriggerFor]="genreMenu" (cdkMenuOpened)="onMenuOpened('genre')">
-              <span class="placeholder">Select or add genres...</span>
-              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
-                fill="currentColor">
-                <path d="M480-360 280-560h400L480-360Z" />
-              </svg>
-            </div>
-            <ng-template #genreMenu>
-              <div class="autocomplete-dropdown" cdkMenu>
-                <div class="dropdown-search">
-                  <input id="genreInput" type="text" [formControl]="genreInput"
-                    placeholder="Write custom genre and press Enter..." (input)="onInputChange($event, 'genre')"
-                    (keydown)="onKeyDown($event, 'genre')" (click)="$event.stopPropagation()">
-                </div>
-                <ul class="options-list">
-                  @for (option of filteredGenres; track option) {
-                  <li cdkMenuItem (click)="selectPredefinedTag('genre', option)">{{option}}</li>
-                  }
-                </ul>
-              </div>
-            </ng-template>
-          </div>
-          <div class="selected-chips">
-            @for (genre of genres.controls; track genre.value; let i = $index) {
-            <span class="chip">
-              {{genre.value}}
-              <button type="button" (click)="removeTag('genre', i); $event.stopPropagation()">&times;</button>
-            </span>
-            }
-          </div>
+          <app-autocomplete-dropdown [options]="genreOptions" [selectedValue]="genres.value" [multi]="true"
+            [allowCustom]="true" placeholder="Select or add genres..."
+            customAddPlaceholder="Write custom genre and press Enter..."
+            (selectionChange)="onSelectionChange('genre', $event)">
+          </app-autocomplete-dropdown>
         </div>
 
         <!-- Subgenres -->
         <div class="input-group autocomplete-group">
           <label>Subgenres</label>
-          <div class="autocomplete-wrapper">
-            <div class="dropdown-trigger" [cdkMenuTriggerFor]="subgenreMenu" (cdkMenuOpened)="onMenuOpened('subgenre')">
-              <span class="placeholder">Select or add subgenres...</span>
-              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
-                fill="currentColor">
-                <path d="M480-360 280-560h400L480-360Z" />
-              </svg>
-            </div>
-            <ng-template #subgenreMenu>
-              <div class="autocomplete-dropdown" cdkMenu>
-                <div class="dropdown-search">
-                  <input id="subgenreInput" type="text" [formControl]="subgenreInput"
-                    placeholder="Write custom subgenre and press Enter..." (input)="onInputChange($event, 'subgenre')"
-                    (keydown)="onKeyDown($event, 'subgenre')" (click)="$event.stopPropagation()">
-                </div>
-                <ul class="options-list">
-                  @for (option of filteredSubgenres; track option) {
-                  <li cdkMenuItem (click)="selectPredefinedTag('subgenre', option)">{{option}}</li>
-                  }
-                </ul>
-              </div>
-            </ng-template>
-          </div>
-          <div class="selected-chips">
-            @for (subgenre of subgenres.controls; track subgenre.value; let i = $index) {
-            <span class="chip">
-              {{subgenre.value}}
-              <button type="button" (click)="removeTag('subgenre', i); $event.stopPropagation()">&times;</button>
-            </span>
-            }
-          </div>
+          <app-autocomplete-dropdown [options]="subgenreOptions" [selectedValue]="subgenres.value" [multi]="true"
+            [allowCustom]="true" placeholder="Select or add subgenres..."
+            customAddPlaceholder="Write custom subgenre and press Enter..."
+            (selectionChange)="onSelectionChange('subgenre', $event)">
+          </app-autocomplete-dropdown>
         </div>
 
         <!-- Tropes -->
         <div class="input-group autocomplete-group">
           <label>Tropes</label>
-          <div class="autocomplete-wrapper">
-            <div class="dropdown-trigger" [cdkMenuTriggerFor]="tropeMenu" (cdkMenuOpened)="onMenuOpened('trope')">
-              <span class="placeholder">Select or add tropes...</span>
-              <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
-                fill="currentColor">
-                <path d="M480-360 280-560h400L480-360Z" />
-              </svg>
-            </div>
-            <ng-template #tropeMenu>
-              <div class="autocomplete-dropdown" cdkMenu>
-                <div class="dropdown-search">
-                  <input id="tropeInput" type="text" [formControl]="tropeInput"
-                    placeholder="Write custom trope and press Enter..." (input)="onInputChange($event, 'trope')"
-                    (keydown)="onKeyDown($event, 'trope')" (click)="$event.stopPropagation()">
-                </div>
-                <ul class="options-list">
-                  @for (option of filteredTropes; track option) {
-                  <li cdkMenuItem (click)="selectPredefinedTag('trope', option)">{{option}}</li>
-                  }
-                </ul>
-              </div>
-            </ng-template>
-          </div>
-          <div class="selected-chips">
-            @for (trope of tropes.controls; track trope.value; let i = $index) {
-            <span class="chip">
-              {{trope.value}}
-              <button type="button" (click)="removeTag('trope', i); $event.stopPropagation()">&times;</button>
-            </span>
-            }
-          </div>
+          <app-autocomplete-dropdown [options]="tropeOptions" [selectedValue]="tropes.value" [multi]="true"
+            [allowCustom]="true" placeholder="Select or add tropes..."
+            customAddPlaceholder="Write custom trope and press Enter..."
+            (selectionChange)="onSelectionChange('trope', $event)">
+          </app-autocomplete-dropdown>
         </div>
       </div>
     </div>

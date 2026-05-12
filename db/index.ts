@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema';
 import * as path from 'path';
 import { app } from 'electron';
-//import { users } from './schema';
+import { seedLanguages } from './seed';
 
 import * as fs from 'fs';
 
@@ -27,6 +27,9 @@ try {
 
 
     console.log('FAST TEST: Users in DB:');
+
+// Seed languages if table is empty
+seedLanguages().catch(err => console.error('Seeding failed:', err));
 } catch (err) {
     console.error('FAST TEST FAILED:', err);
 }

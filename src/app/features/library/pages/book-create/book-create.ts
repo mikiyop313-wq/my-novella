@@ -3,13 +3,16 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormArray, FormControl } from '@angular/forms';
 import { Router } from '@angular/router';
 import { LibraryService } from "../../services/library.service"
+import { LibraryStore } from '../../store/book.store';
+import { ConfigStore } from '../../../../core/store/config.store';
 import { CreateBookDto, CategoryDto } from '../../../../../../shared/models/book.model';
 import { CdkMenuModule } from '@angular/cdk/menu';
+import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 
 @Component({
   selector: 'app-book-create',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, CdkMenuModule],
+  imports: [CommonModule, ReactiveFormsModule, CdkMenuModule, AutocompleteDropdownComponent],
   templateUrl: './book-create.html',
   styleUrl: './book-create.scss'
 })
@@ -18,6 +21,8 @@ export class BookCreate implements OnInit {
   private fb = inject(FormBuilder);
   private libraryService = inject(LibraryService);
   private router = inject(Router);
+  readonly store = inject(LibraryStore);
+  readonly config = inject(ConfigStore);
 
   bookForm: FormGroup = this.fb.group({
     title: ['', [Validators.required, Validators.minLength(1)]],
@@ -42,33 +47,21 @@ export class BookCreate implements OnInit {
   availableSubgenres = ['Cyberpunk', 'Steampunk', 'Dark Fantasy', 'Urban Fantasy', 'Post-Apocalyptic', 'High Fantasy'];
   availableTropes = ['Enemies to Lovers', 'Chosen One', 'System', 'Reincarnation', 'Time Loop', 'Magic School'];
 
-  filteredGenres: string[] = [];
-  filteredSubgenres: string[] = [];
-  filteredTropes: string[] = [];
-  filteredLanguages: { value: string, label: string }[] = [];
+  genreOptions: DropdownOption[] = this.availableGenres.map(g => ({ value: g, label: g }));
+  subgenreOptions: DropdownOption[] = this.availableSubgenres.map(g => ({ value: g, label: g }));
+  tropeOptions: DropdownOption[] = this.availableTropes.map(g => ({ value: g, label: g }));
 
   isSubmitting = false;
   isDragging = false;
 
   coverPreview = signal<string | null>(null);
 
-  languages = [
-    { value: 'english', label: 'English' },
-    { value: 'spanish', label: 'Spanish' },
-    { value: 'french', label: 'French' },
-    { value: 'german', label: 'German' },
-    { value: 'japanese', label: 'Japanese' },
-    { value: 'chinese', label: 'Chinese' },
-    { value: 'korean', label: 'Korean' },
-    { value: 'russian', label: 'Russian' },
-  ];
+  languages: { value: string, label: string }[] = [];
 
   ngOnInit() {
-    this.filterOptions('genre', '');
-    this.filterOptions('subgenre', '');
-    this.filterOptions('trope', '');
-    this.filterOptions('language', '');
+    this.config.loadLanguages();
   }
+
 
 
   onDragOver($event: DragEvent) {
@@ -125,97 +118,17 @@ export class BookCreate implements OnInit {
     this.bookForm.patchValue({ coverImage: null });
   }
 
-  getControl(type: 'genre' | 'subgenre' | 'trope' | 'language'): FormControl {
-    if (type === 'genre') return this.genreInput;
-    if (type === 'subgenre') return this.subgenreInput;
-    if (type === 'language') return this.languageInput;
-    return this.tropeInput;
-  }
-
-  onMenuOpened(type: 'genre' | 'subgenre' | 'trope' | 'language') {
-    this.filterOptions(type, this.getControl(type).value || '');
-    setTimeout(() => {
-      document.getElementById(`${type}Input`)?.focus();
-    }, 0);
-  }
-
-  onInputChange(event: Event, type: 'genre' | 'subgenre' | 'trope' | 'language') {
-    const value = (event.target as HTMLInputElement).value;
-    this.filterOptions(type, value);
-  }
-
-  filterOptions(type: 'genre' | 'subgenre' | 'trope' | 'language', query: string) {
-    const q = query.toLowerCase();
-    if (type === 'genre') {
-      const selected = this.genres.value as string[];
-      this.filteredGenres = this.availableGenres.filter(g => !selected.includes(g) && g.toLowerCase().includes(q));
-    } else if (type === 'subgenre') {
-      const selected = this.subgenres.value as string[];
-      this.filteredSubgenres = this.availableSubgenres.filter(g => !selected.includes(g) && g.toLowerCase().includes(q));
-    } else if (type === 'trope') {
-      const selected = this.tropes.value as string[];
-      this.filteredTropes = this.availableTropes.filter(g => !selected.includes(g) && g.toLowerCase().includes(q));
-    } else {
-      this.filteredLanguages = this.languages.filter(l => l.label.toLowerCase().includes(q));
-    }
-  }
-
-  selectPredefinedTag(type: 'genre' | 'subgenre' | 'trope', value: string) {
-    this.getControl(type).setValue(value);
-    this.addTag(type);
-  }
-
-  addTag(type: 'genre' | 'subgenre' | 'trope' | 'language') {
-    let inputControl = this.getControl(type);
-
+  onSelectionChange(type: 'genre' | 'subgenre' | 'trope' | 'language', value: any) {
     if (type === 'language') {
-      const value = inputControl.value?.trim();
-      if (value) {
-        this.selectLanguage(value, value);
-      }
-      return;
-    }
+      this.bookForm.patchValue({ language: value });
+    } else {
+      const arrayControl = type === 'genre' ? this.genres : (type === 'subgenre' ? this.subgenres : this.tropes);
 
-    let arrayControl: FormArray;
-    if (type === 'genre') arrayControl = this.genres;
-    else if (type === 'subgenre') arrayControl = this.subgenres;
-    else arrayControl = this.tropes;
-
-    const value = inputControl.value?.trim();
-    if (value) {
-      const exists = arrayControl.controls.some(ctrl => ctrl.value.toLowerCase() === value.toLowerCase());
-      if (!exists) {
-        arrayControl.push(this.fb.control(value));
-      }
-      inputControl.setValue('');
-      this.filterOptions(type, ''); // Refresh options
-    }
-  }
-
-  selectLanguage(value: string, label: string) {
-    // If it's a new language, add it to the list
-    if (!this.languages.find(l => l.value === value)) {
-      this.languages.push({ value, label });
-    }
-    this.bookForm.patchValue({ language: value });
-    this.languageInput.setValue('');
-  }
-
-  getSelectedLanguageLabel(): string {
-    const value = this.bookForm.get('language')?.value;
-    return this.languages.find(l => l.value === value)?.label || 'Select language...';
-  }
-
-  removeTag(type: 'genre' | 'subgenre' | 'trope', index: number) {
-    if (type === 'genre') this.genres.removeAt(index);
-    else if (type === 'subgenre') this.subgenres.removeAt(index);
-    else this.tropes.removeAt(index);
-  }
-
-  onKeyDown(event: KeyboardEvent, type: 'genre' | 'subgenre' | 'trope' | 'language') {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      this.addTag(type);
+      // Sync form array with selected values
+      arrayControl.clear();
+      (value as string[]).forEach(val => {
+        arrayControl.push(this.fb.control(val));
+      });
     }
   }
 

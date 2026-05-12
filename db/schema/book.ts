@@ -1,13 +1,14 @@
 import { sqliteTable, text, integer, blob, primaryKey, unique } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
+
 export const books = sqliteTable('books', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     title: text('title').notNull(),
     author: text('author').notNull(),
     status: text('status').$type<'archived' | 'draft'>().notNull().default('draft'),
     synopsis: text('synopsis'),
-    language: text('language').notNull().default('english'),
+    language: text('language').notNull().default('english').references(() => language.languageName),
     coverImage: blob('cover_image'),
     wordCount: integer('word_count').$defaultFn(() => 0),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
@@ -31,8 +32,28 @@ export const bookTags = sqliteTable('book_tags', {
         pk: primaryKey({ columns: [t.bookId, t.categoryId] }),
     }));
 
-export const booksRelations = relations(books, ({ many }) => ({
+
+export const language = sqliteTable('language', {
+    languageName: text('language_name').notNull().primaryKey(),
+});
+
+
+export const bookSettings = sqliteTable('book_settings', {
+    bookSettingId: text('book_setting_id').notNull().references(() => books.id, { onDelete: 'cascade' }).primaryKey(),
+    language: text('language').notNull().default('english').references(() => language.languageName),
+    proseTense: text('prose_tense').$type<'past' | 'present'>().notNull().default('past'),
+    pointOfView: text('point_of_view').$type<'first' | 'second' | 'third_limited' | 'third_omniscient'>().notNull().default('third_limited'),
+    synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
+
+});
+
+
+//RELATIONSHIPS
+
+
+export const booksRelations = relations(books, ({ many, one }) => ({
     bookTags: many(bookTags),
+    bookSettings: one(bookSettings),
 }));
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
@@ -49,3 +70,22 @@ export const bookTagsRelations = relations(bookTags, ({ one }) => ({
         references: [categories.id],
     }),
 }));
+
+export const bookSettingsRelations = relations(bookSettings, ({ one }) => ({
+    book: one(books, {
+        fields: [bookSettings.bookSettingId],
+        references: [books.id],
+    }),
+    language: one(language, {
+        fields: [bookSettings.language],
+        references: [language.languageName],
+    }),
+}));
+
+export const languageRelations = relations(language, ({ many }) => ({
+    bookSettingLanguage: many(bookSettings),
+    books: many(books),
+}));
+
+
+
