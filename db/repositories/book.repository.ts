@@ -1,14 +1,14 @@
 import { db } from '../index';
 import { books, categories, bookTags, language } from '../schema';
 import { eq } from 'drizzle-orm';
-import { BookDto, CreateBookDto, UpdateBookDto } from '../../shared/models/book.model';
+import { BookDto, CreateBookDto, UpdateBookDto, CategoryDto } from '../../shared/models/book.model';
 
 type BookEntity = typeof books.$inferSelect;
 
 export class BookRepository {
-    private mapToDto(book: any): BookDto {
+    private mapToDto(book: BookEntity & { bookTags?: { category: CategoryDto }[] }): BookDto {
         const { bookTags, createdAt, lastEditedAt, ...rest } = book;
-        const categories = bookTags?.map((bt: any) => bt.category) || [];
+        const categories = bookTags?.map(bt => bt.category) || [];
 
         // If coverImage is a Buffer, convert it to a Uint8Array for IPC
         let coverImage = rest.coverImage;
@@ -29,7 +29,7 @@ export class BookRepository {
 
     private dataUrlToBuffer(dataUrl: string | Uint8Array | null): Buffer | null {
         if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
-            return dataUrl as any;
+            return dataUrl as unknown as Buffer;
         }
         const base64 = dataUrl.split(',')[1];
         return Buffer.from(base64, 'base64');
@@ -67,10 +67,10 @@ export class BookRepository {
 
         // Convert coverImage to Buffer if it's a Data URL
         if (bookData.coverImage) {
-            bookData.coverImage = this.dataUrlToBuffer(bookData.coverImage as any) as any;
+            bookData.coverImage = this.dataUrlToBuffer(bookData.coverImage) as unknown as string;
         }
 
-        const [newBook] = await db.insert(books).values(bookData as any).returning();
+        const [newBook] = await db.insert(books).values(bookData as BookEntity).returning();
 
         if (categoriesToSave && categoriesToSave.length > 0) {
             for (const cat of categoriesToSave) {
@@ -99,11 +99,11 @@ export class BookRepository {
 
         // Convert coverImage to Buffer if it's a Data URL
         if (updateData.coverImage) {
-            updateData.coverImage = this.dataUrlToBuffer(updateData.coverImage as any) as any;
+            updateData.coverImage = this.dataUrlToBuffer(updateData.coverImage) as unknown as string;
         }
 
         await db.update(books)
-            .set({ ...updateData as any, lastEditedAt: new Date() })
+            .set({ ...updateData as Partial<BookEntity>, lastEditedAt: new Date() })
             .where(eq(books.id, id));
 
         if (categoriesToSave) {
