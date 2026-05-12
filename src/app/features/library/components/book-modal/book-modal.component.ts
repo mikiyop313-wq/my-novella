@@ -1,9 +1,9 @@
 import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, Input, computed, inject } from '@angular/core';
-import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
-import { BookDto } from '../../../../../../shared/models/book.model';
+import { BookDto, CategoryDto } from '../../../../../../shared/models/book.model';
+import { BookUi } from '../../store/book.store';
 import { CommonModule } from '@angular/common';
 import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
@@ -24,7 +24,7 @@ import { ElectronService } from '../../../../core/services/electron.service';
   styleUrl: './book-modal.component.scss'
 })
 export class BookModalComponent {
-  @Input({ required: true }) book!: BookDto;
+  @Input({ required: true }) book!: BookUi;
   @Output() close = new EventEmitter<void>();
   @Output() bookDeleted = new EventEmitter<string>();
 
@@ -32,7 +32,6 @@ export class BookModalComponent {
   readonly store = inject(LibraryStore);
   readonly config = inject(ConfigStore);
   readonly electronApi = inject(ElectronService);
-  private sanitizer = inject(DomSanitizer);
 
   readonly INFO = INFO_MESSAGES;
 
@@ -48,7 +47,7 @@ export class BookModalComponent {
   selectedLanguage = signal<string>('english');
   selectedPOV = signal<'first' | 'third-limited' | 'third-omni' | 'second'>('third-limited');
   povCharacter = signal<string>('');
-  useSynopsisInAiContext = signal<boolean>(true);
+  useSynopsisInAiContext = signal<boolean>(false);
 
   tenses: DropdownOption[] = [
     { value: 'past', label: 'Past Tense' },
@@ -65,24 +64,14 @@ export class BookModalComponent {
   genresExpanded = signal(false);
   tropesExpanded = signal(false);
 
-  genres = computed(() => this.book.categories?.filter(c => c.type === 'genre') || []);
-  tropes = computed(() => this.book.categories?.filter(c => c.type === 'trope') || []);
-
-  displayCoverImage = computed<SafeUrl | string>(() => {
-    if (!this.book.coverImage) {
-      return 'https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&q=80&w=800';
-    }
-
-    if (this.book.coverImage instanceof Uint8Array) {
-      // Convert Uint8Array to a blob URL for efficiency
-      const blob = new Blob([this.book.coverImage]);
-      return this.sanitizer.bypassSecurityTrustUrl(URL.createObjectURL(blob));
-    }
-
-    return this.book.coverImage;
-  });
+  genres = computed(() => this.book.categories?.filter((c: CategoryDto) => c.type === 'genre') || []);
+  tropes = computed(() => this.book.categories?.filter((c: CategoryDto) => c.type === 'trope') || []);
 
   currentWords = signal(0);
+  formattedSynopsis = computed(() => {
+    if (!this.book.synopsis) return [];
+    return this.book.synopsis.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+  });
   currentCount = signal(0); // This could be chapters if we add them to schema
 
   isGenresOverflow = signal(false);
@@ -110,6 +99,7 @@ export class BookModalComponent {
     this.config.loadLanguages();
     // Initialize settings from book data if available
     if (this.book.language) this.selectedLanguage.set(this.book.language);
+    this.useSynopsisInAiContext.set(this.book.synopsis !== '' ? true : false);
   }
 
 

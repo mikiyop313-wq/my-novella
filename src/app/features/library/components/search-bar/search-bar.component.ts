@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
 
-export type OrderByType = 'name' | 'lastUpdate' | 'creation';
+export type OrderByType = 'name' | 'lastUpdate' | 'latestCreation' | 'oldestCreation';
 
 @Component({
   selector: 'app-search-bar',
