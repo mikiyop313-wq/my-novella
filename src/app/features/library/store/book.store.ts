@@ -1,5 +1,5 @@
-import { inject } from '@angular/core';
-import { signalStore, withState, withMethods, patchState } from '@ngrx/signals';
+import { inject, computed } from '@angular/core';
+import { signalStore, withState, withMethods, patchState, withComputed } from '@ngrx/signals';
 import { BookDto } from '../../../../../shared/models/book.model';
 import { LibraryService } from '../services/library.service';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
@@ -8,22 +8,114 @@ export interface BookUi extends BookDto {
   displayCoverImage: SafeUrl | string;
 }
 
+export type OrderByType = 'name' | 'lastUpdate' | 'latestCreation' | 'oldestCreation';
+
 export interface LibraryState {
   books: BookUi[];
   isLoading: boolean;
   error: string | null;
+  searchQuery: string;
+  orderBy: OrderByType;
 }
 
 const initialState: LibraryState = {
   books: [],
   isLoading: false,
   error: null,
+  searchQuery: '',
+  orderBy: 'lastUpdate',
 };
 
 export const LibraryStore = signalStore(
   { providedIn: 'root' },
 
   withState(initialState),
+
+  withComputed(({ books, searchQuery, orderBy }) => ({
+    filteredBooks: computed(() => {
+      const query = searchQuery().toLowerCase();
+      const allBooks = books();
+      const order = orderBy();
+
+      let filtered = allBooks.filter((book: BookUi) => 
+        book.title.toLowerCase().includes(query) || 
+        book.author.toLowerCase().includes(query) ||
+        book.synopsis?.toLowerCase().includes(query)
+      );
+
+      return [...filtered].sort((a, b) => {
+        switch (order) {
+          case 'name':
+            return a.title.localeCompare(b.title);
+          case 'lastUpdate':
+            return new Date(b.lastEditedAt).getTime() - new Date(a.lastEditedAt).getTime();
+          case 'latestCreation':
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          case 'oldestCreation':
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          default:
+            return 0;
+        }
+      });
+    })
+  })),
+
+  withComputed(({ filteredBooks, orderBy }) => ({
+    groupedBooks: computed(() => {
+      const books = filteredBooks();
+      const order = orderBy();
+      const groups: { label: string, books: BookUi[] }[] = [];
+
+      if (order === 'name') {
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+        alphabet.forEach(letter => {
+          const groupBooks = books.filter((b: BookUi) => {
+            const firstChar = b.title.charAt(0).toUpperCase();
+            return letter === '#' ? !/[A-Z]/.test(firstChar) : firstChar === letter;
+          });
+          if (groupBooks.length > 0) {
+            groups.push({ label: letter, books: groupBooks });
+          }
+        });
+      } else {
+        // Chronological grouping
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const thisWeek = new Date(today);
+        thisWeek.setDate(thisWeek.getDate() - 7);
+        const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+        const timeGroups = [
+          { label: 'Today', filter: (d: Date) => d >= today },
+          { label: 'Yesterday', filter: (d: Date) => d >= yesterday && d < today },
+          { label: 'This Week', filter: (d: Date) => d >= thisWeek && d < yesterday },
+          { label: 'This Month', filter: (d: Date) => d >= thisMonth && d < thisWeek },
+          { label: 'Earlier this Year', filter: (d: Date) => d.getFullYear() === now.getFullYear() && d < thisMonth },
+          { label: 'Older', filter: (d: Date) => d.getFullYear() < now.getFullYear() },
+        ];
+
+        timeGroups.forEach(group => {
+          const groupBooks = books.filter((b: BookUi) => {
+            const date = new Date(order === 'lastUpdate' ? b.lastEditedAt : b.createdAt);
+            return group.filter(date);
+          });
+          if (groupBooks.length > 0) {
+            groups.push({ label: group.label, books: groupBooks });
+          }
+        });
+      }
+
+      return groups;
+    })
+  })),
+
+  withComputed(({ groupedBooks }) => ({
+    indexItems: computed(() => {
+      return groupedBooks().map((g) => g.label);
+    })
+  })),
 
   withMethods((
     store, 
@@ -118,8 +210,8 @@ export const LibraryStore = signalStore(
     async deleteBook(id: string) {
       try {
         await libraryService.removeBook(id);
-        patchState(store, (state) => ({
-          books: state.books.filter(b => b.id !== id)
+        patchState(store, (state: LibraryState) => ({
+          books: state.books.filter((b: BookUi) => b.id !== id)
         }));
       } catch (error) {
         patchState(store, {
@@ -127,6 +219,14 @@ export const LibraryStore = signalStore(
         });
       }
     },
+
+    setSearchQuery(query: string) {
+      patchState(store, { searchQuery: query });
+    },
+
+    setOrderBy(orderBy: OrderByType) {
+      patchState(store, { orderBy });
+    }
 
   }))
 );

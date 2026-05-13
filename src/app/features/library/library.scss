@@ -45,6 +45,50 @@
     align-self: center;
 }
 
+.library-content-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+    width: 100%;
+}
+
+.books-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 64px;
+    width: 100%;
+}
+
+.group-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: 100%;
+    scroll-margin-top: 2rem;
+}
+
+.group-header {
+    font-family: var(--title-font);
+    color: var(--color-text-secondary);
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    opacity: 0.8;
+
+    &::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(to right, rgba(var(--color-border-rgb), 0.3), transparent);
+    }
+}
+
 .library-actions {
     display: flex;
     justify-content: center;

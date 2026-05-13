@@ -13,9 +13,22 @@
         </button>
     </div>
 
-    <div class="books-grid">
-        @for (book of libraryStore.books(); track $index) {
-        <app-book-card class="book-card" [book]="book" (bookDeleted)="onBookDeleted($event)"></app-book-card>
+    <div class="library-content-wrapper">
+        <div class="books-sections">
+            @for (group of libraryStore.groupedBooks(); track group.label) {
+            <div class="group-section" [id]="'section-' + group.label">
+                <h2 class="group-header">{{ group.label }}</h2>
+                <div class="books-grid">
+                    @for (book of group.books; track book.id) {
+                    <app-lazy-book-card class="book-card" [book]="book" (bookDeleted)="onBookDeleted($event)"></app-lazy-book-card>
+                    }
+                </div>
+            </div>
+            }
+        </div>
+
+        @if (libraryStore.indexItems().length > 1) {
+        <app-index-scroll [items]="libraryStore.indexItems()" (select)="scrollToSection($event)"></app-index-scroll>
         }
     </div>
     } @else {
