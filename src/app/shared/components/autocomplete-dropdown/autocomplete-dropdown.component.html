@@ -1,20 +1,21 @@
 <div class="autocomplete-wrapper">
-  <div class="dropdown-trigger" [cdkMenuTriggerFor]="menu" (cdkMenuOpened)="onMenuOpened()">
+  <button type="button" class="dropdown-trigger" [cdkMenuTriggerFor]="menu"
+    (click)="onTriggerClick($event)" (cdkMenuOpened)="onMenuOpened()" (cdkMenuClosed)="onMenuClosed()">
     <span [class.placeholder]="isPlaceholder()">
       {{ getDisplayLabel() }}
     </span>
     <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor">
       <path d="M480-360 280-560h400L480-360Z" />
     </svg>
-  </div>
+  </button>
 
   <ng-template #menu>
     <div class="autocomplete-dropdown" cdkMenu>
       @if (showSearchBar) {
       <div class="dropdown-search">
         <input #searchInput type="text" [formControl]="searchControl"
-          [placeholder]="allowCustom ? customAddPlaceholder : 'Search...'" (keydown)="onKeyDown($event)"
-          (click)="$event.stopPropagation()">
+          [placeholder]="allowCustom ? customAddPlaceholder : 'Search...'"
+          (keydown)="onKeyDown($event); $event.stopPropagation()" (click)="$event.stopPropagation()">
       </div>
       }
       <ul class="options-list">
@@ -22,13 +23,36 @@
         @if (shouldShowGroupHeader(i)) {
         <li class="group-separator">{{ getGroupHeader(i) }}</li>
         }
-        <li cdkMenuItem (click)="selectOption(option)">
-          <span class="option-label">{{ option.label }}</span>
-          @if (!multi && selectedValue === option.value) {
-          <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"
-            class="check-icon">
-            <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
-          </svg>
+        <li class="option-container">
+          <div class="option-item" cdkMenuItem (click)="selectOption(option)">
+            <span class="option-label" [class.selected]="multi && isSelected(option.value)">{{ option.label }}</span>
+            @if (isSelected(option.value)) {
+            <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"
+              class="check-icon">
+              <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+            </svg>
+            }
+            @if (option.subOptions?.length) {
+            <button class="expand-btn" [class.expanded]="isExpanded(option.value)"
+              (click)="toggleExpand(option.value); $event.stopPropagation()">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                fill="currentColor">
+                <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z" />
+              </svg>
+            </button>
+            }
+          </div>
+          @if (isExpanded(option.value) && option.subOptions?.length) {
+          <div class="sub-options-container" (click)="$event.stopPropagation()">
+            <div class="sub-options-chips">
+              @for (sub of option.subOptions; track sub.value) {
+              <span class="sub-chip" [class.selected]="isSelected(sub.value)"
+                (click)="selectOption(sub); $event.stopPropagation()">
+                {{ sub.label }}
+              </span>
+              }
+            </div>
+          </div>
           }
         </li>
         }

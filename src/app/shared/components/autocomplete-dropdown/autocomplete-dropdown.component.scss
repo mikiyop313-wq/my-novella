@@ -20,6 +20,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
 
   &:hover {
     border-color: var(--color-text-secondary);
@@ -99,35 +102,113 @@
       border-radius: 10px;
     }
 
-    li {
-      padding: 10px 16px;
-      font-size: 0.85rem;
-      color: var(--color-text-primary);
-      cursor: pointer;
-      transition: background 0.2s ease;
+    .option-container {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-
-      &:hover {
-        background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
-      }
+      flex-direction: column;
 
       &:not(:last-child) {
         border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
       }
 
-      &.no-options {
-        color: var(--color-text-secondary);
-        font-style: italic;
-        cursor: default;
-        justify-content: center;
-        &:hover { background: none; }
+      .option-item {
+        padding: 10px 16px;
+        font-size: 0.85rem;
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition: background 0.2s ease;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        &:hover {
+          background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+        }
+
+        .option-label {
+          flex: 1;
+
+          &.selected {
+            color: var(--color-btn-primary-bg, #9333ea);
+            font-weight: 500;
+          }
+        }
+
+        .check-icon {
+          color: var(--color-btn-primary-bg, #9333ea);
+        }
+
+        .expand-btn {
+          background: none;
+          border: none;
+          color: var(--color-text-secondary);
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+
+          &:hover {
+            background: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+            color: var(--color-text-primary);
+          }
+
+          &.expanded svg {
+            transform: rotate(180deg);
+          }
+
+          svg {
+            transition: transform 0.2s ease;
+          }
+        }
       }
 
-      .check-icon {
-        color: var(--color-btn-primary-bg, #9333ea);
+      .sub-options-container {
+        padding: 8px 16px 12px;
+        background: color-mix(in srgb, var(--color-surface), transparent 2%);
+        border-top: 1px dashed color-mix(in srgb, var(--color-border) 40%, transparent);
+
+        .sub-options-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+
+          .sub-chip {
+            background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+            border: 1px solid var(--color-border);
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+
+            &:hover {
+              background: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+              color: var(--color-text-primary);
+            }
+
+            &.selected {
+              background: color-mix(in srgb, var(--color-btn-primary-bg, #9333ea) 15%, transparent);
+              border-color: var(--color-btn-primary-bg, #9333ea);
+              color: var(--color-btn-primary-bg, #9333ea);
+              font-weight: 500;
+            }
+          }
+        }
       }
+    }
+
+    .no-options {
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      font-style: italic;
+      cursor: default;
+      display: flex;
+      justify-content: center;
     }
 
     .group-separator {
@@ -150,36 +231,53 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 24px;
 
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
-    border: 1px solid var(--color-border);
-    padding: 6px 12px;
+    gap: 8px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--color-text-primary) 8%, transparent) 0%, color-mix(in srgb, var(--color-text-primary) 3%, transparent) 100%);
+    border: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
+    padding: 6px 14px;
     border-radius: 20px;
-    font-size: 0.65rem;
-    color: var(--color-text-secondary);
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(4px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--color-text-primary) 12%, transparent) 0%, color-mix(in srgb, var(--color-text-primary) 5%, transparent) 100%);
+      border-color: color-mix(in srgb, var(--color-border) 80%, transparent);
+    }
 
     button {
-      background: none;
+      background: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
       border: none;
       padding: 0;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
       color: inherit;
       cursor: pointer;
       font-size: 14px;
       line-height: 1;
-      opacity: 0.6;
-      transition: color 0.2s, opacity 0.2s;
+      opacity: 0.8;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       align-items: center;
       justify-content: center;
+      margin-right: -4px;
 
       &:hover {
         opacity: 1;
+        background: color-mix(in srgb, var(--color-text-primary) 20%, transparent);
         color: var(--color-text-primary);
+        transform: rotate(90deg) scale(1.1);
       }
     }
   }

@@ -35,11 +35,9 @@ export class BookCreate implements OnInit {
   });
 
   genres = this.fb.array([]);
-  subgenres = this.fb.array([]);
   tropes = this.fb.array([]);
 
   genreInput = new FormControl('');
-  subgenreInput = new FormControl('');
   tropeInput = new FormControl('');
   languageInput = new FormControl('');
 
@@ -47,8 +45,26 @@ export class BookCreate implements OnInit {
   availableSubgenres = ['Cyberpunk', 'Steampunk', 'Dark Fantasy', 'Urban Fantasy', 'Post-Apocalyptic', 'High Fantasy'];
   availableTropes = ['Enemies to Lovers', 'Chosen One', 'System', 'Reincarnation', 'Time Loop', 'Magic School'];
 
-  genreOptions: DropdownOption[] = this.availableGenres.map(g => ({ value: g, label: g }));
-  subgenreOptions: DropdownOption[] = this.availableSubgenres.map(g => ({ value: g, label: g }));
+  genreOptions: DropdownOption[] = [
+    { value: 'Fantasy', label: 'Fantasy', subOptions: [
+      { value: 'High Fantasy', label: 'High Fantasy' },
+      { value: 'Dark Fantasy', label: 'Dark Fantasy' },
+      { value: 'Urban Fantasy', label: 'Urban Fantasy' }
+    ]},
+    { value: 'Sci-Fi', label: 'Sci-Fi', subOptions: [
+      { value: 'Cyberpunk', label: 'Cyberpunk' },
+      { value: 'Steampunk', label: 'Steampunk' },
+      { value: 'Post-Apocalyptic', label: 'Post-Apocalyptic' }
+    ]},
+    { value: 'Romance', label: 'Romance' },
+    { value: 'Mystery', label: 'Mystery' },
+    { value: 'Horror', label: 'Horror' },
+    { value: 'Thriller', label: 'Thriller' },
+    { value: 'Historical', label: 'Historical' },
+    { value: 'LitRPG', label: 'LitRPG' },
+    { value: 'Wuxia', label: 'Wuxia' },
+    { value: 'Xianxia', label: 'Xianxia' }
+  ];
   tropeOptions: DropdownOption[] = this.availableTropes.map(g => ({ value: g, label: g }));
 
   isSubmitting = false;
@@ -118,11 +134,11 @@ export class BookCreate implements OnInit {
     this.bookForm.patchValue({ coverImage: null });
   }
 
-  onSelectionChange(type: 'genre' | 'subgenre' | 'trope' | 'language', value: any) {
+  onSelectionChange(type: 'genre' | 'trope' | 'language', value: any) {
     if (type === 'language') {
       this.bookForm.patchValue({ language: value });
     } else {
-      const arrayControl = type === 'genre' ? this.genres : (type === 'subgenre' ? this.subgenres : this.tropes);
+      const arrayControl = type === 'genre' ? this.genres : this.tropes;
 
       // Sync form array with selected values
       arrayControl.clear();
@@ -141,13 +157,7 @@ export class BookCreate implements OnInit {
             id: crypto.randomUUID(),
             name,
             type: 'genre' as const,
-            isCustom: !this.availableGenres.includes(name)
-          })),
-          ...(this.subgenres.value as string[]).map((name: string) => ({
-            id: crypto.randomUUID(),
-            name,
-            type: 'genre' as const, // Mapped to genre for db compatibility
-            isCustom: !this.availableSubgenres.includes(name)
+            isCustom: !this.availableGenres.includes(name) && !this.availableSubgenres.includes(name)
           })),
           ...(this.tropes.value as string[]).map((name: string) => ({
             id: crypto.randomUUID(),

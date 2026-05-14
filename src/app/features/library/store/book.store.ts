@@ -220,6 +220,26 @@ export const LibraryStore = signalStore(
       }
     },
 
+    async updateBook(id: string, data: any) {
+      try {
+        const updatedBook = await libraryService.updateBook(id, data);
+        const processedBook: BookUi = {
+          ...updatedBook,
+          displayCoverImage: this.getSafeDisplayUrl(updatedBook, sanitizer)
+        };
+        
+        patchState(store, (state: LibraryState) => ({
+          books: state.books.map((b: BookUi) => b.id === id ? processedBook : b)
+        }));
+        return processedBook;
+      } catch (error) {
+        patchState(store, {
+          error: error instanceof Error ? error.message : 'Failed to update book'
+        });
+        throw error;
+      }
+    },
+
     setSearchQuery(query: string) {
       patchState(store, { searchQuery: query });
     },
