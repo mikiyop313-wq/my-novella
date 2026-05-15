@@ -69,30 +69,7 @@ export class BookModalComponent {
     { value: 'third-omni', label: 'Third Person Omniscient' }
   ];
 
-  availableGenres = ['Fantasy', 'Sci-Fi', 'Romance', 'Mystery', 'Horror', 'Thriller', 'Historical', 'LitRPG', 'Wuxia', 'Xianxia'];
-  availableSubgenres = ['Cyberpunk', 'Steampunk', 'Dark Fantasy', 'Urban Fantasy', 'Post-Apocalyptic', 'High Fantasy'];
   availableTropes = ['Enemies to Lovers', 'Chosen One', 'System', 'Reincarnation', 'Time Loop', 'Magic School'];
-
-  genreOptions: DropdownOption[] = [
-    { value: 'Fantasy', label: 'Fantasy', subOptions: [
-      { value: 'High Fantasy', label: 'High Fantasy' },
-      { value: 'Dark Fantasy', label: 'Dark Fantasy' },
-      { value: 'Urban Fantasy', label: 'Urban Fantasy' }
-    ]},
-    { value: 'Sci-Fi', label: 'Sci-Fi', subOptions: [
-      { value: 'Cyberpunk', label: 'Cyberpunk' },
-      { value: 'Steampunk', label: 'Steampunk' },
-      { value: 'Post-Apocalyptic', label: 'Post-Apocalyptic' }
-    ]},
-    { value: 'Romance', label: 'Romance' },
-    { value: 'Mystery', label: 'Mystery' },
-    { value: 'Horror', label: 'Horror' },
-    { value: 'Thriller', label: 'Thriller' },
-    { value: 'Historical', label: 'Historical' },
-    { value: 'LitRPG', label: 'LitRPG' },
-    { value: 'Wuxia', label: 'Wuxia' },
-    { value: 'Xianxia', label: 'Xianxia' }
-  ];
   tropeOptions: DropdownOption[] = this.availableTropes.map(g => ({ value: g, label: g }));
 
   genresExpanded = signal(false);
@@ -132,6 +109,7 @@ export class BookModalComponent {
   ngOnInit() {
     this.animateCount(1000);
     this.config.loadLanguages();
+    this.config.loadGenres();
     // Initialize settings from book data if available
     const book = this.book();
     if (book.language) this.selectedLanguage.set(book.language);
@@ -279,14 +257,25 @@ export class BookModalComponent {
       const newNames = this.editArrayValue();
       const existingOther = isGenres ? this.tropes() : this.genres();
       
-      const newCategories: CategoryDto[] = newNames.map(name => ({
-        id: crypto.randomUUID(),
-        name,
-        type: isGenres ? 'genre' : 'trope',
-        isCustom: isGenres 
-          ? (!this.availableGenres.includes(name) && !this.availableSubgenres.includes(name)) 
-          : (!this.availableTropes.includes(name))
-      }));
+      const newCategories: CategoryDto[] = newNames.map(name => {
+        let isCustom = true;
+        if (isGenres) {
+          // Check if name exists as genre or subgenre in config
+          const allGenres = this.config.genres();
+          const existsAsGenre = allGenres.some(g => g.value === name);
+          const existsAsSubgenre = allGenres.some(g => g.subOptions?.some(s => s.value === name));
+          isCustom = !existsAsGenre && !existsAsSubgenre;
+        } else {
+          isCustom = !this.availableTropes.includes(name);
+        }
+
+        return {
+          id: crypto.randomUUID(),
+          name,
+          type: isGenres ? 'genre' : 'trope',
+          isCustom
+        };
+      });
       
       const combinedCategories = [...existingOther, ...newCategories];
       updateData.categories = combinedCategories;

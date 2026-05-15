@@ -1,5 +1,6 @@
 import { db } from './index';
-import { language } from './schema/book';
+import { language, categories, subcategories } from './schema/book';
+import { GENRES_DATA } from './genre-data';
 
 export const LANGUAGES = [
     'Afrikaans', 'Albanian', 'Amharic', 'Arabic', 'Armenian', 'Azerbaijani',
@@ -44,5 +45,48 @@ export async function seedLanguages() {
         }
     } catch (error) {
         console.error('Error seeding languages:', error);
+    }
+}
+
+export async function seedGenres() {
+    console.log('Seeding genres and subgenres...');
+    try {
+        console.log('Inserting genres and subgenres into database...');
+
+        for (const genre of GENRES_DATA) {
+            const [newCategory] = await db.insert(categories).values({
+                name: genre.name,
+                type: 'genre',
+                isCustom: false
+            }).onConflictDoNothing().returning();
+
+            if (newCategory && genre.subgenres.length > 0) {
+                await db.insert(subcategories).values(
+                    genre.subgenres.map(sub => ({
+                        name: sub,
+                        parentCategoryId: newCategory.id,
+                        isCustom: false
+                    }))
+                ).onConflictDoNothing();
+            } else if (!newCategory) {
+                // If category already existed but subcategories might be missing
+                const existingCategory = await db.query.categories.findFirst({
+                    where: (cats, { and, eq }) => and(eq(cats.name, genre.name), eq(cats.type, 'genre'))
+                });
+
+                if (existingCategory && genre.subgenres.length > 0) {
+                    await db.insert(subcategories).values(
+                        genre.subgenres.map(sub => ({
+                            name: sub,
+                            parentCategoryId: existingCategory.id,
+                            isCustom: false
+                        }))
+                    ).onConflictDoNothing();
+                }
+            }
+        }
+        console.log('Genres and subgenres seed check completed.');
+    } catch (error) {
+        console.error('Error seeding genres:', error);
     }
 }

@@ -29,4 +29,8 @@ export class LibraryService {
   async getLanguages(): Promise<{ languageName: string }[]> {
     return await this.electronService.invoke('library:get-languages');
   }
+
+  async getGenres(): Promise<any[]> {
+    return await this.electronService.invoke('library:get-genres');
+  }
 }

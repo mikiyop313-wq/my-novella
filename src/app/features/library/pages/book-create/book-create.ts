@@ -41,30 +41,7 @@ export class BookCreate implements OnInit {
   tropeInput = new FormControl('');
   languageInput = new FormControl('');
 
-  availableGenres = ['Fantasy', 'Sci-Fi', 'Romance', 'Mystery', 'Horror', 'Thriller', 'Historical', 'LitRPG', 'Wuxia', 'Xianxia'];
-  availableSubgenres = ['Cyberpunk', 'Steampunk', 'Dark Fantasy', 'Urban Fantasy', 'Post-Apocalyptic', 'High Fantasy'];
   availableTropes = ['Enemies to Lovers', 'Chosen One', 'System', 'Reincarnation', 'Time Loop', 'Magic School'];
-
-  genreOptions: DropdownOption[] = [
-    { value: 'Fantasy', label: 'Fantasy', subOptions: [
-      { value: 'High Fantasy', label: 'High Fantasy' },
-      { value: 'Dark Fantasy', label: 'Dark Fantasy' },
-      { value: 'Urban Fantasy', label: 'Urban Fantasy' }
-    ]},
-    { value: 'Sci-Fi', label: 'Sci-Fi', subOptions: [
-      { value: 'Cyberpunk', label: 'Cyberpunk' },
-      { value: 'Steampunk', label: 'Steampunk' },
-      { value: 'Post-Apocalyptic', label: 'Post-Apocalyptic' }
-    ]},
-    { value: 'Romance', label: 'Romance' },
-    { value: 'Mystery', label: 'Mystery' },
-    { value: 'Horror', label: 'Horror' },
-    { value: 'Thriller', label: 'Thriller' },
-    { value: 'Historical', label: 'Historical' },
-    { value: 'LitRPG', label: 'LitRPG' },
-    { value: 'Wuxia', label: 'Wuxia' },
-    { value: 'Xianxia', label: 'Xianxia' }
-  ];
   tropeOptions: DropdownOption[] = this.availableTropes.map(g => ({ value: g, label: g }));
 
   isSubmitting = false;
@@ -76,6 +53,7 @@ export class BookCreate implements OnInit {
 
   ngOnInit() {
     this.config.loadLanguages();
+    this.config.loadGenres();
   }
 
 
@@ -153,12 +131,17 @@ export class BookCreate implements OnInit {
       this.isSubmitting = true;
       try {
         const categories: CategoryDto[] = [
-          ...(this.genres.value as string[]).map((name: string) => ({
-            id: crypto.randomUUID(),
-            name,
-            type: 'genre' as const,
-            isCustom: !this.availableGenres.includes(name) && !this.availableSubgenres.includes(name)
-          })),
+          ...(this.genres.value as string[]).map((name: string) => {
+            const allGenres = this.config.genres();
+            const existsAsGenre = allGenres.some(g => g.value === name);
+            const existsAsSubgenre = allGenres.some(g => g.subOptions?.some(s => s.value === name));
+            return {
+              id: crypto.randomUUID(),
+              name,
+              type: 'genre' as const,
+              isCustom: !existsAsGenre && !existsAsSubgenre
+            };
+          }),
           ...(this.tropes.value as string[]).map((name: string) => ({
             id: crypto.randomUUID(),
             name,
