@@ -1,10 +1,10 @@
 <div class="autocomplete-wrapper">
-  <button type="button" class="dropdown-trigger" [cdkMenuTriggerFor]="menu"
+  <button type="button" class="dropdown-trigger" [class.active]="isOpen()" [cdkMenuTriggerFor]="menu"
     (click)="onTriggerClick($event)" (cdkMenuOpened)="onMenuOpened()" (cdkMenuClosed)="onMenuClosed()">
-    <span [class.placeholder]="isPlaceholder()">
+    <span class="trigger-label" [class.placeholder]="isPlaceholder()">
       {{ getDisplayLabel() }}
     </span>
-    <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
       <path d="M480-360 280-560h400L480-360Z" />
     </svg>
   </button>

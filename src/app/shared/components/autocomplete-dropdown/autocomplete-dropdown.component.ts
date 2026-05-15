@@ -41,6 +41,9 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges {
   // Track expanded items
   expandedOptions = signal<Set<any>>(new Set());
 
+  // Track menu state
+  isOpen = signal(false);
+
   private isClosing = false;
 
   ngOnInit() {
@@ -115,6 +118,7 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges {
   }
 
   onMenuOpened() {
+    this.isOpen.set(true);
     this.searchControl.setValue('');
     setTimeout(() => {
       this.searchInputEl?.nativeElement.focus();
@@ -122,6 +126,7 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges {
   }
 
   onMenuClosed() {
+    this.isOpen.set(false);
     this.isClosing = false;
   }
 
@@ -133,31 +138,37 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges {
   }
 
   selectOption(option: DropdownOption) {
+    if (!this.isSelected(option.value)) {
 
-    if (this.multi) {
-      // MULTI-SELECT MODE
+      if (this.multi) {
+        // MULTI-SELECT MODE
 
-      // Ensure selectedValue is an array and clone it
-      const currentValues = Array.isArray(this.selectedValue)
-        ? [...this.selectedValue]
-        : [];
+        // Ensure selectedValue is an array and clone it
+        const currentValues = Array.isArray(this.selectedValue)
+          ? [...this.selectedValue]
+          : [];
 
-      // Only add the option if it's not already selected
-      if (!currentValues.includes(option.value)) {
-        currentValues.push(option.value);
+        // Only add the option if it's not already selected
+        if (!currentValues.includes(option.value)) {
+          currentValues.push(option.value);
 
-        // Emit updated selection to parent/component listener
-        this.selectionChange.emit(currentValues);
+          // Emit updated selection to parent/component listener
+          this.selectionChange.emit(currentValues);
+        }
+
+        // Clear search input after selecting
+        this.searchControl.setValue('');
+
+      } else {
+        // SINGLE-SELECT MODE
+
+        // Emit the selected value directly
+        this.selectionChange.emit(option.value);
       }
 
-      // Clear search input after selecting
-      this.searchControl.setValue('');
-
-    } else {
-      // SINGLE-SELECT MODE
-
-      // Emit the selected value directly
-      this.selectionChange.emit(option.value);
+    }
+    else {
+      this.removeOption(option);
     }
   }
 

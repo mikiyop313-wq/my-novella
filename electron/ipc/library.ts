@@ -55,4 +55,14 @@ export function setupLibraryHandlers() {
             throw error;
         }
     });
+
+    ipcMain.handle('library:get-tropes', async () => {
+        try {
+            return await bookRepository.getTropes();
+        } catch (error) {
+            console.error('Error fetching genres:', error);
+            throw error;
+        }
+    });
+
 }

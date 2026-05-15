@@ -51,16 +51,16 @@
         <!-- Genres -->
         <div class="input-group autocomplete-group">
           <label>Genres & Subgenres</label>
-                        <app-autocomplete-dropdown [options]="config.genres()" [selectedValue]="genres.value"
-                            [multi]="true" [allowCustom]="false" [grouped]="true" placeholder="Select book genres..."
-                            (selectionChange)="onSelectionChange('genre', $event)">
-                        </app-autocomplete-dropdown>
+          <app-autocomplete-dropdown [options]="config.genres()" [selectedValue]="genres.value" [multi]="true"
+            [allowCustom]="false" [grouped]="true" placeholder="Select book genres..."
+            (selectionChange)="onSelectionChange('genre', $event)">
+          </app-autocomplete-dropdown>
         </div>
 
         <!-- Tropes -->
         <div class="input-group autocomplete-group">
           <label>Tropes</label>
-          <app-autocomplete-dropdown [options]="tropeOptions" [selectedValue]="tropes.value" [multi]="true"
+          <app-autocomplete-dropdown [options]="config.tropes()" [selectedValue]="tropes.value" [multi]="true"
             [allowCustom]="true" placeholder="Select or add tropes..."
             customAddPlaceholder="Write custom trope and press Enter..."
             (selectionChange)="onSelectionChange('trope', $event)">

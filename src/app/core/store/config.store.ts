@@ -6,6 +6,7 @@ import { DropdownOption } from '../../shared/components/autocomplete-dropdown/au
 export interface ConfigState {
   languages: DropdownOption[];
   genres: DropdownOption[];
+  tropes: DropdownOption[];
   isLoading: boolean;
   error: string | null;
 }
@@ -13,6 +14,7 @@ export interface ConfigState {
 const initialState: ConfigState = {
   languages: [],
   genres: [],
+  tropes: [],
   isLoading: false,
   error: null,
 };
@@ -70,6 +72,33 @@ export const ConfigStore = signalStore(
           error: error instanceof Error ? error.message : 'Failed to load genres'
         });
       }
+    },
+
+    async loadTropes() {
+      if (store.tropes().length > 0) return;
+
+      patchState(store, { isLoading: true, error: null });
+
+      try {
+        const dbTropes = await libraryService.getTropes();
+        const tropes: DropdownOption[] = dbTropes.map(g => ({
+          value: g.name,
+          label: g.name,
+          subOptions: g.subcategories?.map((s: any) => ({
+            value: s.name,
+            label: s.name
+          }))
+        })).sort((a, b) => a.label.localeCompare(b.label));
+
+        patchState(store, { tropes, isLoading: false });
+      } catch (error) {
+        patchState(store, {
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Failed to load tropes'
+        });
+      }
     }
+
+
   }))
 );
