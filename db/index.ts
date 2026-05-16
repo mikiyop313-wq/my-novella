@@ -4,6 +4,7 @@ import * as schema from './schema';
 import * as path from 'path';
 import { app } from 'electron';
 import { seedLanguages, seedGenres, seedTropes } from './seed';
+import { vectorDb } from './vectors';
 
 import * as fs from 'fs';
 
@@ -32,6 +33,11 @@ try {
     seedLanguages().catch(err => console.error('Seeding languages failed:', err));
     seedGenres().catch(err => console.error('Seeding genres failed:', err));
     seedTropes().catch(err => console.error('Seeding tropes failed:', err));
+    
+    // Initialize Vector DB
+    vectorDb.getManuscriptTable().then(() => {
+        console.log('LanceDB Manuscript table ready');
+    }).catch(err => console.error('LanceDB initialization failed:', err));
 } catch (err) {
     console.error('FAST TEST FAILED:', err);
 }
