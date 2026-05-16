@@ -3,6 +3,10 @@ import * as path from 'path';
 import { initializeIpc } from './ipc';
 import '../db/index';
 
+if (!app.isPackaged) {
+    app.commandLine.appendSwitch('remote-debugging-port', '9222');
+}
+
 let win: BrowserWindow | null;
 
 function createWindow() {

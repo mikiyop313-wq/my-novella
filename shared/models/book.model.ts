@@ -10,6 +10,14 @@ export interface BookTagDto {
   categoryId: string;
 }
 
+export interface BookSettingsDto {
+  language: string;
+  proseTense: 'past' | 'present';
+  pointOfView: 'first' | 'second' | 'third_limited' | 'third_omni';
+  synopsisAiContext: boolean;
+  povCharacterId?: string | null;
+}
+
 export interface BookDto {
   id: string;
   title: string;
@@ -22,6 +30,7 @@ export interface BookDto {
   createdAt: string;
   lastEditedAt: string;
   categories?: CategoryDto[];
+  settings?: BookSettingsDto;
 }
 
 export type CreateBookDto = Omit<BookDto, 'id' | 'createdAt' | 'lastEditedAt'>;

@@ -89,5 +89,21 @@
             }
             Oldest created books
         </button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" [class.active-item]="libraryStore.showArchived()"
+            (click)="toggleArchived(); closeMenu()">
+            @if (libraryStore.showArchived()) {
+            <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
+                fill="var(--color-text)">
+                <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+            </svg>
+            } @else {
+            <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
+                fill="transparent">
+                <path d="M0 0h24v24H0z" />
+            </svg>
+            }
+            Show Archived Books
+        </button>
     </div>
 </ng-template>

@@ -26,6 +26,10 @@ export class Library implements OnInit {
     this.libraryStore.deleteBook(bookId);
   }
 
+  toggleArchived() {
+    this.libraryStore.setShowArchived(!this.libraryStore.showArchived());
+  }
+
 
 
   onCreateBook() {

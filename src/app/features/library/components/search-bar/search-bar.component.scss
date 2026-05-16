@@ -84,3 +84,10 @@
     color: var(--color-text);
     font-weight: 500;
 }
+
+.menu-divider {
+    height: 1px;
+    background-color: var(--color-border);
+    margin: 4px 0;
+    width: 100%;
+}

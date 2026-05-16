@@ -20,7 +20,8 @@
                 <h2 class="group-header">{{ group.label }}</h2>
                 <div class="books-grid">
                     @for (book of group.books; track book.id) {
-                    <app-lazy-book-card class="book-card" [book]="book" (bookDeleted)="onBookDeleted($event)"></app-lazy-book-card>
+                    <app-lazy-book-card class="book-card" [book]="book"
+                        (bookDeleted)="onBookDeleted($event)"></app-lazy-book-card>
                     }
                 </div>
             </div>

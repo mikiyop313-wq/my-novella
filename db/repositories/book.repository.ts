@@ -1,13 +1,13 @@
 import { db } from '../index';
-import { books, categories, bookTags, language, subcategories } from '../schema';
+import { books, categories, bookTags, language, subcategories, bookSettings } from '../schema';
 import { eq } from 'drizzle-orm';
 import { BookDto, CreateBookDto, UpdateBookDto, CategoryDto } from '../../shared/models/book.model';
 
 type BookEntity = typeof books.$inferSelect;
 
 export class BookRepository {
-    private mapToDto(book: BookEntity & { bookTags?: { category: CategoryDto }[] }): BookDto {
-        const { bookTags, createdAt, lastEditedAt, ...rest } = book;
+    private mapToDto(book: BookEntity & { bookTags?: { category: CategoryDto }[], bookSettings?: any }): BookDto {
+        const { bookTags, bookSettings: bs, createdAt, lastEditedAt, ...rest } = book;
         const categories = bookTags?.map(bt => bt.category) || [];
 
         // If coverImage is a Buffer, convert it to a Uint8Array for IPC
@@ -21,7 +21,14 @@ export class BookRepository {
             coverImage: coverImage as Uint8Array,
             createdAt: createdAt.toISOString(),
             lastEditedAt: lastEditedAt.toISOString(),
-            categories
+            categories,
+            ...(bs ? { settings: {
+                language: bs.language,
+                proseTense: bs.proseTense,
+                pointOfView: bs.pointOfView,
+                synopsisAiContext: bs.synopsisAiContext,
+                povCharacterId: bs.povCharacterId
+            } } : {})
         };
 
         return dto;
@@ -42,7 +49,8 @@ export class BookRepository {
                     with: {
                         category: true
                     }
-                }
+                },
+                bookSettings: true
             }
         });
         return results.map(book => this.mapToDto(book));
@@ -56,14 +64,15 @@ export class BookRepository {
                     with: {
                         category: true
                     }
-                }
+                },
+                bookSettings: true
             }
         });
         return book ? this.mapToDto(book) : undefined;
     }
 
     async add(data: CreateBookDto): Promise<BookDto> {
-        const { categories: categoriesToSave, ...bookData } = data;
+        const { categories: categoriesToSave, settings, ...bookData } = data;
 
         // Convert coverImage to Buffer if it's a Data URL
         if (bookData.coverImage) {
@@ -71,6 +80,15 @@ export class BookRepository {
         }
 
         const [newBook] = await db.insert(books).values(bookData as BookEntity).returning();
+
+        await db.insert(bookSettings).values({
+            bookSettingId: newBook.id,
+            language: settings?.language || bookData.language || 'english',
+            proseTense: settings?.proseTense || 'past',
+            pointOfView: settings?.pointOfView || 'third_limited',
+            synopsisAiContext: settings?.synopsisAiContext ?? true,
+            povCharacterId: settings?.povCharacterId || null
+        });
 
         if (categoriesToSave && categoriesToSave.length > 0) {
             for (const cat of categoriesToSave) {
@@ -95,7 +113,7 @@ export class BookRepository {
     }
 
     async update(id: string, data: UpdateBookDto): Promise<BookDto | undefined> {
-        const { categories: categoriesToSave, ...updateData } = data;
+        const { categories: categoriesToSave, settings, ...updateData } = data;
 
         // Convert coverImage to Buffer if it's a Data URL
         if (updateData.coverImage) {
@@ -105,6 +123,21 @@ export class BookRepository {
         await db.update(books)
             .set({ ...updateData as Partial<BookEntity>, lastEditedAt: new Date() })
             .where(eq(books.id, id));
+
+        if (settings) {
+            const updatePayload: any = {};
+            if (settings.language !== undefined) updatePayload.language = settings.language;
+            if (settings.proseTense !== undefined) updatePayload.proseTense = settings.proseTense;
+            if (settings.pointOfView !== undefined) updatePayload.pointOfView = settings.pointOfView;
+            if (settings.synopsisAiContext !== undefined) updatePayload.synopsisAiContext = settings.synopsisAiContext;
+            if (settings.povCharacterId !== undefined) updatePayload.povCharacterId = settings.povCharacterId;
+
+            if (Object.keys(updatePayload).length > 0) {
+                await db.update(bookSettings)
+                    .set(updatePayload)
+                    .where(eq(bookSettings.bookSettingId, id));
+            }
+        }
 
         if (categoriesToSave) {
             // Delete old tags

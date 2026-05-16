@@ -67,6 +67,52 @@
           </app-autocomplete-dropdown>
         </div>
       </div>
+
+      <!-- Advanced Settings -->
+      <div class="advanced-settings-section">
+        <button type="button" class="advanced-settings-toggle" (click)="toggleAdvancedSettings()">
+          <span>Advanced Settings</span>
+          <svg [class.open]="isAdvancedSettingsOpen()" xmlns="http://www.w3.org/2000/svg" height="24"
+            viewBox="0 -960 960 960" width="24" fill="currentColor">
+            <path d="M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z" />
+          </svg>
+        </button>
+
+        @if (isAdvancedSettingsOpen()) {
+        <div class="advanced-settings-content">
+          <div class="input-row">
+            <div class="input-group">
+              <label>Prose Tense</label>
+              <app-autocomplete-dropdown [showSearchBar]="false" [options]="tenses"
+                [selectedValue]="bookForm.get('proseTense')?.value"
+                (selectionChange)="onSelectionChange('tense', $event)">
+              </app-autocomplete-dropdown>
+            </div>
+
+            <div class="input-group">
+              <label>Point of View</label>
+              <app-autocomplete-dropdown [showSearchBar]="false" [options]="povs"
+                [selectedValue]="bookForm.get('pointOfView')?.value"
+                (selectionChange)="onSelectionChange('pov', $event)">
+              </app-autocomplete-dropdown>
+            </div>
+          </div>
+
+          <div class="input-row">
+            <div class="input-group">
+              <label>POV Character</label>
+              @if (characters.length > 0) {
+              <app-autocomplete-dropdown [options]="characters" [selectedValue]="bookForm.get('povCharacterId')?.value"
+                (selectionChange)="onSelectionChange('povCharacter', $event)" placeholder="Select a character">
+              </app-autocomplete-dropdown>
+              } @else {
+              <span class="no-options-text">No characters available.</span>
+              }
+            </div>
+          </div>
+        </div>
+        }
+      </div>
     </div>
 
     <!-- Right Column -->

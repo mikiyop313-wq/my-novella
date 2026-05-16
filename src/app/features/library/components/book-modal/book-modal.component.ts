@@ -48,8 +48,9 @@ export class BookModalComponent {
   // Settings State
   selectedTense = signal<'past' | 'present'>('past');
   selectedLanguage = signal<string>('english');
-  selectedPOV = signal<'first' | 'third-limited' | 'third-omni' | 'second'>('third-limited');
-  povCharacter = signal<string>('');
+  selectedPOV = signal<'first' | 'third_limited' | 'third_omni' | 'second'>('third_limited');
+  selectedPovCharacter = signal<string | null>(null);
+  characters = signal<DropdownOption[]>([]);
   useSynopsisInAiContext = signal<boolean>(false);
 
   // Edit Mode State
@@ -113,7 +114,15 @@ export class BookModalComponent {
     // Initialize settings from book data if available
     const book = this.book();
     if (book.language) this.selectedLanguage.set(book.language);
-    this.useSynopsisInAiContext.set(book.synopsis !== '' ? true : false);
+
+    if (book.settings) {
+      this.selectedTense.set(book.settings.proseTense);
+      this.selectedPOV.set(book.settings.pointOfView);
+      this.useSynopsisInAiContext.set(book.settings.synopsisAiContext);
+      this.selectedPovCharacter.set(book.settings.povCharacterId || null);
+    } else {
+      this.useSynopsisInAiContext.set(book.synopsis !== '' ? true : false);
+    }
   }
 
 
@@ -197,23 +206,56 @@ export class BookModalComponent {
     }
   }
 
-  onSelectionChange(type: 'tense' | 'language' | 'pov', value: any) {
-    if (type === 'tense') this.selectedTense.set(value);
-    else if (type === 'language') this.selectedLanguage.set(value);
-    else if (type === 'pov') this.selectedPOV.set(value);
-  }
-
-  onCharacterChange(event: Event) {
-    const value = (event.target as HTMLInputElement).value;
-    this.povCharacter.set(value);
+  onSelectionChange(type: 'tense' | 'language' | 'pov' | 'povCharacter', value: any) {
+    if (type === 'tense') {
+      this.selectedTense.set(value);
+      this.saveSettings({ proseTense: value });
+    } else if (type === 'language') {
+      this.selectedLanguage.set(value);
+      this.store.updateBook(this.book().id, { language: value });
+    } else if (type === 'pov') {
+      this.selectedPOV.set(value);
+      this.saveSettings({ pointOfView: value });
+    } else if (type === 'povCharacter') {
+      this.selectedPovCharacter.set(value);
+      this.saveSettings({ povCharacterId: value });
+    }
   }
 
   toggleAiContext() {
-    this.useSynopsisInAiContext.set(!this.useSynopsisInAiContext());
+    const newVal = !this.useSynopsisInAiContext();
+    this.useSynopsisInAiContext.set(newVal);
+    this.saveSettings({ synopsisAiContext: newVal });
   }
 
-  onArchive() {
-    console.log('Archive book:', this.book().id);
+  private async saveSettings(settingsUpdate: any) {
+    try {
+      const currentSettings = this.book().settings || {} as any;
+      const updatedBook = await this.store.updateBook(this.book().id, {
+        settings: { ...currentSettings, ...settingsUpdate }
+      });
+      this.book.set(updatedBook);
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+    }
+  }
+
+  async onArchive() {
+    try {
+      const updatedBook = await this.store.updateBook(this.book().id, { status: 'archived' });
+      this.book.set(updatedBook);
+    } catch (error) {
+      console.error('Failed to archive book:', error);
+    }
+  }
+
+  async onRestore() {
+    try {
+      const updatedBook = await this.store.updateBook(this.book().id, { status: 'draft' });
+      this.book.set(updatedBook);
+    } catch (error) {
+      console.error('Failed to restore book:', error);
+    }
   }
 
   onDelete() {
@@ -256,7 +298,7 @@ export class BookModalComponent {
       const isGenres = field === 'genres';
       const newNames = this.editArrayValue();
       const existingOther = isGenres ? this.tropes() : this.genres();
-      
+
       const newCategories: CategoryDto[] = newNames.map(name => {
         let isCustom = true;
         if (isGenres) {
@@ -276,7 +318,7 @@ export class BookModalComponent {
           isCustom
         };
       });
-      
+
       const combinedCategories = [...existingOther, ...newCategories];
       updateData.categories = combinedCategories;
     } else {
@@ -292,5 +334,21 @@ export class BookModalComponent {
     }
   }
 
+  async onCoverImageChange(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64DataUrl = reader.result as string;
+        try {
+          const updatedBook = await this.store.updateBook(this.book().id, { coverImage: base64DataUrl });
+          this.book.set(updatedBook);
+        } catch (error) {
+          console.error('Failed to update cover image:', error);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  }
 
 }
