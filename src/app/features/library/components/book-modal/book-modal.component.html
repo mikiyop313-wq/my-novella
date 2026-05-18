@@ -289,7 +289,7 @@
                 }
             </div>
             <footer class="modal-footer">
-                <button class="btn-primary">Continue Writing</button>
+                <button class="btn-primary" [routerLink]="['/manuscript']" [queryParams]="{ bookId: book().id }" (click)="onClose()">Continue Writing</button>
                 <button class="btn-outline">Export</button>
             </footer>
         </div>

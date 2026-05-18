@@ -7,6 +7,8 @@ export interface DropdownOption {
   value: any;
   label: string;
   subOptions?: DropdownOption[];
+  fontFamily?: string;
+  group?: string;
 }
 
 @Component({
@@ -208,6 +210,12 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges {
     return found ? found.label : this.placeholder;
   }
 
+  getSelectedFontFamily(): string | undefined {
+    if (this.multi) return undefined;
+    const found = this.findOptionByValue(this.options, this.selectedValue);
+    return found ? found.fontFamily : undefined;
+  }
+
   isPlaceholder(): boolean {
     if (this.multi) return true;
     return !this.findOptionByValue(this.options, this.selectedValue);
@@ -249,14 +257,38 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges {
   }
 
   // Grouping logic for template
+  /**
+   * Determines whether a group header separator should be shown in the UI before
+   * the option at the given index.
+   * 
+   * A header is displayed if:
+   * 1. The list is grouped and this is the very first option in the list.
+   * 2. The group key of the current option is different from the group key of the previous option.
+   *
+   * @param index The 0-based index of the current option in the filtered options list.
+   * @returns `true` if a group header should be rendered before this option; otherwise `false`.
+   */
   shouldShowGroupHeader(index: number): boolean {
+    // If grouping is disabled, we never show headers.
+    // If it's the very first item (index === 0), we show a header only if grouping is enabled.
     if (!this.grouped || index === 0) return this.grouped && index === 0;
-    const current = this.filteredOptions()[index].label[0].toUpperCase();
-    const prev = this.filteredOptions()[index - 1].label[0].toUpperCase();
-    return current !== prev;
+
+    const currentGroup = this.getGroupHeader(index);
+
+    // Show a header only if this group hasn't appeared yet in the list.
+    const isGroupAlreadyShown = this.filteredOptions().some((_, i) => i < index && this.getGroupHeader(i) === currentGroup);
+
+    return !isGroupAlreadyShown;
   }
 
+  /**
+   * Retrieves the header title/label for the group that contains the option at the specified index.
+   *
+   * @param index The 0-based index of the option in the filtered options list.
+   * @returns The specified group name or the uppercase first character of the option's label.
+   */
   getGroupHeader(index: number): string {
-    return this.filteredOptions()[index].label[0].toUpperCase();
+    const option = this.filteredOptions()[index];
+    return option.group || option.label[0].toUpperCase();
   }
 }

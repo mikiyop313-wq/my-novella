@@ -1,0 +1,224 @@
+@if (editor) {
+<div class="manuscript-container" [class.menu-open]="showFormatMenu()"
+  [style.--editor-font-family]="settings().fontFamily" [style.--editor-font-size]="settings().fontSize + 'px'"
+  [style.--editor-line-height]="settings().lineHeight"
+  [style.--editor-paragraph-spacing]="settings().paragraphSpacing + 'px'"
+  [style.--editor-text-align]="settings().textAlign" [style.--editor-text-indent]="settings().textIndent + 'em'"
+  [style.--editor-page-width]="settings().pageWidth === 'narrow' ? '650px' : settings().pageWidth === 'wide' ? '1000px' : '800px'">
+  <div class="editor-toolbar">
+    <div class="toolbar-group">
+      <button (click)="editor.chain().focus().toggleBold().run()" [class.is-active]="editor.isActive('bold')"
+        title="Bold">
+        <b>B</b>
+      </button>
+      <button (click)="editor.chain().focus().toggleItalic().run()" [class.is-active]="editor.isActive('italic')"
+        title="Italic">
+        <i>I</i>
+      </button>
+      <button (click)="editor.chain().focus().toggleStrike().run()" [class.is-active]="editor.isActive('strike')"
+        title="Strike">
+        <s>S</s>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <button (click)="editor.chain().focus().toggleHeading({ level: 1 }).run()"
+        [class.is-active]="editor.isActive('heading', { level: 1 })" title="H1">
+        H1
+      </button>
+      <button (click)="editor.chain().focus().toggleHeading({ level: 2 }).run()"
+        [class.is-active]="editor.isActive('heading', { level: 2 })" title="H2">
+        H2
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <button (click)="editor.chain().focus().toggleBulletList().run()"
+        [class.is-active]="editor.isActive('bulletList')" title="Bullet List">
+        • List
+      </button>
+      <button (click)="editor.chain().focus().toggleOrderedList().run()"
+        [class.is-active]="editor.isActive('orderedList')" title="Ordered List">
+        1. List
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <button (click)="editor.chain().focus().undo().run()" [disabled]="!editor.can().undo()" title="Undo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7v6h6"></path>
+          <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+        </svg>
+      </button>
+      <button (click)="editor.chain().focus().redo().run()" [disabled]="!editor.can().redo()" title="Redo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 7v6h-6"></path>
+          <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group format-toggle">
+      <button (click)="toggleFormatMenu()" [class.is-active]="showFormatMenu()" title="Formatting Options">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 7h16"></path>
+          <path d="M4 12h16"></path>
+          <path d="M4 17h16"></path>
+        </svg>
+        <span style="margin-left: 6px; font-weight: 500;">Format</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="editor-main-layout">
+    <div class="editor-content-wrapper">
+      <tiptap-editor [editor]="editor"></tiptap-editor>
+    </div>
+
+    <aside class="format-sidebar" [class.is-open]="showFormatMenu()">
+      <div class="sidebar-header">
+        <h3>Manuscript Format</h3>
+        <button class="close-btn" (click)="toggleFormatMenu()">×</button>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- Font Family -->
+        <div class="format-section">
+          <label>Font Family</label>
+          <app-autocomplete-dropdown [showSearchBar]="false" [options]="fontOptions" [grouped]="true"
+            [selectedValue]="settings().fontFamily" (selectionChange)="updateSetting('fontFamily', $event)">
+          </app-autocomplete-dropdown>
+        </div>
+
+        <!-- Font Size -->
+        <div class="format-section">
+          <div class="section-header">
+            <label>Text Size</label>
+            <span class="value">{{settings().fontSize}}px</span>
+          </div>
+          <input type="range" min="12" max="32" [value]="settings().fontSize"
+            (input)="updateSetting('fontSize', +$any($event.target).value)">
+        </div>
+
+        <!-- Line Height -->
+        <div class="format-section">
+          <div class="section-header">
+            <label>Line Height</label>
+            <span class="value">{{settings().lineHeight}}</span>
+          </div>
+          <div class="segmented-control">
+            <button [class.active]="settings().lineHeight === 1.2"
+              (click)="updateSetting('lineHeight', 1.2)">1.2</button>
+            <button [class.active]="settings().lineHeight === 1.5"
+              (click)="updateSetting('lineHeight', 1.5)">1.5</button>
+            <button [class.active]="settings().lineHeight === 1.8"
+              (click)="updateSetting('lineHeight', 1.8)">1.8</button>
+            <button [class.active]="settings().lineHeight === 2.0"
+              (click)="updateSetting('lineHeight', 2.0)">2.0</button>
+          </div>
+        </div>
+
+        <!-- Paragraph Spacing -->
+        <div class="format-section">
+          <div class="section-header">
+            <label>Paragraph Spacing</label>
+            <span class="value">{{settings().paragraphSpacing}}px</span>
+          </div>
+          <input type="range" min="0" max="60" step="4" [value]="settings().paragraphSpacing"
+            (input)="updateSetting('paragraphSpacing', +$any($event.target).value)">
+        </div>
+
+        <!-- Text Alignment -->
+        <div class="format-section">
+          <label>Text Alignment</label>
+          <div class="align-grid">
+            <button [class.active]="settings().textAlign === 'left'" (click)="updateSetting('textAlign', 'left')"
+              title="Left">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="17" y1="10" x2="3" y2="10"></line>
+                <line x1="21" y1="6" x2="3" y2="6"></line>
+                <line x1="21" y1="14" x2="3" y2="14"></line>
+                <line x1="17" y1="18" x2="3" y2="18"></line>
+              </svg>
+            </button>
+            <button [class.active]="settings().textAlign === 'center'" (click)="updateSetting('textAlign', 'center')"
+              title="Center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="10" x2="6" y2="10"></line>
+                <line x1="21" y1="6" x2="3" y2="6"></line>
+                <line x1="21" y1="14" x2="3" y2="14"></line>
+                <line x1="18" y1="18" x2="6" y2="18"></line>
+              </svg>
+            </button>
+            <button [class.active]="settings().textAlign === 'right'" (click)="updateSetting('textAlign', 'right')"
+              title="Right">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="21" y1="10" x2="7" y2="10"></line>
+                <line x1="21" y1="6" x2="3" y2="6"></line>
+                <line x1="21" y1="14" x2="3" y2="14"></line>
+                <line x1="21" y1="18" x2="7" y2="18"></line>
+              </svg>
+            </button>
+            <button [class.active]="settings().textAlign === 'justify'" (click)="updateSetting('textAlign', 'justify')"
+              title="Justify">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="21" y1="10" x2="3" y2="10"></line>
+                <line x1="21" y1="6" x2="3" y2="6"></line>
+                <line x1="21" y1="14" x2="3" y2="14"></line>
+                <line x1="21" y1="18" x2="3" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Text Indent -->
+        <div class="format-section">
+          <div class="section-header">
+            <label>First Line Indent</label>
+            <span class="value">{{settings().textIndent}}em</span>
+          </div>
+          <div class="segmented-control">
+            <button [class.active]="settings().textIndent === 0" (click)="updateSetting('textIndent', 0)">None</button>
+            <button [class.active]="settings().textIndent === 1.5"
+              (click)="updateSetting('textIndent', 1.5)">1.5</button>
+            <button [class.active]="settings().textIndent === 3.0"
+              (click)="updateSetting('textIndent', 3.0)">3.0</button>
+          </div>
+        </div>
+
+        <!-- Page Width -->
+        <div class="format-section">
+          <div class="section-header">
+            <label>Page Width</label>
+            <span class="value">{{settings().pageWidth === 'narrow' ? 'Narrow' : settings().pageWidth === 'wide' ?
+              'Wide' : 'Medium'}}</span>
+          </div>
+          <div class="segmented-control">
+            <button [class.active]="settings().pageWidth === 'narrow'"
+              (click)="updateSetting('pageWidth', 'narrow')">Narrow</button>
+            <button [class.active]="settings().pageWidth === 'medium'"
+              (click)="updateSetting('pageWidth', 'medium')">Medium</button>
+            <button [class.active]="settings().pageWidth === 'wide'"
+              (click)="updateSetting('pageWidth', 'wide')">Wide</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+}

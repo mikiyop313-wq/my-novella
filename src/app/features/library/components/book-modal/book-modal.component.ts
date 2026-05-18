@@ -1,4 +1,5 @@
 import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, input, computed, inject, linkedSignal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -19,7 +20,7 @@ import { ElectronService } from '../../../../core/services/electron.service';
 @Component({
   selector: 'app-book-modal',
   standalone: true,
-  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe, InfoIconComponent, ReactiveFormsModule, AutocompleteDropdownComponent],
+  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe, InfoIconComponent, ReactiveFormsModule, AutocompleteDropdownComponent, RouterLink],
   templateUrl: './book-modal.component.html',
   styleUrl: './book-modal.component.scss'
 })
