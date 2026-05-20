@@ -49,11 +49,13 @@ export const ManuscriptStore = signalStore(
     },
 
     loadSettings(id: string | null) {
-      const key = id ? `manuscript_format_${id}` : 'manuscript_format_global';
-      const saved = localStorage.getItem(key);
+      const saved = localStorage.getItem("manuscript_format_global");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
+          // Merging parsed settings with defaultSettings ensures that if new settings
+          // are introduced to the app in future updates, they will fallback to their
+          // default values instead of being undefined when loaded from an older storage format.
           patchState(store, { settings: { ...defaultSettings, ...parsed } });
         } catch (e) {
           console.error('Failed to parse saved formatting settings', e);
@@ -63,13 +65,13 @@ export const ManuscriptStore = signalStore(
       }
     },
 
+    // K is a generic type representing a key of FormattingSettings.
+    // FormattingSettings[K] resolves to the specific type corresponding to that key (e.g. number for fontSize).
+    // This gives compile-time type safety for key-value pair updates.
     updateSetting<K extends keyof FormattingSettings>(key: K, value: FormattingSettings[K]) {
       const newSettings = { ...store.settings(), [key]: value };
       patchState(store, { settings: newSettings });
-
-      const id = store.bookId();
-      const storageKey = id ? `manuscript_format_${id}` : 'manuscript_format_global';
-      localStorage.setItem(storageKey, JSON.stringify(newSettings));
+      localStorage.setItem("manuscript_format_global", JSON.stringify(newSettings));
     },
 
     toggleFormatMenu() {

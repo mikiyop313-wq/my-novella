@@ -11,11 +11,12 @@ import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
 import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
 import { ManuscriptStore } from './store/manuscript.store';
 import { AiStore } from './store/ai.store';
+import { CdkMenuModule } from '@angular/cdk/menu';
 
 @Component({
   selector: 'app-manuscript',
   standalone: true,
-  imports: [CommonModule, TiptapEditorDirective, AutocompleteDropdownComponent, EditorBubbleMenuComponent],
+  imports: [CommonModule, TiptapEditorDirective, AutocompleteDropdownComponent, EditorBubbleMenuComponent, CdkMenuModule],
   templateUrl: './manuscript.html',
   styleUrl: './manuscript.scss',
 })
@@ -67,6 +68,15 @@ export class Manuscript implements OnInit, OnDestroy {
 
     this.store.setEditor(this.editor);
     this.aiStore.loadModels();
+  }
+
+  getActiveFormatLabel(): string {
+    if (!this.editor) return 'Normal Text';
+    if (this.editor.isActive('heading', { level: 1 })) return 'Heading 1';
+    if (this.editor.isActive('heading', { level: 2 })) return 'Heading 2';
+    if (this.editor.isActive('heading', { level: 3 })) return 'Heading 3';
+    if (this.editor.isActive('heading', { level: 4 })) return 'Heading 4';
+    return 'Normal Text';
   }
 
   ngOnDestroy(): void {
