@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
+import { AIStateService } from '../../../../core/services/ai-state.service';
 
 @Component({
   selector: 'app-ai-prompt',
@@ -17,6 +18,11 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   // Collapse and delete state/methods
   isCollapsed = signal(false);
+  isLoading = signal(false);
+
+  constructor(private aiStateService: AIStateService) {
+    super();
+  }
 
   collapse(): void {
     this.isCollapsed.update(c => !c);
@@ -135,23 +141,81 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     });
   }
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
+    // Prevent multiple submissions while already generating
+    if (this.isLoading()) return;
+
     const text = this.promptText().trim();
     if (text && typeof this.getPos === 'function') {
+      // Calculate the position immediately after this prompt component
       const pos: number = this.getPos()() ?? 0;
-
-      // In a real app, this would call an API with the settings overrides.
-      const generatedText = `[AI Generated response for: "${text}" (Word count: ${this.wordCount()}, POV: ${this.pov()}, Character POV: ${this.povCharacter() || 'None'}, Vector Search: ${this.vectorSearch()})]`;
-
       const nodeSizePosition: number = this.node().nodeSize + pos;
 
-      this.editor().chain().focus().insertContentAt(pos + nodeSizePosition, {
-        type: 'paragraph',
-        content: [{ type: 'text', text: generatedText }]
+      // Create an initial empty paragraph to receive the AI's response
+      this.editor().chain().focus().insertContentAt(nodeSizePosition, {
+        type: 'paragraph'
       }).run();
 
-      // Optionally clear the text, but the user requested to keep the container
-      // to resend multiple times.
+      // +1 to move the cursor inside the newly created paragraph node
+      let currentInsertPos = nodeSizePosition + 1;
+      this.isLoading.set(true);
+
+      // Buffer to accumulate regular text characters to avoid slow 1-by-1 insertions
+      let textBuffer = '';
+      // Flag to track consecutive newlines so we only create one paragraph break for multiple \n\n
+      let isNewlineSequence = false;
+
+      // Helper function to insert the accumulated buffer into the editor
+      const flushBuffer = () => {
+        if (textBuffer.length > 0) {
+          // Record doc size before insertion so we can accurately track how much it grew
+          const beforeSize = this.editor().state.doc.content.size;
+          this.editor().chain().insertContentAt(currentInsertPos, textBuffer).run();
+          const afterSize = this.editor().state.doc.content.size;
+          // Advance the insertion cursor by the exact number of nodes/characters added
+          currentInsertPos += (afterSize - beforeSize);
+          textBuffer = ''; // Reset buffer after successful insertion
+        }
+      };
+
+      // Start streaming the AI response
+      await this.aiStateService.generate(text, (token) => {
+        if (token) {
+          // Process the incoming chunk of text character by character
+          for (let i = 0; i < token.length; i++) {
+            const char = token[i];
+
+            // Check for newlines (both Unix \n and Windows \r)
+            if (char === '\n' || char === '\r') {
+              // Ignore \r completely. Only act when we see \n
+              if (char === '\n') {
+                // If we aren't already in the middle of a sequence of newlines
+                if (!isNewlineSequence) {
+                  flushBuffer(); // Insert any pending text first
+                  const beforeSize = this.editor().state.doc.content.size;
+
+                  // Execute a Tiptap transaction to split the current paragraph node into two
+                  this.editor().view.dispatch(this.editor().state.tr.split(currentInsertPos));
+
+                  const afterSize = this.editor().state.doc.content.size;
+                  currentInsertPos += (afterSize - beforeSize); // Move cursor into the new paragraph
+                  isNewlineSequence = true;
+                }
+              }
+            } else {
+              // We hit a normal character. Reset the newline sequence flag and buffer the character.
+              isNewlineSequence = false;
+              textBuffer += char;
+            }
+          }
+          // Flush the buffer at the end of each token so the user sees the text appearing live
+          flushBuffer();
+        }
+      }).finally(() => {
+        // Ensure any remaining text in the buffer is inserted when the stream finishes
+        flushBuffer();
+        this.isLoading.set(false);
+      });
     }
   }
 

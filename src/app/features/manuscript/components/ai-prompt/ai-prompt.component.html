@@ -44,8 +44,7 @@
     <!-- Prompt Input Body -->
     <div class="card-body">
       <div class="prompt-textarea" #promptInput contenteditable="true" (input)="onInput($event)" (focus)="onFocus()"
-        (blur)="onBlur()"
-        [class.empty]="isEmpty()"
+        (blur)="onBlur()" [class.empty]="isEmpty()"
         data-placeholder="Ask AI to write, brainstorm, or refine. Try: 'Write a suspenseful scene...'"></div>
     </div>
 
@@ -53,8 +52,9 @@
     <div class="card-footer">
       <!-- Left side: Send button with dropdown menu -->
       <div class="footer-left">
-        <div class="split-btn-group" [class.has-content]="promptText().trim().length > 0">
-          <button class="submit-btn" [disabled]="!promptText().trim()" (click)="onSubmit()" title="Send Prompt">
+        <div class="split-btn-group" [class.has-content]="promptText().trim().length > 0 && !isLoading()">
+          <button class="submit-btn" [disabled]="!promptText().trim() || isLoading()" (click)="onSubmit()"
+            title="Send Prompt">
             <span class="model-name">{{ selectedModel() || 'No model selected' }}</span>
             <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
               stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
@@ -80,14 +80,22 @@
             </div>
           </div>
         </ng-template>
+
+        @if (isLoading()) {
+        <div class="loader">
+          <div class="spinner"></div>
+          <span class="loading-text">AI is writing...</span>
+        </div>
+        }
+
       </div>
 
       <!-- Right side: Advanced settings modal -->
       <div class="footer-right">
         <app-ai-prompt-settings [wordCount]="wordCount()" [pov]="pov()" [povCharacter]="povCharacter()"
-          [vectorSearch]="vectorSearch()" (wordCountChange)="onWordCountChange($event)" (povChange)="onPovChange($event)"
-          (povCharacterChange)="onPovCharacterChange($event)" (vectorSearchChange)="onVectorSearchChange($event)"
-          (reset)="onSettingsReset()">
+          [vectorSearch]="vectorSearch()" (wordCountChange)="onWordCountChange($event)"
+          (povChange)="onPovChange($event)" (povCharacterChange)="onPovCharacterChange($event)"
+          (vectorSearchChange)="onVectorSearchChange($event)" (reset)="onSettingsReset()">
         </app-ai-prompt-settings>
       </div>
     </div>
