@@ -1,10 +1,11 @@
-import { Component, ElementRef, ViewChild, computed, signal } from '@angular/core';
+import { Component, ElementRef, ViewChild, computed, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AIStateService } from '../../../../core/services/ai-state.service';
+import { AiStore } from '../../store/ai.store';
 
 @Component({
   selector: 'app-ai-prompt',
@@ -20,8 +21,127 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   isCollapsed = signal(false);
   isLoading = signal(false);
 
+  private aiStore = inject(AiStore);
+  allModels = computed(() => this.aiStore.models());
+  searchTerm = signal<string>('');
+  activeSubmenuProvider = signal<any | null>(null);
+
+  // Fallback flat search results display
+  groupedModels = computed(() => {
+    const term = this.searchTerm().trim().toLowerCase();
+    const models = this.allModels();
+
+    const filtered = term
+      ? models.filter(m => m.name.toLowerCase().includes(term) || m.providerName.toLowerCase().includes(term))
+      : models;
+
+    const groupMap = new Map<string, any[]>();
+
+    filtered.forEach(m => {
+      if (!groupMap.has(m.providerName)) {
+        groupMap.set(m.providerName, []);
+      }
+      groupMap.get(m.providerName)!.push(m);
+    });
+
+    const sortedProviderNames = Array.from(groupMap.keys()).sort((a, b) => {
+      const aIsDirect = a.includes('(Direct)');
+      const bIsDirect = b.includes('(Direct)');
+      if (aIsDirect && !bIsDirect) return -1;
+      if (!aIsDirect && bIsDirect) return 1;
+      return a.localeCompare(b);
+    });
+
+    return sortedProviderNames.map(name => ({
+      providerName: name,
+      models: groupMap.get(name)!
+    }));
+  });
+
+  mainProviders = computed(() => {
+    const models = this.allModels();
+
+    const directModels = models.filter(m => m.source === 'direct');
+    const openRouterModels = models.filter(m => m.source === 'openrouter');
+
+    const providers: any[] = [];
+
+    const directGroups = new Map<string, any[]>();
+    directModels.forEach(m => {
+      if (!directGroups.has(m.provider)) {
+        directGroups.set(m.provider, []);
+      }
+      directGroups.get(m.provider)!.push(m);
+    });
+
+    directGroups.forEach((modelsList, providerId) => {
+      let displayName = providerId.charAt(0).toUpperCase() + providerId.slice(1);
+      if (providerId === 'openai') displayName = 'OpenAI (Direct)';
+      if (providerId === 'google') displayName = 'Google Gemini (Direct)';
+
+      providers.push({
+        id: providerId,
+        name: displayName,
+        type: 'direct',
+        models: modelsList
+      });
+    });
+
+    if (openRouterModels.length > 0) {
+      providers.push({
+        id: 'openrouter',
+        name: 'OpenRouter',
+        type: 'openrouter',
+        models: openRouterModels
+      });
+    }
+
+    return providers.sort((a, b) => {
+      if (a.type === 'direct' && b.type !== 'direct') return -1;
+      if (a.type !== 'direct' && b.type === 'direct') return 1;
+      return a.name.localeCompare(b.name);
+    });
+  });
+
+  openRouterGroups = computed(() => {
+    const models = this.allModels().filter(m => m.source === 'openrouter');
+    const groupMap = new Map<string, any[]>();
+
+    models.forEach(m => {
+      const providerName = m.providerName.replace(/^OpenRouter:\s*/, '');
+      if (!groupMap.has(providerName)) {
+        groupMap.set(providerName, []);
+      }
+      groupMap.get(providerName)!.push(m);
+    });
+
+    const sortedProviderNames = Array.from(groupMap.keys()).sort((a, b) => a.localeCompare(b));
+
+    return sortedProviderNames.map(name => ({
+      providerName: name,
+      models: groupMap.get(name)!
+    }));
+  });
+
+  selectedModelName = computed(() => {
+    const id = this.selectedModel();
+    if (!id) return 'No model selected';
+    const found = this.allModels().find(m => m.id === id);
+    if (found) return found.name;
+    return id.split('/').pop() || id;
+  });
+
   constructor(private aiStateService: AIStateService) {
     super();
+
+    // Set default model once models are loaded and if no selected model exists
+    effect(() => {
+      const models = this.allModels();
+      if (models.length > 0 && !this.selectedModel()) {
+        const defaultModel = models.find((m: any) => m.id.includes('free')) || models[0];
+        this.selectedModel.set(defaultModel.id);
+      }
+    });
   }
 
   collapse(): void {
@@ -66,12 +186,19 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       this.povCharacter.set(attrs['povCharacter'] || null);
       this.vectorSearch.set(attrs['vectorSearch'] || 'global');
     }
+
+    this.aiStore.loadModels();
   }
 
   ngAfterViewInit(): void {
     // 2. Restore contenteditable text once view is initialized
     if (this.promptInput && this.promptText()) {
       this.promptInput.nativeElement.innerText = this.promptText();
+    }
+
+    // Auto-focus if newly created and the editor is currently focused
+    if (this.promptInput && !this.promptText() && this.editor()?.isFocused) {
+      this.promptInput.nativeElement.focus();
     }
   }
 
@@ -178,8 +305,25 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         }
       };
 
+      // Determine provider and modelId
+      const selectedId = this.selectedModel();
+      const selectedModelObj = this.allModels().find(m => m.id === selectedId);
+
+      let provider = 'openrouter';
+      let modelId: string | undefined = undefined;
+
+      if (selectedModelObj) {
+        if (selectedModelObj.source === 'direct') {
+          provider = selectedModelObj.provider;
+          modelId = selectedModelObj.id.split('/')[1];
+        } else {
+          provider = 'openrouter';
+          modelId = selectedModelObj.id;
+        }
+      }
+
       // Start streaming the AI response
-      await this.aiStateService.generate(text, (token) => {
+      await this.aiStateService.generate(text, provider, modelId, (token) => {
         if (token) {
           // Process the incoming chunk of text character by character
           for (let i = 0; i < token.length; i++) {

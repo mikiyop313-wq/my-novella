@@ -1,5 +1,6 @@
 export interface AiPromptRequest {
     model: 'openai' | 'gemini' | 'claude' | 'openrouter';
+    modelId?: string;
     prompt: string;
     temperature?: number;
     maxTokens?: number;

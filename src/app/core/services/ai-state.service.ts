@@ -4,9 +4,9 @@ import { Injectable } from '@angular/core';
 export class AIStateService {
     model: string = '';
 
-    async generate(promptText: string, onToken?: (token: string) => void) {
+    async generate(promptText: string, model?: string, modelId?: string, onToken?: (token: string) => void) {
         // Default to openai if the user hasn't selected one yet
-        const modelToUse = this.model || 'openrouter';
+        const providerToUse = model || this.model || 'openrouter';
 
         let cleanup: (() => void) | undefined;
         if (onToken && window.electronAPI.onMessage) {
@@ -17,7 +17,8 @@ export class AIStateService {
 
         try {
             const response = await window.electronAPI.invoke('ai:generate', {
-                model: modelToUse,
+                model: providerToUse,
+                modelId: modelId,
                 prompt: promptText
             });
             

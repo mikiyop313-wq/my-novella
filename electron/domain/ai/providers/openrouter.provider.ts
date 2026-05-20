@@ -26,8 +26,7 @@ export class OpenRouterProvider implements AiProvider {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    // TODO: Dynamically select model based on request/settings
-                    model: 'minimax/minimax-m2.5:free',
+                    model: request.modelId || 'minimax/minimax-m2.5:free',
                     messages: [
                         ...(request.systemMessage ? [{ role: 'system', content: request.systemMessage }] : []),
                         { role: 'user', content: request.prompt }
@@ -78,11 +77,23 @@ export class OpenRouterProvider implements AiProvider {
 
             return {
                 text: fullText,
-                modelUsed: 'openrouter-model'
+                modelUsed: request.modelId || 'minimax/minimax-m2.5:free'
             };
         } catch (error) {
             console.error('[OpenRouter] Generation failed:', error);
             throw error;
+        }
+    }
+
+    async getAvailableModels(): Promise<any[]> {
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/models');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const json = await response.json();
+            return json.data;
+        } catch (error) {
+            console.error('[OpenRouter] Failed to fetch available models:', error);
+            return [];
         }
     }
 }
