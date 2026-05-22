@@ -1,11 +1,13 @@
-import { setupIpcHandlers } from './handlers';
-import { setupLibraryHandlers } from './library';
-import { setupAiHandlers } from './ai';
+import { setupIpcHandlers } from './core/handlers';
+import { setupLibraryHandlers } from './library/library';
+import { setupAiHandlers } from './ai/ai';
+import { setupManuscriptHandlers } from './library/manuscript';
 
 export function initializeIpc() {
     setupIpcHandlers();
     setupLibraryHandlers();
     setupAiHandlers();
+    setupManuscriptHandlers();
     // Initialize other IPC related modules here
 
     try {

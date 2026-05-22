@@ -1,0 +1,14 @@
+<div class="manuscript-header-node" [class.act-mode]="headerType() === 'act'" [class.chapter-mode]="headerType() === 'chapter'" data-drag-handle>
+  @if (headerType() === 'act') {
+    <div class="act-header">
+      <div class="act-number">Act {{ position() + 1 }}</div>
+      <input class="act-title" [value]="title()" (input)="onTitleChange($event)" placeholder="Untitled Act">
+    </div>
+    <div class="elegant-divisor"></div>
+  } @else {
+    <div class="chapter-header">
+      <div class="chapter-number">Chapter {{ position() + 1 }}</div>
+      <input class="chapter-title" [value]="title()" (input)="onTitleChange($event)" placeholder="Untitled Chapter">
+    </div>
+  }
+</div>

@@ -7,7 +7,7 @@ export class ElectronService {
     constructor() { }
 
     // Use this to send data to the Main process
-    send(channel: string, data: any): void {
+    send(channel: string, data?: any): void {
         if (window.electronAPI) {
             window.electronAPI.sendMessage(channel, data);
         }

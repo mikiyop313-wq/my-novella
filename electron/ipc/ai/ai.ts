@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
-import { aiService } from '../domain/ai/ai.service';
-import { AiPromptRequest } from '../domain/ai/models';
-import { OpenRouterProvider } from '../domain/ai/providers/openrouter.provider';
+import { aiService } from '../../domain/ai/ai.service';
+import { AiPromptRequest } from '../../domain/ai/models';
+import { OpenRouterProvider } from '../../domain/ai/providers/openrouter.provider';
 
 export function setupAiHandlers() {
     ipcMain.handle('ai:generate', async (event, request: AiPromptRequest) => {

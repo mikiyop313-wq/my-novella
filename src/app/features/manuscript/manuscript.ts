@@ -9,9 +9,12 @@ import { ThemeService } from '../../core/services/theme.service';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
 import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
+import { ActHeaderExtension, ChapterHeaderExtension } from './components/manuscript-header/manuscript-header.extension';
+import { SceneSummaryExtension } from './components/scene-summary/scene-summary.extension';
 import { ManuscriptStore } from './store/manuscript.store';
 import { AiStore } from './store/ai.store';
 import { CdkMenuModule } from '@angular/cdk/menu';
+import { ManuscriptMode, ActDto, ChapterDto, SceneDto } from '../../../../shared/models/manuscript.model';
 
 @Component({
   selector: 'app-manuscript',
@@ -49,10 +52,20 @@ export class Manuscript implements OnInit, OnDestroy {
   ];
 
   ngOnInit(): void {
-    // Get book ID from query params
-    this.route.queryParams.subscribe(params => {
-      const id = params['bookId'];
-      this.store.setBookId(id || null);
+    this.route.params.subscribe(async params => {
+      const mode = params['mode'] as ManuscriptMode;
+      const id = params['id'];
+      this.store.setRouteParams(mode, id);
+
+      if (mode && id && this.editor) {
+        try {
+          const data = await this.store.loadManuscriptData(mode, id);
+          const content = this.extractProse(mode, data);
+          this.editor.commands.setContent(content);
+        } catch (error) {
+          console.error('Failed to load manuscript content:', error);
+        }
+      }
     });
 
     this.editor = new Editor({
@@ -63,11 +76,80 @@ export class Manuscript implements OnInit, OnDestroy {
           emptyEditorClass: 'is-editor-empty',
         }),
         AiPromptExtension(this.injector),
+        ActHeaderExtension(this.injector),
+        ChapterHeaderExtension(this.injector),
+        SceneSummaryExtension(this.injector),
       ],
     });
 
     this.store.setEditor(this.editor);
     this.aiStore.loadModels();
+
+    // Trigger initial load if params are already present
+    const mode = this.route.snapshot.params['mode'] as ManuscriptMode;
+    const id = this.route.snapshot.params['id'];
+    if (mode && id) {
+      this.store.loadManuscriptData(mode, id).then(data => {
+        const content = this.extractProse(mode, data);
+        this.editor?.commands.setContent(content);
+      }).catch(err => console.error('Failed to load initial manuscript:', err));
+    }
+  }
+
+  private escapeHtml(unsafe: string | null | undefined): string {
+    if (!unsafe) return '';
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  private extractProse(mode: ManuscriptMode, data: any): string {
+    let content = '';
+
+    if (mode === 'book') {
+      const acts = data as ActDto[];
+      acts.forEach(act => {
+        content += `<act-header data-id="${act.id}" data-title="${this.escapeHtml(act.title)}" data-position="${act.position}"></act-header>`;
+        if (act.prose) content += act.prose;
+        act.chapters?.forEach(chapter => {
+          content += `<chapter-header data-id="${chapter.id}" data-title="${this.escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>`;
+          if (chapter.prose) content += chapter.prose;
+          chapter.scenes?.forEach(scene => {
+            content += `<scene-summary data-id="${scene.id}" data-summary="${this.escapeHtml(scene.summary)}"></scene-summary>`;
+            if (scene.prose) content += scene.prose;
+          });
+        });
+      });
+    } else if (mode === 'act') {
+      const act = data as ActDto;
+      content += `<act-header data-id="${act.id}" data-title="${this.escapeHtml(act.title)}" data-position="${act.position}"></act-header>`;
+      if (act.prose) content += act.prose;
+      act.chapters?.forEach(chapter => {
+        content += `<chapter-header data-id="${chapter.id}" data-title="${this.escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>`;
+        if (chapter.prose) content += chapter.prose;
+        chapter.scenes?.forEach(scene => {
+          content += `<scene-summary data-id="${scene.id}" data-summary="${this.escapeHtml(scene.summary)}"></scene-summary>`;
+          if (scene.prose) content += scene.prose;
+        });
+      });
+    } else if (mode === 'chapter') {
+      const chapter = data as ChapterDto;
+      content += `<chapter-header data-id="${chapter.id}" data-title="${this.escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>`;
+      if (chapter.prose) content += chapter.prose;
+      chapter.scenes?.forEach(scene => {
+        content += `<scene-summary data-id="${scene.id}" data-summary="${this.escapeHtml(scene.summary)}"></scene-summary>`;
+        if (scene.prose) content += scene.prose;
+      });
+    } else if (mode === 'scene') {
+      const scene = data as SceneDto;
+      content += `<scene-summary data-id="${scene.id}" data-summary="${this.escapeHtml(scene.summary)}"></scene-summary>`;
+      if (scene.prose) content += scene.prose;
+    }
+
+    return content || '<p></p>';
   }
 
   getActiveFormatLabel(): string {
@@ -77,6 +159,27 @@ export class Manuscript implements OnInit, OnDestroy {
     if (this.editor.isActive('heading', { level: 3 })) return 'Heading 3';
     if (this.editor.isActive('heading', { level: 4 })) return 'Heading 4';
     return 'Normal Text';
+  }
+
+  insertAct(): void {
+    if (!this.editor) return;
+    const endPosition = this.editor.state.doc.content.size;
+    this.editor.chain().focus().insertContentAt(endPosition,
+      '<act-header></act-header><chapter-header></chapter-header><p></p>').run();
+  }
+
+  insertChapter(): void {
+    if (!this.editor) return;
+    const endPosition = this.editor.state.doc.content.size;
+    this.editor.chain().focus().insertContentAt(endPosition, '<chapter-header></chapter-header><p></p>').run();
+  }
+
+  insertScene(): void {
+    if (!this.editor) return;
+    const endPosition = this.editor.state.doc.content.size;
+    // For now, inserting a scene just adds a paragraph, as scene markers are not explicit nodes yet.
+    // Alternatively, it can just insert a paragraph break.
+    this.editor.chain().focus().insertContentAt(endPosition, '<p></p>').run();
   }
 
   ngOnDestroy(): void {
