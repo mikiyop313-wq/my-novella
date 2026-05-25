@@ -1,7 +1,7 @@
 import { signalStore, withState, withMethods, patchState } from '@ngrx/signals';
 import { Editor } from '@tiptap/core';
 import { ElectronService } from '../../../core/services/electron.service';
-import { ManuscriptMode, ManuscriptModeDto, ActDto, ChapterDto, SceneDto } from '../../../../../shared/models/manuscript.model';
+import { ManuscriptMode, ManuscriptModeDto, ActDto, ChapterDto, SceneDto, UpdateActPayload, UpdateChapterPayload, UpdateScenePayload } from '../../../../../shared/models/manuscript.model';
 import { inject } from '@angular/core';
 
 export interface FormattingSettings {
@@ -53,16 +53,6 @@ const initialState: ManuscriptState = {
 // ---------------------------------------------------------------------------
 // Module-level helpers (no Angular DI needed)
 // ---------------------------------------------------------------------------
-
-function escapeHtml(unsafe: string | null | undefined): string {
-  if (!unsafe) return '';
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 
 /**
  * Walks the Tiptap document and returns the `id` attribute of the
@@ -271,7 +261,7 @@ export const ManuscriptStore = signalStore(
     // Update methods
     // -----------------------------------------------------------------------
 
-    async updateAct(payload: { id: string; title?: string; summary?: string; prose?: string }): Promise<void> {
+    async updateAct(payload: UpdateActPayload): Promise<void> {
       try {
         await electronService.invoke('manuscript:updateAct', payload);
       } catch (error) {
@@ -279,7 +269,7 @@ export const ManuscriptStore = signalStore(
       }
     },
 
-    async updateChapter(payload: { id: string; title?: string; summary?: string; prose?: string }): Promise<void> {
+    async updateChapter(payload: UpdateChapterPayload): Promise<void> {
       try {
         await electronService.invoke('manuscript:updateChapter', payload);
       } catch (error) {
@@ -287,7 +277,7 @@ export const ManuscriptStore = signalStore(
       }
     },
 
-    async updateScene(payload: { id: string; title?: string; summary?: string; prose?: string; wordCount?: number }): Promise<void> {
+    async updateScene(payload: UpdateScenePayload): Promise<void> {
       try {
         await electronService.invoke('manuscript:updateScene', payload);
       } catch (error) {
@@ -317,12 +307,12 @@ export const ManuscriptStore = signalStore(
       const scene = await electronService.invoke('manuscript:createScene', { chapterId: chapter.id }) as SceneDto;
 
       const endPosition = editor.state.doc.content.size;
-      editor.chain().focus().insertContentAt(endPosition,
-        `<act-header data-id="${act.id}" data-title="${escapeHtml(act.title)}" data-position="${act.position}"></act-header>` +
-        `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>` +
-        `<scene-summary data-id="${scene.id}" data-title="${escapeHtml(scene.title)}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
-        `<p></p>`
-      ).run();
+      editor.chain().focus().insertContentAt(endPosition, [
+        { type: 'actHeader', attrs: { id: act.id, title: act.title, position: act.position } },
+        { type: 'chapterHeader', attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
+        { type: 'sceneSummary', attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: 'paragraph' }
+      ]).run();
     },
 
     async insertChapter(): Promise<void> {
@@ -338,11 +328,11 @@ export const ManuscriptStore = signalStore(
       const scene = await electronService.invoke('manuscript:createScene', { chapterId: chapter.id }) as SceneDto;
 
       const endPosition = editor.state.doc.content.size;
-      editor.chain().focus().insertContentAt(endPosition,
-        `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>` +
-        `<scene-summary data-id="${scene.id}" data-title="${escapeHtml(scene.title)}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
-        `<p></p>`
-      ).run();
+      editor.chain().focus().insertContentAt(endPosition, [
+        { type: 'chapterHeader', attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
+        { type: 'sceneSummary', attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: 'paragraph' }
+      ]).run();
     },
 
     async insertScene(): Promise<void> {
@@ -356,10 +346,10 @@ export const ManuscriptStore = signalStore(
       const scene = await electronService.invoke('manuscript:createScene', { chapterId }) as SceneDto;
 
       const endPosition = editor.state.doc.content.size;
-      editor.chain().focus().insertContentAt(endPosition,
-        `<scene-summary data-id="${scene.id}" data-title="${escapeHtml(scene.title)}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
-        `<p></p>`
-      ).run();
+      editor.chain().focus().insertContentAt(endPosition, [
+        { type: 'sceneSummary', attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: 'paragraph' }
+      ]).run();
     },
 
     // -----------------------------------------------------------------------

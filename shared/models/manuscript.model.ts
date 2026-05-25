@@ -1,9 +1,14 @@
+export interface TiptapJsonDoc {
+  type: 'doc';
+  content: Record<string, any>[];
+}
+
 export interface SceneDto {
   id: string;
   title: string;
   chapterId: string;
   position: number;
-  prose: string | null;
+  prose: TiptapJsonDoc | null;
   summary: string | null;
   wordCount: number | null;
   pointOfViewOverride: 'first' | 'second' | 'third_limited' | 'third_omni' | null;
@@ -15,7 +20,6 @@ export interface ChapterDto {
   title: string;
   actId: string;
   position: number;
-  prose: string | null;
   summary: string | null;
   scenes?: SceneDto[];
 }
@@ -25,7 +29,6 @@ export interface ActDto {
   title: string;
   bookId: string;
   position: number;
-  prose: string | null;
   summary: string | null;
   chapters?: ChapterDto[];
 }
@@ -51,6 +54,7 @@ export interface DeleteChapterPayload { id: string; }
 export interface DeleteScenePayload   { id: string; }
 
 // Payloads for the manuscript:update* IPC channels
-export interface UpdateActPayload     { id: string; title?: string; summary?: string; prose?: string; }
-export interface UpdateChapterPayload { id: string; title?: string; summary?: string; prose?: string; }
-export interface UpdateScenePayload   { id: string; title?: string; summary?: string; prose?: string; wordCount?: number; }
+export interface UpdateActPayload     { id: string; title?: string; summary?: string; }
+export interface UpdateChapterPayload { id: string; title?: string; summary?: string; }
+export interface UpdateScenePayload   { id: string; title?: string; summary?: string; prose?: TiptapJsonDoc; wordCount?: number; }
+
