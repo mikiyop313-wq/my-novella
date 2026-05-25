@@ -29,6 +29,18 @@
     </div>
   }
 
+  <div class="scene-title-display" [class.is-hidden]="!store.showSceneTitles()">
+    <div 
+      class="scene-title-editable" 
+      #titleEditableDiv 
+      contenteditable="true" 
+      [attr.data-placeholder]="'untitled'"
+      (input)="onTitleInput($event)"
+      (paste)="onPaste($event)"
+      (keydown.enter)="$event.stopPropagation()"
+    ></div>
+  </div>
+
   <div class="scene-summary-gutter-node" [class.is-hidden]="!store.showSummaries()">
     <div class="summary-header">
       <div class="summary-title">

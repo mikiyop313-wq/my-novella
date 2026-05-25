@@ -19,6 +19,44 @@
   }
 }
 
+.scene-title-display {
+  width: 100%;
+  display: flex;
+
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+
+  &.is-hidden {
+    display: none !important;
+  }
+}
+
+.scene-title-editable {
+  font-family: var(--editor-font-family);
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  outline: none;
+  min-width: 100px;
+  text-align: center;
+  padding: 4px 12px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+
+  &:empty::before {
+    content: attr(data-placeholder);
+    opacity: 0.5;
+    pointer-events: none;
+    display: block;
+  }
+
+  &:focus {
+    background-color: color-mix(in srgb, var(--color-surface) 90%, black 10%);
+  }
+}
+
 .scene-summary-gutter-node {
   font-family: 'Inter', sans-serif;
   user-select: none;
