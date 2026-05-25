@@ -116,7 +116,43 @@ function deleteNodeRangeInDoc(
     }
   }
 
-  editor.view.dispatch(editor.state.tr.delete(from, to));
+  // Create the deletion transaction.
+  let tr = editor.state.tr.delete(from, to);
+
+  // Update the position attributes of subsequent sibling nodes in the new document draft.
+  if (targetType === 'actHeader') {
+    // For Acts: decrement position of all subsequent actHeaders in the document
+    tr.doc.forEach((node, offset) => {
+      if (node.type.name === 'actHeader' && offset >= from) {
+        const currentPos = node.attrs['position'] || 0;
+        tr = tr.setNodeMarkup(offset, undefined, {
+          ...node.attrs,
+          position: Math.max(0, currentPos - 1),
+        });
+      }
+    });
+  } else if (targetType === 'chapterHeader') {
+    // For Chapters: decrement position of subsequent chapters in the same act.
+    // We walk forward from the deletion point 'from', updating chapters,
+    // and stop when we encounter the next actHeader.
+    let stopWalk = false;
+    tr.doc.forEach((node, offset) => {
+      if (stopWalk) return;
+      if (offset >= from) {
+        if (node.type.name === 'actHeader') {
+          stopWalk = true;
+        } else if (node.type.name === 'chapterHeader') {
+          const currentPos = node.attrs['position'] || 0;
+          tr = tr.setNodeMarkup(offset, undefined, {
+            ...node.attrs,
+            position: Math.max(0, currentPos - 1),
+          });
+        }
+      }
+    });
+  }
+
+  editor.view.dispatch(tr);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +314,7 @@ export const ManuscriptStore = signalStore(
       editor.chain().focus().insertContentAt(endPosition,
         `<act-header data-id="${act.id}" data-title="${escapeHtml(act.title)}" data-position="${act.position}"></act-header>` +
         `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>` +
-        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}"></scene-summary>` +
+        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
         `<p></p>`
       ).run();
     },
@@ -298,7 +334,7 @@ export const ManuscriptStore = signalStore(
       const endPosition = editor.state.doc.content.size;
       editor.chain().focus().insertContentAt(endPosition,
         `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>` +
-        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}"></scene-summary>` +
+        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
         `<p></p>`
       ).run();
     },
@@ -315,7 +351,7 @@ export const ManuscriptStore = signalStore(
 
       const endPosition = editor.state.doc.content.size;
       editor.chain().focus().insertContentAt(endPosition,
-        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}"></scene-summary>` +
+        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
         `<p></p>`
       ).run();
     },

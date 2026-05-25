@@ -1,7 +1,7 @@
 import { db } from '../index';
 import { act, chapter, scene } from '../schema/narrative';
 import { books } from '../schema/book';
-import { eq, max } from 'drizzle-orm';
+import { eq, max, and, gt, sql } from 'drizzle-orm';
 import { ActDto, ChapterDto, SceneDto, ManuscriptDataDto, UpdateActPayload, UpdateChapterPayload, UpdateScenePayload } from '../../shared/models/manuscript.model';
 
 export class ManuscriptRepository {
@@ -192,18 +192,39 @@ export class ManuscriptRepository {
     // -----------------------------------------------------------------------
 
     async deleteAct(id: string): Promise<void> {
+        const actToDelete = await db.query.act.findFirst({ where: eq(act.id, id) });
+        if (!actToDelete) return;
+
         await this.touchBookLastEdited(id, 'act');
         await db.delete(act).where(eq(act.id, id));
+
+        await db.update(act)
+            .set({ position: sql`${act.position} - 1` })
+            .where(and(eq(act.bookId, actToDelete.bookId), gt(act.position, actToDelete.position)));
     }
 
     async deleteChapter(id: string): Promise<void> {
+        const chapterToDelete = await db.query.chapter.findFirst({ where: eq(chapter.id, id) });
+        if (!chapterToDelete) return;
+
         await this.touchBookLastEdited(id, 'chapter');
         await db.delete(chapter).where(eq(chapter.id, id));
+
+        await db.update(chapter)
+            .set({ position: sql`${chapter.position} - 1` })
+            .where(and(eq(chapter.actId, chapterToDelete.actId), gt(chapter.position, chapterToDelete.position)));
     }
 
     async deleteScene(id: string): Promise<void> {
+        const sceneToDelete = await db.query.scene.findFirst({ where: eq(scene.id, id) });
+        if (!sceneToDelete) return;
+
         await this.touchBookLastEdited(id, 'scene');
         await db.delete(scene).where(eq(scene.id, id));
+
+        await db.update(scene)
+            .set({ position: sql`${scene.position} - 1` })
+            .where(and(eq(scene.chapterId, sceneToDelete.chapterId), gt(scene.position, sceneToDelete.position)));
     }
 }
 

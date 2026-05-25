@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
@@ -6,6 +6,7 @@ import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { inject } from '@angular/core';
+import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 
 @Component({
   selector: 'app-manuscript-header',
@@ -15,25 +16,19 @@ import { inject } from '@angular/core';
   styleUrl: './manuscript-header.component.scss'
 })
 export class ManuscriptHeaderComponent extends AngularNodeViewComponent implements OnInit {
-  headerType = signal<'act' | 'chapter'>('act');
-  title = signal<string>('');
-  position = signal<number>(0);
-  entityId = signal<string>('');
-  
+  headerType = computed<'act' | 'chapter'>(() => this.node()?.type.name === 'actHeader' ? 'act' : 'chapter');
+  title = computed<string>(() => this.node()?.attrs['title'] || '');
+  position = computed<number>(() => this.node()?.attrs['position'] || 0);
+  entityId = computed<string>(() => this.node()?.attrs['id'] || '');
+
   store = inject(ManuscriptStore);
+  private confirmService = inject(ConfirmModalService);
   private titleUpdateSubject = new Subject<string>();
 
   ngOnInit(): void {
-    const attrs = this.node()?.attrs;
-    if (attrs) {
-      this.headerType.set(this.node().type.name === 'actHeader' ? 'act' : 'chapter');
-      this.title.set(attrs['title'] || '');
-      this.position.set(attrs['position'] || 0);
-      const id = attrs['id'] || `temp-${Math.random().toString(36).substr(2, 9)}`;
-      this.entityId.set(id);
-      if (!attrs['id']) {
-        this.updateAttributes()({ id });
-      }
+    if (!this.entityId()) {
+      const id = `temp-${Math.random().toString(36).substr(2, 9)}`;
+      this.updateAttributes()({ id });
     }
 
     this.titleUpdateSubject.pipe(debounceTime(500)).subscribe(newTitle => {
@@ -48,9 +43,25 @@ export class ManuscriptHeaderComponent extends AngularNodeViewComponent implemen
   onTitleChange(event: Event): void {
     const target = event.target as HTMLInputElement;
     const newTitle = target.value;
-    this.title.set(newTitle);
     this.updateAttributes()({ title: newTitle });
-    
+
     this.titleUpdateSubject.next(newTitle);
+  }
+
+  deleteSection(): void {
+    const isAct = this.headerType() === 'act';
+    const typeName = isAct ? 'Act' : 'Chapter';
+
+    this.confirmService.open(
+      `Delete ${typeName}?`,
+      `Are you sure you want to delete this ${typeName.toLowerCase()}? This action cannot be undone and will delete all nested contents.`,
+      () => {
+        if (isAct) {
+          this.store.deleteAct(this.entityId());
+        } else {
+          this.store.deleteChapter(this.entityId());
+        }
+      }
+    );
   }
 }

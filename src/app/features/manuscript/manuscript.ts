@@ -76,7 +76,7 @@ export class Manuscript implements OnInit, OnDestroy {
     this.store.setEditor(this.editor);
     this.aiStore.loadModels();
 
-    // Re-load when route params change (e.g. navigating between manuscript views).
+    // Load on initialization and when route params change.
     this.route.params.subscribe(async params => {
       const mode = params['mode'] as ManuscriptMode;
       const id   = params['id'];
@@ -87,22 +87,12 @@ export class Manuscript implements OnInit, OnDestroy {
           const data = await this.store.loadManuscriptData(mode, id);
           if (mode === 'scene') this.sceneTitle.set((data as SceneDto).title);
           this.editor.commands.setContent(buildEditorContent(mode, data));
+          this.refreshIndexItems();
         } catch (error) {
           console.error('Failed to load manuscript content:', error);
         }
       }
     });
-
-    // Initial load from snapshot (avoids waiting for the Observable to emit).
-    const mode = this.route.snapshot.params['mode'] as ManuscriptMode;
-    const id   = this.route.snapshot.params['id'];
-    if (mode && id) {
-      this.store.loadManuscriptData(mode, id).then(data => {
-        if (mode === 'scene') this.sceneTitle.set((data as SceneDto).title);
-        this.editor?.commands.setContent(buildEditorContent(mode, data));
-        this.refreshIndexItems();
-      }).catch(err => console.error('Failed to load initial manuscript:', err));
-    }
   }
 
   ngOnDestroy(): void {

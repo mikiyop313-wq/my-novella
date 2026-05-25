@@ -1,0 +1,16 @@
+@if (confirmService.state().show) {
+  <div class="confirm-modal-backdrop" (click)="confirmService.state().onCancel()">
+    <div class="confirm-modal" (click)="$event.stopPropagation()">
+      <div class="confirm-modal-header">
+        <h3>{{ confirmService.state().title }}</h3>
+      </div>
+      <div class="confirm-modal-body">
+        <p>{{ confirmService.state().message }}</p>
+      </div>
+      <div class="confirm-modal-actions">
+        <button class="btn-cancel" (click)="confirmService.state().onCancel()">Cancel</button>
+        <button class="btn-confirm" (click)="confirmService.state().onConfirm()">Delete</button>
+      </div>
+    </div>
+  </div>
+}
