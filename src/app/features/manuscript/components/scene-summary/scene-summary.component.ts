@@ -17,22 +17,26 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
   private ngZone = inject(NgZone);
   private elementRef = inject(ElementRef);
 
+  title = signal<string>('');
   summary = signal<string>('');
   entityId = signal<string>('');
   showDivisor = signal<boolean>(false);
 
   @ViewChild('editableDiv') editableDiv!: ElementRef<HTMLDivElement>;
+  @ViewChild('titleEditableDiv') titleEditableDiv!: ElementRef<HTMLDivElement>;
 
   private scrollContainer: HTMLElement | null = null;
   private scrollListener: any;
   private resizeListener: any;
   private resizeObserver: ResizeObserver | null = null;
   private animationFrameId: number | null = null;
+  private titleUpdateSubject = new Subject<string>();
   private summaryUpdateSubject = new Subject<string>();
 
   ngOnInit(): void {
     const attrs = this.node()?.attrs;
     if (attrs) {
+      this.title.set(attrs['title'] || '');
       this.summary.set(attrs['summary'] || '');
       const id = attrs['id'] || `temp-${Math.random().toString(36).substr(2, 9)}`;
       this.entityId.set(id);
@@ -40,6 +44,10 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
         this.updateAttributes()({ id });
       }
     }
+
+    this.titleUpdateSubject.pipe(debounceTime(500)).subscribe(newTitle => {
+      this.store.updateScene({ id: this.entityId(), title: newTitle });
+    });
 
     this.summaryUpdateSubject.pipe(debounceTime(500)).subscribe(newSummary => {
       this.store.updateScene({ id: this.entityId(), summary: newSummary });
@@ -51,6 +59,12 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
       this.editableDiv.nativeElement.innerText = this.summary();
       if (!this.summary().trim()) {
         this.editableDiv.nativeElement.innerHTML = '';
+      }
+    }
+    if (this.titleEditableDiv) {
+      this.titleEditableDiv.nativeElement.innerText = this.title();
+      if (!this.title().trim()) {
+        this.titleEditableDiv.nativeElement.innerHTML = '';
       }
     }
 
@@ -209,6 +223,20 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
     this.summary.set(newSummary);
     this.updateAttributes()({ summary: newSummary });
     this.summaryUpdateSubject.next(newSummary);
+  }
+
+  onTitleInput(event: Event): void {
+    const target = event.target as HTMLDivElement;
+    let newTitle = target.innerText;
+
+    if (!newTitle.trim()) {
+      target.innerHTML = '';
+      newTitle = '';
+    }
+
+    this.title.set(newTitle);
+    this.updateAttributes()({ title: newTitle });
+    this.titleUpdateSubject.next(newTitle);
   }
 
   onPaste(event: ClipboardEvent): void {

@@ -23,6 +23,7 @@ export interface ManuscriptState {
   settings: FormattingSettings;
   showFormatMenu: boolean;
   showSummaries: boolean;
+  showSceneTitles: boolean;
   editor: Editor | null;
 }
 
@@ -45,6 +46,7 @@ const initialState: ManuscriptState = {
   settings: defaultSettings,
   showFormatMenu: false,
   showSummaries: true,
+  showSceneTitles: false,
   editor: null,
 };
 
@@ -233,6 +235,10 @@ export const ManuscriptStore = signalStore(
       patchState(store, { showSummaries: !store.showSummaries() });
     },
 
+    toggleSceneTitles() {
+      patchState(store, { showSceneTitles: !store.showSceneTitles() });
+    },
+
     // -----------------------------------------------------------------------
     // Data fetching
     // -----------------------------------------------------------------------
@@ -314,7 +320,7 @@ export const ManuscriptStore = signalStore(
       editor.chain().focus().insertContentAt(endPosition,
         `<act-header data-id="${act.id}" data-title="${escapeHtml(act.title)}" data-position="${act.position}"></act-header>` +
         `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>` +
-        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
+        `<scene-summary data-id="${scene.id}" data-title="${escapeHtml(scene.title)}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
         `<p></p>`
       ).run();
     },
@@ -334,7 +340,7 @@ export const ManuscriptStore = signalStore(
       const endPosition = editor.state.doc.content.size;
       editor.chain().focus().insertContentAt(endPosition,
         `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>` +
-        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
+        `<scene-summary data-id="${scene.id}" data-title="${escapeHtml(scene.title)}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
         `<p></p>`
       ).run();
     },
@@ -351,7 +357,7 @@ export const ManuscriptStore = signalStore(
 
       const endPosition = editor.state.doc.content.size;
       editor.chain().focus().insertContentAt(endPosition,
-        `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
+        `<scene-summary data-id="${scene.id}" data-title="${escapeHtml(scene.title)}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>` +
         `<p></p>`
       ).run();
     },
