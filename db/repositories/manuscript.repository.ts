@@ -100,7 +100,7 @@ export class ManuscriptRepository {
             .insert(act)
             .values({ title: 'New Act', bookId, position: nextPosition })
             .returning();
-            
+
         await this.touchBookLastEdited(bookId, 'book');
         return inserted as unknown as ActDto;
     }
@@ -116,7 +116,7 @@ export class ManuscriptRepository {
             .insert(chapter)
             .values({ title: 'New Chapter', actId, position: nextPosition })
             .returning();
-            
+
         await this.touchBookLastEdited(actId, 'act');
         return inserted as unknown as ChapterDto;
     }
@@ -130,9 +130,9 @@ export class ManuscriptRepository {
 
         const [inserted] = await db
             .insert(scene)
-            .values({ title: 'New Scene', chapterId, position: nextPosition })
+            .values({ title: '', chapterId, position: nextPosition })
             .returning();
-            
+
         await this.touchBookLastEdited(chapterId, 'chapter');
         return inserted as unknown as SceneDto;
     }
@@ -148,7 +148,7 @@ export class ManuscriptRepository {
             .set(data)
             .where(eq(act.id, id))
             .returning();
-            
+
         if (updated) {
             await this.touchBookLastEdited(updated.bookId, 'book');
         }
@@ -162,7 +162,7 @@ export class ManuscriptRepository {
             .set(data)
             .where(eq(chapter.id, id))
             .returning();
-            
+
         if (updated) {
             await this.touchBookLastEdited(updated.actId, 'act');
         }
@@ -176,7 +176,7 @@ export class ManuscriptRepository {
             .set(data)
             .where(eq(scene.id, id))
             .returning();
-            
+
         if (updated) {
             await this.touchBookLastEdited(updated.chapterId, 'chapter');
         }
