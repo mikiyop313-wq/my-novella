@@ -324,6 +324,16 @@ export const LibraryStore = signalStore(
     /** Toggles the display of archived books */
     setShowArchived(showArchived: boolean) {
       patchState(store, { showArchived });
+    },
+
+    /** Dynamic word count helper */
+    async getWordCount(mode: 'book' | 'act' | 'chapter' | 'scene', id: string): Promise<number> {
+      return await libraryService.getWordCount(mode, id);
+    },
+
+    /** Dynamic chapter count helper */
+    async getChapterCount(bookId: string): Promise<number> {
+      return await libraryService.getChapterCount(bookId);
     }
 
   }))

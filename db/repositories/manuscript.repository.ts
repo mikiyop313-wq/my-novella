@@ -226,6 +226,56 @@ export class ManuscriptRepository {
             .set({ position: sql`${scene.position} - 1` })
             .where(and(eq(scene.chapterId, sceneToDelete.chapterId), gt(scene.position, sceneToDelete.position)));
     }
+
+    /**
+     * Dynamically calculates the sum of word counts from scenes based on hierarchical mode.
+     */
+    async getWordCount(mode: 'book' | 'act' | 'chapter' | 'scene', id: string): Promise<number> {
+        switch (mode) {
+            case 'scene': {
+                const [s] = await db.select({ wordCount: scene.wordCount }).from(scene).where(eq(scene.id, id));
+                return s?.wordCount ?? 0;
+            }
+            case 'chapter': {
+                const [result] = await db
+                    .select({ sum: sql<number>`sum(coalesce(${scene.wordCount}, 0))` })
+                    .from(scene)
+                    .where(eq(scene.chapterId, id));
+                return Number(result?.sum ?? 0);
+            }
+            case 'act': {
+                const [result] = await db
+                    .select({ sum: sql<number>`sum(coalesce(${scene.wordCount}, 0))` })
+                    .from(scene)
+                    .innerJoin(chapter, eq(scene.chapterId, chapter.id))
+                    .where(eq(chapter.actId, id));
+                return Number(result?.sum ?? 0);
+            }
+            case 'book': {
+                const [result] = await db
+                    .select({ sum: sql<number>`sum(coalesce(${scene.wordCount}, 0))` })
+                    .from(scene)
+                    .innerJoin(chapter, eq(scene.chapterId, chapter.id))
+                    .innerJoin(act, eq(chapter.actId, act.id))
+                    .where(eq(act.bookId, id));
+                return Number(result?.sum ?? 0);
+            }
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * Dynamically counts all chapters belonging to a specific book.
+     */
+    async getChapterCount(bookId: string): Promise<number> {
+        const [result] = await db
+            .select({ count: sql<number>`count(${chapter.id})` })
+            .from(chapter)
+            .innerJoin(act, eq(chapter.actId, act.id))
+            .where(eq(act.bookId, bookId));
+        return Number(result?.count ?? 0);
+    }
 }
 
 export const manuscriptRepository = new ManuscriptRepository();

@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, input, computed, inject, linkedSignal } from '@angular/core';
+import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, input, computed, inject, linkedSignal, effect, output } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
 import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
 import { CdkMenuModule } from '@angular/cdk/menu';
@@ -13,7 +13,6 @@ import { LibraryService } from '../../services/library.service';
 import { LibraryStore } from '../../store/book.store';
 import { ConfigStore } from '../../../../core/store/config.store';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
-import { ElectronService } from '../../../../core/services/electron.service';
 
 
 
@@ -29,14 +28,33 @@ export class BookModalComponent {
 
   book = linkedSignal(() => this.bookInput());
 
-  @Output() close = new EventEmitter<void>();
-  @Output() bookDeleted = new EventEmitter<string>();
+  close = output<void>();
+  bookDeleted = output<string>();
 
   private libraryService = inject(LibraryService);
   readonly store = inject(LibraryStore);
   readonly config = inject(ConfigStore);
-  readonly electronApi = inject(ElectronService);
   private router = inject(Router);
+
+  constructor() {
+    // Reload book stats dynamically whenever the active book changes
+    effect(() => {
+      const bookId = this.book().id;
+      if (bookId) {
+        this.loadStats(bookId);
+      }
+    });
+  }
+
+  async loadStats(bookId: string) {
+    try {
+      const wordCount = await this.store.getWordCount('book', bookId);
+      const chapterCount = await this.store.getChapterCount(bookId);
+      this.animateCount(wordCount, chapterCount, 1000);
+    } catch (error) {
+      console.error('Failed to load dynamic book stats:', error);
+    }
+  }
 
   readonly INFO = INFO_MESSAGES;
 
@@ -110,7 +128,6 @@ export class BookModalComponent {
   }
 
   ngOnInit() {
-    this.animateCount(1000);
     this.config.loadLanguages();
     this.config.loadGenres();
     // Initialize settings from book data if available
@@ -148,10 +165,8 @@ export class BookModalComponent {
     }
   }
 
-  private animateCount(duration: number) {
+  private animateCount(targetWords: number, targetChapters: number, duration: number) {
     const startTime = performance.now();
-    const targetWords = this.book().wordCount || 0;
-    const targetChapters = 0; // Placeholder until chapters are in schema
 
     const update = (currentTime: number) => {
       const elapsed = currentTime - startTime;
@@ -176,7 +191,7 @@ export class BookModalComponent {
   }
 
   getReadingTime(): string {
-    const words = this.book().wordCount || 0;
+    const words = this.currentWords();
     const minutes = Math.ceil(words / 250);
     if (minutes < 60) return `${minutes}m`;
     const hours = Math.floor(minutes / 60);
