@@ -256,7 +256,7 @@
     <div class="editor-content-wrapper">
       @if (store.mode() === 'scene') {
         <div class="scene-title-header">
-          <input type="text" class="scene-title-input" [value]="sceneTitle()" (input)="onSceneChange($event)" placeholder="Scene Title" />
+          <input type="text" class="scene-title-input" spellcheck="false" [value]="sceneTitle()" (input)="onSceneChange($event)" placeholder="Scene Title" />
         </div>
       }
       <tiptap-editor [editor]="editor"></tiptap-editor>
@@ -292,15 +292,18 @@
               </svg>
               Summaries
             </button>
-            <button [class.active]="store.showSceneTitles()" (click)="store.toggleSceneTitles()" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 9h16"></path>
-                <path d="M4 15h16"></path>
-              </svg>
-              Scene Titles
-            </button>
+            @if (store.mode() !== 'scene') {
+              <button [class.active]="store.showSceneTitles()" (click)="store.toggleSceneTitles()" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 9h16"></path>
+                  <path d="M4 15h16"></path>
+                </svg>
+                Scene Titles
+              </button>
+            }
           </div>
         </div>
+
 
         <!-- Font Family -->
         <div class="format-section">

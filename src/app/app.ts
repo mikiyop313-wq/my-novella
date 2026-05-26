@@ -4,11 +4,13 @@ import { ElectronService } from './core/services/electron.service';
 import { ThemeService } from './core/services/theme.service';
 import { routeAnimations } from './shared/animations/route-animations';
 import { RouterLink } from '@angular/router';
+import { ToastService } from './shared/services/toast.service';
 import { ConfirmModalComponent } from './shared/components/confirm-modal/confirm-modal.component';
+import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, ConfirmModalComponent],
+  imports: [RouterOutlet, RouterLink, ConfirmModalComponent, ToastContainerComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   animations: [routeAnimations]
@@ -17,6 +19,7 @@ export class App {
 
   protected readonly title = signal('my-novella');
   private contexts = inject(ChildrenOutletContexts);
+  toastService = inject(ToastService);
 
   constructor(private electronService: ElectronService, private themeService: ThemeService) {
     this.electronService.on('reply', (data: any) => {
@@ -26,6 +29,8 @@ export class App {
 
   sendToMain() {
     this.electronService.send('message', 'Hello from renderer!');
+    this.toastService.error('Connection failed! Please try again later.', 'Network Error');
+    this.toastService.warning('Your session will expire in 5 minutes.', 'Session Warning');
   }
 
   toggleTheme() {

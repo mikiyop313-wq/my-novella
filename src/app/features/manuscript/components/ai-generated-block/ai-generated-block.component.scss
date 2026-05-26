@@ -1,0 +1,157 @@
+.ai-generated-container {
+  position: relative;
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  border-radius: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+
+  /* Optional: a very subtle gradient for that premium feel */
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+
+  &.is-loading {
+    opacity: 0.8;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  }
+
+  .ai-generated-content {
+    /* Use the theme's secondary text color for AI text */
+    color: var(--color-text-secondary);
+    min-height: 1.5em;
+    font-size: 1.05em;
+    /* Slightly larger or stylized font for AI text */
+    line-height: 1.6;
+
+    /* Override standard p tag color if Tiptap injects it */
+    ::ng-deep p {
+      color: var(--color-text-secondary) !important;
+    }
+  }
+
+  .ai-post-actions {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+
+    .main-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-text-secondary);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+      svg {
+        width: 15px;
+        height: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      &:hover {
+        background: var(--color-hover-bg);
+        color: var(--color-text-primary);
+        border-color: color-mix(in srgb, var(--color-text-primary) 20%, transparent);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
+      }
+
+      &:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+
+      &.discard:hover {
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.4);
+        background: rgba(239, 68, 68, 0.1);
+      }
+
+      &.apply {
+        background: var(--color-btn-primary-bg);
+        color: var(--color-btn-primary-text);
+        border-color: var(--color-btn-primary-bg);
+
+        &:hover {
+          background: var(--color-btn-primary-hover);
+          border-color: var(--color-btn-primary-hover);
+          box-shadow: 0 4px 12px color-mix(in srgb, var(--color-text-primary) 15%, transparent);
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      &.outline {
+        border-color: var(--color-border);
+        background: transparent;
+
+        &:hover {
+          background: var(--color-hover-bg);
+          border-color: color-mix(in srgb, var(--color-text-primary) 20%, transparent);
+        }
+      }
+    }
+
+    .modify-actions {
+      display: flex;
+      gap: 0.5rem;
+      width: 100%;
+      align-items: center;
+
+      .modify-input {
+        flex: 1;
+        padding: 0.6rem 0.85rem;
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        background: var(--color-hover-bg);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.03);
+
+        &:focus {
+          outline: none;
+          border-color: var(--color-text-primary);
+          background: var(--color-surface);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+        }
+      }
+
+      .modify-btns {
+        display: flex;
+        gap: 0.5rem;
+      }
+    }
+  }
+}
+
+@keyframes rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}

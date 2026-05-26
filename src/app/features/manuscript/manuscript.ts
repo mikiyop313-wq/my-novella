@@ -14,12 +14,13 @@ import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/edito
 import { ActHeaderExtension, ChapterHeaderExtension } from './components/manuscript-header/manuscript-header.extension';
 import { SceneSummaryExtension } from './components/scene-summary/scene-summary.extension';
 import { ManuscriptIndexScrollComponent, ManuscriptIndexItem } from './components/manuscript-index-scroll/manuscript-index-scroll.component';
+import { AiGeneratedBlockExtension } from './components/ai-generated-block/ai-generated-block.extension';
 
 import { ManuscriptStore } from './store/manuscript.store';
 import { AiStore } from './store/ai.store';
 
 import { ManuscriptMode, SceneDto } from '../../../../shared/models/manuscript.model';
-import { buildEditorContent } from './helpers/manuscript-content.utils';
+import { buildEditorContent, getProseTextById, extractTextFromManuscriptData } from './helpers/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/manuscript-prose-saver.service';
 
 @Component({
@@ -39,13 +40,13 @@ import { ManuscriptProseSaverService } from './helpers/manuscript-prose-saver.se
 export class Manuscript implements OnInit, OnDestroy {
   editor: Editor | undefined;
 
-  readonly store     = inject(ManuscriptStore);
-  readonly aiStore   = inject(AiStore);
+  readonly store = inject(ManuscriptStore);
+  readonly aiStore = inject(AiStore);
   readonly themeService = inject(ThemeService);
 
-  private route    = inject(ActivatedRoute);
+  private route = inject(ActivatedRoute);
   private injector = inject(Injector);
-  private saver    = inject(ManuscriptProseSaverService);
+  private saver = inject(ManuscriptProseSaverService);
 
   sceneTitle = signal<string>('');
   indexItems = signal<ManuscriptIndexItem[]>([]);
@@ -53,20 +54,20 @@ export class Manuscript implements OnInit, OnDestroy {
   // ── Font picker options ───────────────────────────────────────────────────
   fontOptions: DropdownOption[] = [
     // Serif
-    { value: "'Merriweather', serif",  label: 'Merriweather',  fontFamily: "'Merriweather', serif",  group: 'Serif' },
-    { value: "'EB Garamond', serif",   label: 'EB Garamond',   fontFamily: "'EB Garamond', serif",   group: 'Serif' },
-    { value: "'Lora', serif",          label: 'Lora',          fontFamily: "'Lora', serif",          group: 'Serif' },
-    { value: "'Georgia', serif",       label: 'Georgia',       fontFamily: "'Georgia', serif",       group: 'Serif' },
-    { value: "'Crimson Pro', serif",   label: 'Crimson Pro',   fontFamily: "'Crimson Pro', serif",   group: 'Serif' },
-    { value: "'Literata', serif",      label: 'Literata',      fontFamily: "'Literata', serif",      group: 'Serif' },
+    { value: "'Merriweather', serif", label: 'Merriweather', fontFamily: "'Merriweather', serif", group: 'Serif' },
+    { value: "'EB Garamond', serif", label: 'EB Garamond', fontFamily: "'EB Garamond', serif", group: 'Serif' },
+    { value: "'Lora', serif", label: 'Lora', fontFamily: "'Lora', serif", group: 'Serif' },
+    { value: "'Georgia', serif", label: 'Georgia', fontFamily: "'Georgia', serif", group: 'Serif' },
+    { value: "'Crimson Pro', serif", label: 'Crimson Pro', fontFamily: "'Crimson Pro', serif", group: 'Serif' },
+    { value: "'Literata', serif", label: 'Literata', fontFamily: "'Literata', serif", group: 'Serif' },
     // Sans Serif
-    { value: "'Inter', sans-serif",    label: 'Inter',         fontFamily: "'Inter', sans-serif",    group: 'Sans Serif' },
-    { value: "'Open Sans', sans-serif",label: 'Open Sans',     fontFamily: "'Open Sans', sans-serif",group: 'Sans Serif' },
+    { value: "'Inter', sans-serif", label: 'Inter', fontFamily: "'Inter', sans-serif", group: 'Sans Serif' },
+    { value: "'Open Sans', sans-serif", label: 'Open Sans', fontFamily: "'Open Sans', sans-serif", group: 'Sans Serif' },
     // Monospace
-    { value: "'Courier Prime', monospace",  label: 'Courier Prime',   fontFamily: "'Courier Prime', monospace",  group: 'Monospace' },
-    { value: "'Fira Code', monospace",      label: 'Fira Code',       fontFamily: "'Fira Code', monospace",      group: 'Monospace' },
-    { value: "'Source Code Pro', monospace",label: 'Source Code Pro', fontFamily: "'Source Code Pro', monospace",group: 'Monospace' },
-    { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono',  fontFamily: "'JetBrains Mono', monospace", group: 'Monospace' },
+    { value: "'Courier Prime', monospace", label: 'Courier Prime', fontFamily: "'Courier Prime', monospace", group: 'Monospace' },
+    { value: "'Fira Code', monospace", label: 'Fira Code', fontFamily: "'Fira Code', monospace", group: 'Monospace' },
+    { value: "'Source Code Pro', monospace", label: 'Source Code Pro', fontFamily: "'Source Code Pro', monospace", group: 'Monospace' },
+    { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono', fontFamily: "'JetBrains Mono', monospace", group: 'Monospace' },
   ];
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -79,7 +80,7 @@ export class Manuscript implements OnInit, OnDestroy {
     // Load on initialization and when route params change.
     this.route.params.subscribe(async params => {
       const mode = params['mode'] as ManuscriptMode;
-      const id   = params['id'];
+      const id = params['id'];
       this.store.setRouteParams(mode, id);
 
       if (mode && id && this.editor) {
@@ -107,6 +108,11 @@ export class Manuscript implements OnInit, OnDestroy {
 
   private createEditor(): Editor {
     return new Editor({
+      editorProps: {
+        attributes: {
+          spellcheck: 'false',
+        }
+      },
       extensions: [
         StarterKit,
         Placeholder.configure({
@@ -114,6 +120,7 @@ export class Manuscript implements OnInit, OnDestroy {
           emptyEditorClass: 'is-editor-empty',
         }),
         AiPromptExtension(this.injector),
+        AiGeneratedBlockExtension(this.injector),
         ActHeaderExtension(this.injector),
         ChapterHeaderExtension(this.injector),
         SceneSummaryExtension(this.injector),
@@ -139,9 +146,9 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
   // Delegates to the store, which handles cascaded DB writes and Tiptap insertion.
-  insertAct()     { this.store.insertAct(); }
+  insertAct() { this.store.insertAct(); }
   insertChapter() { this.store.insertChapter(); }
-  insertScene()   { this.store.insertScene(); }
+  insertScene() { this.store.insertScene(); }
 
   // ── Scene title input ─────────────────────────────────────────────────────
 
@@ -170,10 +177,12 @@ export class Manuscript implements OnInit, OnDestroy {
     }
   }
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   private refreshIndexItems(): void {
     if (!this.editor) return;
 
-    const mode  = this.store.mode();
+    const mode = this.store.mode();
     const items: ManuscriptIndexItem[] = [];
 
     if (mode === 'scene') {
@@ -181,20 +190,27 @@ export class Manuscript implements OnInit, OnDestroy {
       return;
     }
 
-    this.editor.state.doc.descendants(node => {
-      if (node.type.name === 'actHeader' && mode === 'book') {
-        const pos = (node.attrs['position'] || 0) + 1;
-        items.push({ id: node.attrs['id'], label: `Act ${pos}: ${node.attrs['title'] || 'Untitled Act'}`, type: 'act' });
+    const data = getProseTextById(this.editor);
+    if (!data || !Array.isArray(data)) return;
 
-      } else if (node.type.name === 'chapterHeader' && (mode === 'book' || mode === 'act')) {
-        const pos = (node.attrs['position'] || 0) + 1;
-        items.push({ id: node.attrs['id'], label: `Chapter ${pos}: ${node.attrs['title'] || 'Untitled Chapter'}`, type: 'chapter' });
-
-      } else if (node.type.name === 'sceneSummary') {
-        let summary = node.attrs['summary'] || 'Empty Scene';
-        if (summary.length > 30) summary = summary.substring(0, 30) + '...';
-        items.push({ id: node.attrs['id'], label: `Scene: ${summary}`, type: 'scene' });
+    data.forEach(act => {
+      if (mode === 'book' && act.id) {
+         items.push({ id: act.id, label: `Act ${(act.position || 0) + 1}: ${act.title || 'Untitled Act'}`, type: 'act' });
       }
+      (act.chapters || []).forEach(chapter => {
+         if ((mode === 'book' || mode === 'act') && chapter.id) {
+            items.push({ id: chapter.id, label: `Chapter ${(chapter.position || 0) + 1}: ${chapter.title || 'Untitled Chapter'}`, type: 'chapter' });
+         }
+         (chapter.scenes || []).forEach(scene => {
+            if (!scene.id) return;
+            const fullProseText = extractTextFromManuscriptData(scene);
+            const scenePosition = scene.position || 0;
+            let prosePreview = fullProseText.substring(0, 30);
+            if (fullProseText.length > 30) prosePreview += '...';
+            const title = scene.title || prosePreview || `Empty Scene ${scenePosition}`;
+            items.push({ id: scene.id, label: title, type: 'scene' });
+         });
+      });
     });
 
     this.indexItems.set(items);

@@ -83,6 +83,20 @@ export class EditorBubbleMenuComponent {
       return;
     }
 
+    // Check if selection intersects with or is inside an AI generated block
+    let isInsideAiGeneratedBlock = false;
+    state.doc.nodesBetween(selection.from, selection.to, (node) => {
+      if (node.type.name === 'aiGeneratedBlock') {
+        isInsideAiGeneratedBlock = true;
+        return; // Stop traversing once found
+      }
+    });
+
+    if (isInsideAiGeneratedBlock) {
+      this.isVisible.set(false);
+      return;
+    }
+
     // Get selected text to calculate word count
     const text = state.doc.textBetween(selection.from, selection.to, ' ');
     if (!text.trim()) {

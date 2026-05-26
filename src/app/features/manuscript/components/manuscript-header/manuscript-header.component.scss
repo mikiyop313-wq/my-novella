@@ -71,6 +71,20 @@
     }
   }
 
+  &.is-chapter-view .chapter-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+
+    .chapter-number {
+      margin-bottom: 0.75rem;
+    }
+
+    .chapter-title {
+      font-size: 2.2rem;
+      text-align: center;
+    }
+  }
+
   .act-header, .chapter-header {
     position: relative;
 

@@ -1,8 +1,9 @@
 import { db } from './index';
-import { language, categories, subcategories } from './schema/book';
+import { language, categories, subcategories, books, bookSettings, act, chapter, scene } from './schema';
 import { GENRES_DATA } from './genre-data';
 import { TROPES_DATA } from './trope-data';
 import { eq, and, sql } from 'drizzle-orm';
+import * as crypto from 'crypto';
 
 export const LANGUAGES = [
     'Afrikaans', 'Albanian', 'Amharic', 'Arabic', 'Armenian', 'Azerbaijani',
@@ -115,7 +116,7 @@ export async function seedTropes() {
         const currentTropes = await db.select().from(categories).where(
             and(eq(categories.type, 'trope'), eq(categories.isCustom, false))
         );
-        
+
         // Subcategories for tropes are also in the subcategories table, linked to trope categories
         const currentSubtropes = await db.select({ count: sql<number>`count(*)` })
             .from(subcategories)
@@ -159,3 +160,4 @@ export async function seedTropes() {
         console.error('Error seeding tropes:', error);
     }
 }
+
