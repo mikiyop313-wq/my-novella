@@ -8,6 +8,7 @@ import { TiptapEditorDirective } from 'ngx-tiptap';
 import { CdkMenuModule } from '@angular/cdk/menu';
 
 import { ThemeService } from '../../core/services/theme.service';
+import { ElectronService } from '../../core/services/electron.service';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
 import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
@@ -43,6 +44,7 @@ export class Manuscript implements OnInit, OnDestroy {
   readonly store = inject(ManuscriptStore);
   readonly aiStore = inject(AiStore);
   readonly themeService = inject(ThemeService);
+  readonly electronService = inject(ElectronService);
 
   private route = inject(ActivatedRoute);
   private injector = inject(Injector);
@@ -77,6 +79,14 @@ export class Manuscript implements OnInit, OnDestroy {
     this.store.setEditor(this.editor);
     this.aiStore.loadModels();
 
+    // Listen for graceful application close
+    this.electronService.onBeforeClose(() => {
+      this.saver.flushSceneTitle();
+      this.saver.flushDirtySections();
+      this.saver.flushStructuralChanges();
+      this.electronService.sendCloseReady();
+    });
+
     // Load on initialization and when route params change.
     this.route.params.subscribe(async params => {
       const mode = params['mode'] as ManuscriptMode;
@@ -87,7 +97,18 @@ export class Manuscript implements OnInit, OnDestroy {
         try {
           const data = await this.store.loadManuscriptData(mode, id);
           if (mode === 'scene') this.sceneTitle.set((data as SceneDto).title);
-          this.editor.commands.setContent(buildEditorContent(mode, data));
+          // Use a raw transaction with addToHistory: false so the initial
+          // content load is never added to the undo stack.  Without this,
+          // pressing Undo on a freshly-opened manuscript would revert the
+          // document to an empty state and the auto-saver would persist it.
+          const content = buildEditorContent(mode, data);
+          const newDoc = this.editor.schema.nodeFromJSON(content);
+          const { tr } = this.editor.state;
+          tr.replaceWith(0, tr.doc.content.size, newDoc.content);
+          tr.setMeta('addToHistory', false);
+          tr.setMeta('skipSaver', true);
+          this.editor.view.dispatch(tr);
+
           this.refreshIndexItems();
         } catch (error) {
           console.error('Failed to load manuscript content:', error);
@@ -100,6 +121,7 @@ export class Manuscript implements OnInit, OnDestroy {
     // Flush any unsaved changes immediately before the editor is torn down.
     this.saver.flushSceneTitle();
     this.saver.flushDirtySections();
+    this.saver.flushStructuralChanges();
     this.editor?.destroy();
     this.store.setEditor(null);
   }
@@ -127,7 +149,7 @@ export class Manuscript implements OnInit, OnDestroy {
       ],
       onUpdate: ({ transaction }) => {
         this.refreshIndexItems();
-        if (transaction.docChanged) {
+        if (transaction.docChanged && !transaction.getMeta('skipSaver')) {
           this.saver.onDocumentChanged(transaction, this.editor!);
         }
       },
@@ -195,21 +217,21 @@ export class Manuscript implements OnInit, OnDestroy {
 
     data.forEach(act => {
       if (mode === 'book' && act.id) {
-         items.push({ id: act.id, label: `Act ${(act.position || 0) + 1}: ${act.title || 'Untitled Act'}`, type: 'act' });
+        items.push({ id: act.id, label: `Act ${(act.position || 0) + 1}: ${act.title || 'Untitled Act'}`, type: 'act' });
       }
       (act.chapters || []).forEach(chapter => {
-         if ((mode === 'book' || mode === 'act') && chapter.id) {
-            items.push({ id: chapter.id, label: `Chapter ${(chapter.position || 0) + 1}: ${chapter.title || 'Untitled Chapter'}`, type: 'chapter' });
-         }
-         (chapter.scenes || []).forEach(scene => {
-            if (!scene.id) return;
-            const fullProseText = extractTextFromManuscriptData(scene);
-            const scenePosition = scene.position || 0;
-            let prosePreview = fullProseText.substring(0, 30);
-            if (fullProseText.length > 30) prosePreview += '...';
-            const title = scene.title || prosePreview || `Empty Scene ${scenePosition}`;
-            items.push({ id: scene.id, label: title, type: 'scene' });
-         });
+        if ((mode === 'book' || mode === 'act') && chapter.id) {
+          items.push({ id: chapter.id, label: `Chapter ${(chapter.position || 0) + 1}: ${chapter.title || 'Untitled Chapter'}`, type: 'chapter' });
+        }
+        (chapter.scenes || []).forEach(scene => {
+          if (!scene.id) return;
+          const fullProseText = extractTextFromManuscriptData(scene);
+          const scenePosition = scene.position || 0;
+          let prosePreview = fullProseText.substring(0, 30);
+          if (fullProseText.length > 30) prosePreview += '...';
+          const title = scene.title || prosePreview || `Empty Scene ${scenePosition}`;
+          items.push({ id: scene.id, label: title, type: 'scene' });
+        });
       });
     });
 

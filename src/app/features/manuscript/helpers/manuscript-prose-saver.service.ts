@@ -24,6 +24,13 @@ export class ManuscriptProseSaverService {
   private pendingSceneTitle: string | null = null;
   private sceneTitleTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ── Structural change cache (deferred until exit) ────────────────────────
+  // Maps node ID → node type name. Entries accumulate during the session and
+  // are flushed as DB deletes only when the user leaves the manuscript.
+  // If a node is removed (undo / backspace) then re-added (redo), the entry
+  // is cancelled out so no DB operation is needed.
+  private pendingDeletes = new Map<string, string>();
+
   // ────────────────────────────────────────────────────────────────────────
   // Prose auto-save
   // ────────────────────────────────────────────────────────────────────────
@@ -34,7 +41,8 @@ export class ManuscriptProseSaverService {
    * snapshots its prose JSON, and schedules a debounced DB write.
    */
   onDocumentChanged(transaction: any, editor: Editor): void {
-    this.detectDeletedSections(transaction);
+    this.cacheDeletedSections(transaction);
+    this.cancelRestoredSections(transaction);
 
     const affectedIds = this.findAffectedSectionIds(transaction, editor);
     if (affectedIds.size === 0) return;
@@ -46,10 +54,10 @@ export class ManuscriptProseSaverService {
   }
 
   /**
-   * Detects if structural nodes were removed from the document (e.g. user pressed backspace
-   * on a scene node) and triggers their deletion in the database to keep the DB in sync.
+   * When structural nodes disappear from the document (undo, backspace, etc.),
+   * cache their IDs for deferred deletion instead of hitting the DB immediately.
    */
-  private detectDeletedSections(transaction: any): void {
+  private cacheDeletedSections(transaction: any): void {
     const beforeIds = new Map<string, string>();
     transaction.before.forEach((node: any) => {
       if (HEADER_NODE_TYPES.has(node.type.name) && node.attrs['id']) {
@@ -66,11 +74,38 @@ export class ManuscriptProseSaverService {
 
     beforeIds.forEach((type, id) => {
       if (!afterIds.has(id)) {
-        if (type === 'sceneSummary') this.store.deleteScene(id);
-        else if (type === 'chapterHeader') this.store.deleteChapter(id);
-        else if (type === 'actHeader') this.store.deleteAct(id);
+        this.pendingDeletes.set(id, type);
       }
     });
+  }
+
+  /**
+   * When structural nodes reappear in the document (redo), cancel their
+   * pending deletion — the DB record was never touched, so nothing to restore.
+   */
+  private cancelRestoredSections(transaction: any): void {
+    if (this.pendingDeletes.size === 0) return;
+
+    transaction.doc.forEach((node: any) => {
+      if (HEADER_NODE_TYPES.has(node.type.name) && node.attrs['id']) {
+        this.pendingDeletes.delete(node.attrs['id']);
+      }
+    });
+  }
+
+  /**
+   * Applies all cached structural deletions to the database.
+   * Called once when the user leaves the manuscript (ngOnDestroy).
+   */
+  flushStructuralChanges(): void {
+    if (this.pendingDeletes.size === 0) return;
+
+    this.pendingDeletes.forEach((type, id) => {
+      if (type === 'sceneSummary')  this.store.deleteScene(id);
+      else if (type === 'chapterHeader') this.store.deleteChapter(id);
+      else if (type === 'actHeader')     this.store.deleteAct(id);
+    });
+    this.pendingDeletes.clear();
   }
 
   /** Persists all dirty scene sections immediately and clears the queue. */
