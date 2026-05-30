@@ -16,6 +16,7 @@ import { ActHeaderExtension, ChapterHeaderExtension } from './components/manuscr
 import { SceneSummaryExtension } from './components/scene-summary/scene-summary.extension';
 import { ManuscriptIndexScrollComponent, ManuscriptIndexItem } from './components/manuscript-index-scroll/manuscript-index-scroll.component';
 import { AiGeneratedBlockExtension } from './components/ai-generated-block/ai-generated-block.extension';
+import { UniqueIdExtension } from './extensions/unique-id.extension';
 
 import { ManuscriptStore } from './store/manuscript.store';
 import { AiStore } from './store/ai.store';
@@ -74,21 +75,29 @@ export class Manuscript implements OnInit, OnDestroy {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+  private closeHandler = async () => {
+    await this.saver.flushSceneTitle();
+    await this.saver.flushDirtySections();
+    await this.saver.flushStructuralChanges();
+    // Must run after flushDirtySections so the paragraph cache is fully populated.
+    await this.saver.flushParagraphVectorChanges();
+  };
+
   ngOnInit(): void {
     this.editor = this.createEditor();
     this.store.setEditor(this.editor);
     this.aiStore.loadModels();
 
     // Listen for graceful application close
-    this.electronService.onBeforeClose(() => {
-      this.saver.flushSceneTitle();
-      this.saver.flushDirtySections();
-      this.saver.flushStructuralChanges();
-      this.electronService.sendCloseReady();
-    });
+    this.electronService.onBeforeClose(this.closeHandler);
 
     // Load on initialization and when route params change.
     this.route.params.subscribe(async params => {
+      // Flush any pending paragraph changes from the previous scene/chapter/act
+      // before switching context. The component is not destroyed on route changes,
+      // so this is the only opportunity to sync mid-session navigation.
+      await this.saver.flushParagraphVectorChanges();
+
       const mode = params['mode'] as ManuscriptMode;
       const id = params['id'];
       this.store.setRouteParams(mode, id);
@@ -118,10 +127,12 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // Unregister graceful close listener to prevent memory leaks and dangling calls
+    this.electronService.removeBeforeCloseHandler(this.closeHandler);
+
     // Flush any unsaved changes immediately before the editor is torn down.
-    this.saver.flushSceneTitle();
-    this.saver.flushDirtySections();
-    this.saver.flushStructuralChanges();
+    this.closeHandler();
+    
     this.editor?.destroy();
     this.store.setEditor(null);
   }
@@ -146,6 +157,7 @@ export class Manuscript implements OnInit, OnDestroy {
         ActHeaderExtension(this.injector),
         ChapterHeaderExtension(this.injector),
         SceneSummaryExtension(this.injector),
+        UniqueIdExtension,
       ],
       onUpdate: ({ transaction }) => {
         this.refreshIndexItems();

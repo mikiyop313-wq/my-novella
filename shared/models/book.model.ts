@@ -16,6 +16,8 @@ export interface BookSettingsDto {
   pointOfView: 'first' | 'second' | 'third_limited' | 'third_omni';
   synopsisAiContext: boolean;
   povCharacterId?: string | null;
+  /** Embedding model/provider used to generate paragraph vectors for this book. */
+  embeddingModel?: 'local' | 'openAI' | 'voyage';
 }
 
 export interface BookDto {

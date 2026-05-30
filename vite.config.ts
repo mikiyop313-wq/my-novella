@@ -10,7 +10,12 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3', '@lancedb/lancedb'],
+              external: [
+                'better-sqlite3',
+                '@lancedb/lancedb',
+                '@xenova/transformers',
+                'onnxruntime-node',
+              ],
             },
           },
         },

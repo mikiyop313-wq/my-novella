@@ -4,7 +4,22 @@ import { Injectable } from '@angular/core';
     providedIn: 'root'
 })
 export class ElectronService {
-    constructor() { }
+    private beforeCloseHandlers: (() => Promise<void> | void)[] = [];
+
+    constructor() { 
+        if (window.electronAPI?.onBeforeClose) {
+            window.electronAPI.onBeforeClose(async () => {
+                for (const handler of this.beforeCloseHandlers) {
+                    try {
+                        await handler();
+                    } catch (e) {
+                        console.error('Error in beforeCloseHandler', e);
+                    }
+                }
+                this.sendCloseReady();
+            });
+        }
+    }
 
     // Use this to send data to the Main process
     send(channel: string, data?: any): void {
@@ -28,10 +43,12 @@ export class ElectronService {
         return Promise.reject('Electron API not available');
     }
 
-    onBeforeClose(callback: () => void): void {
-        if (window.electronAPI?.onBeforeClose) {
-            window.electronAPI.onBeforeClose(callback);
-        }
+    onBeforeClose(callback: () => Promise<void> | void): void {
+        this.beforeCloseHandlers.push(callback);
+    }
+
+    removeBeforeCloseHandler(callback: () => Promise<void> | void): void {
+        this.beforeCloseHandlers = this.beforeCloseHandlers.filter(h => h !== callback);
     }
 
     sendCloseReady(): void {

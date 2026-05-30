@@ -6,6 +6,7 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AIStateService } from '../../../../core/services/ai-state.service';
 import { AiStore } from '../../store/ai.store';
+import { ManuscriptProseSaverService } from '../../helpers/manuscript-prose-saver.service';
 
 @Component({
   selector: 'app-ai-prompt',
@@ -22,6 +23,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   isLoading = signal(false);
 
   private aiStore = inject(AiStore);
+  private saver = inject(ManuscriptProseSaverService);
   allModels = computed(() => this.aiStore.models());
   searchTerm = signal<string>('');
   activeSubmenuProvider = signal<any | null>(null);
@@ -271,6 +273,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   async onSubmit(): Promise<void> {
     // Prevent multiple submissions while already generating
     if (this.isLoading()) return;
+
+    // Sync any pending paragraph changes to the vector DB before generation
+    // so the AI retrieval context reflects the latest manuscript state.
+    await this.saver.flushParagraphVectorChanges();
 
     const text = this.promptText().trim();
     if (text && typeof this.getPos === 'function') {

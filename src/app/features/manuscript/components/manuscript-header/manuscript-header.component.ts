@@ -49,19 +49,10 @@ export class ManuscriptHeaderComponent extends AngularNodeViewComponent implemen
   }
 
   deleteSection(): void {
-    const isAct = this.headerType() === 'act';
-    const typeName = isAct ? 'Act' : 'Chapter';
-
-    this.confirmService.open(
-      `Delete ${typeName}?`,
-      `Are you sure you want to delete this ${typeName.toLowerCase()}? This action cannot be undone and will delete all nested contents.`,
-      () => {
-        if (isAct) {
-          this.store.deleteAct(this.entityId());
-        } else {
-          this.store.deleteChapter(this.entityId());
-        }
-      }
-    );
+    if (this.headerType() === 'act') {
+      this.store.deleteAct(this.entityId());
+    } else {
+      this.store.deleteChapter(this.entityId());
+    }
   }
 }

@@ -54,6 +54,7 @@ export const bookSettings = sqliteTable('book_settings', {
     pointOfView: text('point_of_view').$type<'first' | 'second' | 'third_limited' | 'third_omni'>().notNull().default('third_limited'),
     synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
     povCharacterId: text('pov_character_id'),
+    embeddingModel: text('embedding_model').$type<'local' | 'openAI' | 'voyage'>().notNull().default('local'),
 });
 
 

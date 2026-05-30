@@ -2,13 +2,14 @@ import { setupIpcHandlers } from './core/handlers';
 import { setupLibraryHandlers } from './library/library';
 import { setupAiHandlers } from './ai/ai';
 import { setupManuscriptHandlers } from './library/manuscript';
+import { setupVectorHandlers } from './library/paragraph-vectors';
 
 export function initializeIpc() {
     setupIpcHandlers();
     setupLibraryHandlers();
     setupAiHandlers();
     setupManuscriptHandlers();
-    // Initialize other IPC related modules here
+    setupVectorHandlers();
 
     try {
         console.log('IPC handlers initialized');
