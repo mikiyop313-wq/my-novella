@@ -431,6 +431,26 @@
       }
     }
 
+    .reasoning-unsupported-hint {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.72rem;
+      font-weight: 400;
+      color: var(--color-text-secondary);
+      line-height: 1.45;
+      padding: 8px 10px;
+      background: color-mix(in srgb, var(--color-hover-bg) 40%, transparent);
+      border: 1px dashed var(--color-border);
+      border-radius: 6px;
+      opacity: 0.85;
+
+      svg {
+        margin-top: 1px;
+        opacity: 0.7;
+      }
+    }
+
     // Premium inherit checkbox styling
     .inherit-checkbox-label {
       display: flex;

@@ -25,7 +25,8 @@
         }
         <li class="option-container">
           <div class="option-item" cdkMenuItem (click)="selectOption(option)">
-            <span class="option-label" [class.selected]="multi && isSelected(option.value)" [style.font-family]="option.fontFamily">{{ option.label }}</span>
+            <span class="option-label" [class.selected]="multi && isSelected(option.value)"
+              [style.font-family]="option.fontFamily">{{ option.label }}</span>
             @if (isSelected(option.value)) {
             <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"
               class="check-icon">

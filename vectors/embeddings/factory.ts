@@ -1,8 +1,6 @@
 import * as path from 'path';
 import { app } from 'electron';
-import { db } from '../../db';
-import { bookSettings } from '../../db/schema';
-import { eq } from 'drizzle-orm';
+import { bookRepository } from '../../db/repositories/book.repository';
 import { EmbeddingProvider } from './types';
 import { EmbeddingModel } from '../../shared/models/vector.model';
 import { LocalEmbeddingProvider } from './providers/local';
@@ -91,13 +89,8 @@ function buildProvider(model: EmbeddingModel): EmbeddingProvider {
  * the local ONNX pipeline is only initialised once.
  */
 export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingProvider> {
-    // Read the book's embedding model preference from SQLite.
-    const settings = await db.query.bookSettings.findFirst({
-        where: eq(bookSettings.bookSettingId, bookId),
-        columns: { embeddingModel: true },
-    });
-
-    const model: EmbeddingModel = settings?.embeddingModel ?? 'local';
+    // Read the book's embedding model preference using the book repository.
+    const model = await bookRepository.getEmbeddingModel(bookId);
 
     console.log(`[EmbeddingFactory] book=${bookId} → model=${model}`);
 

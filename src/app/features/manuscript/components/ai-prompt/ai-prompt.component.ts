@@ -1,12 +1,11 @@
 import { Component, ElementRef, ViewChild, computed, signal, inject, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
-import { CdkMenuModule } from '@angular/cdk/menu';
+import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
-import { AIStateService } from '../../../../core/services/ai-state.service';
 import { AiStore } from '../../store/ai.store';
-import { ManuscriptProseSaverService } from '../../helpers/manuscript-prose-saver.service';
+import { AiStreamEditorService } from '../../helpers/ai-stream-editor.service';
 
 @Component({
   selector: 'app-ai-prompt',
@@ -20,13 +19,42 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   // Collapse and delete state/methods
   isCollapsed = signal(false);
-  isLoading = signal(false);
+  loadingStatus = computed(() => {
+    const blockId = this.node().attrs['id'];
+    const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
+    return loadingSig ? loadingSig() : 'idle';
+  });
+
+  isLoading = computed(() => this.loadingStatus() !== 'idle');
 
   private aiStore = inject(AiStore);
-  private saver = inject(ManuscriptProseSaverService);
+  private aiStreamEditor = inject(AiStreamEditorService);
+  private document = inject(DOCUMENT);
   allModels = computed(() => this.aiStore.models());
   searchTerm = signal<string>('');
   activeSubmenuProvider = signal<any | null>(null);
+
+  @ViewChild(CdkMenuTrigger) menuTrigger?: CdkMenuTrigger;
+
+  private scrollListener = (event: Event) => {
+    // If the scroll target is inside the menu, ignore it
+    const target = event.target as HTMLElement;
+    if (target && target.closest && target.closest('.cdk-menu')) {
+      return;
+    }
+    if (this.menuTrigger?.isOpen()) {
+      this.menuTrigger.close();
+    }
+  };
+
+  onMenuOpened() {
+    // Listen to all scroll events in capture phase
+    this.document.addEventListener('scroll', this.scrollListener, true);
+  }
+
+  onMenuClosed() {
+    this.document.removeEventListener('scroll', this.scrollListener, true);
+  }
 
   // Fallback flat search results display
   groupedModels = computed(() => {
@@ -133,9 +161,8 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     return id.split('/').pop() || id;
   });
 
-  constructor(private aiStateService: AIStateService) {
+  constructor() {
     super();
-
     // Set default model once models are loaded and if no selected model exists
     effect(() => {
       const models = this.allModels();
@@ -176,6 +203,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   pov = signal<string>('global');
   povCharacter = signal<string | null>(null);
   vectorSearch = signal<string>('global');
+  reasoningMode = signal<boolean>(false);
 
   ngOnInit(): void {
     // 1. Restore attributes from Tiptap document on load
@@ -187,8 +215,34 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       this.pov.set(attrs['pov'] || 'global');
       this.povCharacter.set(attrs['povCharacter'] || null);
       this.vectorSearch.set(attrs['vectorSearch'] || 'global');
+      this.reasoningMode.set(attrs['reasoningMode'] || false);
     }
 
+    let blockId = this.node().attrs['id'];
+
+    // Generate an ID if it doesn't have one
+    if (!blockId) {
+      blockId = crypto.randomUUID();
+      // Use setTimeout to avoid Angular lifecycle conflicts when updating the editor
+      setTimeout(() => {
+        if (typeof this.getPos === 'function') {
+          const pos = this.getPos()();
+          if (pos != null) {
+            const tr = this.editor().state.tr.setNodeMarkup(pos, undefined, {
+              ...this.node().attrs,
+              id: blockId
+            });
+            // We set addToHistory to false so generating an ID doesn't mess up undo/redo
+            tr.setMeta('addToHistory', false);
+            this.editor().view.dispatch(tr);
+          }
+        }
+      });
+    }
+
+    if (!this.aiStreamEditor.loadingState.has(blockId)) {
+      this.aiStreamEditor.loadingState.set(blockId, signal('idle'));
+    }
     this.aiStore.loadModels();
   }
 
@@ -251,6 +305,11 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.updateAttributes()({ vectorSearch: value });
   }
 
+  onReasoningModeChange(value: boolean): void {
+    this.reasoningMode.set(value);
+    this.updateAttributes()({ reasoningMode: value });
+  }
+
   onModelChange(model: string | null): void {
     this.selectedModel.set(model);
     this.updateAttributes()({ selectedModel: model });
@@ -261,22 +320,24 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.pov.set('global');
     this.povCharacter.set(null);
     this.vectorSearch.set('global');
+    this.reasoningMode.set(false);
 
     this.updateAttributes()({
       wordCount: 500,
       pov: 'global',
       povCharacter: null,
-      vectorSearch: 'global'
+      vectorSearch: 'global',
+      reasoningMode: false
     });
   }
 
   async onSubmit(): Promise<void> {
+
+    const blockId = this.node().attrs['id'];
+
+
     // Prevent multiple submissions while already generating
     if (this.isLoading()) return;
-
-    // Sync any pending paragraph changes to the vector DB before generation
-    // so the AI retrieval context reflects the latest manuscript state.
-    await this.saver.flushParagraphVectorChanges();
 
     const text = this.promptText().trim();
     if (text && typeof this.getPos === 'function') {
@@ -289,7 +350,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       const selectedModelObj = this.allModels().find(m => m.id === selectedId);
 
       let provider = 'openrouter';
-      let modelId: string | undefined = undefined;
+      let modelId: string = '';
 
       if (selectedModelObj) {
         if (selectedModelObj.source === 'direct') {
@@ -301,147 +362,21 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         }
       }
 
-      // Create an initial empty paragraph to receive the AI's response
-      // Wrap it in aiGeneratedBlock (with addToHistory: false)
-      const blockNodeJson = {
-        type: 'aiGeneratedBlock',
-        attrs: { promptText: text, provider: provider, modelId: modelId || '', isGenerating: true },
-        content: [{ type: 'paragraph' }]
-      };
-      const tr = this.editor().state.tr;
-      const node = this.editor().schema.nodeFromJSON(blockNodeJson);
-      tr.insert(nodeSizePosition, node);
-      tr.setMeta('addToHistory', false);
-      this.editor().view.dispatch(tr);
+      const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
+      loadingSig?.set('loading');
 
-      // +2 to move the cursor inside the newly created paragraph node within the block
-      let currentInsertPos = nodeSizePosition + 2;
-      this.isLoading.set(true);
-
-      // Buffer to accumulate regular text characters to avoid slow 1-by-1 insertions
-      let textBuffer = '';
-      // Flag to track consecutive newlines so we only create one paragraph break for multiple \n\n
-      let isNewlineSequence = false;
-
-      // Helper function to insert the accumulated buffer into the editor
-      const flushBuffer = () => {
-        if (textBuffer.length > 0) {
-          const beforeSize = this.editor().state.doc.content.size;
-          const trInsert = this.editor().state.tr.insertText(textBuffer, currentInsertPos);
-          trInsert.setMeta('addToHistory', false);
-          this.editor().view.dispatch(trInsert);
-          const afterSize = this.editor().state.doc.content.size;
-          // Advance the insertion cursor by the exact number of nodes/characters added
-          currentInsertPos += (afterSize - beforeSize);
-          textBuffer = ''; // Reset buffer after successful insertion
-        }
-      };
-
-
-
-      let hasError = false;
       try {
-        // Start streaming the AI response
-        await this.aiStateService.generate(text, provider, modelId, (token) => {
-          if (token) {
-            // Process the incoming chunk of text character by character
-            for (let i = 0; i < token.length; i++) {
-              const char = token[i];
-
-              // Check for newlines (both Unix \n and Windows \r)
-              if (char === '\n' || char === '\r') {
-                // Ignore \r completely. Only act when we see \n
-                if (char === '\n') {
-                  // If we aren't already in the middle of a sequence of newlines
-                  if (!isNewlineSequence) {
-                    flushBuffer(); // Insert any pending text first
-                    const beforeSize = this.editor().state.doc.content.size;
-
-                    // Execute a Tiptap transaction to split the current paragraph node into two
-                    const trSplit = this.editor().state.tr.split(currentInsertPos);
-                    trSplit.setMeta('addToHistory', false);
-                    this.editor().view.dispatch(trSplit);
-
-                    const afterSize = this.editor().state.doc.content.size;
-                    currentInsertPos += (afterSize - beforeSize); // Move cursor into the new paragraph
-                    isNewlineSequence = true;
-                  }
-                }
-              } else {
-                // We hit a normal character. Reset the newline sequence flag and buffer the character.
-                isNewlineSequence = false;
-                textBuffer += char;
-              }
-            }
-            // Flush the buffer at the end of each token so the user sees the text appearing live
-          }
-        });
-      } catch (err) {
-        hasError = true;
-        console.error('AI Generation failed in prompt:', err);
+        await this.aiStreamEditor.generateNewBlock(
+          this.editor(),
+          nodeSizePosition,
+          text,
+          provider,
+          modelId,
+          this.reasoningMode(),
+          blockId
+        );
       } finally {
-        // Ensure any remaining text in the buffer is inserted when the stream finishes
-        flushBuffer();
-        this.isLoading.set(false);
-
-        if (hasError) {
-          // Find the generating block and remove it
-          const state = this.editor().state;
-          let blockPos: number | null = null;
-          let blockSize: number | null = null;
-
-          state.doc.descendants((node, pos) => {
-            if (node.type.name === 'aiGeneratedBlock' && node.attrs['isGenerating']) {
-              blockPos = pos;
-              blockSize = node.nodeSize;
-              return false;
-            }
-            return true;
-          });
-
-          if (blockPos !== null && blockSize !== null) {
-            const trDel = this.editor().state.tr.delete(blockPos, blockPos + blockSize);
-            trDel.setMeta('addToHistory', false);
-            this.editor().view.dispatch(trDel);
-          }
-        } else {
-          // Find the generating block
-          const state = this.editor().state;
-          let blockPos: number | null = null;
-          let blockNode: any = null;
-
-          state.doc.descendants((node, pos) => {
-            if (node.type.name === 'aiGeneratedBlock' && node.attrs['isGenerating']) {
-              blockPos = pos;
-              blockNode = node;
-              return false;
-            }
-            return true;
-          });
-
-          if (blockPos !== null && blockNode !== null) {
-            const finalizedBlockJson = {
-              type: 'aiGeneratedBlock',
-              attrs: {
-                promptText: blockNode.attrs['promptText'] || '',
-                provider: blockNode.attrs['provider'] || '',
-                modelId: blockNode.attrs['modelId'] || '',
-                isGenerating: false
-              },
-              content: blockNode.content.toJSON()
-            };
-
-            const blockNodeSize: number = blockNode.nodeSize;
-
-            // Delete the temporary block (without adding to history)
-            const trDel = this.editor().state.tr.delete(blockPos, blockPos + blockNodeSize);
-            trDel.setMeta('addToHistory', false);
-            this.editor().view.dispatch(trDel);
-
-            // Insert finalized block (with adding to history)
-            this.editor().chain().insertContentAt(blockPos, finalizedBlockJson).focus().run();
-          }
-        }
+        loadingSig?.set('idle');
       }
     }
   }
@@ -456,5 +391,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       this.editor().commands.deleteRange({ from: pos, to: pos + this.node().nodeSize });
 
     }
+  }
+
+  ngOnDestroy(): void {
+    this.aiStreamEditor.loadingState.delete(this.node().attrs['id']);
+    this.document.removeEventListener('scroll', this.scrollListener, true);
   }
 }

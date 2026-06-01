@@ -11,6 +11,9 @@ export function setupAiHandlers() {
                 ...request,
                 onToken: (token: string) => {
                     event.sender.send('ai:generate-stream', token);
+                },
+                onReasoningToken: (token: string) => {
+                    event.sender.send('ai:generate-reasoning-stream', token);
                 }
             };
             return await aiService.generatePrompt(requestWithCallback);
@@ -112,21 +115,25 @@ export function setupAiHandlers() {
                     const [providerSlug] = model.id.split('/');
                     const [, modelName] = model.name.split(':');
                     const cleanName = modelName ? modelName.trim() : model.name;
+                    // Check the model's supported_parameters for reasoning support
+                    const supportsReasoning = Array.isArray(model.supported_parameters)
+                        && model.supported_parameters.includes('reasoning');
                     return {
                         id: model.id,
                         name: cleanName,
                         provider: providerSlug,
                         providerName: `OpenRouter: ${formatProviderSlug(providerSlug)}`,
-                        source: 'openrouter'
+                        source: 'openrouter',
+                        supportsReasoning
                     };
                 });
 
             // Standard direct models
             const directModels = [
-                { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'openai', providerName: 'OpenAI (Direct)', source: 'direct' },
-                { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', providerName: 'OpenAI (Direct)', source: 'direct' },
-                { id: 'gemini/gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', providerName: 'Google Gemini (Direct)', source: 'direct' },
-                { id: 'gemini/gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google', providerName: 'Google Gemini (Direct)', source: 'direct' }
+                { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'openai', providerName: 'OpenAI (Direct)', source: 'direct', supportsReasoning: false },
+                { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', providerName: 'OpenAI (Direct)', source: 'direct', supportsReasoning: false },
+                { id: 'gemini/gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', providerName: 'Google Gemini (Direct)', source: 'direct', supportsReasoning: false },
+                { id: 'gemini/gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google', providerName: 'Google Gemini (Direct)', source: 'direct', supportsReasoning: false }
             ];
 
             return [...directModels, ...mappedOpenRouter];

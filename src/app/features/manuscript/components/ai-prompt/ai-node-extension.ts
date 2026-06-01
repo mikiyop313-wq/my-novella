@@ -15,6 +15,11 @@ export const AiPromptExtension = (injector: Injector) => {
 
     addAttributes() {
       return {
+        id: {
+          default: null,
+          parseHTML: element => element.getAttribute('data-id') || null,
+          renderHTML: attributes => attributes['id'] ? { 'data-id': attributes['id'] } : {},
+        },
         promptText: {
           default: '',
           parseHTML: element => element.getAttribute('data-prompt-text') || '',
