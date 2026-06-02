@@ -6,6 +6,7 @@ export interface AiPromptRequest {
     maxTokens?: number;
     systemMessage?: string;
     reasoningMode?: boolean;
+    abortSignal?: AbortSignal;
     onToken?: (token: string) => void;
     onReasoningToken?: (token: string) => void;
 }

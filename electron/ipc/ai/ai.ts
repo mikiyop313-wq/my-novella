@@ -3,12 +3,18 @@ import { aiService } from '../../domain/ai/ai.service';
 import { AiPromptRequest } from '../../domain/ai/models';
 import { OpenRouterProvider } from '../../domain/ai/providers/openrouter.provider';
 
+let currentAbortController: AbortController | null = null;
+
 export function setupAiHandlers() {
     ipcMain.handle('ai:generate', async (event, request: AiPromptRequest) => {
+        // Create a fresh controller for this generation session
+        currentAbortController = new AbortController();
+
         try {
             // Attach a callback to send tokens back to the renderer
             const requestWithCallback: AiPromptRequest = {
                 ...request,
+                abortSignal: currentAbortController.signal,
                 onToken: (token: string) => {
                     event.sender.send('ai:generate-stream', token);
                 },
@@ -17,10 +23,24 @@ export function setupAiHandlers() {
                 }
             };
             return await aiService.generatePrompt(requestWithCallback);
-        } catch (error) {
+        } catch (error: any) {
+            // Distinguish a user-requested abort from an actual error
+            if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
+                // Signal the renderer that we stopped cleanly
+                event.sender.send('ai:generate-aborted');
+                return { text: '', modelUsed: request.modelId || '' };
+            }
             console.error('Error in ai:generate IPC handler:', error);
             // Throw error so it gets rejected in the renderer process
             throw error;
+        } finally {
+            currentAbortController = null;
+        }
+    });
+
+    ipcMain.handle('ai:abort', async () => {
+        if (currentAbortController) {
+            currentAbortController.abort();
         }
     });
 

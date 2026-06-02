@@ -34,7 +34,37 @@ export class App {
   }
 
   toggleTheme() {
-    this.themeService.toggleTheme();
+    if (!document.startViewTransition) {
+      this.themeService.toggleTheme();
+      return;
+    }
+
+    document.documentElement.classList.add('theme-transition');
+
+    const transition = document.startViewTransition(() => {
+      this.themeService.toggleTheme();
+    });
+
+    transition.ready.then(() => {
+      const endRadius = Math.hypot(window.innerWidth, window.innerHeight);
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(0px at 0px 0px)`,
+            `circle(${endRadius}px at 0px 0px)`
+          ]
+        },
+        {
+          duration: 500,
+          easing: 'ease-in-out',
+          pseudoElement: '::view-transition-new(root)'
+        }
+      );
+    });
+
+    transition.finished.finally(() => {
+      document.documentElement.classList.remove('theme-transition');
+    });
   }
 
   getRouteAnimationData() {

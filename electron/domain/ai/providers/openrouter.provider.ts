@@ -19,6 +19,7 @@ export class OpenRouterProvider implements AiProvider {
         try {
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
+                signal: request.abortSignal,
                 headers: {
                     'Authorization': `Bearer ${apiKey || ''}`,
                     'HTTP-Referer': 'http://localhost:4200', // Required by OpenRouter for ranking

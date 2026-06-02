@@ -9,6 +9,19 @@ export class AiStreamEditorService {
   private saver = inject(ManuscriptProseSaverService);
 
   public loadingState = new Map<string, WritableSignal<'idle' | 'loading' | 'thinking' | 'generating'>>();
+
+  /** Tracks which blocks have been explicitly stopped by the user. */
+  private stoppedBlocks = new Set<string>();
+
+  /**
+   * Aborts the current AI generation for the given block.
+   * The network request is cancelled on the main process side; any partial
+   * content already written to the editor will be preserved and finalized.
+   */
+  async stopGeneration(blockId: string): Promise<void> {
+    this.stoppedBlocks.add(blockId);
+    await this.aiStateService.abort();
+  }
   /**
    * Inserts a new `aiGeneratedBlock` after the given position and streams AI content into it.
    * Used by AiPromptComponent when the user submits a prompt.
@@ -187,6 +200,7 @@ export class AiStreamEditorService {
       }
 
       if (textToInsert.length > 0) {
+        hasWrittenContent = true;
         const beforeSize = editor.state.doc.content.size;
         const trInsert = editor.state.tr.insertText(textToInsert, currentInsertPos);
         trInsert.setMeta('addToHistory', false);
@@ -212,6 +226,7 @@ export class AiStreamEditorService {
     };
 
     let hasError = false;
+    let hasWrittenContent = false;
     let reasoningBuffer = '';
     let lastReasoningUpdate = Date.now();
 
@@ -274,8 +289,10 @@ export class AiStreamEditorService {
       console.error('AI Generation failed:', err);
     } finally {
       streamFinished = true;
-      
-      if (!hasError) {
+
+      // Drain the animation queue if there is content worth keeping:
+      // either a clean stream finish, or an error that happened after some text was already written.
+      if (!hasError || hasWrittenContent) {
         if (!isAnimating) {
           isAnimating = true;
           processQueue();
@@ -283,8 +300,8 @@ export class AiStreamEditorService {
         await drainPromise;
       }
 
-      if (hasError) {
-        // Find the generating block and remove it
+      if (hasError && !hasWrittenContent) {
+        // Nothing was written — remove the empty placeholder block silently
         const foundPos = this.findGeneratingBlockPos(editor);
         if (foundPos !== null) {
           const foundNode = editor.state.doc.nodeAt(foundPos);
@@ -325,6 +342,8 @@ export class AiStreamEditorService {
             editor.chain().insertContentAt(foundPos, finalizedBlockJson).focus().run();
           }
         }
+        // Clear stopped flag for this block after finalization
+        this.stoppedBlocks.delete(blockAttrs['id']);
       }
     }
   }

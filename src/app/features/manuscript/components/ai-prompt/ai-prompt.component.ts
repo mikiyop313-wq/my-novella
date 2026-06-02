@@ -381,6 +381,14 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     }
   }
 
+  async stopGeneration(): Promise<void> {
+    const blockId = this.node().attrs['id'];
+    // Immediately update UI to feel responsive
+    const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
+    await this.aiStreamEditor.stopGeneration(blockId);
+    loadingSig?.set('idle');
+  }
+
   clearPrompt(): void {
     this.setPromptText('');
   }
