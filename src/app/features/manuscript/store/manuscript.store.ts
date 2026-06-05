@@ -1,8 +1,9 @@
-import { signalStore, withState, withMethods, patchState } from '@ngrx/signals';
+import { signalStore, withState, withMethods, patchState, withComputed } from '@ngrx/signals';
 import { Editor } from '@tiptap/core';
 import { ElectronService } from '../../../core/services/electron.service';
-import { ManuscriptMode, ManuscriptModeDto, ActDto, ChapterDto, SceneDto, UpdateActPayload, UpdateChapterPayload, UpdateScenePayload } from '../../../../../shared/models/manuscript.model';
-import { inject } from '@angular/core';
+import { ManuscriptMode, ManuscriptModeDto, ActDto, ChapterDto, SceneDto, UpdateActPayload, UpdateChapterPayload, UpdateScenePayload, TiptapJsonDoc } from '../../../../../shared/models/manuscript.model';
+import { inject, computed } from '@angular/core';
+import { buildScenePatch } from '../helpers/manuscript-content.utils';
 
 export interface FormattingSettings {
   fontFamily: string;
@@ -25,6 +26,12 @@ export interface ManuscriptState {
   showSummaries: boolean;
   showSceneTitles: boolean;
   editor: Editor | null;
+  /** Scene IDs that are currently rendered as skeleton nodes (not yet loaded). */
+  pendingSkeletonSceneIds: string[];
+  /** Scene IDs whose prose fetch is currently in-flight (prevents duplicate calls). */
+  loadingSkeletonSceneIds: string[];
+  bookHierarchy: ActDto[];
+  currentWordCount: number;
 }
 
 const defaultSettings: FormattingSettings = {
@@ -48,6 +55,10 @@ const initialState: ManuscriptState = {
   showSummaries: true,
   showSceneTitles: false,
   editor: null,
+  pendingSkeletonSceneIds: [],
+  loadingSkeletonSceneIds: [],
+  bookHierarchy: [],
+  currentWordCount: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -154,6 +165,26 @@ function deleteNodeRangeInDoc(
 export const ManuscriptStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
+  withComputed(({ currentWordCount, bookHierarchy, sceneId }) => ({
+    estimatedPages: computed(() => Math.max(1, Math.ceil(currentWordCount() / 250))),
+    estimatedReadTime: computed(() => Math.max(1, Math.ceil(currentWordCount() / 200))),
+    sceneNumber: computed(() => {
+      const activeSceneId = sceneId();
+      if (!activeSceneId) return null;
+      let count = 0;
+      for (const act of bookHierarchy()) {
+        for (const chapter of act.chapters || []) {
+          for (const sceneItem of chapter.scenes || []) {
+            count++;
+            if (sceneItem.id === activeSceneId) {
+              return count;
+            }
+          }
+        }
+      }
+      return null;
+    })
+  })),
   withMethods((store, electronService = inject(ElectronService)) => ({
 
     // -----------------------------------------------------------------------
@@ -234,9 +265,94 @@ export const ManuscriptStore = signalStore(
     // -----------------------------------------------------------------------
 
     async loadManuscriptData<T extends ManuscriptMode>(mode: T, id: string): Promise<ManuscriptModeDto<T>> {
-      const result = await electronService.invoke('manuscript:get', { mode, id });
+      Promise.all([
+        electronService.invoke('manuscript:getWordCount', { mode, id }),
+        electronService.invoke('manuscript:getBookHierarchy', { mode, id })
+      ]).then(([wordCount, hierarchy]) => {
+        patchState(store, { currentWordCount: wordCount as number, bookHierarchy: hierarchy as ActDto[] });
+      }).catch(err => console.error('Failed to load stats/hierarchy', err));
 
+      const result = await electronService.invoke('manuscript:get', { mode, id });
       return result as ManuscriptModeDto<T>;
+    },
+
+    /**
+     * Sets the list of scene IDs that are currently represented as skeleton
+     * nodes in the document. Called by the Manuscript component after each
+     * content load so the store knows which scenes still need fetching.
+     */
+    setPendingSkeletons(sceneIds: string[]): void {
+      patchState(store, { pendingSkeletonSceneIds: [...sceneIds], loadingSkeletonSceneIds: [] });
+    },
+
+    /**
+     * Fetches the prose for a single skeleton scene and patches it into the
+     * ProseMirror document, replacing the `sceneSkeleton` node with real content.
+     *
+     * Guards:
+     * - Skips if the scene is not in the pending list (already loaded or unknown)
+     * - Skips if a fetch for this scene is already in-flight
+     */
+    async loadAndPatchScene(sceneId: string): Promise<void> {
+      const pending = store.pendingSkeletonSceneIds();
+      const loading = store.loadingSkeletonSceneIds();
+
+      if (!pending.includes(sceneId)) return;
+      if (loading.includes(sceneId)) return;
+
+      // Mark as in-flight
+      patchState(store, { loadingSkeletonSceneIds: [...loading, sceneId] });
+
+      try {
+        const proseMap: Record<string, TiptapJsonDoc | null> =
+          await electronService.invoke('manuscript:getScenesProse', { sceneIds: [sceneId] });
+
+        const editor = store.editor();
+        if (!editor) return;
+
+        const prose = proseMap[sceneId] ?? null;
+        const replacement = buildScenePatch(prose);
+
+        // Find the sceneSkeleton node for this sceneId in the document
+        let skeletonPos: number | null = null;
+        let skeletonNodeSize = 0;
+        editor.state.doc.forEach((node, offset) => {
+          if (node.type.name === 'sceneSkeleton' && node.attrs['sceneId'] === sceneId) {
+            skeletonPos = offset;
+            skeletonNodeSize = node.nodeSize;
+          }
+        });
+
+        if (skeletonPos === null) {
+          // Node already replaced (e.g. duplicate observer fire)
+          return;
+        }
+
+        // Build replacement nodes from the fetched prose
+        const newNodes = replacement.map(nodeJson =>
+          editor.schema.nodeFromJSON(nodeJson)
+        );
+
+        // Replace the skeleton node with the real prose via a transaction
+        // addToHistory: false — the user cannot undo back to a skeleton state
+        const { tr } = editor.state;
+        tr.replaceWith(skeletonPos, skeletonPos + skeletonNodeSize, newNodes);
+        tr.setMeta('addToHistory', false);
+        tr.setMeta('skipSaver', true);
+        editor.view.dispatch(tr);
+
+        // Remove from both tracking lists
+        patchState(store, {
+          pendingSkeletonSceneIds: store.pendingSkeletonSceneIds().filter(id => id !== sceneId),
+          loadingSkeletonSceneIds: store.loadingSkeletonSceneIds().filter(id => id !== sceneId),
+        });
+      } catch (error) {
+        console.error(`[LazyLoad] Failed to patch scene ${sceneId}:`, error);
+        // Remove from in-flight list so the observer can retry on next intersection
+        patchState(store, {
+          loadingSkeletonSceneIds: store.loadingSkeletonSceneIds().filter(id => id !== sceneId),
+        });
+      }
     },
 
     // -----------------------------------------------------------------------

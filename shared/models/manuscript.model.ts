@@ -1,6 +1,28 @@
+/** A mark applied to inline content (bold, italic, link, etc.). */
+export interface TiptapMark {
+  /** The mark type name (e.g. 'bold', 'link'). */
+  type: string;
+  /** Optional mark-specific attributes (e.g. href for links). */
+  attrs?: Record<string, string | number | boolean | null>;
+}
+
+/** A single node inside a Tiptap/ProseMirror JSON document (paragraph, heading, custom block, etc.). */
+export interface TiptapNode {
+  /** The node type name (e.g. 'paragraph', 'heading', 'text'). */
+  type: string;
+  /** Optional node-specific attributes (e.g. level for headings). */
+  attrs?: Record<string, string | number | boolean | null>;
+  /** Child nodes; present on block/inline container nodes. */
+  content?: TiptapNode[];
+  /** Inline marks applied to this node. */
+  marks?: TiptapMark[];
+  /** Raw text content; only present on text nodes. */
+  text?: string;
+}
+
 export interface TiptapJsonDoc {
   type: 'doc';
-  content: Record<string, any>[];
+  content: TiptapNode[];
 }
 
 export interface SceneDto {
@@ -36,10 +58,10 @@ export interface ActDto {
 export type ManuscriptMode = 'scene' | 'chapter' | 'act' | 'book';
 
 export type ManuscriptModeDto<T extends ManuscriptMode> =
-  T extends 'book' ? ActDto[] :
-  T extends 'act' ? ActDto :
-  T extends 'chapter' ? ChapterDto :
-  T extends 'scene' ? SceneDto : never;
+  T extends 'book'    ? ActDto[]    :
+  T extends 'act'     ? ActDto      :
+  T extends 'chapter' ? ChapterDto  :
+  T extends 'scene'   ? SceneDto    : never;
 
 export type ManuscriptDataDto = ActDto[] | ActDto | ChapterDto | SceneDto;
 

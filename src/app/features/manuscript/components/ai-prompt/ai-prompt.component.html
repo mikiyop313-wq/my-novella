@@ -52,8 +52,17 @@
     <div class="card-footer">
       <!-- Left side: Send button with dropdown menu -->
       <div class="footer-left">
-        <div class="split-btn-group" [class.has-content]="promptText().trim().length > 0 && !isLoading()">
-          <button class="submit-btn" [disabled]="!promptText().trim() || isLoading()" (click)="onSubmit()"
+        <div class="split-btn-group" [class.has-content]="promptText().trim().length > 0 || isLoading()" [class.is-stop-mode]="isLoading()">
+          @if (isLoading()) {
+          <button class="submit-btn" (click)="stopGeneration()" title="Stop Generation">
+            <span class="model-name">Stop</span>
+            <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+              <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+            </svg>
+          </button>
+          } @else {
+          <button class="submit-btn" [disabled]="!promptText().trim()" (click)="onSubmit()"
             title="Send Prompt">
             <span class="model-name">{{ selectedModelName() }}</span>
             <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -71,6 +80,7 @@
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </button>
+          }
         </div>
 
         <ng-template #modelsMenu>
@@ -184,12 +194,6 @@
             @if(loadingStatus() === 'thinking') { AI is thinking... }
             @if(loadingStatus() === 'generating') { AI is writing... }
           </span>
-          <button class="stop-btn" (click)="stopGeneration()" title="Stop generation">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-            </svg>
-            Stop
-          </button>
         </div>
         }
 

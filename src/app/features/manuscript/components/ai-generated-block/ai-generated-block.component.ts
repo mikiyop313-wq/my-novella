@@ -18,6 +18,7 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
 
   isModifying = signal(false);
   modifyPrompt = signal('');
+  hasCopied = signal(false);
   isLoading = computed(() => {
     const blockId = this.node().attrs['id'];
     const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
@@ -29,6 +30,15 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   modelId = computed(() => this.node().attrs['modelId'] || '');
   reasoningText = computed(() => this.node().attrs['reasoningText'] || '');
   reasoningMode = computed(() => this.node().attrs['reasoningMode'] || false);
+  /** True only while the AI is actively streaming — false once the block is finalized. */
+  isGenerating = computed(() => this.node().attrs['isGenerating'] === true);
+
+  /** Live word count — recomputes on every token inserted by the stream. */
+  wordCount = computed(() => {
+    const text = this.node().textContent?.trim() ?? '';
+    if (!text) return 0;
+    return text.split(/\s+/).filter(w => w.length > 0).length;
+  });
 
   isReasoningExpanded = signal(true);
 
@@ -81,6 +91,21 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     if (pos == null) return;
 
     this.aiStreamEditor.discardBlock(this.editor(), pos, this.node().nodeSize);
+  }
+
+  copyText() {
+    const contentEl = this.contentDOM?.nativeElement;
+    if (!contentEl?.innerText) return;
+
+    const item = new ClipboardItem({
+      'text/plain': new Blob([contentEl.innerText], { type: 'text/plain' }),
+      'text/html': new Blob([contentEl.innerHTML], { type: 'text/html' })
+    });
+
+    navigator.clipboard.write([item]).then(() => {
+      this.hasCopied.set(true);
+      setTimeout(() => this.hasCopied.set(false), 2000);
+    });
   }
 
   tryAgain() {

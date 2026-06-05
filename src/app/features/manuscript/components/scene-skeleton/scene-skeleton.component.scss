@@ -1,0 +1,55 @@
+:host {
+  display: block;
+  // Use editor's own CSS custom properties so the skeleton matches the
+  // current font-size and line-height settings
+  padding: calc(var(--editor-paragraph-spacing, 24px) * 0.5) 0;
+}
+
+.scene-skeleton {
+  padding: 8px 0 24px;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+
+  // When the load has been triggered, fade the skeleton out slightly
+  // so the swap feels less abrupt
+  &--loading {
+    opacity: 0.5;
+  }
+}
+
+.skeleton-bar {
+  height: calc(var(--editor-font-size, 18px) * var(--editor-line-height, 1.8) * 0.55);
+  border-radius: 4px;
+  margin-bottom: calc(var(--editor-line-height, 1.8) * var(--editor-font-size, 18px) * 0.45);
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base, rgba(128, 128, 128, 0.12)) 25%,
+    var(--skeleton-shine, rgba(128, 128, 128, 0.24)) 37%,
+    var(--skeleton-base, rgba(128, 128, 128, 0.12)) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.6s ease infinite;
+
+  &--full   { width: 100%; }
+  &--long   { width: 88%; }
+  &--medium { width: 72%; }
+  &--short  { width: 45%; }
+}
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+// Dark-mode overrides via the theme class on <body> or :root
+:root[data-theme='dark'],
+.dark-mode {
+  --skeleton-base:  rgba(255, 255, 255, 0.07);
+  --skeleton-shine: rgba(255, 255, 255, 0.14);
+}
+
+:root[data-theme='light'],
+.light-mode {
+  --skeleton-base:  rgba(0, 0, 0, 0.07);
+  --skeleton-shine: rgba(0, 0, 0, 0.14);
+}
