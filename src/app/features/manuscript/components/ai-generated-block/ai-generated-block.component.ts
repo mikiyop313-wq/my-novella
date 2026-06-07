@@ -2,7 +2,7 @@ import { Component, signal, inject, computed, ElementRef, ViewChild, HostListene
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
-import { AiStreamEditorService } from '../../helpers/ai-stream-editor.service';
+import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 
 @Component({
   selector: 'app-ai-generated-block',

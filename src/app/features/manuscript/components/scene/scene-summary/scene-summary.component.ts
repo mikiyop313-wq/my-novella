@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
-import { ManuscriptStore } from '../../store/manuscript.store';
+import { ManuscriptStore } from '../../../store/manuscript.store';
 
 @Component({
   selector: 'app-scene-summary',
