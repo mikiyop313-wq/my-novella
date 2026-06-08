@@ -11,8 +11,18 @@ import type {
 
 @Injectable({ providedIn: 'root' })
 export class ManuscriptParagraphVectorSyncService {
+
+  // ---------------------------------------------------------------------------
+  // Dependencies
+  // ---------------------------------------------------------------------------
+
   private readonly store = inject(ManuscriptStore);
   private readonly electronService = inject(ElectronService);
+
+
+  // ---------------------------------------------------------------------------
+  // Sync Queues
+  // ---------------------------------------------------------------------------
 
   private pendingUpserts = new Map<string, ParagraphUpsert>();
   private pendingParagraphDeletes = new Map<string, ParagraphDelete>();
@@ -28,7 +38,7 @@ export class ManuscriptParagraphVectorSyncService {
     const prevMap = new Map<string, Record<string, any>>();
     previous.forEach(node => {
       const id = node['attrs']?.['id'] as string | undefined;
-      if (id) prevMap.set(id, node);
+      if (id && this.isSyncableParagraphNode(node)) prevMap.set(id, node);
     });
 
     const newIds = new Set<string>();
@@ -36,13 +46,22 @@ export class ManuscriptParagraphVectorSyncService {
     newContent.forEach((node, index) => {
       const paraId = node['attrs']?.['id'] as string | undefined;
       if (!paraId) return;
-      newIds.add(paraId);
+
+      if (!this.isParagraphNode(node)) return;
 
       const text = extractTextFromJsonNode(node);
-      const hash = this.simpleHash(text);
+      const normalizedText = this.normalizeTextForSync(text);
+      if (!this.hasSyncableText(normalizedText)) {
+        this.pendingUpserts.delete(paraId);
+        return;
+      }
+
+      newIds.add(paraId);
+
+      const hash = this.simpleHash(normalizedText);
       const prevNode = prevMap.get(paraId);
       const prevHash = prevNode
-        ? this.simpleHash(extractTextFromJsonNode(prevNode))
+        ? this.simpleHash(this.normalizeTextForSync(extractTextFromJsonNode(prevNode)))
         : null;
 
       if (prevHash !== hash) {
@@ -59,6 +78,10 @@ export class ManuscriptParagraphVectorSyncService {
     });
 
     this.lastKnownParagraphs.set(sceneId, newContent);
+  }
+
+  seedKnownParagraphs(sceneId: string, content: Record<string, any>[]): void {
+    this.lastKnownParagraphs.set(sceneId, content);
   }
 
   /**
@@ -107,6 +130,27 @@ export class ManuscriptParagraphVectorSyncService {
     } catch (error) {
       console.error('[VectorSync] Vector DB sync failed:', error);
     }
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Paragraph Helpers
+  // ---------------------------------------------------------------------------
+
+  private isParagraphNode(node: Record<string, any>): boolean {
+    return node['type'] === 'paragraph';
+  }
+
+  private isSyncableParagraphNode(node: Record<string, any>): boolean {
+    return this.isParagraphNode(node) && this.hasSyncableText(this.normalizeTextForSync(extractTextFromJsonNode(node)));
+  }
+
+  private hasSyncableText(text: string): boolean {
+    return text.length > 0;
+  }
+
+  private normalizeTextForSync(text: string): string {
+    return text.trim().replace(/\s+/g, ' ');
   }
 
   /**

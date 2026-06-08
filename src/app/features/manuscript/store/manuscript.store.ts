@@ -3,7 +3,6 @@ import { patchState, signalStore, withComputed, withMethods, withState } from '@
 import { Editor } from '@tiptap/core';
 
 import { ElectronService } from '../../../core/services/electron.service';
-import { buildScenePatch } from '../helpers/content/manuscript-content.utils';
 import {
   ActDto,
   ChapterDto,
@@ -15,11 +14,19 @@ import {
   UpdateChapterPayload,
   UpdateScenePayload,
 } from '../../../../../shared/models/manuscript.model';
+import { buildScenePatch } from '../helpers/content/manuscript-content.utils';
+
+const FORMAT_SETTINGS_STORAGE_KEY = 'manuscript_format_global';
+
+const ACT_HEADER_NODE = 'actHeader';
+const CHAPTER_HEADER_NODE = 'chapterHeader';
+const SCENE_SUMMARY_NODE = 'sceneSummary';
+const SCENE_SKELETON_NODE = 'sceneSkeleton';
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Interfaces & Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface FormattingSettings {
   fontFamily: string;
@@ -32,7 +39,7 @@ export interface FormattingSettings {
 }
 
 export interface ManuscriptState {
-  /** The ID of the currently active entity (book, act, chapter, or scene). */
+  /** Currently active book, act, chapter, or scene ID. */
   activeEntityId: string | null;
   mode: ManuscriptMode | null;
 
@@ -43,10 +50,10 @@ export interface ManuscriptState {
 
   editor: Editor | null;
 
-  /** Scene IDs currently rendered as skeleton nodes (not yet loaded). */
+  /** Scene IDs currently represented by lazy-loading skeleton nodes. */
   pendingSkeletonSceneIds: string[];
 
-  /** Scene IDs whose prose fetch is currently in-flight (prevents duplicate calls). */
+  /** Scene IDs with prose fetches already in flight. */
   loadingSkeletonSceneIds: string[];
 
   bookHierarchy: ActDto[];
@@ -54,9 +61,9 @@ export interface ManuscriptState {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Default values
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
 
 const defaultSettings: FormattingSettings = {
   fontFamily: "'Merriweather', serif",
@@ -87,14 +94,13 @@ const initialState: ManuscriptState = {
 };
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Module-level helpers (no Angular DI needed)
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Document Helpers
+// ---------------------------------------------------------------------------
 
 /**
- * Walks the Tiptap document and returns the `id` attribute of the
- * LAST node whose type name matches `typeName`.
- * Returns null if no matching node is found.
+ * Returns the ID on the last top-level node whose type matches `typeName`.
+ * Insert actions use this to attach a new chapter/scene to the visible parent.
  */
 function getLastNodeId(editor: Editor, typeName: string): string | null {
   let lastId: string | null = null;
@@ -109,15 +115,9 @@ function getLastNodeId(editor: Editor, typeName: string): string | null {
 }
 
 /**
- * Deletes a range of top-level Tiptap nodes starting from the node matching
- * `targetType` + `id`, up to (but not including) the first subsequent node
- * whose type is in `stopTypes`. If no stop node is found the range extends
- * to the end of the document.
- *
- * This mirrors the DB cascade behaviour:
- *   Act     → stop at next actHeader
- *   Chapter → stop at next chapterHeader or actHeader
- *   Scene   → stop at next sceneSummary, chapterHeader, or actHeader
+ * Deletes a top-level structural section from the editor only. The saver later
+ * detects the missing node and commits the physical DB delete after navigation
+ * or application close, keeping undo/redo safe.
  */
 function deleteNodeRangeInDoc(
   editor: Editor,
@@ -125,7 +125,6 @@ function deleteNodeRangeInDoc(
   id: string,
   stopTypes: string[]
 ): void {
-  // Collect every direct child of the document with its absolute position.
   const children: Array<{ node: any; from: number; to: number }> = [];
 
   editor.state.doc.forEach((node, offset) => {
@@ -133,14 +132,12 @@ function deleteNodeRangeInDoc(
   });
 
   const targetIdx = children.findIndex(
-    c => c.node.type.name === targetType && c.node.attrs['id'] === id
+    child => child.node.type.name === targetType && child.node.attrs['id'] === id
   );
 
-  if (targetIdx === -1) return; // node not found — nothing to remove
+  if (targetIdx === -1) return;
 
   const from = children[targetIdx].from;
-
-  // Walk forward until we hit a stop-type node (exclusive boundary).
   let to = editor.state.doc.content.size;
 
   for (let i = targetIdx + 1; i < children.length; i++) {
@@ -150,52 +147,89 @@ function deleteNodeRangeInDoc(
     }
   }
 
-  // Create the deletion transaction.
   let tr = editor.state.tr.delete(from, to);
 
-  // Update the position attributes of subsequent sibling nodes in the new document draft.
-  if (targetType === 'actHeader') {
-    // For Acts: decrement position of all subsequent actHeaders in the document.
-    tr.doc.forEach((node, offset) => {
-      if (node.type.name === 'actHeader' && offset >= from) {
-        const currentPos = node.attrs['position'] || 0;
-        tr = tr.setNodeMarkup(offset, undefined, {
-          ...node.attrs,
-          position: Math.max(0, currentPos - 1),
-        });
-      }
-    });
-
-  } else if (targetType === 'chapterHeader') {
-    // For Chapters: decrement position of subsequent chapters in the same act.
-    // Walk forward from the deletion point, updating chapters,
-    // and stop when we encounter the next actHeader.
-    let stopWalk = false;
-
-    tr.doc.forEach((node, offset) => {
-      if (stopWalk) return;
-
-      if (offset >= from) {
-        if (node.type.name === 'actHeader') {
-          stopWalk = true;
-        } else if (node.type.name === 'chapterHeader') {
-          const currentPos = node.attrs['position'] || 0;
-          tr = tr.setNodeMarkup(offset, undefined, {
-            ...node.attrs,
-            position: Math.max(0, currentPos - 1),
-          });
-        }
-      }
-    });
+  if (targetType === ACT_HEADER_NODE) {
+    tr = decrementFollowingActPositions(tr, from);
+  } else if (targetType === CHAPTER_HEADER_NODE) {
+    tr = decrementFollowingChapterPositions(tr, from);
   }
 
   editor.view.dispatch(tr);
 }
 
+function decrementFollowingActPositions(tr: any, from: number): any {
+  tr.doc.forEach((node: any, offset: number) => {
+    if (node.type.name === ACT_HEADER_NODE && offset >= from) {
+      const currentPosition = node.attrs['position'] || 0;
 
-// ─────────────────────────────────────────────────────────────────────────────
+      tr = tr.setNodeMarkup(offset, undefined, {
+        ...node.attrs,
+        position: Math.max(0, currentPosition - 1),
+      });
+    }
+  });
+
+  return tr;
+}
+
+function decrementFollowingChapterPositions(tr: any, from: number): any {
+  let stopWalk = false;
+
+  tr.doc.forEach((node: any, offset: number) => {
+    if (stopWalk || offset < from) return;
+
+    if (node.type.name === ACT_HEADER_NODE) {
+      stopWalk = true;
+      return;
+    }
+
+    if (node.type.name === CHAPTER_HEADER_NODE) {
+      const currentPosition = node.attrs['position'] || 0;
+
+      tr = tr.setNodeMarkup(offset, undefined, {
+        ...node.attrs,
+        position: Math.max(0, currentPosition - 1),
+      });
+    }
+  });
+
+  return tr;
+}
+
+function findSkeletonNode(editor: Editor, sceneId: string): { pos: number; nodeSize: number } | null {
+  let skeletonPos: number | null = null;
+  let skeletonNodeSize = 0;
+
+  editor.state.doc.forEach((node, offset) => {
+    if (node.type.name === SCENE_SKELETON_NODE && node.attrs['sceneId'] === sceneId) {
+      skeletonPos = offset;
+      skeletonNodeSize = node.nodeSize;
+    }
+  });
+
+  return skeletonPos === null
+    ? null
+    : { pos: skeletonPos, nodeSize: skeletonNodeSize };
+}
+
+function loadStoredSettings(): FormattingSettings {
+  const saved = localStorage.getItem(FORMAT_SETTINGS_STORAGE_KEY);
+
+  if (!saved) return defaultSettings;
+
+  try {
+    return { ...defaultSettings, ...JSON.parse(saved) };
+  } catch (error) {
+    console.error('Failed to parse saved formatting settings', error);
+    return defaultSettings;
+  }
+}
+
+
+// ---------------------------------------------------------------------------
 // Store
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 export const ManuscriptStore = signalStore(
   { providedIn: 'root' },
@@ -203,14 +237,9 @@ export const ManuscriptStore = signalStore(
   withState(initialState),
 
   withComputed(({ currentWordCount, bookHierarchy, activeEntityId, mode }) => ({
-
-    /** Derived ID – non-null only when mode is 'book'. */
     bookId: computed(() => mode() === 'book' ? activeEntityId() : null),
-    /** Derived ID – non-null only when mode is 'act'. */
     actId: computed(() => mode() === 'act' ? activeEntityId() : null),
-    /** Derived ID – non-null only when mode is 'chapter'. */
     chapterId: computed(() => mode() === 'chapter' ? activeEntityId() : null),
-    /** Derived ID – non-null only when mode is 'scene'. */
     sceneId: computed(() => mode() === 'scene' ? activeEntityId() : null),
 
     estimatedPages: computed(() =>
@@ -223,13 +252,14 @@ export const ManuscriptStore = signalStore(
 
     sceneNumber: computed(() => {
       if (mode() !== 'scene') return null;
+
       const id = activeEntityId();
       if (!id) return null;
 
       for (const act of bookHierarchy()) {
         for (const chapter of act.chapters || []) {
-          const found = chapter.scenes?.find(s => s.id === id);
-          if (found) return found.position + 1; // position is 0-based in the model
+          const found = chapter.scenes?.find(scene => scene.id === id);
+          if (found) return found.position + 1;
         }
       }
 
@@ -237,10 +267,8 @@ export const ManuscriptStore = signalStore(
     }),
 
     /**
-     * Resolves the ancestor chain for the currently active entity.
-     * When a scene is active while in book mode, returns the IDs of the
-     * chapter and act that contain it so the index scroll can highlight all
-     * three levels simultaneously.
+     * Resolves the parent act/chapter for the active entity so the index rail
+     * can highlight all relevant levels at once.
      */
     activeAncestors: computed((): { actId: string | null; chapterId: string | null } => {
       const id = activeEntityId();
@@ -248,16 +276,15 @@ export const ManuscriptStore = signalStore(
 
       for (const act of bookHierarchy()) {
         for (const chapter of act.chapters || []) {
-          // Active entity is a scene inside this chapter
-          if (chapter.scenes?.some(s => s.id === id)) {
+          if (chapter.scenes?.some(scene => scene.id === id)) {
             return { actId: act.id, chapterId: chapter.id };
           }
-          // Active entity is this chapter itself
+
           if (chapter.id === id) {
             return { actId: act.id, chapterId: null };
           }
         }
-        // Active entity is this act itself
+
         if (act.id === id) {
           return { actId: null, chapterId: null };
         }
@@ -265,16 +292,20 @@ export const ManuscriptStore = signalStore(
 
       return { actId: null, chapterId: null };
     }),
-
   })),
 
   withMethods((store, electronService = inject(ElectronService)) => ({
 
-    // ── Route / state setters ──────────────────────────────────────────────
+    // -------------------------------------------------------------------------
+    // Route / State
+    // -------------------------------------------------------------------------
 
     setRouteParams(mode: ManuscriptMode | null, id: string | null): void {
-      patchState(store, { mode, activeEntityId: id });
-      this.loadSettings();
+      patchState(store, {
+        mode,
+        activeEntityId: id,
+        settings: loadStoredSettings(),
+      });
     },
 
     setActiveSection(_type: 'act' | 'chapter' | 'scene', id: string): void {
@@ -286,36 +317,19 @@ export const ManuscriptStore = signalStore(
     },
 
 
-    // ── Settings ──────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
+    // Formatting Settings
+    // -------------------------------------------------------------------------
 
     loadSettings(): void {
-      const saved = localStorage.getItem('manuscript_format_global');
-
-      if (!saved) {
-        patchState(store, { settings: defaultSettings });
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(saved);
-        // Merging with defaultSettings ensures future keys fall back gracefully
-        // when loaded from an older storage format.
-        patchState(store, { settings: { ...defaultSettings, ...parsed } });
-      } catch (e) {
-        console.error('Failed to parse saved formatting settings', e);
-      }
+      patchState(store, { settings: loadStoredSettings() });
     },
 
-    /**
-     * Updates a single formatting setting and persists the full settings object.
-     *
-     * `K` is constrained to a key of `FormattingSettings`, so the `value`
-     * parameter is narrowed to the correct type at compile-time.
-     */
     updateSetting<K extends keyof FormattingSettings>(key: K, value: FormattingSettings[K]): void {
       const newSettings = { ...store.settings(), [key]: value };
+
       patchState(store, { settings: newSettings });
-      localStorage.setItem('manuscript_format_global', JSON.stringify(newSettings));
+      localStorage.setItem(FORMAT_SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
     },
 
     toggleFormatMenu(): void {
@@ -331,7 +345,9 @@ export const ManuscriptStore = signalStore(
     },
 
 
-    // ── Data fetching ─────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
+    // Data Loading
+    // -------------------------------------------------------------------------
 
     async loadManuscriptData<T extends ManuscriptMode>(mode: T, id: string): Promise<ManuscriptModeDto<T>> {
       Promise.all([
@@ -344,17 +360,12 @@ export const ManuscriptStore = signalStore(
             bookHierarchy: hierarchy as ActDto[],
           });
         })
-        .catch(err => console.error('Failed to load stats/hierarchy', err));
+        .catch(error => console.error('Failed to load stats/hierarchy', error));
 
       const result = await electronService.invoke('manuscript:get', { mode, id });
       return result as ManuscriptModeDto<T>;
     },
 
-    /**
-     * Sets the list of scene IDs currently represented as skeleton nodes in the
-     * document. Called by the Manuscript component after each content load so
-     * the store knows which scenes still need fetching.
-     */
     setPendingSkeletons(sceneIds: string[]): void {
       patchState(store, {
         pendingSkeletonSceneIds: [...sceneIds],
@@ -363,21 +374,15 @@ export const ManuscriptStore = signalStore(
     },
 
     /**
-     * Fetches the prose for a single skeleton scene and patches it into the
-     * ProseMirror document, replacing the `sceneSkeleton` node with real content.
-     *
-     * Guards:
-     * - Skips if the scene is not in the pending list (already loaded or unknown)
-     * - Skips if a fetch for this scene is already in-flight
+     * Replaces a lazy scene skeleton with real prose once it enters the viewport.
+     * Duplicate observer fires are ignored by the pending/loading guards.
      */
     async loadAndPatchScene(sceneId: string): Promise<void> {
       const pending = store.pendingSkeletonSceneIds();
       const loading = store.loadingSkeletonSceneIds();
 
-      if (!pending.includes(sceneId)) return;
-      if (loading.includes(sceneId)) return;
+      if (!pending.includes(sceneId) || loading.includes(sceneId)) return;
 
-      // Mark as in-flight
       patchState(store, { loadingSkeletonSceneIds: [...loading, sceneId] });
 
       try {
@@ -387,42 +392,26 @@ export const ManuscriptStore = signalStore(
         const editor = store.editor();
         if (!editor) return;
 
+        const skeleton = findSkeletonNode(editor, sceneId);
+        if (!skeleton) return;
+
         const prose = proseMap[sceneId] ?? null;
         const replacement = buildScenePatch(prose);
-
-        // Find the sceneSkeleton node for this sceneId in the document.
-        let skeletonPos: number | null = null;
-        let skeletonNodeSize = 0;
-
-        editor.state.doc.forEach((node, offset) => {
-          if (node.type.name === 'sceneSkeleton' && node.attrs['sceneId'] === sceneId) {
-            skeletonPos = offset;
-            skeletonNodeSize = node.nodeSize;
-          }
-        });
-
-        if (skeletonPos === null) return; // already replaced (e.g. duplicate observer fire)
-
-        // Build replacement nodes from the fetched prose.
         const newNodes = replacement.map(nodeJson => editor.schema.nodeFromJSON(nodeJson));
 
-        // Replace the skeleton node with real prose.
-        // addToHistory: false — the user cannot undo back to a skeleton state.
         const { tr } = editor.state;
-        tr.replaceWith(skeletonPos, skeletonPos + skeletonNodeSize, newNodes);
+        tr.replaceWith(skeleton.pos, skeleton.pos + skeleton.nodeSize, newNodes);
         tr.setMeta('addToHistory', false);
         tr.setMeta('skipSaver', true);
         editor.view.dispatch(tr);
 
-        // Remove from both tracking lists.
         patchState(store, {
           pendingSkeletonSceneIds: store.pendingSkeletonSceneIds().filter(id => id !== sceneId),
           loadingSkeletonSceneIds: store.loadingSkeletonSceneIds().filter(id => id !== sceneId),
         });
-
       } catch (error) {
         console.error(`[LazyLoad] Failed to patch scene ${sceneId}:`, error);
-        // Remove from in-flight list so the observer can retry on next intersection.
+
         patchState(store, {
           loadingSkeletonSceneIds: store.loadingSkeletonSceneIds().filter(id => id !== sceneId),
         });
@@ -430,7 +419,9 @@ export const ManuscriptStore = signalStore(
     },
 
 
-    // ── Atomic create primitives (single entity, returns persisted DTO) ───
+    // -------------------------------------------------------------------------
+    // Atomic Create Methods
+    // -------------------------------------------------------------------------
 
     async createAct(bookId: string): Promise<ActDto> {
       const result = await electronService.invoke('manuscript:createAct', { bookId });
@@ -448,14 +439,14 @@ export const ManuscriptStore = signalStore(
     },
 
 
-    // ── Update methods ────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
+    // Metadata Updates
+    // -------------------------------------------------------------------------
 
     async updateAct(payload: UpdateActPayload): Promise<void> {
       try {
         await electronService.invoke('manuscript:updateAct', payload);
 
-        // Reflect the title change in the local hierarchy so computed signals
-        // (e.g. currentHeaderTitle in the toolbar) react immediately.
         if (payload.title !== undefined) {
           patchState(store, {
             bookHierarchy: store.bookHierarchy().map(act =>
@@ -472,13 +463,12 @@ export const ManuscriptStore = signalStore(
       try {
         await electronService.invoke('manuscript:updateChapter', payload);
 
-        // Reflect the title change in the local hierarchy.
         if (payload.title !== undefined) {
           patchState(store, {
             bookHierarchy: store.bookHierarchy().map(act => ({
               ...act,
-              chapters: (act.chapters || []).map(ch =>
-                ch.id === payload.id ? { ...ch, title: payload.title! } : ch
+              chapters: (act.chapters || []).map(chapter =>
+                chapter.id === payload.id ? { ...chapter, title: payload.title! } : chapter
               ),
             })),
           });
@@ -492,15 +482,14 @@ export const ManuscriptStore = signalStore(
       try {
         await electronService.invoke('manuscript:updateScene', payload);
 
-        // Reflect the title change in the local hierarchy.
         if (payload.title !== undefined) {
           patchState(store, {
             bookHierarchy: store.bookHierarchy().map(act => ({
               ...act,
-              chapters: (act.chapters || []).map(ch => ({
-                ...ch,
-                scenes: (ch.scenes || []).map(sc =>
-                  sc.id === payload.id ? { ...sc, title: payload.title! } : sc
+              chapters: (act.chapters || []).map(chapter => ({
+                ...chapter,
+                scenes: (chapter.scenes || []).map(scene =>
+                  scene.id === payload.id ? { ...scene, title: payload.title! } : scene
                 ),
               })),
             })),
@@ -512,24 +501,28 @@ export const ManuscriptStore = signalStore(
     },
 
 
-    // ── Orchestrated insert methods ───────────────────────────────────────
-    //
-    // Cascade rules:
-    //   insertAct     → creates Act + Chapter (inside act) + Scene (inside chapter)
-    //   insertChapter → creates Chapter (inside last act) + Scene (inside chapter)
-    //   insertScene   → creates Scene (inside last chapter)
-    //
-    // All entities are persisted before being inserted into the Tiptap document,
-    // so every data-id attribute is a real DB UUID, never a temporary value.
+    // -------------------------------------------------------------------------
+    // Orchestrated Insert Methods
+    // -------------------------------------------------------------------------
 
+    /**
+     * Creates Act, Chapter, and Scene records before inserting their nodes.
+     * Every inserted data-id is therefore a real persisted UUID.
+     */
     async insertAct(): Promise<void> {
       const editor = store.editor();
       const bookId = store.mode() === 'book' ? store.activeEntityId() : null;
 
-      if (!editor) { console.warn('insertAct: no editor available'); return; }
-      if (!bookId) { console.warn('insertAct: no bookId in store'); return; }
+      if (!editor) {
+        console.warn('insertAct: no editor available');
+        return;
+      }
 
-      // Sequential DB writes: Act → Chapter → Scene
+      if (!bookId) {
+        console.warn('insertAct: no bookId in store');
+        return;
+      }
+
       const act = await electronService.invoke('manuscript:createAct', { bookId }) as ActDto;
       const chapter = await electronService.invoke('manuscript:createChapter', { actId: act.id }) as ChapterDto;
       const scene = await electronService.invoke('manuscript:createScene', { chapterId: chapter.id }) as SceneDto;
@@ -537,87 +530,88 @@ export const ManuscriptStore = signalStore(
       const endPosition = editor.state.doc.content.size;
 
       editor.chain().focus().insertContentAt(endPosition, [
-        { type: 'actHeader', attrs: { id: act.id, title: act.title, position: act.position } },
-        { type: 'chapterHeader', attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
-        { type: 'sceneSummary', attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: ACT_HEADER_NODE, attrs: { id: act.id, title: act.title, position: act.position } },
+        { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
+        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
-      ]).run();
+      ], { updateSelection: true }).run();
     },
 
     async insertChapter(): Promise<void> {
       const editor = store.editor();
-      if (!editor) { console.warn('insertChapter: no editor available'); return; }
 
-      // Attach to the last act visible in the document.
-      const actId = getLastNodeId(editor, 'actHeader');
-      if (!actId) { console.warn('insertChapter: no act found in document'); return; }
+      if (!editor) {
+        console.warn('insertChapter: no editor available');
+        return;
+      }
 
-      // Sequential DB writes: Chapter → Scene
+      const actId = getLastNodeId(editor, ACT_HEADER_NODE);
+
+      if (!actId) {
+        console.warn('insertChapter: no act found in document');
+        return;
+      }
+
       const chapter = await electronService.invoke('manuscript:createChapter', { actId }) as ChapterDto;
       const scene = await electronService.invoke('manuscript:createScene', { chapterId: chapter.id }) as SceneDto;
 
       const endPosition = editor.state.doc.content.size;
 
       editor.chain().focus().insertContentAt(endPosition, [
-        { type: 'chapterHeader', attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
-        { type: 'sceneSummary', attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
+        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
-      ]).run();
+      ], { updateSelection: true }).run();
     },
 
     async insertScene(): Promise<void> {
       const editor = store.editor();
-      if (!editor) { console.warn('insertScene: no editor available'); return; }
 
-      // Attach to the last chapter visible in the document.
-      const chapterId = getLastNodeId(editor, 'chapterHeader');
-      if (!chapterId) { console.warn('insertScene: no chapter found in document'); return; }
+      if (!editor) {
+        console.warn('insertScene: no editor available');
+        return;
+      }
+
+      const chapterId = getLastNodeId(editor, CHAPTER_HEADER_NODE);
+
+      if (!chapterId) {
+        console.warn('insertScene: no chapter found in document');
+        return;
+      }
 
       const scene = await electronService.invoke('manuscript:createScene', { chapterId }) as SceneDto;
-
       const endPosition = editor.state.doc.content.size;
 
       editor.chain().focus().insertContentAt(endPosition, [
-        { type: 'sceneSummary', attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
-      ]).run();
+      ], { updateSelection: true }).run();
     },
 
 
-    // ── Logical delete methods (editor only, undo/redo safe) ──────────────
-    //
-    // These methods only remove node(s) from the Tiptap document.
-    // They do NOT touch the database. The actual IPC deletion is deferred:
-    // `ManuscriptProseSaverService.cacheDeletedSections` detects the missing
-    // nodes via `onDocumentChanged` and queues them in `pendingDeletes`.
-    // `flushStructuralChanges` (called on navigation / app close) then calls
-    // the physical delete methods below to commit the changes to the DB.
-    //
-    // This design makes undo/redo safe:
-    //   Undo  → nodes reappear → `cancelRestoredSections` removes from queue
-    //   Redo  → nodes vanish   → `cacheDeletedSections` re-queues them
-    //   Never → DB is touched before the user commits to the change.
+    // -------------------------------------------------------------------------
+    // Logical Delete Methods
+    // -------------------------------------------------------------------------
 
     deleteAct(id: string): void {
       const editor = store.editor();
       if (!editor) return;
-      // Remove from this actHeader to the next actHeader (or end of doc).
-      deleteNodeRangeInDoc(editor, 'actHeader', id, ['actHeader']);
+
+      deleteNodeRangeInDoc(editor, ACT_HEADER_NODE, id, [ACT_HEADER_NODE]);
     },
 
     deleteChapter(id: string): void {
       const editor = store.editor();
       if (!editor) return;
-      // Remove from this chapterHeader to the next chapter or act boundary.
-      deleteNodeRangeInDoc(editor, 'chapterHeader', id, ['chapterHeader', 'actHeader']);
+
+      deleteNodeRangeInDoc(editor, CHAPTER_HEADER_NODE, id, [CHAPTER_HEADER_NODE, ACT_HEADER_NODE]);
     },
 
     deleteScene(id: string): void {
       const editor = store.editor();
       if (!editor) return;
-      // Remove from this sceneSummary to the next scene/chapter/act boundary.
-      deleteNodeRangeInDoc(editor, 'sceneSummary', id, ['sceneSummary', 'chapterHeader', 'actHeader']);
-    },
 
+      deleteNodeRangeInDoc(editor, SCENE_SUMMARY_NODE, id, [SCENE_SUMMARY_NODE, CHAPTER_HEADER_NODE, ACT_HEADER_NODE]);
+    },
   }))
 );

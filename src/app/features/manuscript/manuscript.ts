@@ -1,47 +1,36 @@
-// ── Angular ────────────────────────────────────────────────────────────────
-import { Component, OnDestroy, OnInit, Injector, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
 import { CdkMenuModule } from '@angular/cdk/menu';
-
-// ── Vendor ─────────────────────────────────────────────────────────────────
+import { Component, Injector, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import StarterKit from '@tiptap/starter-kit';
 import { TiptapEditorDirective } from 'ngx-tiptap';
 
-// ── App-level services & components ────────────────────────────────────────
-import { ThemeService } from '../../core/services/theme.service';
-import { ElectronService } from '../../core/services/electron.service';
 import {
   AutocompleteDropdownComponent,
   DropdownOption,
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
-
-// ── Feature-local components & extensions ──────────────────────────────────
+import { ElectronService } from '../../core/services/electron.service';
+import { ThemeService } from '../../core/services/theme.service';
+import { ManuscriptMode } from '../../../../shared/models/manuscript.model';
+import { AiGeneratedBlockExtension } from './components/ai-generated-block/ai-generated-block.extension';
 import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
 import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
+import { ManuscriptIndexItem, ManuscriptIndexScrollComponent } from './components/manuscript-index-scroll/manuscript-index-scroll.component';
 import { ActHeaderExtension, ChapterHeaderExtension } from './components/manuscript-header/manuscript-header.extension';
-import { SceneSummaryExtension } from './components/scene/scene-summary/scene-summary.extension';
-import { ManuscriptIndexScrollComponent, ManuscriptIndexItem } from './components/manuscript-index-scroll/manuscript-index-scroll.component';
-import { AiGeneratedBlockExtension } from './components/ai-generated-block/ai-generated-block.extension';
-import { UniqueIdExtension } from './extensions/unique-id.extension';
-import { SceneSkeletonExtension } from './components/scene/scene-skeleton/scene-skeleton.extension';
 import { SceneHeaderComponent } from './components/scene/scene-header/scene-header.component';
-
-// ── Feature-local stores ───────────────────────────────────────────────────
-import { ManuscriptStore } from './store/manuscript.store';
-import { AiStore } from './store/ai.store';
-
-// ── Shared models & helpers ────────────────────────────────────────────────
-import { ManuscriptMode, SceneDto } from '../../../../shared/models/manuscript.model';
+import { SceneSkeletonExtension } from './components/scene/scene-skeleton/scene-skeleton.extension';
+import { SceneSummaryExtension } from './components/scene/scene-summary/scene-summary.extension';
+import { UniqueIdExtension } from './extensions/unique-id.extension';
 import {
   buildEditorContentLazy,
-  getProseTextById,
   extractTextFromManuscriptData,
+  getProseTextById,
 } from './helpers/content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
-
+import { AiStore } from './store/ai.store';
+import { ManuscriptStore } from './store/manuscript.store';
 
 @Component({
   selector: 'app-manuscript',
@@ -60,34 +49,35 @@ import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-s
 })
 export class Manuscript implements OnInit, OnDestroy {
 
-  // ── Injected dependencies (public) ─────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // Dependencies
+  // ---------------------------------------------------------------------------
 
-  readonly store           = inject(ManuscriptStore);
-  readonly aiStore         = inject(AiStore);
-  readonly themeService    = inject(ThemeService);
+  readonly store = inject(ManuscriptStore);
+  readonly aiStore = inject(AiStore);
+  readonly themeService = inject(ThemeService);
   readonly electronService = inject(ElectronService);
 
-  // ── Injected dependencies (private) ────────────────────────────────────
-
-  private readonly route    = inject(ActivatedRoute);
-  private readonly router   = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly injector = inject(Injector);
-  private readonly saver    = inject(ManuscriptProseSaverService);
+  private readonly saver = inject(ManuscriptProseSaverService);
 
-  // ── State ──────────────────────────────────────────────────────────────
+
+  // ---------------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------------
 
   editor: Editor | undefined;
 
   indexItems = signal<ManuscriptIndexItem[]>([]);
 
-  // ── Computed: header title ─────────────────────────────────────────────
-
   currentHeaderTitle = computed<string>(() => {
     const mode = this.store.mode();
-    const id   = this.store.activeEntityId();
+    const id = this.store.activeEntityId();
 
     if (mode === 'book') return 'Full Novel';
-    if (!mode || !id)    return '';
+    if (!mode || !id) return '';
 
     for (const act of this.store.bookHierarchy()) {
       if (mode === 'act' && act.id === id) {
@@ -109,11 +99,9 @@ export class Manuscript implements OnInit, OnDestroy {
     return '';
   });
 
-  // ── Computed: current position ─────────────────────────────────────────
-
   currentPosition = computed<number | null>(() => {
     const mode = this.store.mode();
-    const id   = this.store.activeEntityId();
+    const id = this.store.activeEntityId();
 
     if (!mode || mode === 'book' || !id) return null;
 
@@ -137,36 +125,40 @@ export class Manuscript implements OnInit, OnDestroy {
     return null;
   });
 
-  // ── Font picker options ────────────────────────────────────────────────
+
+  // ---------------------------------------------------------------------------
+  // Toolbar Options
+  // ---------------------------------------------------------------------------
 
   fontOptions: DropdownOption[] = [
     // Serif
-    { value: "'Merriweather', serif",    label: 'Merriweather',    fontFamily: "'Merriweather', serif",    group: 'Serif' },
-    { value: "'EB Garamond', serif",     label: 'EB Garamond',     fontFamily: "'EB Garamond', serif",     group: 'Serif' },
-    { value: "'Lora', serif",            label: 'Lora',            fontFamily: "'Lora', serif",            group: 'Serif' },
-    { value: "'Georgia', serif",         label: 'Georgia',         fontFamily: "'Georgia', serif",         group: 'Serif' },
-    { value: "'Crimson Pro', serif",     label: 'Crimson Pro',     fontFamily: "'Crimson Pro', serif",     group: 'Serif' },
-    { value: "'Literata', serif",        label: 'Literata',        fontFamily: "'Literata', serif",        group: 'Serif' },
+    { value: "'Merriweather', serif", label: 'Merriweather', fontFamily: "'Merriweather', serif", group: 'Serif' },
+    { value: "'EB Garamond', serif", label: 'EB Garamond', fontFamily: "'EB Garamond', serif", group: 'Serif' },
+    { value: "'Lora', serif", label: 'Lora', fontFamily: "'Lora', serif", group: 'Serif' },
+    { value: "'Georgia', serif", label: 'Georgia', fontFamily: "'Georgia', serif", group: 'Serif' },
+    { value: "'Crimson Pro', serif", label: 'Crimson Pro', fontFamily: "'Crimson Pro', serif", group: 'Serif' },
+    { value: "'Literata', serif", label: 'Literata', fontFamily: "'Literata', serif", group: 'Serif' },
 
     // Sans Serif
-    { value: "'Inter', sans-serif",      label: 'Inter',           fontFamily: "'Inter', sans-serif",      group: 'Sans Serif' },
-    { value: "'Open Sans', sans-serif",  label: 'Open Sans',       fontFamily: "'Open Sans', sans-serif",  group: 'Sans Serif' },
+    { value: "'Inter', sans-serif", label: 'Inter', fontFamily: "'Inter', sans-serif", group: 'Sans Serif' },
+    { value: "'Open Sans', sans-serif", label: 'Open Sans', fontFamily: "'Open Sans', sans-serif", group: 'Sans Serif' },
 
     // Monospace
-    { value: "'Courier Prime', monospace",  label: 'Courier Prime',  fontFamily: "'Courier Prime', monospace",  group: 'Monospace' },
-    { value: "'Fira Code', monospace",      label: 'Fira Code',      fontFamily: "'Fira Code', monospace",      group: 'Monospace' },
+    { value: "'Courier Prime', monospace", label: 'Courier Prime', fontFamily: "'Courier Prime', monospace", group: 'Monospace' },
+    { value: "'Fira Code', monospace", label: 'Fira Code', fontFamily: "'Fira Code', monospace", group: 'Monospace' },
     { value: "'Source Code Pro', monospace", label: 'Source Code Pro', fontFamily: "'Source Code Pro', monospace", group: 'Monospace' },
     { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono', fontFamily: "'JetBrains Mono', monospace", group: 'Monospace' },
   ];
 
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Lifecycle
-  // ═══════════════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
 
   /**
-   * Flushes all pending save operations in the correct order.
-   * Paragraph vectors must run *after* dirty sections so the cache is populated.
+   * Flushes pending manuscript writes in dependency order.
+   * Dirty scene prose updates must run before vector sync so the paragraph
+   * cache reflects the latest editor state.
    */
   private closeHandler = async () => {
     await this.saver.flushDirtySections();
@@ -180,18 +172,15 @@ export class Manuscript implements OnInit, OnDestroy {
     this.store.setEditor(this.editor);
     this.aiStore.loadModels();
 
-    // Listen for graceful application close
     this.electronService.onBeforeClose(this.closeHandler);
 
-    // Reload content whenever route params change
     this.route.params.subscribe(async params => {
-      // Flush any pending paragraph changes from the previous context.
-      // The component is not destroyed on route changes, so this is
-      // the only opportunity to sync mid-session navigation.
+      // Route changes reuse this component, so flush vector updates before
+      // replacing the editor document with the next manuscript context.
       await this.saver.flushParagraphVectorChanges();
 
       const mode = params['mode'] as ManuscriptMode;
-      const id   = params['id'];
+      const id = params['id'];
       this.store.setRouteParams(mode, id);
 
       if (mode && id && this.editor) {
@@ -201,10 +190,7 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    // Unregister graceful close listener to prevent memory leaks
     this.electronService.removeBeforeCloseHandler(this.closeHandler);
-
-    // Flush any unsaved changes before the editor is torn down
     this.closeHandler();
 
     this.editor?.destroy();
@@ -212,9 +198,9 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Editor Factory
-  // ═══════════════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------------------
+  // Editor Setup
+  // ---------------------------------------------------------------------------
 
   private createEditor(): Editor {
     return new Editor({
@@ -249,8 +235,8 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
   /**
-   * Loads manuscript data into the editor via a raw ProseMirror transaction
-   * so the initial content is never added to the undo stack.
+   * Loads manuscript data through a raw ProseMirror transaction so initial
+   * content does not enter the undo stack or trigger save detection.
    */
   private async loadEditorContent(mode: ManuscriptMode, id: string): Promise<void> {
     try {
@@ -260,24 +246,24 @@ export class Manuscript implements OnInit, OnDestroy {
       this.store.setPendingSkeletons(skeletonSceneIds);
 
       const newDoc = this.editor!.schema.nodeFromJSON(doc);
-      const { tr }  = this.editor!.state;
+      const { tr } = this.editor!.state;
 
       tr.replaceWith(0, tr.doc.content.size, newDoc.content);
       tr.setMeta('addToHistory', false);
       tr.setMeta('skipSaver', true);
 
       this.editor!.view.dispatch(tr);
+      this.saver.seedCleanSnapshots(this.editor!);
       this.refreshIndexItems();
-
     } catch (error) {
       console.error('Failed to load manuscript content:', error);
     }
   }
 
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Toolbar Helpers
-  // ═══════════════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------------------
+  // Toolbar Actions
+  // ---------------------------------------------------------------------------
 
   getActiveFormatLabel(): string {
     if (!this.editor) return 'Normal Text';
@@ -290,24 +276,32 @@ export class Manuscript implements OnInit, OnDestroy {
     return 'Normal Text';
   }
 
-  /** Delegates to the store, which handles cascaded DB writes and Tiptap insertion. */
-  insertAct()     { this.store.insertAct();     }
-  insertChapter() { this.store.insertChapter(); }
-  insertScene()   { this.store.insertScene();   }
+  /** Delegates cascaded DB writes and Tiptap insertion to the store. */
+  insertAct(): void {
+    this.store.insertAct();
+  }
+
+  insertChapter(): void {
+    this.store.insertChapter();
+  }
+
+  insertScene(): void {
+    this.store.insertScene();
+  }
 
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Navigation
-  // ═══════════════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
 
   switchViewMode(mode: ManuscriptMode, id: string): void {
     this.router.navigate(['/manuscript', mode, id], { replaceUrl: true });
   }
 
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Scroll Index
-  // ═══════════════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------------------
+  // Scroll Index
+  // ---------------------------------------------------------------------------
 
   scrollToSection(item: ManuscriptIndexItem): void {
     const element = document.getElementById(`section-${item.id}`);
@@ -330,9 +324,9 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Private Helpers
-  // ═══════════════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------------------
+  // Private Helpers
+  // ---------------------------------------------------------------------------
 
   private refreshIndexItems(): void {
     if (!this.editor) return;
@@ -350,28 +344,25 @@ export class Manuscript implements OnInit, OnDestroy {
     const items: ManuscriptIndexItem[] = [];
 
     data.forEach(act => {
-      // Act-level index entry (book mode only)
       if (mode === 'book' && act.id) {
         const position = (act.position || 0) + 1;
-        const title    = act.title || 'Untitled Act';
+        const title = act.title || 'Untitled Act';
         items.push({ id: act.id, label: `Act ${position}: ${title}`, type: 'act' });
       }
 
       (act.chapters || []).forEach(chapter => {
-        // Chapter-level index entry (book or act mode)
         if ((mode === 'book' || mode === 'act') && chapter.id) {
           const position = (chapter.position || 0) + 1;
-          const title    = chapter.title || 'Untitled Chapter';
+          const title = chapter.title || 'Untitled Chapter';
           items.push({ id: chapter.id, label: `Chapter ${position}: ${title}`, type: 'chapter' });
         }
 
-        // Scene-level index entry
         (chapter.scenes || []).forEach(scene => {
           if (!scene.id) return;
 
-          const fullProseText  = extractTextFromManuscriptData(scene);
-          const scenePosition  = scene.position || 0;
-          const maxPreviewLen  = 30;
+          const fullProseText = extractTextFromManuscriptData(scene);
+          const scenePosition = scene.position || 0;
+          const maxPreviewLen = 30;
 
           let prosePreview = fullProseText.substring(0, maxPreviewLen);
           if (fullProseText.length > maxPreviewLen) prosePreview += '...';

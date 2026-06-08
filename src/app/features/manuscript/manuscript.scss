@@ -362,10 +362,12 @@
 
 
       // Placeholder styling
+      p.is-empty,
       p.is-editor-empty:first-child {
         position: relative;
       }
 
+      p.is-empty::before,
       p.is-editor-empty:first-child::before {
         color: var(--color-text-secondary);
         content: attr(data-placeholder);

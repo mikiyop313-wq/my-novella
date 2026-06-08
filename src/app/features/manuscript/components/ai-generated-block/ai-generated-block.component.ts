@@ -1,8 +1,13 @@
-import { Component, signal, inject, computed, ElementRef, ViewChild, HostListener, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Component, ElementRef, ViewChild, WritableSignal, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
-import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+
+import { AiStreamEditorService, LoadingStatus } from '../../helpers/ai/ai-stream-editor.service';
+
+// ---------------------------------------------------------------------------
+//  Local Types
+// ---------------------------------------------------------------------------
 
 @Component({
   selector: 'app-ai-generated-block',
@@ -12,16 +17,38 @@ import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service
   styleUrl: './ai-generated-block.component.scss'
 })
 export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
-  private aiStreamEditor = inject(AiStreamEditorService);
 
-  @ViewChild('contentDOM') contentDOM!: ElementRef;
+  // ---------------------------------------------------------------------------
+  //  Dependency Injection
+  // ---------------------------------------------------------------------------
+
+  private readonly aiStreamEditor = inject(AiStreamEditorService);
+
+
+  // ---------------------------------------------------------------------------
+  //  View Children
+  // ---------------------------------------------------------------------------
+
+  @ViewChild('contentDOM') contentDOM!: ElementRef<HTMLElement>;
+
+
+  // ---------------------------------------------------------------------------
+  //  Component State
+  // ---------------------------------------------------------------------------
 
   isModifying = signal(false);
   modifyPrompt = signal('');
   hasCopied = signal(false);
+  isReasoningExpanded = signal(true);
+
+
+  // ---------------------------------------------------------------------------
+  //  Computed Properties
+  // ---------------------------------------------------------------------------
+
   isLoading = computed(() => {
-    const blockId = this.node().attrs['id'];
-    const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
+    const loadingSig = this.loadingSignal(this.blockId());
+
     return loadingSig ? loadingSig() !== 'idle' : false;
   });
 
@@ -30,51 +57,54 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   modelId = computed(() => this.node().attrs['modelId'] || '');
   reasoningText = computed(() => this.node().attrs['reasoningText'] || '');
   reasoningMode = computed(() => this.node().attrs['reasoningMode'] || false);
-  /** True only while the AI is actively streaming — false once the block is finalized. */
+
+  /** True only while the AI is actively streaming; false once the block is finalized. */
   isGenerating = computed(() => this.node().attrs['isGenerating'] === true);
 
-  /** Live word count — recomputes on every token inserted by the stream. */
+  /** Live word count. Recomputes on every token inserted by the stream. */
   wordCount = computed(() => {
     const text = this.node().textContent?.trim() ?? '';
+
     if (!text) return 0;
-    return text.split(/\s+/).filter(w => w.length > 0).length;
+
+    return text.split(/\s+/).filter(word => word.length > 0).length;
   });
 
-  isReasoningExpanded = signal(true);
+
+  // ---------------------------------------------------------------------------
+  //  Lifecycle Hooks
+  // ---------------------------------------------------------------------------
 
   ngOnInit(): void {
-    let blockId = this.node().attrs['id'];
-    if (!blockId) {
-      blockId = crypto.randomUUID();
-      setTimeout(() => {
-        if (typeof this.getPos === 'function') {
-          const pos = this.getPos()();
-          if (pos != null) {
-            const tr = this.editor().state.tr.setNodeMarkup(pos, undefined, {
-              ...this.node().attrs,
-              id: blockId
-            });
-            tr.setMeta('addToHistory', false);
-            this.editor().view.dispatch(tr);
-          }
-        }
-      });
-    }
+    this.ensureBlockId();
+  }
 
-    if (!this.aiStreamEditor.loadingState.has(blockId)) {
-      this.aiStreamEditor.loadingState.set(blockId, signal('idle'));
+
+  // ---------------------------------------------------------------------------
+  //  View Event Handlers
+  // ---------------------------------------------------------------------------
+
+  toggleReasoning(): void {
+    this.isReasoningExpanded.update(isExpanded => !isExpanded);
+  }
+
+  toggleModify(): void {
+    this.isModifying.update(isModifying => !isModifying);
+
+    if (!this.isModifying()) {
+      this.modifyPrompt.set('');
     }
   }
 
-  toggleReasoning() {
-    this.isReasoningExpanded.set(!this.isReasoningExpanded());
-  }
 
-  applyText() {
-    if (typeof this.getPos !== 'function') return;
+  // ---------------------------------------------------------------------------
+  //  Actions
+  // ---------------------------------------------------------------------------
 
-    const pos = this.getPos()();
-    if (pos == null) return;
+  applyText(): void {
+    const pos = this.currentNodePosition();
+
+    if (pos === null) return;
 
     this.aiStreamEditor.applyBlock(
       this.editor(),
@@ -84,21 +114,22 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     );
   }
 
-  discardText() {
-    if (typeof this.getPos !== 'function') return;
+  discardText(): void {
+    const pos = this.currentNodePosition();
 
-    const pos = this.getPos()();
-    if (pos == null) return;
+    if (pos === null) return;
 
     this.aiStreamEditor.discardBlock(this.editor(), pos, this.node().nodeSize);
   }
 
-  copyText() {
+  copyText(): void {
     const contentEl = this.contentDOM?.nativeElement;
-    if (!contentEl?.innerText) return;
+    const plainText = contentEl?.innerText;
+
+    if (!contentEl || !plainText) return;
 
     const item = new ClipboardItem({
-      'text/plain': new Blob([contentEl.innerText], { type: 'text/plain' }),
+      'text/plain': new Blob([plainText], { type: 'text/plain' }),
       'text/html': new Blob([contentEl.innerHTML], { type: 'text/html' })
     });
 
@@ -108,11 +139,10 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     });
   }
 
-  tryAgain() {
+  tryAgain(): void {
     if (this.isLoading()) return;
 
-    const blockId = this.node().attrs['id'];
-    const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
+    const loadingSig = this.loadingSignal(this.blockId());
     loadingSig?.set('loading');
 
     this.generateNewText(this.promptText()).finally(() => {
@@ -120,37 +150,86 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     });
   }
 
-  toggleModify() {
-    this.isModifying.set(!this.isModifying());
-    if (!this.isModifying()) {
-      this.modifyPrompt.set('');
-    }
-  }
+  async submitModify(): Promise<void> {
+    const requestedChange = this.modifyPrompt().trim();
+    const loadingSig = this.loadingSignal(this.blockId());
 
-  async submitModify() {
+    if (!requestedChange || this.isLoading()) return;
 
-    const blockId = this.node().attrs['id'];
-    const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
-
-
-    if (!this.modifyPrompt().trim() || this.isLoading()) return;
-
-    const originalText = this.node().textContent;
-    const combinedPrompt = `Original request: ${this.promptText()}\n\nGenerated text:\n${originalText}\n\nUser request to change:\n${this.modifyPrompt()}`;
+    const combinedPrompt = this.buildModifyPrompt(requestedChange);
 
     this.isModifying.set(false);
     this.modifyPrompt.set('');
     loadingSig?.set('loading');
+
     await this.generateNewText(combinedPrompt).finally(() => {
       loadingSig?.set('idle');
     });
   }
 
-  private async generateNewText(prompt: string) {
-    if (typeof this.getPos !== 'function') return;
 
-    const pos = this.getPos()();
-    if (pos == null) return;
+  // ---------------------------------------------------------------------------
+  //  Private Helpers
+  // ---------------------------------------------------------------------------
+
+  /** Ensure this NodeView has a stable ID for stream state and regeneration. */
+  private ensureBlockId(): void {
+    let blockId = this.blockId();
+
+    if (!blockId) {
+      blockId = crypto.randomUUID();
+
+      // Defer the attribute write until Angular has finished creating the NodeView.
+      setTimeout(() => {
+        const pos = this.currentNodePosition();
+
+        if (pos !== null) {
+          const tr = this.editor().state.tr.setNodeMarkup(pos, undefined, {
+            ...this.node().attrs,
+            id: blockId
+          });
+
+          tr.setMeta('addToHistory', false);
+          this.editor().view.dispatch(tr);
+        }
+      });
+    }
+
+    if (!this.aiStreamEditor.loadingState.has(blockId)) {
+      this.aiStreamEditor.loadingState.set(blockId, signal('idle'));
+    }
+  }
+
+  /** Returns the ID that connects this block with the stream editor service. */
+  private blockId(): string {
+    return this.node().attrs['id'] || '';
+  }
+
+  /** Safely read the current node position from the Tiptap NodeView API. */
+  private currentNodePosition(): number | null {
+    if (typeof this.getPos !== 'function') return null;
+
+    return this.getPos()() ?? null;
+  }
+
+  /** Get the per-block loading signal managed by the AI stream service. */
+  private loadingSignal(blockId: string): WritableSignal<LoadingStatus> | undefined {
+    return this.aiStreamEditor.loadingState.get(blockId);
+  }
+
+  /** Build a regeneration prompt that preserves the original request and output. */
+  private buildModifyPrompt(requestedChange: string): string {
+    return [
+      `Original request: ${this.promptText()}`,
+      `Generated text:\n${this.node().textContent}`,
+      `User request to change:\n${requestedChange}`
+    ].join('\n\n');
+  }
+
+  private async generateNewText(prompt: string): Promise<void> {
+    const pos = this.currentNodePosition();
+
+    if (pos === null) return;
 
     await this.aiStreamEditor.regenerateExistingBlock(
       this.editor(),

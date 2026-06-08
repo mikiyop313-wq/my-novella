@@ -1,6 +1,7 @@
+import { Injector } from '@angular/core';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { AngularNodeViewRenderer } from 'ngx-tiptap';
-import { Injector } from '@angular/core';
+
 import { AiPromptComponent } from './ai-prompt.component';
 
 export const AiPromptExtension = (injector: Injector) => {
@@ -8,9 +9,7 @@ export const AiPromptExtension = (injector: Injector) => {
     name: 'aiPrompt',
 
     group: 'block',
-
     draggable: true,
-
     atom: true,
 
     addAttributes() {
@@ -49,16 +48,17 @@ export const AiPromptExtension = (injector: Injector) => {
           default: 'global',
           parseHTML: element => element.getAttribute('data-vector-search') || 'global',
           renderHTML: attributes => ({ 'data-vector-search': attributes['vectorSearch'] }),
-        }
+        },
+        reasoningMode: {
+          default: false,
+          parseHTML: element => element.getAttribute('data-reasoning-mode') === 'true',
+          renderHTML: attributes => ({ 'data-reasoning-mode': String(attributes['reasoningMode'] === true) }),
+        },
       };
     },
 
     parseHTML() {
-      return [
-        {
-          tag: 'ai-prompt-node',
-        },
-      ];
+      return [{ tag: 'ai-prompt-node' }];
     },
 
     renderHTML({ HTMLAttributes }) {
@@ -73,11 +73,11 @@ export const AiPromptExtension = (injector: Injector) => {
       return [
         {
           find: /^\/ai\s$/,
-          handler: ({ state, range, match }) => {
+          handler: ({ state, range }) => {
             const { tr } = state;
-            const start = range.from;
-            const end = range.to;
-            tr.replaceWith(start, end, this.type.create());
+            const start = state.doc.resolve(range.from);
+
+            tr.replaceWith(start.before(), start.after(), this.type.create());
           },
           undoable: true,
         },

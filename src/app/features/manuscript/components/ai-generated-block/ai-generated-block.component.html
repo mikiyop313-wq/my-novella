@@ -1,4 +1,5 @@
 <div class="ai-generated-container" [class.is-loading]="isLoading()">
+  <!-- Model metadata -->
   <div class="ai-header" contenteditable="false">
     @if(modelId()) {
     <div class="ai-model-badge">
@@ -7,6 +8,7 @@
     }
   </div>
 
+  <!-- Reasoning output -->
   @if(reasoningText()){
   <div class="reasoning-block" contenteditable="false">
     <div class="reasoning-header" (click)="toggleReasoning()" title="Toggle Thinking Process">
@@ -16,6 +18,7 @@
       </svg>
       <span class="reasoning-title">Thinking Process</span>
     </div>
+
     @if(isReasoningExpanded()){
     <div class="reasoning-content">
       {{ reasoningText() }}
@@ -24,9 +27,10 @@
   </div>
   }
 
+  <!-- Generated manuscript content -->
   <div class="ai-generated-content" [class.is-generating]="isGenerating()" #contentDOM data-node-view-content></div>
 
-  <!-- Live word count — always visible, updates on every token -->
+  <!-- Live word count -->
   @if(wordCount() > 0){
   <div class="word-count-row" contenteditable="false">
     <span class="word-count-badge" [class.is-live]="isLoading()">
@@ -38,6 +42,7 @@
   </div>
   }
 
+  <!-- Review actions -->
   @if(!isLoading()){
   <div class="ai-post-actions" contenteditable="false">
     <div class="main-actions" *ngIf="!isModifying()">
@@ -49,6 +54,7 @@
         </svg>
         Discard
       </button>
+
       <button class="action-btn copy" (click)="copyText()" title="Copy to clipboard">
         @if(hasCopied()) {
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
@@ -65,6 +71,7 @@
         Copy
         }
       </button>
+
       <button class="action-btn retry" (click)="tryAgain()" title="Try again">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
@@ -74,6 +81,7 @@
         </svg>
         Try Again
       </button>
+
       <button class="action-btn modify" (click)="toggleModify()" title="Tell AI what to change">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
@@ -82,6 +90,7 @@
         </svg>
         Modify
       </button>
+
       <button class="action-btn apply" (click)="applyText()" title="Apply to manuscript">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
@@ -91,10 +100,12 @@
       </button>
     </div>
 
+    <!-- Modification request form -->
     @if(isModifying()){
     <div class="modify-actions">
       <input type="text" class="modify-input" [(ngModel)]="modifyPrompt" placeholder="Tell AI what to change..."
         (keydown.enter)="submitModify()">
+
       <div class="modify-btns">
         <button class="action-btn outline" (click)="toggleModify()">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
@@ -104,6 +115,7 @@
           </svg>
           Cancel
         </button>
+
         <button class="action-btn apply" (click)="submitModify()" [disabled]="!modifyPrompt().trim()">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">

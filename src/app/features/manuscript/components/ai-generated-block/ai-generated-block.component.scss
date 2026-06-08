@@ -10,7 +10,7 @@
   overflow: hidden;
   backdrop-filter: blur(12px);
 
-  /* Premium subtle noise or gradient */
+  /* Container surface */
   background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
 
   &::before {
@@ -37,6 +37,7 @@
     }
   }
 
+  /* Model metadata */
   .ai-header {
     display: flex;
     justify-content: flex-start;
@@ -61,6 +62,7 @@
     }
   }
 
+  /* Reasoning output */
   .reasoning-block {
     margin-bottom: 1.25rem;
     border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
@@ -115,12 +117,11 @@
     }
   }
 
+  /* Generated manuscript content */
   .ai-generated-content {
-    /* Use the theme's secondary text color for AI text */
     color: var(--color-text-secondary);
     min-height: 1.5em;
     font-size: 1.05em;
-    /* Slightly larger or stylized font for AI text */
     line-height: 1.6;
 
     /* Override standard p tag color if Tiptap injects it. */
@@ -131,16 +132,14 @@
     }
   }
 
-  /* Animate paragraphs only while the block is actively streaming.
-     .is-generating is removed the moment the block is finalized, so the
-     re-inserted paragraphs from the finalization step never play the sweep. */
+  /* Streaming text reveal */
   .ai-generated-content.is-generating {
     ::ng-deep p {
       animation: fadeInText 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
   }
 
-  /* ── Live word count badge ─────────────────────────────────────────── */
+  /* Live word count */
   .word-count-row {
     display: flex;
     justify-content: flex-end;
@@ -182,6 +181,7 @@
     }
   }
 
+  /* Review actions */
   .ai-post-actions {
     margin-top: 1.25rem;
     padding-top: 1rem;
@@ -305,12 +305,7 @@
   }
 }
 
-@keyframes rotate {
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
+/* Animations */
 @keyframes gradientMove {
   0% {
     background-position: 100% 0;
