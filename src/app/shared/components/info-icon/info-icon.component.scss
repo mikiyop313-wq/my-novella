@@ -39,27 +39,6 @@
   pointer-events: auto;
   z-index: 1000;
 
-  // Custom Scrollbar
-  &::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 10px;
-
-    &:hover {
-      background: var(--color-text-secondary);
-    }
-  }
-
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
-
   // Animation
   animation: infoFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 

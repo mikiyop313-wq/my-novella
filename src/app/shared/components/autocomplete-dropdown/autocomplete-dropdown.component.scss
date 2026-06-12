@@ -112,22 +112,6 @@
     margin: 0;
     overflow-y: auto;
 
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 30%, transparent) transparent;
-
-    &::-webkit-scrollbar {
-      width: 5px;
-    }
-
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background-color: color-mix(in srgb, var(--color-text-secondary) 30%, transparent);
-      border-radius: 10px;
-    }
-
     .option-container {
       display: flex;
       flex-direction: column;

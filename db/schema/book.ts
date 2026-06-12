@@ -64,9 +64,7 @@ export const categories = sqliteTable(
     type: text('type').$type<CategoryType>().notNull(),
     isCustom: integer('is_custom', { mode: 'boolean' }).notNull().default(false),
   },
-  (t) => ({
-    unq: unique().on(t.name, t.type),
-  }),
+  (t) => [unique().on(t.name, t.type)],
 );
 
 export const subcategories = sqliteTable(
@@ -79,9 +77,7 @@ export const subcategories = sqliteTable(
       .notNull()
       .references(() => categories.id, { onDelete: 'cascade' }),
   },
-  (t) => ({
-    unq: unique().on(t.name, t.parentCategoryId),
-  }),
+  (t) => [unique().on(t.name, t.parentCategoryId)],
 );
 
 export const bookTags = sqliteTable(
@@ -94,9 +90,7 @@ export const bookTags = sqliteTable(
       .notNull()
       .references(() => categories.id, { onDelete: 'cascade' }),
   },
-  (t) => ({
-    pk: primaryKey({ columns: [t.bookId, t.categoryId] }),
-  }),
+  (t) => [primaryKey({ columns: [t.bookId, t.categoryId] })],
 );
 
 // ---------------------------------------------------------------------------

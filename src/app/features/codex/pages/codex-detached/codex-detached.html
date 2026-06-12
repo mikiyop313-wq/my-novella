@@ -1,0 +1,30 @@
+<main class="codex-detached-page">
+  @if (isLoading()) {
+    <div class="detached-state loading-state">
+      <h1>Loading...</h1>
+      <p>Opening codex entry</p>
+    </div>
+  } @else if (error()) {
+    <div class="detached-state error-state">
+      <h1>Codex Entry</h1>
+      <p>{{ error() }}</p>
+      <button type="button" (click)="close()">Close</button>
+    </div>
+  } @else if (session(); as activeSession) {
+    <app-codex-entry-menu
+      [initialType]="activeSession.initialType"
+      [existingEntry]="existingEntry()"
+      [initialDraft]="initialDraft()"
+      [initialView]="initialView()"
+      [thumbnailUrl]="thumbnailUrl()"
+      [entityDropdownOptions]="entityDropdownOptions"
+      [bookHierarchy]="bookHierarchy()"
+      (closeMenu)="close()"
+      (entryCreated)="createEntry($event)"
+      (entryUpdated)="updateEntry($event)"
+      (archiveEntry)="archiveEntry()"
+      (restoreEntry)="restoreEntry()"
+      (deleteEntry)="deleteEntry()">
+    </app-codex-entry-menu>
+  }
+</main>

@@ -135,22 +135,4 @@
       display: block;
     }
   }
-
-  ::ng-deep &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  ::ng-deep &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::ng-deep &::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 10px;
-  }
-
-  ::ng-deep &::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-secondary);
-  }
-
 }

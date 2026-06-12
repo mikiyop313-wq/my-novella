@@ -28,6 +28,7 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges {
   @Input() showChips: boolean = true;
   @Input() showSearchBar: boolean = true;
   @Input() customAddPlaceholder: string = 'Add custom...';
+  @Input() customDropdownClass: string = '';
 
   @Output() selectionChange = new EventEmitter<any | any[]>();
 

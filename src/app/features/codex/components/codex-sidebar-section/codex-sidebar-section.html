@@ -1,0 +1,232 @@
+<section class="sidebar-section" [class.is-collapsed]="!store.sidebarOpen()" cdkOverlayOrigin
+  #sectionOrigin="cdkOverlayOrigin">
+  <div class="section-body">
+    <ng-template #typeIcon let-type="type">
+      @if (type === 'character') {
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-8 0v2"></path>
+        <circle cx="12" cy="7" r="4"></circle>
+      </svg>
+      } @else if (type === 'location') {
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"></path>
+        <circle cx="12" cy="10" r="2.5"></circle>
+      </svg>
+      } @else if (type === 'object') {
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path
+          d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z">
+        </path>
+        <path d="m3.3 7 8.7 5 8.7-5"></path>
+        <path d="M12 22V12"></path>
+      </svg>
+      } @else if (type === 'lore') {
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+      </svg>
+      } @else if (type === 'subplot') {
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round">
+        <circle cx="6" cy="19" r="3"></circle>
+        <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"></path>
+        <circle cx="18" cy="5" r="3"></circle>
+      </svg>
+      } @else {
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round">
+        <rect width="20" height="5" x="2" y="3" rx="1"></rect>
+        <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>
+        <path d="M10 12h4"></path>
+      </svg>
+      }
+    </ng-template>
+    <div class="search-shell" (click)="handleSearchClick()" [style.cursor]="!store.sidebarOpen() ? 'pointer' : 'text'"
+      [class.filter-open]="isFilterMenuOpen()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m21 21-4.3-4.3"></path>
+      </svg>
+      <input #searchInput type="search" placeholder="Search codex" aria-label="Search codex" [ngModel]="searchQuery()"
+        (ngModelChange)="updateSearchQuery($event)">
+      @if (store.sidebarOpen()) {
+      <button class="filter-trigger" [cdkMenuTriggerFor]="filterMenu" aria-label="Filter codex"
+        (click)="$event.stopPropagation()" (cdkMenuOpened)="isFilterMenuOpen.set(true)"
+        (cdkMenuClosed)="isFilterMenuOpen.set(false)" [class.is-open]="isFilterMenuOpen()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+        </svg>
+      </button>
+      }
+    </div>
+
+    <ng-template #filterMenu>
+      <div class="filter-menu-panel" cdkMenu>
+        <div class="filter-menu-header">
+          <h4>Filter Entries</h4>
+          <button class="reset-btn" (click)="resetFilters()">Reset</button>
+        </div>
+        <div class="filter-menu-content">
+          <div class="filter-group">
+            <label>Has Notes</label>
+            <div class="tri-state-toggle">
+              <button [class.active]="filterNotes() === 'any'" (click)="setNotesFilter('any')">Both</button>
+              <button [class.active]="filterNotes() === 'include'" (click)="setNotesFilter('include')">Yes</button>
+              <button [class.active]="filterNotes() === 'exclude'" (click)="setNotesFilter('exclude')">No</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Has Description</label>
+            <div class="tri-state-toggle">
+              <button [class.active]="filterDescription() === 'any'" (click)="setDescriptionFilter('any')">Both</button>
+              <button [class.active]="filterDescription() === 'include'"
+                (click)="setDescriptionFilter('include')">Yes</button>
+              <button [class.active]="filterDescription() === 'exclude'"
+                (click)="setDescriptionFilter('exclude')">No</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Has Progression</label>
+            <div class="tri-state-toggle">
+              <button [class.active]="filterProgression() === 'any'" (click)="setProgressionFilter('any')">Both</button>
+              <button [class.active]="filterProgression() === 'include'"
+                (click)="setProgressionFilter('include')">Yes</button>
+              <button [class.active]="filterProgression() === 'exclude'"
+                (click)="setProgressionFilter('exclude')">No</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Archived</label>
+            <div class="tri-state-toggle">
+              <button [class.active]="filterArchived() === 'any'" (click)="setArchivedFilter('any')">Both</button>
+              <button [class.active]="filterArchived() === 'include'"
+                (click)="setArchivedFilter('include')">Yes</button>
+              <button [class.active]="filterArchived() === 'exclude'" (click)="setArchivedFilter('exclude')">No</button>
+            </div>
+          </div>
+          <div class="filter-group tracking-group">
+            <label>Tracking By</label>
+            <label class="checkbox-label">
+              <input type="checkbox" [checked]="hasTrackingFilter('always_include')"
+                (change)="toggleTrackingFilter('always_include')">
+              <div class="checkbox-custom"></div>
+              <span>Global</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" [checked]="hasTrackingFilter('include_when_detected')"
+                (change)="toggleTrackingFilter('include_when_detected')">
+              <div class="checkbox-custom"></div>
+              <span>Detected</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" [checked]="hasTrackingFilter('manual')" (change)="toggleTrackingFilter('manual')">
+              <div class="checkbox-custom"></div>
+              <span>Manual</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" [checked]="hasTrackingFilter('never_include')"
+                (change)="toggleTrackingFilter('never_include')">
+              <div class="checkbox-custom"></div>
+              <span>Not Included</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </ng-template>
+
+    <div class="type-tabs" aria-label="Codex entity types">
+      @for (type of entityTypes; track type.value) {
+      <button [class.active]="activeType() === type.value" (click)="selectType(type.value)" [title]="type.label">
+        @if (!store.sidebarOpen()) {
+        <ng-container *ngTemplateOutlet="typeIcon; context: { type: type.value }"></ng-container>
+        } @else {
+        {{ type.label }}
+        }
+      </button>
+      }
+    </div>
+
+    <div class="section-divider"></div>
+
+    @if (activeEntityType(); as type) {
+
+    @if (isLoadingEntries()) {
+    } @else if (entries().length > 0) {
+    <div class="entry-list" [attr.aria-label]="type.label">
+      @for (entry of entries(); track entry.id) {
+      <article class="entry-card" (click)="openEntry(entry)" tabindex="0" role="button"
+        (keydown.enter)="openEntry(entry)" (keydown.space)="openEntry(entry); $event.preventDefault()">
+        <div class="entry-card-icon">
+          @if (getEntryImageUrl(entry); as thumbnailUrl) {
+          <img class="entry-thumbnail" [src]="thumbnailUrl" [alt]="entry.name">
+          } @else {
+          <ng-container *ngTemplateOutlet="typeIcon; context: { type: type.value }"></ng-container>
+          }
+        </div>
+        <div class="entry-card-content">
+          <div class="entry-card-header">
+            <h3 [title]="entry.name">{{ entry.name }}</h3>
+            <span>{{ getTrackingLabel(entry.trackingSetting) }}</span>
+          </div>
+          @if (entry.description) {
+          <p class="entry-description">{{ entry.description }}</p>
+          }
+        </div>
+      </article>
+      }
+      <button class="add-btn list-add" (click)="openCreateMenu(type.value)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+        <span>Add {{ type.singularLabel }}</span>
+      </button>
+    </div>
+    } @else {
+    <div class="empty-state">
+      <div class="empty-icon">
+        <ng-container *ngTemplateOutlet="typeIcon; context: { type: type.value }"></ng-container>
+      </div>
+      @if (hasSearchQuery()) {
+      <h3>No matches found</h3>
+      <p>No {{ type.label | lowercase }} match "{{ searchQuery().trim() }}".</p>
+      } @else {
+      <h3>No {{ type.label | lowercase }} yet</h3>
+      <p>{{ type.description }}</p>
+      }
+      <button class="add-btn" (click)="openCreateMenu(type.value)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+        <span>Add {{ type.singularLabel }}</span>
+      </button>
+    </div>
+    }
+
+    <ng-template cdkConnectedOverlay [cdkConnectedOverlayOrigin]="sectionOrigin"
+      [cdkConnectedOverlayOpen]="isCreatingEntry()" (backdropClick)="closeCreateMenu()"
+      [cdkConnectedOverlayPositions]="[
+        { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 14, offsetY: 0 },
+        { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -14, offsetY: 0 }
+      ]" [cdkConnectedOverlayFlexibleDimensions]="true" [cdkConnectedOverlayPush]="true"
+      [cdkConnectedOverlayViewportMargin]="16" [cdkConnectedOverlayHasBackdrop]="true"
+      cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop">
+      <app-codex-entry-menu [initialType]="activeType()" [entityDropdownOptions]="entityDropdownOptions"
+        [existingEntry]="selectedEntry()" [thumbnailUrl]="selectedEntryImageUrl()"
+        [bookHierarchy]="workspaceBookStore.bookHierarchy()" (closeMenu)="closeCreateMenu()"
+        (entryCreated)="saveEntry($event)" (entryUpdated)="saveEntry($event)" (archiveEntry)="archiveEntry()"
+        (restoreEntry)="restoreEntry()" (deleteEntry)="deleteEntry()" (detachRequested)="detachEntryWindow($event)">
+      </app-codex-entry-menu>
+    </ng-template>
+    }
+  </div>
+</section>

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { initializeIpc } from './ipc';
+import { CodexWindowManager } from './windows/codex-window-manager';
 import '../db/index';
 
 if (!app.isPackaged) {
@@ -9,6 +10,52 @@ if (!app.isPackaged) {
 
 let win: BrowserWindow | null;
 let isReadyToClose = false;
+
+function isDevMode(): boolean {
+    return process.env.NODE_ENV === 'development';
+}
+
+function applyWindowShortcuts(window: BrowserWindow) {
+    window.webContents.on('before-input-event', (_event, input) => {
+        const wc = window.webContents;
+
+        if (input.key === 'F12' || (input.control && input.shift && input.key === 'I')) {
+            if (wc.isDevToolsOpened()) wc.closeDevTools();
+            else wc.openDevTools();
+        }
+
+        if (input.key === 'F5' || (input.control && input.key === 'r')) {
+            wc.reload();
+        }
+    });
+}
+
+function loadAppRoute(window: BrowserWindow, route = '') {
+    const normalizedRoute = route.replace(/^\/+/, '');
+
+    if (isDevMode()) {
+        const hash = normalizedRoute ? `#/${normalizedRoute}` : '';
+        window.loadURL(`http://localhost:4200/${hash}`);
+        return;
+    }
+
+    const indexPath = path.join(__dirname, '../dist/my-novella/browser/index.html');
+    if (normalizedRoute) {
+        window.loadFile(indexPath, { hash: `/${normalizedRoute}` });
+        return;
+    }
+
+    window.loadFile(indexPath);
+}
+
+function setupCodexWindowHandlers() {
+    const codexWindowManager = new CodexWindowManager({
+        preloadPath: path.join(__dirname, 'preload.js'),
+        applyShortcuts: applyWindowShortcuts,
+        loadRoute: loadAppRoute,
+    });
+    codexWindowManager.setupIpcHandlers();
+}
 
 function createWindow() {
     win = new BrowserWindow({
@@ -21,15 +68,9 @@ function createWindow() {
         }
     });
 
-    const isDev = process.env.NODE_ENV === 'development';
-
-    if (isDev) {
-        // Load Angular dev server
-        win.loadURL('http://localhost:4200');
+    loadAppRoute(win);
+    if (isDevMode()) {
         win.webContents.openDevTools();
-    } else {
-        // Load built Angular app
-        win.loadFile(path.join(__dirname, '../dist/my-novella/browser/index.html'));
     }
 
     // ── Graceful close: let the renderer flush unsaved data ──────────────
@@ -76,6 +117,7 @@ ipcMain.on('app:close-ready', () => {
 
 app.on('ready', () => {
     initializeIpc();
+    setupCodexWindowHandlers();
     createWindow();
 });
 

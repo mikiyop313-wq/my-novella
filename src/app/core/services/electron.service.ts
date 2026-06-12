@@ -29,10 +29,11 @@ export class ElectronService {
     }
 
     // Use this to listen for replies from the Main process
-    on(channel: string, callback: (...args: any[]) => void): void {
+    on(channel: string, callback: (...args: any[]) => void): () => void {
         if (window.electronAPI) {
-            window.electronAPI.onMessage(channel, callback);
+            return window.electronAPI.onMessage(channel, callback);
         }
+        return () => {};
     }
 
     // Use this to invoke a method in the Main process and wait for a result

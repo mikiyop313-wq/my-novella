@@ -295,7 +295,10 @@ export class Manuscript implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   switchViewMode(mode: ManuscriptMode, id: string): void {
-    this.router.navigate(['/manuscript', mode, id], { replaceUrl: true });
+    const bookId = this.getWorkspaceBookId();
+    if (!bookId) return;
+
+    this.router.navigate(['/workspace', bookId, 'manuscript', mode, id], { replaceUrl: true });
   }
 
 
@@ -374,5 +377,11 @@ export class Manuscript implements OnInit, OnDestroy {
     });
 
     this.indexItems.set(items);
+  }
+
+  private getWorkspaceBookId(): string | null {
+    return this.route.parent?.snapshot.paramMap.get('bookId') ||
+      this.store.bookHierarchy()[0]?.bookId ||
+      this.store.bookId();
   }
 }

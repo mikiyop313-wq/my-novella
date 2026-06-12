@@ -23,6 +23,6 @@ export class BookCardComponent {
    */
 
   onBookClicked() {
-    this.router.navigate(['/manuscript', 'book', this.book().id]);
+    this.router.navigate(['/workspace', this.book().id]);
   }
 }

@@ -10,7 +10,7 @@
   </button>
 
   <ng-template #menu>
-    <div class="autocomplete-dropdown" cdkMenu>
+    <div class="autocomplete-dropdown" [ngClass]="customDropdownClass" cdkMenu>
       @if (showSearchBar) {
       <div class="dropdown-search">
         <input #searchInput type="text" [formControl]="searchControl"
