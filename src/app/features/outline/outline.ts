@@ -1,9 +1,9 @@
-import { Component, DestroyRef, OnInit, ViewChild, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, NgZone, OnInit, QueryList, ViewChild, ViewChildren, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
-import { CdkMenuModule } from '@angular/cdk/menu';
+import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 
 import {
   ActDto,
@@ -68,20 +68,54 @@ export class Outline implements OnInit {
   // Store and services.
   readonly store = inject(OutlineStore);
 
+  private readonly elementRef = inject(ElementRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toastService = inject(ToastService);
+  private readonly ngZone = inject(NgZone);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   @ViewChild('outlineAnimation') private outlineAnimation?: ElementAnimationDirective;
+  @ViewChildren(CdkMenuTrigger) private menuTriggers!: QueryList<CdkMenuTrigger>;
 
   // Local UI state for collapsed sections and inline title/comment editing.
   collapsed = signal<Record<string, boolean>>({});
   editing = signal<Record<string, boolean>>({});
+  sceneCardMode = signal<'compact' | 'fit' | 'list'>('compact');
 
   // ---------------------------------------------------------------------------
   // View State
   // ---------------------------------------------------------------------------
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (!target) return;
+
+    // If no item is currently being edited, nothing to dismiss.
+    const editingState = this.editing();
+    const hasEditing = Object.values(editingState).some(Boolean);
+    if (!hasEditing) return;
+
+    // Keep editing if the click landed on an edit input or textarea inside this component.
+    const isEditField = target.closest(
+      '.act-title-input, .chapter-title-input, .scene-title-input, .scene-comments-input',
+    );
+    if (isEditField && this.elementRef.nativeElement.contains(target)) return;
+
+    // Keep editing if the click landed inside a CDK overlay (menu).
+    // Menus render outside the component tree, and their own handlers (e.g. toggleEdit)
+    // manage editing state directly.
+    if (target.closest('.cdk-overlay-container')) return;
+
+    // Dismiss editing for any click on buttons, menus, menu items, overlays, or outside the edit fields.
+    this.clearAllEditing();
+  }
+
+  clearAllEditing(): void {
+    this.editing.set({});
+  }
 
   toggleCollapse(id: string, event?: Event): void {
     if (event) {
@@ -101,6 +135,20 @@ export class Outline implements OnInit {
     }));
   }
 
+  setSceneCardMode(mode: 'compact' | 'fit' | 'list'): void {
+    if (this.sceneCardMode() === mode) return;
+
+    if (!document.startViewTransition) {
+      this.sceneCardMode.set(mode);
+      return;
+    }
+
+    document.startViewTransition(() => {
+      this.sceneCardMode.set(mode);
+      this.cdr.detectChanges();
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Routing
   // ---------------------------------------------------------------------------
@@ -111,6 +159,31 @@ export class Outline implements OnInit {
       if (!bookId) return;
 
       this.store.enterBook(bookId);
+    });
+
+    this.ngZone.runOutsideAngular(() => {
+      const handleScroll = (): void => {
+        const hasOpenMenu = this.menuTriggers.some((trigger) => trigger.isOpen());
+        if (hasOpenMenu) {
+          this.ngZone.run(() => {
+            this.closeAllMenus();
+          });
+        }
+      };
+
+      window.addEventListener('scroll', handleScroll, true);
+
+      this.destroyRef.onDestroy(() => {
+        window.removeEventListener('scroll', handleScroll, true);
+      });
+    });
+  }
+
+  closeAllMenus(): void {
+    this.menuTriggers.forEach((trigger) => {
+      if (trigger.isOpen()) {
+        trigger.close();
+      }
     });
   }
 
@@ -165,13 +238,14 @@ export class Outline implements OnInit {
     const action = async (): Promise<void> => {
       await this.store.createAct(bookId);
       createdId = this.store.bookHierarchy().find((act) => !previousIds.has(act.id))?.id;
+      this.cdr.detectChanges();
     };
 
     try {
       await (this.outlineAnimation
         ? this.outlineAnimation.animateAfterCreate(action, () =>
-            this.findOutlineItemElement(createdId),
-          )
+          this.findOutlineItemElement(createdId),
+        )
         : action());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create act.';
@@ -187,13 +261,14 @@ export class Outline implements OnInit {
       createdId = (this.findAct(actId)?.chapters ?? []).find(
         (chapter) => !previousIds.has(chapter.id),
       )?.id;
+      this.cdr.detectChanges();
     };
 
     try {
       await (this.outlineAnimation
         ? this.outlineAnimation.animateAfterCreate(action, () =>
-            this.findOutlineItemElement(createdId),
-          )
+          this.findOutlineItemElement(createdId),
+        )
         : action());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create chapter.';
@@ -211,13 +286,14 @@ export class Outline implements OnInit {
       createdId = (this.findChapter(chapterId)?.scenes ?? []).find(
         (scene) => !previousIds.has(scene.id),
       )?.id;
+      this.cdr.detectChanges();
     };
 
     try {
       await (this.outlineAnimation
         ? this.outlineAnimation.animateAfterCreate(action, () =>
-            this.findOutlineItemElement(createdId),
-          )
+          this.findOutlineItemElement(createdId),
+        )
         : action());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create scene.';
@@ -234,7 +310,10 @@ export class Outline implements OnInit {
     try {
       const element = this.findOutlineItemElement(actId);
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, () => this.store.deleteAct(actId))
+        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+            await this.store.deleteAct(actId);
+            this.cdr.detectChanges();
+          })
         : this.store.deleteAct(actId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete act.';
@@ -246,9 +325,10 @@ export class Outline implements OnInit {
     try {
       const element = this.findOutlineItemElement(chapterId);
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, () =>
-            this.store.deleteChapter(chapterId),
-          )
+        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+            await this.store.deleteChapter(chapterId);
+            this.cdr.detectChanges();
+          })
         : this.store.deleteChapter(chapterId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete chapter.';
@@ -260,7 +340,10 @@ export class Outline implements OnInit {
     try {
       const element = this.findOutlineItemElement(sceneId);
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, () => this.store.deleteScene(sceneId))
+        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+            await this.store.deleteScene(sceneId);
+            this.cdr.detectChanges();
+          })
         : this.store.deleteScene(sceneId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete scene.';
@@ -272,7 +355,10 @@ export class Outline implements OnInit {
     try {
       const element = this.findOutlineItemElement(actId);
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, () => this.store.archiveAct(actId))
+        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+            await this.store.archiveAct(actId);
+            this.cdr.detectChanges();
+          })
         : this.store.archiveAct(actId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to archive act.';
@@ -284,9 +370,10 @@ export class Outline implements OnInit {
     try {
       const element = this.findOutlineItemElement(chapterId);
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, () =>
-            this.store.archiveChapter(chapterId),
-          )
+        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+            await this.store.archiveChapter(chapterId);
+            this.cdr.detectChanges();
+          })
         : this.store.archiveChapter(chapterId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to archive chapter.';
@@ -298,7 +385,10 @@ export class Outline implements OnInit {
     try {
       const element = this.findOutlineItemElement(sceneId);
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, () => this.store.archiveScene(sceneId))
+        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+            await this.store.archiveScene(sceneId);
+            this.cdr.detectChanges();
+          })
         : this.store.archiveScene(sceneId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to archive scene.';

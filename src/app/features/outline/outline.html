@@ -1,10 +1,21 @@
-<section class="outline-container" aria-label="Book outline" appElementAnimation #outlineAnimation="appElementAnimation"
+<section class="outline-container" [class.layout-fit]="sceneCardMode() === 'fit'" [class.layout-list]="sceneCardMode() === 'list'" aria-label="Book outline" appElementAnimation #outlineAnimation="appElementAnimation"
   appElementAnimationEnterClass="outline-item-entering" appElementAnimationLeaveClass="outline-item-leaving"
   [appElementAnimationDurationMs]="260">
   <div class="outline-header">
     <div class="header-text">
       <h1>Outline</h1>
       <p class="header-subtitle">Structure your story with acts, chapters, and scenes</p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn-layout" [class.active]="sceneCardMode() === 'compact'" (click)="setSceneCardMode('compact')" title="Compact cards">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+      </button>
+      <button type="button" class="btn-layout" [class.active]="sceneCardMode() === 'fit'" (click)="setSceneCardMode('fit')" title="Fit content cards">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="12" x2="21" y2="12"></line></svg>
+      </button>
+      <button type="button" class="btn-layout" [class.active]="sceneCardMode() === 'list'" (click)="setSceneCardMode('list')" title="List view">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+      </button>
     </div>
   </div>
 
@@ -21,7 +32,7 @@
   <div cdkDropList id="outline-acts" class="acts-list" [cdkDropListData]="store.bookHierarchy()"
     (cdkDropListDropped)="onActDrop($event)">
     @for (act of store.bookHierarchy(); track act.id; let actIdx = $index) {
-    <div class="act-wrapper" [attr.data-outline-item-id]="act.id" cdkDrag>
+    <div class="act-wrapper" [attr.data-outline-item-id]="act.id" [style.view-transition-name]="'outline-act-' + act.id" cdkDrag>
       <div class="act-block">
         <!-- Act controls and metadata -->
         <div class="act-header">
@@ -84,7 +95,7 @@
               [cdkDropListData]="act.chapters || []" [cdkDropListConnectedTo]="chapterDropListIds()"
               (cdkDropListDropped)="onChapterDrop($event, act.id)">
               @for (chapter of act.chapters || []; track chapter.id; let chIdx = $index) {
-              <div class="chapter-wrapper" [attr.data-outline-item-id]="chapter.id" cdkDrag>
+              <div class="chapter-wrapper" [attr.data-outline-item-id]="chapter.id" [style.view-transition-name]="'outline-chapter-' + chapter.id" cdkDrag>
                 <div class="chapter-block">
                   <!-- Chapter controls and metadata -->
                   <div class="chapter-row">
@@ -155,7 +166,7 @@
                         track scene.id;
                         let scIdx = $index
                         ) {
-                        <div class="scene-wrapper" [attr.data-outline-item-id]="scene.id" cdkDrag>
+                        <div class="scene-wrapper" [attr.data-outline-item-id]="scene.id" [style.view-transition-name]="'outline-scene-' + scene.id" cdkDrag>
                           <div class="scene-card-row">
                             <div class="drag-handle scene-drag" cdkDragHandle (click)="$event.stopPropagation()">
                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
