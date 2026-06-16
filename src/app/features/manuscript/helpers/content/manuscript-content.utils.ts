@@ -324,6 +324,7 @@ function createActFromNode(node: any): ActDto {
     title: node.attrs['title'] || '',
     position: node.attrs['position'] || 0,
     bookId: '',
+    status: 'active',
     summary: null,
     chapters: [],
   };
@@ -335,6 +336,7 @@ function createChapterFromNode(node: any, actId: string): ChapterDto {
     title: node.attrs['title'] || '',
     position: node.attrs['position'] || 0,
     actId,
+    status: 'active',
     summary: null,
     scenes: [],
   };
@@ -346,6 +348,7 @@ function createSceneFromNode(node: any, chapterId: string): SceneDto {
     title: node.attrs['title'] || '',
     position: node.attrs['position'] || 0,
     chapterId,
+    status: 'active',
     summary: node.attrs['summary'] || null,
     prose: { type: 'doc', content: [] },
     wordCount: null,
@@ -360,6 +363,7 @@ function createEmptyAct(chapters: ChapterDto[] = []): ActDto {
     title: '',
     position: 0,
     bookId: '',
+    status: 'active',
     summary: null,
     chapters,
   };
@@ -371,6 +375,7 @@ function createEmptyChapter(actId: string, scenes: SceneDto[] = []): ChapterDto 
     title: '',
     position: 0,
     actId,
+    status: 'active',
     summary: null,
     scenes,
   };

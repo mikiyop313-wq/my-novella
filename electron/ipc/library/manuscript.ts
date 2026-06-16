@@ -1,9 +1,11 @@
 import { ipcMain } from 'electron';
 import { manuscriptRepository } from '../../../db/repositories/manuscript.repository';
 import {
+    ArchiveActPayload, ArchiveChapterPayload, ArchiveScenePayload,
     CreateActPayload, CreateChapterPayload, CreateScenePayload,
     DeleteActPayload, DeleteChapterPayload, DeleteScenePayload,
-    UpdateActPayload, UpdateChapterPayload, UpdateScenePayload
+    UpdateActPayload, UpdateChapterPayload, UpdateScenePayload,
+    UpdateStructurePositionsPayload
 } from '../../../shared/models/manuscript.model';
 
 export function setupManuscriptHandlers() {
@@ -12,6 +14,15 @@ export function setupManuscriptHandlers() {
             return await manuscriptRepository.getManuscript(mode, id);
         } catch (error) {
             console.error('Failed to get manuscript:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('manuscript:getOutline', async (_, { bookId }: { bookId: string }) => {
+        try {
+            return await manuscriptRepository.getOutline(bookId);
+        } catch (error) {
+            console.error('Failed to get outline:', error);
             throw error;
         }
     });
@@ -70,6 +81,15 @@ export function setupManuscriptHandlers() {
         }
     });
 
+    ipcMain.handle('manuscript:updateStructurePositions', async (_, payload: UpdateStructurePositionsPayload) => {
+        try {
+            await manuscriptRepository.updateStructurePositions(payload);
+        } catch (error) {
+            console.error('Failed to update structure positions:', error);
+            throw error;
+        }
+    });
+
     ipcMain.handle('manuscript:deleteAct', async (_, { id }: DeleteActPayload) => {
         try {
             await manuscriptRepository.deleteAct(id);
@@ -93,6 +113,33 @@ export function setupManuscriptHandlers() {
             await manuscriptRepository.deleteScene(id);
         } catch (error) {
             console.error('Failed to delete scene:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('manuscript:archiveAct', async (_, { id }: ArchiveActPayload) => {
+        try {
+            await manuscriptRepository.archiveAct(id);
+        } catch (error) {
+            console.error('Failed to archive act:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('manuscript:archiveChapter', async (_, { id }: ArchiveChapterPayload) => {
+        try {
+            await manuscriptRepository.archiveChapter(id);
+        } catch (error) {
+            console.error('Failed to archive chapter:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('manuscript:archiveScene', async (_, { id }: ArchiveScenePayload) => {
+        try {
+            await manuscriptRepository.archiveScene(id);
+        } catch (error) {
+            console.error('Failed to archive scene:', error);
             throw error;
         }
     });

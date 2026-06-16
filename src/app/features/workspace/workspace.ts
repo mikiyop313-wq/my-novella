@@ -1,6 +1,7 @@
 import { Component, DestroyRef, OnInit, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink, RouterOutlet } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 
 import { WorkspaceSidebar } from './sidebar/workspace-sidebar';
 import { WorkspaceBookStore } from './workspace-book.store';
@@ -21,6 +22,15 @@ export class Workspace implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   ngOnInit(): void {
+    this.syncActiveViewFromUrl();
+
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => this.syncActiveViewFromUrl());
+
     this.route.paramMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(params => {
@@ -29,19 +39,23 @@ export class Workspace implements OnInit {
 
         this.store.enterBook(bookId);
         this.bookStore.clearBookHierarchy();
-        this.navigateToDefaultManuscript(bookId);
+        this.navigateToDefaultOutline(bookId);
       });
   }
 
-  private navigateToDefaultManuscript(bookId: string): void {
+  private navigateToDefaultOutline(bookId: string): void {
     const workspaceUrl = `/workspace/${bookId}`;
     const currentUrl = this.router.url.replace(/\/$/, '');
 
     if (currentUrl !== workspaceUrl) return;
 
-    this.router.navigate(['manuscript', 'book', bookId], {
+    this.router.navigate(['outline'], {
       relativeTo: this.route,
       replaceUrl: true,
     });
+  }
+
+  private syncActiveViewFromUrl(): void {
+    this.store.setActiveView(this.router.url.includes('/outline') ? 'outline' : 'manuscript');
   }
 }
