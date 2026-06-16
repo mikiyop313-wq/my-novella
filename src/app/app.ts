@@ -17,8 +17,19 @@ import { ToastContainerComponent } from './shared/components/toast-container/toa
 export class App {
 
   protected readonly title = signal('my-novella');
+  readonly isAnimating = signal(false);
   private contexts = inject(ChildrenOutletContexts);
   toastService = inject(ToastService);
+
+  onAnimationStart(event: any) {
+    if (event.fromState && event.toState && event.fromState !== event.toState) {
+      this.isAnimating.set(true);
+    }
+  }
+
+  onAnimationDone(event: any) {
+    this.isAnimating.set(false);
+  }
 
   constructor(private electronService: ElectronService, private themeService: ThemeService) {
     this.electronService.on('reply', (data: any) => {

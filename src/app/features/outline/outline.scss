@@ -87,7 +87,7 @@
   }
 }
 
-// Loading / Error
+// Loading / Error / Empty State
 
 .loading-state,
 .error-state {
@@ -95,6 +95,76 @@
   padding: 4rem 2rem;
   color: var(--color-text-secondary);
   font-size: 0.95rem;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 50vh;
+  padding: 3rem;
+  background: color-mix(in srgb, var(--color-surface) 50%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--color-border) 80%, transparent);
+  border-radius: 12px;
+  margin: 2rem auto;
+  max-width: 600px;
+  
+  .empty-state-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-border) 30%, transparent);
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+  }
+
+  h2 {
+    font-family: var(--title-font);
+    color: var(--color-text-primary);
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 600;
+  }
+
+  p {
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin: 0 0 1.5rem;
+    max-width: 400px;
+  }
+}
+
+.btn-create-outline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.5rem;
+  font-family: var(--body-font);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 200ms ease;
+
+  &:hover {
+    background: var(--color-hover-bg);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-border) 40%, transparent);
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 // Shared Drag Handle
@@ -559,14 +629,14 @@
     overflow: hidden;
   }
 
-  .scene-comments {
+  .scene-summary {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
   }
 
-  .scene-comments-label {
+  .scene-summary-label {
     margin-bottom: 0.35rem;
     color: var(--color-text-secondary);
     font-size: 0.62rem;
@@ -576,7 +646,7 @@
     text-transform: uppercase;
   }
 
-  .scene-comments-input {
+  .scene-summary-input {
     font-family: inherit;
     font-size: 0.8rem;
     color: var(--color-text-secondary);
@@ -609,7 +679,7 @@
     }
   }
 
-  .scene-comments-body {
+  .scene-summary-body {
     font-size: 0.8rem;
     color: var(--color-text-secondary);
     line-height: 1.6;
@@ -648,13 +718,13 @@
     max-height: 400px;
   }
 
-  .scene-comments-body {
+  .scene-summary-body {
     display: block;
     -webkit-line-clamp: unset;
     overflow-y: auto;
   }
 
-  .scene-comments-input {
+  .scene-summary-input {
     min-height: 120px;
   }
 
@@ -732,17 +802,17 @@
       opacity: 1;
     }
 
-    .scene-comments {
+    .scene-summary {
       flex: 1;
       padding: 1.2rem 1.5rem;
       display: flex;
       flex-direction: column;
       
-      .scene-comments-label {
+      .scene-summary-label {
         display: none;
       }
       
-      .scene-comments-body {
+      .scene-summary-body {
         -webkit-line-clamp: unset;
         font-size: 0.88rem;
         line-height: 1.6;
@@ -767,7 +837,7 @@
         }
       }
       
-      .scene-comments-input {
+      .scene-summary-input {
         flex: 1;
         overflow-y: auto;
       }

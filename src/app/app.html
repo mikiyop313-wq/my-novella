@@ -1,5 +1,7 @@
-<main class="main">
-  <div class="animation-container" [@routeAnimations]="getRouteAnimationData()">
+<main class="main" [class.is-animating]="isAnimating()">
+  <div class="animation-container" [@routeAnimations]="getRouteAnimationData()"
+       (@routeAnimations.start)="onAnimationStart($event)"
+       (@routeAnimations.done)="onAnimationDone($event)">
     <router-outlet />
   </div>
 

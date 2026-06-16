@@ -11,8 +11,8 @@ export const routes: Routes = [
     loadComponent: () => import('./features/workspace/workspace').then(m => m.Workspace),
     data: { animation: 'WorkspacePage' },
     children: [
-      { path: 'outline', loadComponent: () => import('./features/outline/outline').then(m => m.Outline) },
-      { path: 'manuscript/:mode/:id', loadComponent: () => import('./features/manuscript/manuscript').then(m => m.Manuscript) },
+      { path: 'outline', loadComponent: () => import('./features/outline/outline').then(m => m.Outline), data: { animation: 'OutlinePage' } },
+      { path: 'manuscript/:mode/:id', loadComponent: () => import('./features/manuscript/manuscript').then(m => m.Manuscript), data: { animation: 'ManuscriptPage' } },
     ],
   }
 ];

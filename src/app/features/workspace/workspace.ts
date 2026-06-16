@@ -1,17 +1,19 @@
 import { Component, DestroyRef, OnInit, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterOutlet, ChildrenOutletContexts } from '@angular/router';
 import { filter } from 'rxjs';
 
 import { WorkspaceSidebar } from './sidebar/workspace-sidebar';
 import { WorkspaceBookStore } from './workspace-book.store';
 import { WorkspaceStore } from './workspace.store';
+import { routeAnimations } from '../../shared/animations/route-animations';
 
 @Component({
   selector: 'app-workspace',
   imports: [RouterOutlet, RouterLink, WorkspaceSidebar],
   templateUrl: './workspace.html',
   styleUrl: './workspace.scss',
+  animations: [routeAnimations]
 })
 export class Workspace implements OnInit {
   readonly store = inject(WorkspaceStore);
@@ -20,6 +22,7 @@ export class Workspace implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly contexts = inject(ChildrenOutletContexts);
 
   ngOnInit(): void {
     this.syncActiveViewFromUrl();
@@ -41,6 +44,10 @@ export class Workspace implements OnInit {
         this.bookStore.clearBookHierarchy();
         this.navigateToDefaultOutline(bookId);
       });
+  }
+
+  getRouteAnimationData() {
+    return this.contexts.getContext('primary')?.route?.snapshot?.data?.['animation'];
   }
 
   private navigateToDefaultOutline(bookId: string): void {
