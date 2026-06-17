@@ -510,6 +510,16 @@ export class Outline implements OnInit {
   // Lookup Helpers
   // ---------------------------------------------------------------------------
 
+  isSceneEmpty(sceneId: string): boolean {
+    const scene = this.findScene(sceneId);
+    if (!scene) return true;
+
+    const hasSummary = !!scene.summary && scene.summary.trim().length > 0;
+    const hasProse = (scene.wordCount ?? 0) > 0;
+
+    return !hasSummary && !hasProse;
+  }
+
   private normalizeEditableValue(value: string): string {
     return value.trim().length === 0 ? '' : value;
   }
