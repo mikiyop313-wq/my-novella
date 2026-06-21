@@ -6,7 +6,7 @@ import { InfoIconComponent } from '../../../../shared/components/info-icon/info-
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
 import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
 import { LibraryStore } from '../../../library/store/book.store';
-import { AiStore } from '../../store/ai.store';
+import { AiStore } from '../../../../core/store/ai.store';
 import { ManuscriptStore } from '../../store/manuscript.store';
 
 @Component({

@@ -29,7 +29,7 @@ import {
   getProseTextById,
 } from './helpers/content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
-import { AiStore } from './store/ai.store';
+import { AiStore } from '../../core/store/ai.store';
 import { ManuscriptStore } from './store/manuscript.store';
 
 @Component({

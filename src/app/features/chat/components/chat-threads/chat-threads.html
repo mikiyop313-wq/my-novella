@@ -1,0 +1,148 @@
+<div class="chat-threads-container" 
+     [class.is-sidebar]="isDetachedMode()" 
+     [class.is-page]="!isDetachedMode()"
+     [class.collapsed]="isDetachedMode() && !isSidebarOpen">
+     
+  @if (isDetachedMode()) {
+    <div class="threads-header">
+      <div class="threads-header-copy">
+        <span>Chat</span>
+        <h3>Conversations</h3>
+      </div>
+      <button class="icon-btn" (click)="startNewConversation()" [disabled]="isNewChat()" aria-label="New chat" title="New chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          <line x1="12" y1="8" x2="12" y2="14"></line>
+          <line x1="9" y1="11" x2="15" y2="11"></line>
+        </svg>
+      </button>
+    </div>
+    <button
+      class="sidebar-edge-toggle"
+      type="button"
+      (click)="toggleSidebar()"
+      [title]="isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+      [attr.aria-label]="isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'">
+      <span aria-hidden="true"></span>
+    </button>
+  } @else {
+    <div class="page-header">
+      <div class="chat-header-actions">
+        <div></div> <!-- Spacer -->
+        <div class="header-actions-group" style="display: flex; gap: 8px;">
+          <button class="icon-btn" (click)="startNewConversation()" [disabled]="isNewChat()" aria-label="New chat" title="New chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              <line x1="12" y1="8" x2="12" y2="14"></line>
+              <line x1="9" y1="11" x2="15" y2="11"></line>
+            </svg>
+          </button>
+          @if (canDetach()) {
+          <button class="icon-btn detach-btn" (click)="detachChat()" aria-label="Detach chat" title="Detach chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+          </button>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (threads().length && !isDetachedMode()) {
+    <div class="recent-threads-header">
+      <h2 class="recent-threads-title">Last recent threads</h2>
+    </div>
+  }
+  @if (threads().length) {
+    @for (thread of threads(); track thread.id) {
+      <div class="thread-wrapper" [attr.data-thread-id]="thread.id" [style.view-transition-name]="'thread-' + thread.id">
+        <div class="thread-block">
+          <div
+            class="thread-row"
+            role="button"
+            tabindex="0"
+            (click)="onThreadClick(thread.id, $event)"
+            (keydown.enter)="onThreadClick(thread.id, $event)"
+            (keydown.space)="onThreadClick(thread.id, $event)">
+            <span class="thread-details">
+              @if (editingThreadId === thread.id) {
+                <input #renameInput type="text" class="thread-title-input" 
+                       [value]="thread.title"
+                       (blur)="saveRename(thread.id, renameInput.value, thread.title)"
+                       (keydown.enter)="saveRenameFromKeyboard(thread.id, renameInput.value, thread.title, $event)"
+                       (keydown.escape)="cancelRenameFromKeyboard($event)"
+                       (keydown)="$event.stopPropagation()"
+                       (keyup)="$event.stopPropagation()"
+                       (click)="$event.stopPropagation()">
+              } @else {
+                <span class="thread-title">{{ thread.title }}</span>
+              }
+              <span class="thread-meta">{{ formatThreadDate(thread.lastEditedAt) }}</span>
+            </span>
+            <button type="button" class="icon-btn thread-menu-btn" [cdkMenuTriggerFor]="threadOptionsMenu" [cdkMenuTriggerData]="{ id: thread.id, title: thread.title }" (click)="$event.stopPropagation()" aria-label="Thread options">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="12" cy="5" r="1"></circle>
+                <circle cx="12" cy="19" r="1"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  } @else if (!isDetachedMode()) {
+    <div class="empty-state">
+      <div class="empty-state-card">
+        <div class="empty-state-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <div class="empty-state-content">
+          <h2>No conversations yet</h2>
+          <p>Start a new conversation to begin chatting.</p>
+        </div>
+        <button class="new-conversation-btn" (click)="startNewConversation()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          New Conversation
+        </button>
+      </div>
+    </div>
+  }
+
+</div>
+
+<ng-template #threadOptionsMenu let-id="id" let-title="title">
+  <div class="overlay-menu" cdkMenu>
+    <button class="menu-item" cdkMenuItem (click)="startRename(id)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+      </svg>
+      Rename
+    </button>
+    <button class="menu-item" cdkMenuItem (click)="archiveThread(id)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <rect x="2" y="4" width="20" height="5" rx="2" ry="2"></rect>
+        <path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path>
+        <path d="M10 13h4"></path>
+      </svg>
+      Archive
+    </button>
+    <button class="menu-item delete" cdkMenuItem (click)="deleteThread(id)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M3 6h18"></path>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+      Delete
+    </button>
+  </div>
+</ng-template>

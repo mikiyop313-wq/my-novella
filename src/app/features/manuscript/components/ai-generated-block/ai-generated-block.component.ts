@@ -3,7 +3,8 @@ import { Component, ElementRef, ViewChild, WritableSignal, computed, inject, sig
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 
-import { AiStreamEditorService, LoadingStatus } from '../../helpers/ai/ai-stream-editor.service';
+import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 
 // ---------------------------------------------------------------------------
 //  Local Types

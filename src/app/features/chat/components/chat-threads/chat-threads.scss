@@ -1,0 +1,491 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.chat-threads-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: transparent;
+  transition: width 0.24s ease, min-width 0.24s ease, background-color 0.24s ease, border-color 0.24s ease;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  &.is-page {
+    width: 100%;
+  }
+
+  &.is-sidebar {
+    position: relative;
+    width: 312px;
+    min-width: 312px;
+    overflow: visible; // this might cause issues but let's leave it
+    border-right: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+    background:
+      linear-gradient(180deg,
+        color-mix(in srgb, var(--color-surface) 78%, var(--color-background)),
+        color-mix(in srgb, var(--color-surface) 50%, var(--color-background)));
+    box-shadow: 14px 0 28px -28px rgba(0, 0, 0, 0.42);
+
+    &.collapsed {
+      width: 56px;
+      min-width: 56px;
+      background: color-mix(in srgb, var(--color-surface) 62%, var(--color-background));
+
+      .threads-header-copy,
+      .threads-list {
+        display: none;
+      }
+
+      .threads-header {
+        justify-content: center;
+        min-height: 68px;
+        padding: 12px 0;
+        border-bottom-color: transparent;
+      }
+
+      .sidebar-edge-toggle {
+        right: -10px;
+      }
+    }
+  }
+}
+
+.threads-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 14px 14px 14px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+
+  .threads-header-copy {
+    min-width: 0;
+    flex: 1;
+  }
+
+  span {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--color-text-secondary);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  h3 {
+    margin: 0;
+    font-family: inherit;
+    color: var(--color-text-primary);
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+}
+
+.sidebar-edge-toggle {
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  z-index: 10;
+  width: 16px;
+  height: 72px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-left: none;
+  border-radius: 0 999px 999px 0;
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+  box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  span {
+    position: relative;
+    width: 2px;
+    height: 24px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--color-text-secondary) 60%, transparent);
+    transition: all 0.3s ease;
+  }
+
+  &:hover {
+    width: 20px;
+    right: -10px;
+    background: var(--color-surface);
+    border-color: color-mix(in srgb, var(--color-border) 100%, transparent);
+    box-shadow: 4px 0 12px -2px rgba(0, 0, 0, 0.12);
+
+    span {
+      height: 32px;
+      background: color-mix(in srgb, var(--color-text-primary) 80%, transparent);
+    }
+  }
+
+  &:active {
+    transform: translateY(-50%) scale(0.96);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 34%, transparent);
+    outline-offset: 2px;
+  }
+}
+
+.thread-row {
+  position: relative;
+  width: calc(100% - 20px);
+  max-width: 520px;
+  min-height: 80px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto 12px auto;
+  padding: 16px 20px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface) 40%, transparent);
+  box-shadow:
+    0 4px 12px -4px rgba(0, 0, 0, 0.05),
+    0 2px 4px -2px rgba(0, 0, 0, 0.02);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+    opacity: 0;
+    transition: opacity 0.24s ease;
+    z-index: 0;
+  }
+
+  >* {
+    position: relative;
+    z-index: 1;
+  }
+
+  &:hover {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--color-border) 90%, transparent);
+    transform: translateY(-1px);
+    box-shadow:
+      0 4px 12px -4px rgba(0, 0, 0, 0.08),
+      0 2px 4px -2px rgba(0, 0, 0, 0.04);
+
+    &::before {
+      opacity: 1;
+    }
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: none;
+    transition-duration: 0.1s;
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 34%, transparent);
+    outline-offset: 2px;
+  }
+}
+
+.thread-wrapper {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: grid-template-rows, opacity, transform;
+
+  &.thread-item-leaving {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-0.45rem);
+  }
+
+  > .thread-block {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+.thread-details {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+}
+
+.thread-title,
+.thread-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-title {
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.thread-title-input {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  padding: 2px 4px;
+  margin-left: -5px;
+  outline: none;
+
+  &:focus {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+}
+
+.thread-meta {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.1;
+  opacity: 0.8;
+}
+
+.sidebar-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  margin-top: 2rem;
+
+  p {
+    margin: 0;
+    line-height: 1.5;
+  }
+}
+
+.sidebar-empty-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-border) 25%, transparent);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 18px;
+    height: 18px;
+    opacity: 0.8;
+  }
+}
+
+.is-page {
+  .page-header {
+    padding: 24px 24px 0 24px;
+  }
+
+  .chat-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+
+
+  .recent-threads-header {
+    text-align: center;
+    width: 100%;
+    margin: 40px auto 32px auto;
+    flex-shrink: 0;
+  }
+
+  .recent-threads-title {
+    font-family: var(--title-font);
+    font-size: 2.2rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+
+  .empty-state {
+    margin: auto;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  .empty-state-card {
+    box-sizing: border-box;
+    background: color-mix(in srgb, var(--color-surface) 50%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--color-border) 80%, transparent);
+    border-radius: 12px;
+    padding: 4rem 3rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 800px;
+    min-height: 50vh;
+    margin: 2rem auto;
+  }
+
+  .empty-state-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-border) 30%, transparent);
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+
+    svg {
+      width: 40px;
+      height: 40px;
+      opacity: 0.8;
+    }
+  }
+
+  .empty-state-content {
+    h2 {
+      font-family: var(--title-font);
+      color: var(--color-text-primary);
+      margin: 0;
+      font-size: 1.8rem;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 0.5rem 0 1.5rem;
+      font-size: 1rem;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      max-width: 400px;
+    }
+  }
+
+  .new-conversation-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.5rem;
+    font-family: var(--body-font);
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 200ms ease;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    &:hover {
+      background: var(--color-hover-bg);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px color-mix(in srgb, var(--color-border) 40%, transparent);
+    }
+
+    &:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  flex-shrink: 0;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:hover:not(:disabled) {
+    color: var(--color-text-primary);
+    background: var(--color-hover-bg);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

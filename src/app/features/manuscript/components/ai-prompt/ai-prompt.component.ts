@@ -5,8 +5,9 @@ import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
-import { AiStreamEditorService, LoadingStatus } from '../../helpers/ai/ai-stream-editor.service';
-import { AiStore } from '../../store/ai.store';
+import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+import { LoadingStatus } from '../../../../core/services/ai-stream.service';
+import { AiStore } from '../../../../core/store/ai.store';
 
 // ---------------------------------------------------------------------------
 //  Local Types

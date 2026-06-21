@@ -36,6 +36,13 @@
       "when": 1781481600000,
       "tag": "0004_narrative_archive_status",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1781737142270,
+      "tag": "0005_chat_schema",
+      "breakpoints": true
     }
   ]
 }

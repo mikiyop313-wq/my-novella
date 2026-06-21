@@ -1,16 +1,13 @@
 import { Injectable, WritableSignal, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
 
-import { AIStateService } from '../../../../core/services/ai-state.service';
+import { AiStreamService, LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
-
-export type LoadingStatus = 'idle' | 'loading' | 'thinking' | 'generating';
 
 type GeneratedBlockAttrs = Record<string, any>;
 
 const AI_GENERATED_BLOCK_NODE = 'aiGeneratedBlock';
 const PARAGRAPH_NODE = 'paragraph';
-const REASONING_UPDATE_INTERVAL_MS = 200;
 
 @Injectable({ providedIn: 'root' })
 export class AiStreamEditorService {
@@ -19,7 +16,7 @@ export class AiStreamEditorService {
   // Dependencies
   // ---------------------------------------------------------------------------
 
-  private readonly aiStateService = inject(AIStateService);
+  private readonly aiStreamService = inject(AiStreamService);
   private readonly saver = inject(ManuscriptProseSaverService);
 
 
@@ -27,7 +24,7 @@ export class AiStreamEditorService {
   // Shared Stream State
   // ---------------------------------------------------------------------------
 
-  public readonly loadingState = new Map<string, WritableSignal<LoadingStatus>>();
+  public readonly loadingState: Map<string, WritableSignal<LoadingStatus>> = this.aiStreamService.loadingState;
 
   /** Tracks blocks whose in-flight network request was explicitly aborted. */
   private readonly stoppedBlocks = new Set<string>();
@@ -43,7 +40,7 @@ export class AiStreamEditorService {
    */
   async stopGeneration(blockId: string): Promise<void> {
     this.stoppedBlocks.add(blockId);
-    await this.aiStateService.abort();
+    await this.aiStreamService.stopStream(blockId);
   }
 
   /**
@@ -220,9 +217,7 @@ export class AiStreamEditorService {
     let currentInsertPos = startInsertPos;
     let hasError = false;
     let hasWrittenContent = false;
-    let isNewlineSequence = false;
     let reasoningBuffer = '';
-    let lastReasoningUpdate = Date.now();
 
     const queue: string[] = [];
     let isAnimating = false;
@@ -259,45 +254,26 @@ export class AiStreamEditorService {
     };
 
     try {
-      await this.aiStateService.generate(
-        promptText,
+      await this.aiStreamService.streamText({
+        streamId: blockAttrs['id'],
+        prompt: promptText,
         provider,
         modelId,
-        token => {
+        reasoningMode,
+        onToken: token => {
           if (!token) return;
 
-          this.setLoadingStatus(blockAttrs['id'], 'generating');
-
-          for (const char of token) {
-            if (char === '\r') continue;
-
-            if (char === '\n') {
-              if (!isNewlineSequence) {
-                enqueue('\n');
-                isNewlineSequence = true;
-              }
-              continue;
-            }
-
-            isNewlineSequence = false;
-            enqueue(char);
+          if (token === '\n') {
+            enqueue('\n');
+          } else {
+            enqueue(token);
           }
         },
-        reasoningMode,
-        reasoningToken => {
-          if (!reasoningToken) return;
-
-          this.setLoadingStatus(blockAttrs['id'], 'thinking');
-
-          reasoningBuffer += reasoningToken;
-          const now = Date.now();
-
-          if (now - lastReasoningUpdate > REASONING_UPDATE_INTERVAL_MS) {
-            this.updateReasoningText(editor, blockAttrs, reasoningBuffer);
-            lastReasoningUpdate = now;
-          }
+        onReasoningUpdate: reasoningText => {
+          reasoningBuffer = reasoningText;
+          this.updateReasoningText(editor, blockAttrs, reasoningText);
         }
-      );
+      });
     } catch (error) {
       hasError = true;
       console.error('AI Generation failed:', error);
@@ -447,11 +423,4 @@ export class AiStreamEditorService {
     return blockPos;
   }
 
-  private setLoadingStatus(blockId: string, status: LoadingStatus): void {
-    const loadingSig = this.loadingState.get(blockId);
-
-    if (loadingSig && loadingSig() !== status) {
-      loadingSig.set(status);
-    }
-  }
 }

@@ -48,7 +48,7 @@
 
 .view-toggle {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
   background: color-mix(in srgb, var(--color-text-primary) 4%, var(--color-surface));
   border: 1px solid color-mix(in srgb, var(--color-text-primary) 6%, var(--color-border));
@@ -61,12 +61,16 @@
     transform: translateX(100%);
   }
 
+  &.is-chat .active-pill {
+    transform: translateX(200%);
+  }
+
   .active-pill {
     position: absolute;
     top: 0;
     bottom: 0;
     left: 0;
-    width: 50%;
+    width: 33.3333%;
     background: var(--color-background);
     border-radius: 7px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);

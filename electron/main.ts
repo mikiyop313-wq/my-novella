@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { initializeIpc } from './ipc';
+import { ChatWindowManager } from './windows/chat-window-manager';
 import { CodexWindowManager } from './windows/codex-window-manager';
 import '../db/index';
 
@@ -55,6 +56,15 @@ function setupCodexWindowHandlers() {
         loadRoute: loadAppRoute,
     });
     codexWindowManager.setupIpcHandlers();
+}
+
+function setupChatWindowHandlers() {
+    const chatWindowManager = new ChatWindowManager({
+        preloadPath: path.join(__dirname, 'preload.js'),
+        applyShortcuts: applyWindowShortcuts,
+        loadRoute: loadAppRoute,
+    });
+    chatWindowManager.setupIpcHandlers();
 }
 
 function createWindow() {
@@ -118,6 +128,7 @@ ipcMain.on('app:close-ready', () => {
 app.on('ready', () => {
     initializeIpc();
     setupCodexWindowHandlers();
+    setupChatWindowHandlers();
     createWindow();
 });
 
