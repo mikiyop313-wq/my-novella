@@ -9,6 +9,8 @@ import {
   type ChatThreadDetailDto,
   type ChatThreadDto,
 } from '../../../../shared/models/chat.model';
+import { AiStreamService } from '../../core/services/ai-stream.service';
+import { AiStore } from '../../core/store/ai.store';
 import { Chat } from './chat';
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
@@ -22,6 +24,7 @@ function makeThreadDetail(overrides: Partial<ChatThreadDetailDto> = {}): ChatThr
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     messages: [],
+    branchSelections: [],
     ...overrides,
   };
 }
@@ -42,6 +45,9 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
   return {
     id: 'message-1',
     threadId: 'thread-1',
+    parentMessageId: null,
+    branchGroupId: 'branch-1',
+    branchOrder: 0,
     role: 'user',
     content: 'Hello',
     status: 'complete',
@@ -68,9 +74,11 @@ describe('Chat', () => {
   let threads: ChatThreadDto[];
   let chatStore: {
     threads: ReturnType<typeof vi.fn>;
+    messages: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
     bookId: ReturnType<typeof vi.fn>;
     selectedThread: ReturnType<typeof vi.fn>;
+    visibleMessages: ReturnType<typeof vi.fn>;
     isSaving: ReturnType<typeof vi.fn>;
     enterBook: ReturnType<typeof vi.fn>;
     loadThreads: ReturnType<typeof vi.fn>;
@@ -78,7 +86,23 @@ describe('Chat', () => {
     closeThread: ReturnType<typeof vi.fn>;
     createThread: ReturnType<typeof vi.fn>;
     sendMessage: ReturnType<typeof vi.fn>;
+    createMessageBranch: ReturnType<typeof vi.fn>;
+    createAssistantMessage: ReturnType<typeof vi.fn>;
+    patchStreamingMessage: ReturnType<typeof vi.fn>;
+    updateMessage: ReturnType<typeof vi.fn>;
     deleteMessage: ReturnType<typeof vi.fn>;
+    getMessageBranchCount: ReturnType<typeof vi.fn>;
+    getMessageBranchIndex: ReturnType<typeof vi.fn>;
+    selectMessageBranch: ReturnType<typeof vi.fn>;
+    selectAdjacentMessageBranch: ReturnType<typeof vi.fn>;
+  };
+  let aiStore: {
+    models: ReturnType<typeof vi.fn>;
+    loadModels: ReturnType<typeof vi.fn>;
+  };
+  let aiStreamService: {
+    streamText: ReturnType<typeof vi.fn>;
+    stopStream: ReturnType<typeof vi.fn>;
   };
   let router: {
     navigate: ReturnType<typeof vi.fn>;
@@ -100,6 +124,8 @@ describe('Chat', () => {
         { provide: Router, useValue: router },
         { provide: ChatStore, useValue: chatStore },
         { provide: ChatWindowService, useValue: chatWindowService },
+        { provide: AiStore, useValue: aiStore },
+        { provide: AiStreamService, useValue: aiStreamService },
       ],
     }).compileComponents();
 
@@ -118,9 +144,11 @@ describe('Chat', () => {
     detachedBookIds = new Set();
     chatStore = {
       threads: vi.fn(() => threads),
+      messages: vi.fn(() => selectedThread?.messages ?? []),
       error: vi.fn(() => null),
       bookId: vi.fn(() => currentBookId),
       selectedThread: vi.fn(() => selectedThread),
+      visibleMessages: vi.fn(() => selectedThread?.messages ?? []),
       isSaving: vi.fn(() => false),
       enterBook: vi.fn((bookId: string) => {
         currentBookId = bookId;
@@ -139,13 +167,92 @@ describe('Chat', () => {
       }),
       createThread: vi.fn(async () => {
         const thread = makeThread();
-        selectedThread = { ...thread, messages: [] };
+        selectedThread = { ...thread, messages: [], branchSelections: [] };
         return thread;
       }),
-      sendMessage: vi.fn(async () => {
-        selectedThread = makeThreadDetail({ messages: [makeMessage()] });
+      sendMessage: vi.fn(async (content: string) => {
+        const message = makeMessage({ content });
+        selectedThread = makeThreadDetail({ messages: [message] });
+        return message;
+      }),
+      createMessageBranch: vi.fn(),
+      createAssistantMessage: vi.fn(async (data: {
+        parentMessageId?: string | null;
+        provider?: string | null;
+        modelId?: string | null;
+      } = {}) => {
+        const message = makeMessage({
+          id: 'assistant-1',
+          parentMessageId: data.parentMessageId ?? null,
+          branchGroupId: 'branch-2',
+          role: 'assistant',
+          content: '',
+          status: 'streaming',
+          position: selectedThread?.messages.length ?? 1,
+          provider: data.provider ?? null,
+          modelId: data.modelId ?? null,
+        });
+        selectedThread = {
+          ...(selectedThread ?? makeThreadDetail({ messages: [] })),
+          messages: [...(selectedThread?.messages ?? []), message],
+        };
+        return message;
+      }),
+      patchStreamingMessage: vi.fn((id: string, data: Partial<ChatMessageDetailDto>) => {
+        if (!selectedThread) return;
+
+        selectedThread = {
+          ...selectedThread,
+          messages: selectedThread.messages.map((message) => (
+            message.id === id ? { ...message, ...data } : message
+          )),
+        };
+      }),
+      updateMessage: vi.fn(async (id: string, data: Partial<ChatMessageDetailDto>) => {
+        if (!selectedThread) return null;
+
+        let updated: ChatMessageDetailDto | null = null;
+        selectedThread = {
+          ...selectedThread,
+          messages: selectedThread.messages.map((message) => {
+            if (message.id !== id) return message;
+
+            updated = { ...message, ...data };
+            return updated;
+          }),
+        };
+        return updated;
       }),
       deleteMessage: vi.fn(() => Promise.resolve()),
+      getMessageBranchCount: vi.fn((message: ChatMessageDetailDto) => (
+        selectedThread?.messages.filter((item) => item.branchGroupId === message.branchGroupId).length ?? 1
+      )),
+      getMessageBranchIndex: vi.fn((message: ChatMessageDetailDto) => {
+        const branches = selectedThread?.messages.filter((item) => item.branchGroupId === message.branchGroupId) ?? [];
+        const index = branches.findIndex((item) => item.id === message.id);
+        return index === -1 ? 1 : index + 1;
+      }),
+      selectMessageBranch: vi.fn(() => Promise.resolve(true)),
+      selectAdjacentMessageBranch: vi.fn(() => Promise.resolve()),
+    };
+    aiStore = {
+      models: vi.fn(() => [
+        {
+          id: 'openrouter/test-model',
+          name: 'Test Model',
+          provider: 'test',
+          source: 'openrouter',
+          supportsReasoning: true,
+        },
+      ]),
+      loadModels: vi.fn(),
+    };
+    aiStreamService = {
+      streamText: vi.fn(async (request: { onToken?: (token: string) => void }) => {
+        request.onToken?.('AI reply');
+        return 'AI reply';
+      }),
+      stopStream: vi.fn(() => Promise.resolve()),
     };
     router = {
       navigate: vi.fn(() => Promise.resolve(true)),
@@ -317,6 +424,38 @@ describe('Chat', () => {
     expect(component.selectedThreadId).toBe('thread-1');
   });
 
+  it('restores the last model used in an opened thread', async () => {
+    chatStore.openThread.mockImplementation(async () => {
+      selectedThread = makeThreadDetail({
+        messages: [
+          makeMessage({ id: 'user-1' }),
+          makeMessage({
+            id: 'assistant-1',
+            parentMessageId: 'user-1',
+            role: 'assistant',
+            position: 1,
+            modelId: 'openrouter/test-model',
+            provider: 'openrouter',
+          }),
+        ],
+      });
+    });
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: {
+          paramMap: convertToParamMap({ bookId: 'book-1' }),
+        },
+      },
+    });
+
+    await Promise.resolve();
+
+    expect(component.selectedModelId()).toBe('openrouter/test-model');
+  });
+
   it('starts an unsaved new chat without creating a thread', async () => {
     await createComponent({
       snapshot: { paramMap: convertToParamMap({}) },
@@ -391,6 +530,7 @@ describe('Chat', () => {
       },
     });
     router.navigate.mockClear();
+    component.selectedModelId.set('openrouter/test-model');
     const input = document.createElement('textarea');
     input.value = 'Start here';
 
@@ -398,6 +538,382 @@ describe('Chat', () => {
 
     expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here');
     expect(router.navigate).toHaveBeenCalledWith(['/workspace', 'book-1', 'thread', 'thread-1'], { replaceUrl: true });
+  });
+
+  it('streams an AI response after saving the user message', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: {
+        snapshot: {
+          paramMap: convertToParamMap({ bookId: 'book-1' }),
+        },
+      },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    const input = document.createElement('textarea');
+    input.value = 'Start here';
+
+    await component.sendPrompt(input);
+
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith({
+      parentMessageId: 'message-1',
+      provider: 'openrouter',
+      modelId: 'openrouter/test-model',
+    });
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      streamId: 'pending-message-1',
+      prompt: 'Start here',
+      provider: 'openrouter',
+      modelId: 'openrouter/test-model',
+      messages: [{ role: 'user', content: 'Start here' }],
+    }));
+    expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
+      content: 'AI reply',
+    });
+    expect(chatStore.updateMessage).toHaveBeenCalledWith('assistant-1', expect.objectContaining({
+      content: 'AI reply',
+      status: 'complete',
+    }));
+  });
+
+  it('creates and selects an edited user-message branch before generating a response', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    const original = makeMessage({ id: 'user-1', content: 'Original prompt' });
+    const edited = makeMessage({
+      id: 'user-2',
+      content: 'Edited prompt',
+      branchOrder: 1,
+    });
+    selectedThread = makeThreadDetail({ messages: [original] });
+    chatStore.createMessageBranch.mockResolvedValueOnce(edited);
+
+    component.editMessage('user-1');
+    await component.saveMessageEdit('user-1', '  Edited prompt  ');
+
+    expect(chatStore.createMessageBranch).toHaveBeenCalledWith('user-1', 'Edited prompt');
+    expect(chatStore.selectMessageBranch).toHaveBeenCalledWith('user-2');
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'Edited prompt',
+    }));
+  });
+
+  it('treats an unchanged user-message edit as an assistant retry', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    const user = makeMessage({ id: 'user-1', content: 'Keep this prompt' });
+    const assistant = makeMessage({
+      id: 'assistant-1',
+      parentMessageId: 'user-1',
+      branchGroupId: 'assistant-group',
+      role: 'assistant',
+      content: 'Original response',
+      position: 1,
+    });
+    selectedThread = makeThreadDetail({ messages: [user, assistant] });
+
+    component.editMessage('user-1');
+    await component.saveMessageEdit('user-1', 'Keep this prompt');
+
+    expect(chatStore.createMessageBranch).not.toHaveBeenCalled();
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith({
+      parentMessageId: 'user-1',
+      provider: 'openrouter',
+      modelId: null,
+      branchGroupId: 'assistant-group',
+    });
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'Keep this prompt',
+      messages: [{ role: 'user', content: 'Keep this prompt' }],
+    }));
+  });
+
+  it('retries an assistant response as a selected sibling branch', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    const user = makeMessage({ id: 'user-1', content: 'Prompt' });
+    const assistant = makeMessage({
+      id: 'assistant-1',
+      parentMessageId: 'user-1',
+      branchGroupId: 'assistant-group',
+      role: 'assistant',
+      content: 'Original response',
+      position: 1,
+    });
+    selectedThread = makeThreadDetail({ messages: [user, assistant] });
+
+    await component.retryMessage('assistant-1');
+
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
+      parentMessageId: 'user-1',
+      branchGroupId: 'assistant-group',
+    }));
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'Prompt',
+      messages: [{ role: 'user', content: 'Prompt' }],
+    }));
+  });
+
+  it('creates only one retry branch when streaming finishes before branch creation resolves', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    const user = makeMessage({ id: 'user-1', content: 'Prompt' });
+    const assistant = makeMessage({
+      id: 'assistant-1',
+      parentMessageId: 'user-1',
+      branchGroupId: 'assistant-group',
+      role: 'assistant',
+      content: 'Original response',
+      position: 1,
+    });
+    selectedThread = makeThreadDetail({ messages: [user, assistant] });
+
+    let resolveAssistant!: (message: ChatMessageDetailDto) => void;
+    chatStore.createAssistantMessage.mockImplementationOnce(() => new Promise<ChatMessageDetailDto>((resolve) => {
+      resolveAssistant = resolve;
+    }));
+    aiStreamService.streamText.mockImplementationOnce(async (request: { onToken?: (token: string) => void }) => {
+      request.onToken?.('Retry reply');
+      return 'Retry reply';
+    });
+
+    const retry = component.retryMessage('assistant-1');
+    await vi.waitFor(() => expect(chatStore.createAssistantMessage).toHaveBeenCalledTimes(1));
+    resolveAssistant(makeMessage({
+      id: 'assistant-2',
+      parentMessageId: 'user-1',
+      branchGroupId: 'assistant-group',
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+      position: 1,
+      branchOrder: 1,
+    }));
+    await retry;
+
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the response spinner visible until streaming completes', async () => {
+    let resolveStream!: (value: string) => void;
+    aiStreamService.streamText.mockImplementationOnce((request: {
+      onToken?: (token: string) => void;
+      onReasoningUpdate?: (reasoning: string) => void;
+    }) => {
+      request.onReasoningUpdate?.('Inspecting the prompt');
+      request.onToken?.('Partial reply');
+      return new Promise<string>((resolve) => {
+        resolveStream = resolve;
+      });
+    });
+
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: {
+        snapshot: {
+          paramMap: convertToParamMap({ bookId: 'book-1' }),
+        },
+      },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    const input = document.createElement('textarea');
+    input.value = 'Start here';
+
+    const sendPromise = component.sendPrompt(input);
+    await vi.waitFor(() => {
+      expect(aiStreamService.streamText).toHaveBeenCalled();
+    });
+    fixture.detectChanges(false);
+
+    expect(fixture.nativeElement.querySelector('.message-spinner')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Partial reply');
+    expect(fixture.nativeElement.querySelector('.message-reasoning-toggle')).not.toBeNull();
+    expect((fixture.nativeElement.querySelector('.message-reasoning-content') as HTMLElement)
+      .getAttribute('aria-hidden')).toBe('true');
+
+    resolveStream('Partial reply');
+    await sendPromise;
+    fixture.detectChanges(false);
+
+    expect(fixture.nativeElement.querySelector('.message-spinner')).toBeNull();
+  });
+
+  it('renders assistant reasoning as a collapsed, accessible disclosure', async () => {
+    selectedThread = makeThreadDetail({
+      messages: [makeMessage({
+        id: 'assistant-with-reasoning',
+        role: 'assistant',
+        content: 'Final answer',
+        reasoningSummary: 'First, inspect the prompt.\nThen, answer it.',
+      })],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    const toggle = fixture.nativeElement.querySelector('.message-reasoning-toggle') as HTMLButtonElement;
+    expect(toggle).not.toBeNull();
+    expect(toggle.textContent).toContain('Thinking');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect((fixture.nativeElement.querySelector('.message-reasoning-content') as HTMLElement)
+      .getAttribute('aria-hidden')).toBe('true');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    const content = fixture.nativeElement.querySelector('.message-reasoning-content') as HTMLElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(content.getAttribute('aria-hidden')).toBe('false');
+    expect(content.classList.contains('is-expanded')).toBe(true);
+    expect(content.id).toBe('chat-message-reasoning-assistant-with-reasoning');
+    expect(content.textContent).toContain('First, inspect the prompt.\nThen, answer it.');
+  });
+
+  it('does not render a reasoning disclosure when no reasoning is available', async () => {
+    selectedThread = makeThreadDetail({
+      messages: [makeMessage({ id: 'assistant-without-reasoning', role: 'assistant', content: 'Final answer' })],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    expect(fixture.nativeElement.querySelector('.message-reasoning')).toBeNull();
+  });
+
+  it('disables sending until a model is selected', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    const sendButton = fixture.nativeElement.querySelector('.send-btn') as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(true);
+
+    component.selectedModelId.set('openrouter/test-model');
+    fixture.detectChanges();
+
+    expect(sendButton.disabled).toBe(false);
+  });
+
+  it('turns the send control into a stop control while a response is generating', async () => {
+    let resolveStream!: (value: string) => void;
+    aiStreamService.streamText.mockImplementationOnce(() => new Promise<string>((resolve) => {
+      resolveStream = resolve;
+    }));
+
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    const input = document.createElement('textarea');
+    input.value = 'Start here';
+
+    const sendPromise = component.sendPrompt(input);
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
+    fixture.detectChanges();
+
+    const sendButton = fixture.nativeElement.querySelector('.send-btn') as HTMLButtonElement;
+    expect(sendButton.getAttribute('aria-label')).toBe('Stop generating');
+    expect(sendButton.querySelector('rect')).not.toBeNull();
+
+    await component.handleSendOrStop(input);
+    expect(aiStreamService.stopStream).toHaveBeenCalledWith('pending-message-1');
+
+    resolveStream('');
+    await sendPromise;
+  });
+
+  it('pauses and resumes streaming auto-scroll based on the chat scroll position', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    const chatBody = fixture.nativeElement.querySelector('.chat-body') as HTMLElement;
+    const scrollTo = vi.fn();
+    Object.defineProperties(chatBody, {
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 600 },
+      scrollTo: { configurable: true, value: scrollTo },
+    });
+
+    component.isGeneratingResponse.set(true);
+    component['requestAutoScroll']();
+    fixture.detectChanges();
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1_000, behavior: 'auto' });
+
+    chatBody.scrollTop = 200;
+    chatBody.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+
+    expect(component.isAutoScrollEnabled()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).not.toBeNull();
+
+    chatBody.scrollTop = 600;
+    chatBody.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+
+    expect(component.isAutoScrollEnabled()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
+
+    chatBody.scrollTop = 200;
+    chatBody.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.scroll-to-bottom-btn') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1_000, behavior: 'smooth' });
+    expect(component.isAutoScrollEnabled()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
+
+    component.isGeneratingResponse.set(false);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
   });
 
   it('keeps the created thread selected when the thread route initializes after sending', async () => {
@@ -514,5 +1030,42 @@ describe('Chat', () => {
 
     expect(chatStore.deleteMessage).toHaveBeenCalledTimes(1);
     expect(chatStore.deleteMessage).toHaveBeenCalledWith('message-1');
+  });
+
+  it('renders branch index and routes branch arrows through the store', async () => {
+    selectedThread = makeThreadDetail({
+      messages: [
+        makeMessage({ id: 'message-1', branchGroupId: 'branch-1', branchOrder: 0 }),
+        makeMessage({ id: 'message-2', branchGroupId: 'branch-1', branchOrder: 1 }),
+      ],
+      branchSelections: [
+        {
+          threadId: 'thread-1',
+          branchGroupId: 'branch-1',
+          selectedMessageId: 'message-1',
+        },
+      ],
+    });
+    chatStore.visibleMessages.mockImplementation(() => selectedThread?.messages.slice(0, 1) ?? []);
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: {
+          paramMap: convertToParamMap({ bookId: 'book-1' }),
+        },
+      },
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-index')?.textContent.trim()).toBe('1/2');
+
+    const branchButtons = fixture.debugElement.queryAll(By.css('.branch-btn'));
+    branchButtons[1].triggerEventHandler('click');
+    await fixture.whenStable();
+
+    expect(chatStore.selectAdjacentMessageBranch).toHaveBeenCalledWith('message-1', 1);
   });
 });

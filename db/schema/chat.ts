@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { relations } from 'drizzle-orm';
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 import type {
   ChatMessageRole,
@@ -41,6 +41,12 @@ export const chatMessages = sqliteTable(
     threadId: text('thread_id')
       .notNull()
       .references(() => chatThreads.id, { onDelete: 'cascade' }),
+    parentMessageId: text('parent_message_id').references(
+      (): AnySQLiteColumn => chatMessages.id,
+      { onDelete: 'set null' },
+    ),
+    branchGroupId: text('branch_group_id').notNull().$defaultFn(randomUUID),
+    branchOrder: integer('branch_order').notNull().default(0),
     role: text('role').$type<ChatMessageRole>().notNull(),
     content: text('content').notNull().default(''),
     status: text('status').$type<ChatMessageStatus>().notNull().default('complete'),
@@ -57,6 +63,25 @@ export const chatMessages = sqliteTable(
   (t) => [
     index('chat_messages_thread_idx').on(t.threadId),
     index('chat_messages_thread_position_idx').on(t.threadId, t.position),
+    index('chat_messages_parent_idx').on(t.parentMessageId),
+    index('chat_messages_branch_group_idx').on(t.threadId, t.branchGroupId),
+  ],
+);
+
+export const chatBranchSelections = sqliteTable(
+  'chat_branch_selections',
+  {
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: 'cascade' }),
+    branchGroupId: text('branch_group_id').notNull(),
+    selectedMessageId: text('selected_message_id')
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: 'cascade' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.threadId, t.branchGroupId] }),
+    index('chat_branch_selections_selected_idx').on(t.selectedMessageId),
   ],
 );
 
@@ -106,6 +131,7 @@ export const chatThreadsRelations = relations(chatThreads, ({ one, many }) => ({
     references: [books.id],
   }),
   messages: many(chatMessages),
+  branchSelections: many(chatBranchSelections),
 }));
 
 export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => ({
@@ -113,8 +139,27 @@ export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => 
     fields: [chatMessages.threadId],
     references: [chatThreads.id],
   }),
+  parent: one(chatMessages, {
+    fields: [chatMessages.parentMessageId],
+    references: [chatMessages.id],
+    relationName: 'messageParent',
+  }),
+  children: many(chatMessages, {
+    relationName: 'messageParent',
+  }),
   sceneRefs: many(chatMessageSceneRefs),
   codexRefs: many(chatMessageCodexRefs),
+}));
+
+export const chatBranchSelectionsRelations = relations(chatBranchSelections, ({ one }) => ({
+  thread: one(chatThreads, {
+    fields: [chatBranchSelections.threadId],
+    references: [chatThreads.id],
+  }),
+  selectedMessage: one(chatMessages, {
+    fields: [chatBranchSelections.selectedMessageId],
+    references: [chatMessages.id],
+  }),
 }));
 
 export const chatMessageSceneRefsRelations = relations(chatMessageSceneRefs, ({ one }) => ({

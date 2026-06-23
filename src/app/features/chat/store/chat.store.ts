@@ -2,6 +2,7 @@ import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 
 import {
+  ChatBranchSelectionDto,
   ChatMessageDetailDto,
   ChatThreadDetailDto,
   ChatThreadDto,
@@ -10,6 +11,18 @@ import {
   UpdateChatThreadDto,
 } from '../../../../../shared/models/chat.model';
 import { ChatService } from '../services/chat.service';
+
+type LocalChatMessagePatch = Partial<Pick<
+  ChatMessageDetailDto,
+  | 'content'
+  | 'status'
+  | 'modelId'
+  | 'provider'
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'reasoningSummary'
+  | 'error'
+>>;
 
 export interface ChatState {
   bookId: string | null;
@@ -35,7 +48,95 @@ const getErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
 
 const sortMessages = (messages: ChatMessageDetailDto[]): ChatMessageDetailDto[] =>
-  [...messages].sort((first, second) => first.position - second.position);
+  [...messages].sort((first, second) => (
+    first.position - second.position ||
+    (first.branchOrder ?? 0) - (second.branchOrder ?? 0) ||
+    first.createdAt.localeCompare(second.createdAt)
+  ));
+
+const getBranchGroupId = (message: ChatMessageDetailDto): string =>
+  message.branchGroupId ?? message.id;
+
+const sortBranchMessages = (messages: ChatMessageDetailDto[]): ChatMessageDetailDto[] =>
+  [...messages].sort((first, second) => (
+    (first.branchOrder ?? 0) - (second.branchOrder ?? 0) ||
+    first.createdAt.localeCompare(second.createdAt) ||
+    first.id.localeCompare(second.id)
+  ));
+
+const upsertBranchSelection = (
+  selections: ChatBranchSelectionDto[],
+  selection: ChatBranchSelectionDto,
+): ChatBranchSelectionDto[] => [
+    ...selections.filter((item) => (
+      item.threadId !== selection.threadId || item.branchGroupId !== selection.branchGroupId
+    )),
+    selection,
+  ];
+
+const ensureLocalBranchSelection = (
+  selections: ChatBranchSelectionDto[],
+  message: ChatMessageDetailDto,
+): ChatBranchSelectionDto[] => {
+  const branchGroupId = message.branchGroupId;
+  if (!branchGroupId) return selections;
+
+  const hasSelection = selections.some((selection) => (
+    selection.threadId === message.threadId && selection.branchGroupId === branchGroupId
+  ));
+
+  if (hasSelection) return selections;
+
+  return [
+    ...selections,
+    {
+      threadId: message.threadId,
+      branchGroupId,
+      selectedMessageId: message.id,
+    },
+  ];
+};
+
+const computeVisibleMessages = (
+  messages: ChatMessageDetailDto[],
+  selections: ChatBranchSelectionDto[],
+): ChatMessageDetailDto[] => {
+  const sortedMessages = sortMessages(messages);
+  const messagesByParent = new Map<string | null, ChatMessageDetailDto[]>();
+  const selectedByGroup = new Map<string, string>();
+
+  for (const selection of selections) {
+    selectedByGroup.set(selection.branchGroupId, selection.selectedMessageId);
+  }
+
+  for (const message of sortedMessages) {
+    const parentId = message.parentMessageId ?? null;
+    messagesByParent.set(parentId, [...(messagesByParent.get(parentId) ?? []), message]);
+  }
+
+  const visible: ChatMessageDetailDto[] = [];
+  let parentId: string | null = null;
+  const visitedParentIds = new Set<string | null>();
+
+  while (!visitedParentIds.has(parentId)) {
+    visitedParentIds.add(parentId);
+    const children = messagesByParent.get(parentId) ?? [];
+    if (children.length === 0) break;
+
+    const firstGroupId = getBranchGroupId(children[0]);
+    const siblings = sortBranchMessages(
+      children.filter((message) => getBranchGroupId(message) === firstGroupId),
+    );
+    const selectedMessageId = selectedByGroup.get(firstGroupId);
+    const selectedMessage = siblings.find((message) => message.id === selectedMessageId) ?? siblings[0];
+    if (!selectedMessage) break;
+
+    visible.push(selectedMessage);
+    parentId = selectedMessage.id;
+  }
+
+  return visible;
+};
 
 export const ChatStore = signalStore(
   { providedIn: 'root' },
@@ -44,6 +145,10 @@ export const ChatStore = signalStore(
 
   withComputed(({ selectedThread }) => ({
     messages: computed(() => selectedThread()?.messages ?? []),
+    visibleMessages: computed(() => {
+      const thread = selectedThread();
+      return thread ? computeVisibleMessages(thread.messages, thread.branchSelections) : [];
+    }),
   })),
 
   withMethods((store, chatService = inject(ChatService)) => {
@@ -77,6 +182,7 @@ export const ChatStore = signalStore(
         selectedThread: {
           ...selectedThread,
           messages: sortMessages([...selectedThread.messages, message]),
+          branchSelections: ensureLocalBranchSelection(selectedThread.branchSelections, message),
         },
       });
     }
@@ -95,6 +201,22 @@ export const ChatStore = signalStore(
       });
     }
 
+    function patchMessageFields(messageId: string, data: LocalChatMessagePatch): void {
+      const selectedThread = store.selectedThread();
+      if (!selectedThread) return;
+
+      patchState(store, {
+        selectedThread: {
+          ...selectedThread,
+          messages: sortMessages(
+            selectedThread.messages.map((item) => (
+              item.id === messageId ? { ...item, ...data } : item
+            )),
+          ),
+        },
+      });
+    }
+
     function removeMessage(messageId: string): void {
       const selectedThread = store.selectedThread();
       if (!selectedThread) return;
@@ -103,8 +225,30 @@ export const ChatStore = signalStore(
         selectedThread: {
           ...selectedThread,
           messages: selectedThread.messages.filter((message) => message.id !== messageId),
+          branchSelections: selectedThread.branchSelections.filter((selection) => (
+            selection.selectedMessageId !== messageId
+          )),
         },
       });
+    }
+
+    function patchBranchSelection(selection: ChatBranchSelectionDto): void {
+      const selectedThread = store.selectedThread();
+      if (!selectedThread || selectedThread.id !== selection.threadId) return;
+
+      patchState(store, {
+        selectedThread: {
+          ...selectedThread,
+          branchSelections: upsertBranchSelection(selectedThread.branchSelections, selection),
+        },
+      });
+    }
+
+    function getMessageBranches(message: ChatMessageDetailDto): ChatMessageDetailDto[] {
+      const branchGroupId = getBranchGroupId(message);
+      return sortBranchMessages(
+        store.messages().filter((item) => getBranchGroupId(item) === branchGroupId),
+      );
     }
 
     async function loadThreads(bookId: string, includeArchived = false): Promise<void> {
@@ -169,7 +313,7 @@ export const ChatStore = signalStore(
         patchState(store, {
           bookId,
           threads: [thread, ...store.threads().filter((item) => item.id !== thread.id)],
-          selectedThread: { ...thread, messages: [] },
+          selectedThread: { ...thread, messages: [], branchSelections: [] },
           isSaving: false,
         });
 
@@ -268,9 +412,9 @@ export const ChatStore = signalStore(
       async sendMessage(
         content: string,
         refs: Pick<CreateChatMessageDto, 'sceneIds' | 'codexEntryIds'> = {},
-      ): Promise<void> {
+      ): Promise<ChatMessageDetailDto | null> {
         const trimmedContent = content.trim();
-        if (!trimmedContent || store.isSaving()) return;
+        if (!trimmedContent || store.isSaving()) return null;
 
         let selectedThread = store.selectedThread();
         const bookId = store.bookId();
@@ -278,13 +422,13 @@ export const ChatStore = signalStore(
         if (!selectedThread) {
           if (!bookId) {
             patchState(store, { error: 'Open a book before starting a chat.' });
-            return;
+            return null;
           }
 
           const thread = await createThread(bookId);
-          if (!thread) return;
+          if (!thread) return null;
 
-          selectedThread = { ...thread, messages: [] };
+          selectedThread = { ...thread, messages: [], branchSelections: [] };
         }
 
         patchState(store, {
@@ -295,6 +439,9 @@ export const ChatStore = signalStore(
         try {
           const message = await chatService.createMessage({
             threadId: selectedThread.id,
+            parentMessageId: store.visibleMessages().at(-1)?.id ?? null,
+            branchGroupId: crypto.randomUUID(),
+            branchOrder: 0,
             role: 'user',
             content: trimmedContent,
             ...refs,
@@ -302,15 +449,105 @@ export const ChatStore = signalStore(
 
           appendMessage(message);
           patchState(store, { isSaving: false });
+          return message;
         } catch (error) {
           patchState(store, {
             isSaving: false,
             error: getErrorMessage(error, 'Failed to send chat message.'),
           });
+          return null;
         }
       },
 
-      async updateMessage(id: string, data: UpdateChatMessageDto): Promise<void> {
+      async createAssistantMessage(
+        data: Pick<
+          CreateChatMessageDto,
+          'modelId' | 'provider' | 'reasoningSummary' | 'parentMessageId' | 'branchGroupId' | 'branchOrder'
+        > = {},
+      ): Promise<ChatMessageDetailDto | null> {
+        const selectedThread = store.selectedThread();
+
+        if (!selectedThread) {
+          patchState(store, { error: 'Open a chat thread before generating a response.' });
+          return null;
+        }
+
+        patchState(store, {
+          isSaving: true,
+          error: null,
+        });
+
+        try {
+          const message = await chatService.createMessage({
+            threadId: selectedThread.id,
+            parentMessageId: data.parentMessageId ?? null,
+            branchGroupId: data.branchGroupId ?? crypto.randomUUID(),
+            ...(data.branchOrder !== undefined ? { branchOrder: data.branchOrder } : {}),
+            role: 'assistant',
+            content: '',
+            status: 'streaming',
+            modelId: data.modelId ?? null,
+            provider: data.provider ?? null,
+            reasoningSummary: data.reasoningSummary ?? null,
+          });
+
+          appendMessage(message);
+          patchState(store, { isSaving: false });
+          return message;
+        } catch (error) {
+          patchState(store, {
+            isSaving: false,
+            error: getErrorMessage(error, 'Failed to create AI response.'),
+          });
+          return null;
+        }
+      },
+
+      async createMessageBranch(
+        sourceMessageId: string,
+        content: string,
+      ): Promise<ChatMessageDetailDto | null> {
+        const selectedThread = store.selectedThread();
+        const trimmedContent = content.trim();
+        if (!selectedThread || !trimmedContent || store.isSaving()) return null;
+
+        const sourceMessage = selectedThread.messages.find((message) => message.id === sourceMessageId);
+        if (!sourceMessage) return null;
+
+        patchState(store, {
+          isSaving: true,
+          error: null,
+        });
+
+        try {
+          const message = await chatService.createMessage({
+            threadId: selectedThread.id,
+            parentMessageId: sourceMessage.parentMessageId,
+            branchGroupId: sourceMessage.branchGroupId ?? sourceMessage.id,
+            role: sourceMessage.role,
+            content: trimmedContent,
+            status: 'complete',
+            sceneIds: sourceMessage.sceneRefs.map((ref) => ref.sceneId),
+            codexEntryIds: sourceMessage.codexRefs.map((ref) => ref.codexEntryId),
+          });
+
+          appendMessage(message);
+          patchState(store, { isSaving: false });
+          return message;
+        } catch (error) {
+          patchState(store, {
+            isSaving: false,
+            error: getErrorMessage(error, 'Failed to create message branch.'),
+          });
+          return null;
+        }
+      },
+
+      patchStreamingMessage(id: string, data: LocalChatMessagePatch): void {
+        patchMessageFields(id, data);
+      },
+
+      async updateMessage(id: string, data: UpdateChatMessageDto): Promise<ChatMessageDetailDto | null> {
         patchState(store, {
           isSaving: true,
           error: null,
@@ -322,11 +559,13 @@ export const ChatStore = signalStore(
             patchMessage(message);
           }
           patchState(store, { isSaving: false });
+          return message ?? null;
         } catch (error) {
           patchState(store, {
             isSaving: false,
             error: getErrorMessage(error, 'Failed to update chat message.'),
           });
+          return null;
         }
       },
 
@@ -346,6 +585,71 @@ export const ChatStore = signalStore(
             error: getErrorMessage(error, 'Failed to delete chat message.'),
           });
         }
+      },
+
+      getMessageBranches,
+
+      getMessageBranchCount(message: ChatMessageDetailDto): number {
+        return getMessageBranches(message).length;
+      },
+
+      getMessageBranchIndex(message: ChatMessageDetailDto): number {
+        const branchIndex = getMessageBranches(message)
+          .findIndex((branch) => branch.id === message.id);
+
+        return branchIndex === -1 ? 1 : branchIndex + 1;
+      },
+
+      async selectMessageBranch(messageId: string): Promise<boolean> {
+        const selectedThread = store.selectedThread();
+        if (!selectedThread || store.isSaving()) return false;
+
+        const message = selectedThread.messages.find((item) => item.id === messageId);
+        const branchGroupId = message?.branchGroupId;
+        if (!message || !branchGroupId) return false;
+
+        patchState(store, {
+          isSaving: true,
+          error: null,
+        });
+
+        try {
+          const selection = await chatService.selectBranch(
+            selectedThread.id,
+            branchGroupId,
+            message.id,
+          );
+          patchBranchSelection(selection);
+          patchState(store, { isSaving: false });
+          return true;
+        } catch (error) {
+          patchState(store, {
+            isSaving: false,
+            error: getErrorMessage(error, 'Failed to select chat branch.'),
+          });
+          return false;
+        }
+      },
+
+      async selectAdjacentMessageBranch(messageId: string, direction: -1 | 1): Promise<void> {
+        const selectedThread = store.selectedThread();
+        if (!selectedThread || store.isSaving()) return;
+
+        const message = selectedThread.messages.find((item) => item.id === messageId);
+        if (!message) return;
+
+        const branchGroupId = message.branchGroupId;
+        if (!branchGroupId) return;
+
+        const branches = getMessageBranches(message);
+        if (branches.length <= 1) return;
+
+        const currentIndex = Math.max(0, branches.findIndex((branch) => branch.id === message.id));
+        const nextIndex = (currentIndex + direction + branches.length) % branches.length;
+        const nextMessage = branches[nextIndex];
+        if (!nextMessage || nextMessage.id === message.id) return;
+
+        await this.selectMessageBranch(nextMessage.id);
       },
     };
   }),

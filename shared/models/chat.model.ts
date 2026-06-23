@@ -16,6 +16,9 @@ export interface ChatThreadDto {
 export interface ChatMessageDto {
   id: string;
   threadId: string;
+  parentMessageId: string | null;
+  branchGroupId: string | null;
+  branchOrder: number | null;
   role: ChatMessageRole;
   content: string;
   status: ChatMessageStatus;
@@ -40,6 +43,12 @@ export interface ChatMessageCodexRefDto {
   codexEntryId: string;
 }
 
+export interface ChatBranchSelectionDto {
+  threadId: string;
+  branchGroupId: string;
+  selectedMessageId: string;
+}
+
 export interface ChatMessageDetailDto extends ChatMessageDto {
   sceneRefs: ChatMessageSceneRefDto[];
   codexRefs: ChatMessageCodexRefDto[];
@@ -47,6 +56,7 @@ export interface ChatMessageDetailDto extends ChatMessageDto {
 
 export interface ChatThreadDetailDto extends ChatThreadDto {
   messages: ChatMessageDetailDto[];
+  branchSelections: ChatBranchSelectionDto[];
 }
 
 export interface CreateChatThreadDto {
@@ -59,6 +69,9 @@ export type UpdateChatThreadDto = Partial<Omit<CreateChatThreadDto, 'bookId'>>;
 
 export interface CreateChatMessageDto {
   threadId: string;
+  parentMessageId?: string | null;
+  branchGroupId?: string | null;
+  branchOrder?: number | null;
   role: ChatMessageRole;
   content?: string;
   status?: ChatMessageStatus;
@@ -108,4 +121,10 @@ export interface UpdateChatMessagePayload {
 
 export interface DeleteChatMessagePayload {
   id: string;
+}
+
+export interface SelectChatBranchPayload {
+  threadId: string;
+  branchGroupId: string;
+  selectedMessageId: string;
 }

@@ -167,6 +167,8 @@
   text-align: left;
   transition: all 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
   overflow: hidden;
+  animation: slideUp 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
 
   &::before {
     content: '';
@@ -487,5 +489,17 @@
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

@@ -9,6 +9,7 @@
     ]
   },
   "include": [
+    "electron/**/*.spec.ts",
     "src/**/*.d.ts",
     "src/**/*.spec.ts"
   ]

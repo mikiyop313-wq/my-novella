@@ -1,6 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { ToastService } from '../../shared/services/toast.service';
 
+export type AiChatMessageRole = 'system' | 'user' | 'assistant';
+
+export interface AiChatMessage {
+    role: AiChatMessageRole;
+    content: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AIStateService {
     model: string = '';
@@ -14,7 +21,13 @@ export class AIStateService {
         return window.electronAPI.abortAiGeneration?.() ?? Promise.resolve();
     }
 
-    async generate(promptText: string, model?: string, modelId?: string, reasoningMode?: boolean) {
+    async generate(
+        promptText: string,
+        model?: string,
+        modelId?: string,
+        reasoningMode?: boolean,
+        messages?: AiChatMessage[],
+    ) {
         // Default to openai if the user hasn't selected one yet
         const providerToUse = model || this.model || 'openrouter';
 
@@ -23,7 +36,8 @@ export class AIStateService {
                 model: providerToUse,
                 modelId: modelId,
                 prompt: promptText,
-                reasoningMode: reasoningMode ?? false
+                reasoningMode: reasoningMode ?? false,
+                ...(messages !== undefined ? { messages } : {}),
             });
 
             return response.text;

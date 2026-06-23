@@ -1,12 +1,13 @@
 import { Injectable, WritableSignal, inject, signal } from '@angular/core';
 
-import { AIStateService } from './ai-state.service';
+import { AIStateService, type AiChatMessage } from './ai-state.service';
 
 export type LoadingStatus = 'idle' | 'loading' | 'thinking' | 'generating';
 
 export interface AiStreamRequest {
   streamId: string;
   prompt: string;
+  messages?: AiChatMessage[];
   provider?: string;
   modelId?: string;
   reasoningMode?: boolean;
@@ -42,7 +43,7 @@ export class AiStreamService {
   async streamText(request: AiStreamRequest): Promise<string> {
     let isNewlineSequence = false;
     let reasoningBuffer = '';
-    let lastReasoningUpdate = Date.now();
+    let lastReasoningUpdate = -Infinity;
     let lastEmittedReasoning = '';
     let cleanupToken: (() => void) | undefined;
     let cleanupReasoning: (() => void) | undefined;
@@ -99,12 +100,14 @@ export class AiStreamService {
         request.prompt,
         request.provider,
         request.modelId,
-        request.reasoningMode
+        request.reasoningMode,
+        request.messages,
       );
     } finally {
       cleanupToken?.();
       cleanupReasoning?.();
       emitReasoningUpdate(true);
+      this.setLoadingStatus(request.streamId, 'idle', request.onStatusChange);
     }
   }
 

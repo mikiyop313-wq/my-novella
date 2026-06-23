@@ -25,6 +25,9 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
   return {
     id: 'message-1',
     threadId: 'thread-1',
+    parentMessageId: null,
+    branchGroupId: 'branch-1',
+    branchOrder: 0,
     role: 'user',
     content: 'Hello',
     status: 'complete',
@@ -47,6 +50,7 @@ function makeThreadDetail(overrides: Partial<ChatThreadDetailDto> = {}): ChatThr
   return {
     ...makeThread(overrides),
     messages: [makeMessage()],
+    branchSelections: [],
     ...overrides,
   };
 }
@@ -63,6 +67,7 @@ describe('ChatStore', () => {
     createMessage: ReturnType<typeof vi.fn>;
     updateMessage: ReturnType<typeof vi.fn>;
     deleteMessage: ReturnType<typeof vi.fn>;
+    selectBranch: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -76,6 +81,7 @@ describe('ChatStore', () => {
       createMessage: vi.fn(),
       updateMessage: vi.fn(),
       deleteMessage: vi.fn(),
+      selectBranch: vi.fn(),
     };
 
     TestBed.configureTestingModule({
@@ -143,13 +149,17 @@ describe('ChatStore', () => {
     chatService.createMessage.mockResolvedValueOnce(makeMessage({ content: 'Draft this scene' }));
 
     await store.openThread('thread-1');
-    await store.sendMessage('  Draft this scene  ');
+    const sent = await store.sendMessage('  Draft this scene  ');
 
     expect(chatService.createMessage).toHaveBeenCalledWith({
       threadId: 'thread-1',
+      parentMessageId: null,
+      branchGroupId: expect.any(String),
+      branchOrder: 0,
       role: 'user',
       content: 'Draft this scene',
     });
+    expect(sent).toMatchObject({ content: 'Draft this scene' });
     expect(store.messages()).toMatchObject([{ content: 'Draft this scene' }]);
     expect(store.isSaving()).toBe(false);
   });
@@ -165,6 +175,9 @@ describe('ChatStore', () => {
     expect(chatService.createThread).toHaveBeenCalledWith({ bookId: 'book-1' });
     expect(chatService.createMessage).toHaveBeenCalledWith({
       threadId: 'thread-1',
+      parentMessageId: null,
+      branchGroupId: expect.any(String),
+      branchOrder: 0,
       role: 'user',
       content: 'Start here',
     });
@@ -172,6 +185,103 @@ describe('ChatStore', () => {
       id: 'thread-1',
       messages: [{ id: 'message-1' }],
     });
+  });
+
+  it('creates and locally patches a streaming assistant message', async () => {
+    chatService.getThread.mockResolvedValueOnce(makeThreadDetail({ messages: [] }));
+    chatService.createMessage.mockResolvedValueOnce(makeMessage({
+      id: 'assistant-1',
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+      position: 0,
+      modelId: 'model-1',
+      provider: 'openrouter',
+    }));
+
+    await store.openThread('thread-1');
+    const assistant = await store.createAssistantMessage({
+      modelId: 'model-1',
+      provider: 'openrouter',
+    });
+
+    expect(chatService.createMessage).toHaveBeenCalledWith({
+      threadId: 'thread-1',
+      parentMessageId: null,
+      branchGroupId: expect.any(String),
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+      modelId: 'model-1',
+      provider: 'openrouter',
+      reasoningSummary: null,
+    });
+    expect(assistant).toMatchObject({ id: 'assistant-1', status: 'streaming' });
+
+    store.patchStreamingMessage('assistant-1', {
+      content: 'Hello',
+      reasoningSummary: 'Reasoning',
+    });
+
+    expect(store.messages()).toMatchObject([
+      {
+        id: 'assistant-1',
+        content: 'Hello',
+        status: 'streaming',
+        reasoningSummary: 'Reasoning',
+      },
+    ]);
+  });
+
+  it('persists completed and failed assistant message states', async () => {
+    chatService.getThread.mockResolvedValueOnce(makeThreadDetail({
+      messages: [
+        makeMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'Hello',
+          status: 'streaming',
+          position: 0,
+        }),
+      ],
+    }));
+    chatService.updateMessage
+      .mockResolvedValueOnce(makeMessage({
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Hello there',
+        status: 'complete',
+        position: 0,
+      }))
+      .mockResolvedValueOnce(makeMessage({
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Hello there',
+        status: 'failed',
+        error: 'Generation failed',
+        position: 0,
+      }));
+
+    await store.openThread('thread-1');
+    const completed = await store.updateMessage('assistant-1', {
+      content: 'Hello there',
+      status: 'complete',
+    });
+
+    expect(completed).toMatchObject({ status: 'complete', content: 'Hello there' });
+    expect(store.messages()).toMatchObject([{ status: 'complete', content: 'Hello there' }]);
+
+    store.patchStreamingMessage('assistant-1', {
+      status: 'failed',
+      error: 'Generation failed',
+    });
+    const failed = await store.updateMessage('assistant-1', {
+      status: 'failed',
+      error: 'Generation failed',
+    });
+
+    expect(failed).toMatchObject({ status: 'failed', error: 'Generation failed' });
+    expect(store.messages()).toMatchObject([{ status: 'failed', error: 'Generation failed' }]);
   });
 
   it('updates and deletes messages locally after service success', async () => {
@@ -185,6 +295,57 @@ describe('ChatStore', () => {
 
     await store.deleteMessage('message-1');
     expect(store.messages()).toEqual([]);
+  });
+
+  it('creates an edited message as a sibling branch and preserves its references', async () => {
+    const source = makeMessage({
+      id: 'user-1',
+      content: 'Original prompt',
+      sceneRefs: [{ messageId: 'user-1', sceneId: 'scene-1' }],
+      codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
+    });
+    const branch = makeMessage({
+      id: 'user-2',
+      content: 'Edited prompt',
+      branchOrder: 1,
+      sceneRefs: [{ messageId: 'user-2', sceneId: 'scene-1' }],
+      codexRefs: [{ messageId: 'user-2', codexEntryId: 'codex-1' }],
+    });
+    chatService.getThread.mockResolvedValueOnce(makeThreadDetail({ messages: [source] }));
+    chatService.createMessage.mockResolvedValueOnce(branch);
+
+    await store.openThread('thread-1');
+    const created = await store.createMessageBranch('user-1', '  Edited prompt  ');
+
+    expect(chatService.createMessage).toHaveBeenCalledWith({
+      threadId: 'thread-1',
+      parentMessageId: null,
+      branchGroupId: 'branch-1',
+      role: 'user',
+      content: 'Edited prompt',
+      status: 'complete',
+      sceneIds: ['scene-1'],
+      codexEntryIds: ['codex-1'],
+    });
+    expect(created).toMatchObject({ id: 'user-2', branchOrder: 1 });
+    expect(store.getMessageBranchCount(source)).toBe(2);
+  });
+
+  it('selects a newly created message branch directly', async () => {
+    const original = makeMessage({ id: 'user-1' });
+    const branch = makeMessage({ id: 'user-2', branchOrder: 1 });
+    chatService.getThread.mockResolvedValueOnce(makeThreadDetail({ messages: [original, branch] }));
+    chatService.selectBranch.mockResolvedValueOnce({
+      threadId: 'thread-1',
+      branchGroupId: 'branch-1',
+      selectedMessageId: 'user-2',
+    });
+
+    await store.openThread('thread-1');
+
+    await expect(store.selectMessageBranch('user-2')).resolves.toBe(true);
+    expect(chatService.selectBranch).toHaveBeenCalledWith('thread-1', 'branch-1', 'user-2');
+    expect(store.visibleMessages().map((message) => message.id)).toEqual(['user-2']);
   });
 
   it('removes archived and deleted threads locally', async () => {
@@ -220,10 +381,128 @@ describe('ChatStore', () => {
     chatService.createMessage.mockRejectedValueOnce(new Error('Send failed'));
 
     await store.openThread('thread-1');
-    await store.sendMessage('Hello');
+    const sent = await store.sendMessage('Hello');
 
+    expect(sent).toBeNull();
     expect(store.messages()).toEqual([]);
     expect(store.error()).toBe('Send failed');
     expect(store.isSaving()).toBe(false);
+  });
+
+  it('defaults visible messages to the first branch path', async () => {
+    chatService.getThread.mockResolvedValueOnce(makeThreadDetail({
+      messages: [
+        makeMessage({ id: 'user-1', branchGroupId: 'user-group', position: 0 }),
+        makeMessage({
+          id: 'assistant-1',
+          parentMessageId: 'user-1',
+          branchGroupId: 'assistant-group',
+          role: 'assistant',
+          content: 'First answer',
+          position: 1,
+          branchOrder: 0,
+        }),
+        makeMessage({
+          id: 'assistant-2',
+          parentMessageId: 'user-1',
+          branchGroupId: 'assistant-group',
+          role: 'assistant',
+          content: 'Second answer',
+          position: 1,
+          branchOrder: 1,
+        }),
+        makeMessage({
+          id: 'follow-up-1',
+          parentMessageId: 'assistant-1',
+          branchGroupId: 'follow-up-1-group',
+          content: 'Continue first',
+          position: 2,
+        }),
+        makeMessage({
+          id: 'follow-up-2',
+          parentMessageId: 'assistant-2',
+          branchGroupId: 'follow-up-2-group',
+          content: 'Continue second',
+          position: 2,
+        }),
+      ],
+      branchSelections: [],
+    }));
+
+    await store.openThread('thread-1');
+
+    expect(store.visibleMessages().map((message) => message.id)).toEqual([
+      'user-1',
+      'assistant-1',
+      'follow-up-1',
+    ]);
+  });
+
+  it('updates the visible branch path after selecting an adjacent branch', async () => {
+    chatService.getThread.mockResolvedValueOnce(makeThreadDetail({
+      messages: [
+        makeMessage({ id: 'user-1', branchGroupId: 'user-group', position: 0 }),
+        makeMessage({
+          id: 'assistant-1',
+          parentMessageId: 'user-1',
+          branchGroupId: 'assistant-group',
+          role: 'assistant',
+          content: 'First answer',
+          position: 1,
+          branchOrder: 0,
+        }),
+        makeMessage({
+          id: 'assistant-2',
+          parentMessageId: 'user-1',
+          branchGroupId: 'assistant-group',
+          role: 'assistant',
+          content: 'Second answer',
+          position: 1,
+          branchOrder: 1,
+        }),
+        makeMessage({
+          id: 'follow-up-1',
+          parentMessageId: 'assistant-1',
+          branchGroupId: 'follow-up-1-group',
+          content: 'Continue first',
+          position: 2,
+        }),
+        makeMessage({
+          id: 'follow-up-2',
+          parentMessageId: 'assistant-2',
+          branchGroupId: 'follow-up-2-group',
+          content: 'Continue second',
+          position: 2,
+        }),
+      ],
+      branchSelections: [
+        {
+          threadId: 'thread-1',
+          branchGroupId: 'assistant-group',
+          selectedMessageId: 'assistant-1',
+        },
+      ],
+    }));
+    chatService.selectBranch.mockResolvedValueOnce({
+      threadId: 'thread-1',
+      branchGroupId: 'assistant-group',
+      selectedMessageId: 'assistant-2',
+    });
+
+    await store.openThread('thread-1');
+    await store.selectAdjacentMessageBranch('assistant-1', 1);
+
+    expect(chatService.selectBranch).toHaveBeenCalledWith(
+      'thread-1',
+      'assistant-group',
+      'assistant-2',
+    );
+    expect(store.visibleMessages().map((message) => message.id)).toEqual([
+      'user-1',
+      'assistant-2',
+      'follow-up-2',
+    ]);
+    expect(store.getMessageBranchCount(store.visibleMessages()[1])).toBe(2);
+    expect(store.getMessageBranchIndex(store.visibleMessages()[1])).toBe(2);
   });
 });

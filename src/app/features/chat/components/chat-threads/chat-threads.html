@@ -57,11 +57,12 @@
     </div>
   }
   @if (threads().length) {
-    @for (thread of threads(); track thread.id) {
+    @for (thread of threads(); track thread.id; let i = $index) {
       <div class="thread-wrapper" [attr.data-thread-id]="thread.id" [style.view-transition-name]="'thread-' + thread.id">
         <div class="thread-block">
           <div
             class="thread-row"
+            [style.animation-delay]="i < 10 ? (i * 0.05) + 's' : '0s'"
             role="button"
             tabindex="0"
             (click)="onThreadClick(thread.id, $event)"
