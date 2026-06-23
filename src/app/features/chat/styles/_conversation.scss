@@ -1,0 +1,121 @@
+.conversation-shell {
+  width: min(100%, 820px);
+  margin: 0 auto;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 18px;
+  animation: fadeIn 0.28s ease-out;
+}
+
+.conversation-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 2px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
+
+  h2 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--title-font);
+    font-size: 1.55rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .active-thread-title-input {
+    width: 100%;
+    min-width: 200px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-primary);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-family: var(--title-font);
+    font-size: 1.55rem;
+    font-weight: 600;
+    line-height: 1.2;
+    padding: 2px 6px;
+    margin: -3px 0 -3px -7px;
+    outline: none;
+
+    &:focus {
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+    }
+  }
+}
+
+.conversation-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.conversation-kicker,
+.conversation-count,
+.message-meta {
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.conversation-kicker {
+  display: block;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.conversation-count {
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+
+.conversation-empty {
+  width: min(100%, 680px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  animation: fadeIn 0.28s ease-out;
+
+  h2 {
+    max-width: 520px;
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--title-font);
+    font-size: 1.45rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  p {
+    max-width: 420px;
+    margin: 0;
+    line-height: 1.55;
+  }
+}
+
+.conversation-empty-icon {
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-text-primary) 5%, var(--color-surface));
+  color: var(--color-text-primary);
+
+  svg {
+    width: 28px;
+    height: 28px;
+  }
+}
