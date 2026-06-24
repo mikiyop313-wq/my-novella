@@ -56,7 +56,7 @@
       <h2 class="recent-threads-title">Last recent threads</h2>
     </div>
   }
-  @if (threads().length) {
+  @if (threads().length && (!isDetachedMode() || isSidebarOpen)) {
     @for (thread of threads(); track thread.id; let i = $index) {
       <div class="thread-wrapper" [attr.data-thread-id]="thread.id" [style.view-transition-name]="'thread-' + thread.id">
         <div class="thread-block">

@@ -11,6 +11,7 @@ import {
 } from '../../../../shared/models/chat.model';
 import { AiStreamService } from '../../core/services/ai-stream.service';
 import { AiStore } from '../../core/store/ai.store';
+import { ToastService } from '../../shared/services/toast.service';
 import { Chat } from './chat';
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
@@ -113,6 +114,7 @@ describe('Chat', () => {
     onDetachedWindowClosed: ReturnType<typeof vi.fn>;
     isBookDetached: ReturnType<typeof vi.fn>;
   };
+  let toastService: Pick<ToastService, 'error'>;
   let detachedWindowClosedCallback: ((event: { bookId: string; sessionId: string }) => void) | null;
   let detachedBookIds: Set<string>;
 
@@ -126,6 +128,7 @@ describe('Chat', () => {
         { provide: ChatWindowService, useValue: chatWindowService },
         { provide: AiStore, useValue: aiStore },
         { provide: AiStreamService, useValue: aiStreamService },
+        { provide: ToastService, useValue: toastService },
       ],
     }).compileComponents();
 
@@ -271,10 +274,23 @@ describe('Chat', () => {
       }),
       isBookDetached: vi.fn((bookId: string | null) => !!bookId && detachedBookIds.has(bookId)),
     };
+    toastService = { error: vi.fn() };
   });
 
   afterEach(() => {
     TestBed.resetTestingModule();
+  });
+
+  it('shows detached-window failures through the shared chat toast', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({}) },
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    chatWindowService.openDetachedWindow.mockRejectedValueOnce(new Error('Window blocked'));
+
+    await component.detachChat();
+
+    expect(toastService.error).toHaveBeenCalledWith('Window blocked', 'Chat');
   });
 
   it('opens a detached chat window for the current book and thread', async () => {
@@ -863,6 +879,11 @@ describe('Chat', () => {
   });
 
   it('pauses and resumes streaming auto-scroll based on the chat scroll position', async () => {
+    let resolveStream!: (value: string) => void;
+    aiStreamService.streamText.mockImplementationOnce(() => new Promise<string>((resolve) => {
+      resolveStream = resolve;
+    }));
+
     await createComponent({
       snapshot: {
         paramMap: convertToParamMap({ threadId: 'new-chat' }),
@@ -882,8 +903,11 @@ describe('Chat', () => {
       scrollTo: { configurable: true, value: scrollTo },
     });
 
-    component.isGeneratingResponse.set(true);
-    component['requestAutoScroll']();
+    component.selectedModelId.set('openrouter/test-model');
+    const input = document.createElement('textarea');
+    input.value = 'Start here';
+    const sendPromise = component.sendPrompt(input);
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
     fixture.detectChanges();
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 1_000, behavior: 'auto' });
 
@@ -911,7 +935,8 @@ describe('Chat', () => {
     expect(component.isAutoScrollEnabled()).toBe(true);
     expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
 
-    component.isGeneratingResponse.set(false);
+    resolveStream('');
+    await sendPromise;
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
   });
