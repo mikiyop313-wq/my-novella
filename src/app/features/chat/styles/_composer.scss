@@ -1,5 +1,5 @@
 .chat-footer {
-  padding: 24px;
+  padding: 0 24px 24px 24px;
   display: flex;
   justify-content: center;
   background: transparent;
@@ -26,31 +26,31 @@
   }
 
   .chat-input {
+    display: block;
     width: 100%;
     min-height: 34px;
     max-height: 160px;
-    background: transparent;
+    min-width: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 2px 0 6px;
+    outline: none;
     border: none;
+    background: transparent;
     color: var(--color-text-primary);
     font-family: inherit;
     font-size: 0.95rem;
     line-height: 1.45;
-    padding: 2px 0 6px;
-    min-width: 0;
+    white-space: pre-wrap;
     resize: none;
-    overflow-y: auto;
-    scrollbar-width: none;
 
     &::-webkit-scrollbar {
       display: none;
     }
 
-    &:focus {
-      outline: none;
-    }
-
     &::placeholder {
       color: var(--color-text-secondary);
+      opacity: 1;
     }
   }
 

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
-import { type ChatMessageDetailDto } from '../../../../../shared/models/chat.model';
+import { type ChatMessageDetailDto, type ChatThreadDetailDto } from '../../../../../shared/models/chat.model';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
 import { AiStore } from '../../../core/store/ai.store';
 import { ChatStore } from '../store/chat.store';
@@ -32,10 +32,26 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
   };
 }
 
+function makeThreadDetail(overrides: Partial<ChatThreadDetailDto> = {}): ChatThreadDetailDto {
+  return {
+    id: 'thread-1',
+    bookId: 'book-1',
+    title: 'Draft chat',
+    status: 'active',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastEditedAt: '2026-01-01T00:00:00.000Z',
+    messages: [],
+    branchSelections: [],
+    ...overrides,
+  };
+}
+
 type ChatStoreMock = {
   messages: ReturnType<typeof vi.fn>;
   visibleMessages: ReturnType<typeof vi.fn>;
+  selectedThread: ReturnType<typeof vi.fn>;
   isSaving: ReturnType<typeof vi.fn>;
+  updateThread: ReturnType<typeof vi.fn>;
   createAssistantMessage: ReturnType<typeof vi.fn>;
   selectMessageBranch: ReturnType<typeof vi.fn>;
   patchStreamingMessage: ReturnType<typeof vi.fn>;
@@ -47,6 +63,7 @@ describe('ChatResponseService', () => {
   let service: ChatResponseService;
   let messages: ChatMessageDetailDto[];
   let visibleMessages: ChatMessageDetailDto[];
+  let selectedThread: ChatThreadDetailDto | null;
   let chatStore: ChatStoreMock;
   let aiStore: {
     models: ReturnType<typeof vi.fn>;
@@ -64,11 +81,14 @@ describe('ChatResponseService', () => {
   beforeEach(() => {
     messages = [makeMessage()];
     visibleMessages = messages;
+    selectedThread = makeThreadDetail({ messages });
 
     chatStore = {
       messages: vi.fn(() => messages),
       visibleMessages: vi.fn(() => visibleMessages),
+      selectedThread: vi.fn(() => selectedThread),
       isSaving: vi.fn(() => false),
+      updateThread: vi.fn(async () => undefined),
       createAssistantMessage: vi.fn(async (data: { parentMessageId?: string | null } = {}) => makeMessage({
         id: 'assistant-1',
         parentMessageId: data.parentMessageId ?? null,
@@ -136,10 +156,8 @@ describe('ChatResponseService', () => {
       messages: [{ role: 'user', content: 'Write a scene' }],
     }));
     expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
-      reasoningSummary: 'Checking context',
-    });
-    expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
       content: 'Draft reply',
+      reasoningSummary: 'Checking context',
     });
     expect(chatStore.updateMessage).toHaveBeenCalledWith('assistant-1', expect.objectContaining({
       content: 'Draft reply',
@@ -147,6 +165,37 @@ describe('ChatResponseService', () => {
       reasoningSummary: 'Checking context',
     }));
     expect(service.isGeneratingResponse()).toBe(false);
+  });
+
+  it('generates a concise thread title from the first user message', async () => {
+    selectedThread = makeThreadDetail({ title: 'New chat', messages });
+    aiStreamService.streamText.mockImplementation(async (request: {
+      streamId: string;
+      onToken?: (token: string) => void;
+    }) => {
+      if (request.streamId.startsWith('title-')) {
+        return '"Moonlit Escape!"';
+      }
+
+      await request.onToken?.('Draft reply');
+      return 'Draft reply';
+    });
+
+    await service.generateResponse(messages[0], 'Write a scene', settings);
+
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      streamId: 'title-user-1',
+      provider: 'openrouter',
+      modelId: 'openrouter/test-model',
+      reasoningMode: false,
+      messages: [
+        expect.objectContaining({ role: 'system' }),
+        { role: 'user', content: 'Write a scene' },
+      ],
+    }));
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', {
+      title: 'Moonlit Escape',
+    });
   });
 
   it('creates and persists an assistant message when the provider only returns final text', async () => {
@@ -161,7 +210,7 @@ describe('ChatResponseService', () => {
     }));
   });
 
-  it('removes an empty streamed assistant placeholder', async () => {
+  it('does not create or persist an assistant message when no content is generated', async () => {
     aiStreamService.streamText.mockImplementationOnce(async (request: { onToken?: (token: string) => void }) => {
       await request.onToken?.(' ');
       return '';
@@ -169,8 +218,10 @@ describe('ChatResponseService', () => {
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
 
-    expect(chatStore.deleteMessage).toHaveBeenCalledWith('assistant-1');
+    expect(chatStore.createAssistantMessage).not.toHaveBeenCalled();
+    expect(chatStore.patchStreamingMessage).not.toHaveBeenCalled();
     expect(chatStore.updateMessage).not.toHaveBeenCalled();
+    expect(chatStore.deleteMessage).not.toHaveBeenCalled();
   });
 
   it('persists failed streamed responses without creating a duplicate notification path', async () => {

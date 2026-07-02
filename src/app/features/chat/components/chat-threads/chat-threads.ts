@@ -2,17 +2,19 @@ import { Component, ElementRef, Injector, ViewChild, afterNextRender, inject, in
 import { CdkMenuModule } from '@angular/cdk/menu';
 
 import { type ChatThreadDto } from '../../../../../../shared/models/chat.model';
+import { ElementAnimationDirective } from '../../../../shared/directives/element-animation.directive';
 
 @Component({
   selector: 'app-chat-threads',
   standalone: true,
-  imports: [CdkMenuModule],
+  imports: [CdkMenuModule, ElementAnimationDirective],
   templateUrl: './chat-threads.html',
   styleUrl: './chat-threads.scss'
 })
 export class ChatThreads {
 
   @ViewChild('renameInput') private renameInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('threadsAnimation') private threadsAnimation?: ElementAnimationDirective;
 
   private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
@@ -66,14 +68,14 @@ export class ChatThreads {
     this.archiveThreadRequested.emit(id);
   }
 
-  /** Returns a thread wrapper from this component's own DOM tree. */
-  getThreadElement(id: string): HTMLElement | undefined {
-    const threadElements = (
-      this.hostElement.nativeElement.querySelectorAll('[data-thread-id]')
-    ) as NodeListOf<HTMLElement>;
+  async animateThreadRemoval(id: string, removeThread: () => Promise<void>): Promise<void> {
+    const threadElement = this.getThreadElement(id);
+    if (!this.threadsAnimation || !threadElement) {
+      await removeThread();
+      return;
+    }
 
-    return Array.from(threadElements)
-      .find((element) => element.dataset['threadId'] === id);
+    await this.threadsAnimation.animateBeforeDelete(threadElement, removeThread);
   }
 
   startRename(id: string): void {
@@ -111,10 +113,6 @@ export class ChatThreads {
     this.cancelRename();
   }
 
-  getThreadInitial(title: string): string {
-    return title.trim().charAt(0).toUpperCase() || 'C';
-  }
-
   formatThreadDate(value: string): string {
     const date = new Date(value);
 
@@ -126,5 +124,15 @@ export class ChatThreads {
       month: 'short',
       day: 'numeric',
     }).format(date);
+  }
+
+  /** Returns a thread wrapper from this component's own DOM tree. */
+  private getThreadElement(id: string): HTMLElement | undefined {
+    const threadElements = (
+      this.hostElement.nativeElement.querySelectorAll('[data-thread-id]')
+    ) as NodeListOf<HTMLElement>;
+
+    return Array.from(threadElements)
+      .find((element) => element.dataset['threadId'] === id);
   }
 }

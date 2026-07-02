@@ -1,11 +1,19 @@
 import { Injectable, inject, signal } from '@angular/core';
 
 import { type AiModel } from '../../../../../shared/models/ai.model';
-import { type ChatMessageDetailDto } from '../../../../../shared/models/chat.model';
+import { type ChatMessageDetailDto, type ChatThreadDetailDto } from '../../../../../shared/models/chat.model';
 import { AiStore } from '../../../core/store/ai.store';
 import { type AiChatMessage } from '../../../core/services/ai-state.service';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
 import { ChatStore } from '../store/chat.store';
+
+const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
+const CHAT_THREAD_TITLE_SYSTEM_PROMPT = [
+  'Create a concise title for this chat thread based only on the user message.',
+  'Return only the title.',
+  'Use 3 to 7 words.',
+  'Do not use quotation marks, markdown, labels, or terminal punctuation.',
+].join(' ');
 
 export interface ChatResponseSettings {
   selectedModelId: string | null;
@@ -20,10 +28,10 @@ interface ResolvedModel {
 }
 
 /**
- * Owns one chat component's AI-response lifecycle. The component-scoped
- * provider keeps stream state isolated from other chat views or windows.
+ * Owns the active chat AI-response lifecycle so route changes can preserve
+ * generation state until the stream completes or is stopped.
  */
-@Injectable()
+@Injectable({ providedIn: 'root' })
 export class ChatResponseService {
 
   // ---------------------------------------------------------------------------
@@ -64,9 +72,12 @@ export class ChatResponseService {
     const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
     const messages = this.buildAiMessages(userMessage);
     const streamId = `pending-${userMessage.id}`;
+    const threadId = userMessage.threadId;
+    const shouldGenerateTitle = this.shouldGenerateThreadTitle(this.chatStore.selectedThread(), userMessage);
 
     let assistantMessage: ChatMessageDetailDto | null = null;
     let assistantMessagePromise: Promise<ChatMessageDetailDto | null> | null = null;
+    let lastStreamingPatch: Promise<void> = Promise.resolve();
     let streamedContent = '';
     let reasoningSummary = '';
 
@@ -79,14 +90,14 @@ export class ChatResponseService {
 
       if (!assistantMessagePromise) {
         assistantMessagePromise = this.chatStore.createAssistantMessage({
+          threadId,
           parentMessageId: userMessage.id,
           provider,
           modelId,
           ...(settings.branchGroupId ? { branchGroupId: settings.branchGroupId } : {}),
         }).then(async (message) => {
-          if (message && settings.selectCreatedBranch) {
-            const selected = await this.chatStore.selectMessageBranch(message.id);
-            if (!selected) return null;
+          if (message && settings.selectCreatedBranch && this.chatStore.selectedThread()?.id === threadId) {
+            await this.chatStore.selectMessageBranch(message.id);
           }
 
           assistantMessage = message;
@@ -97,6 +108,18 @@ export class ChatResponseService {
       return assistantMessagePromise;
     };
 
+    const queueStreamingPatch = (data: Partial<Pick<ChatMessageDetailDto, 'content' | 'reasoningSummary'>>): void => {
+      lastStreamingPatch = lastStreamingPatch
+        .catch(() => undefined)
+        .then(async () => {
+          const message = await ensureAssistantMessage();
+          if (!message) return;
+
+          this.chatStore.patchStreamingMessage(message.id, data);
+          this.requestRender();
+        });
+    };
+
     try {
       const generatedText = await this.aiStreamService.streamText({
         streamId,
@@ -105,52 +128,33 @@ export class ChatResponseService {
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: settings.reasoningMode,
-        onToken: async (token) => {
-          const message = await ensureAssistantMessage();
-          if (!message) return;
-
+        onToken: (token) => {
           streamedContent += token;
-          this.chatStore.patchStreamingMessage(message.id, { content: streamedContent });
-          this.requestRender();
-        },
-        onReasoningUpdate: async (reasoningText) => {
-          const message = await ensureAssistantMessage();
-          if (!message) return;
+          if (!streamedContent.trim()) return;
 
+          queueStreamingPatch({
+            content: streamedContent,
+            ...(reasoningSummary.trim() ? { reasoningSummary } : {}),
+          });
+        },
+        onReasoningUpdate: (reasoningText) => {
           reasoningSummary = reasoningText;
-          this.chatStore.patchStreamingMessage(message.id, { reasoningSummary });
-          this.requestRender();
+          if (assistantMessage || assistantMessagePromise) {
+            queueStreamingPatch({ reasoningSummary });
+          }
         },
       });
 
-      if (!assistantMessage && assistantMessagePromise) {
-        assistantMessage = await assistantMessagePromise;
-      }
+      await lastStreamingPatch;
 
       const finalContent = streamedContent || generatedText;
 
       if (!finalContent.trim()) {
-        const createdAssistantMessage = assistantMessage as ChatMessageDetailDto | null;
-        if (createdAssistantMessage) {
-          await this.chatStore.deleteMessage(createdAssistantMessage.id);
-        }
         return;
       }
 
-      if (!assistantMessage) {
-        assistantMessage = await this.chatStore.createAssistantMessage({
-          parentMessageId: userMessage.id,
-          provider,
-          modelId,
-          ...(settings.branchGroupId ? { branchGroupId: settings.branchGroupId } : {}),
-        });
-
-        if (assistantMessage && settings.selectCreatedBranch) {
-          const selected = await this.chatStore.selectMessageBranch(assistantMessage.id);
-          if (!selected) return;
-        }
-      }
-
+      assistantMessage = assistantMessage ?? await ensureAssistantMessage();
+      await lastStreamingPatch;
       if (!assistantMessage) return;
 
       const finalReasoningSummary = this.getReasoningSummary(reasoningSummary);
@@ -166,7 +170,16 @@ export class ChatResponseService {
       this.chatStore.patchStreamingMessage(assistantMessage.id, data);
       this.requestRender();
       await this.chatStore.updateMessage(assistantMessage.id, data);
+      if (shouldGenerateTitle) {
+        await this.generateThreadTitle(userMessage, provider, modelId);
+      }
     } catch (error) {
+      await lastStreamingPatch;
+
+      if (!assistantMessage && streamedContent.trim()) {
+        assistantMessage = await ensureAssistantMessage();
+      }
+
       if (!assistantMessage) return;
 
       const message = error instanceof Error ? error.message : 'Failed to generate AI response.';
@@ -279,6 +292,69 @@ export class ChatResponseService {
         message.content.trim().length > 0
       ))
       .map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  private async generateThreadTitle(
+    userMessage: ChatMessageDetailDto,
+    provider: string,
+    modelId: string | null,
+  ): Promise<void> {
+    try {
+      const rawTitle = await this.aiStreamService.streamText({
+        streamId: `title-${userMessage.id}`,
+        prompt: userMessage.content,
+        provider,
+        modelId: modelId ?? undefined,
+        reasoningMode: false,
+        messages: [
+          { role: 'system', content: CHAT_THREAD_TITLE_SYSTEM_PROMPT },
+          { role: 'user', content: userMessage.content },
+        ],
+      });
+      const title = this.normalizeThreadTitle(rawTitle);
+
+      if (title) {
+        await this.chatStore.updateThread(userMessage.threadId, { title });
+      }
+    } catch (error) {
+      console.warn('[ChatResponseService] Failed to generate chat thread title:', error);
+    }
+  }
+
+  private shouldGenerateThreadTitle(
+    thread: ChatThreadDetailDto | null,
+    userMessage: ChatMessageDetailDto,
+  ): thread is ChatThreadDetailDto {
+    if (!thread || thread.id !== userMessage.threadId || thread.title.trim() !== DEFAULT_CHAT_THREAD_TITLE) return false;
+
+    const userMessages = this.chatStore.visibleMessages().filter((message) => (
+      message.role === 'user' &&
+      message.content.trim().length > 0 &&
+      (message.status === 'complete' || message.id === userMessage.id)
+    ));
+
+    return userMessages.length === 1 && userMessages[0].id === userMessage.id;
+  }
+
+  private normalizeThreadTitle(rawTitle: string): string | null {
+    const firstLine = rawTitle
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? '';
+    let title = firstLine
+      .replace(/^title\s*:\s*/i, '')
+      .replace(/^[\s"'`]+|[\s"'`]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/[.!?]+$/g, '')
+      .trim();
+
+    if (!title || title === DEFAULT_CHAT_THREAD_TITLE) return null;
+
+    if (title.length > 80) {
+      title = title.slice(0, 80).trim().replace(/[,;:-]+$/g, '').trim();
+    }
+
+    return title || null;
   }
 
   private getVisibleAssistantResponse(userMessageId: string): ChatMessageDetailDto | null {

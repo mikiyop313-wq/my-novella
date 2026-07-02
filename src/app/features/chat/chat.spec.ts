@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { vi } from 'vitest';
 import { of } from 'rxjs';
+import { provideMarkdown } from 'ngx-markdown';
 
 import {
   type ChatMessageDetailDto,
@@ -129,9 +130,24 @@ describe('Chat', () => {
         { provide: AiStore, useValue: aiStore },
         { provide: AiStreamService, useValue: aiStreamService },
         { provide: ToastService, useValue: toastService },
+        ...provideMarkdown(),
       ],
     }).compileComponents();
 
+    fixture = TestBed.createComponent(Chat);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  function setComposerValue(value: string): HTMLTextAreaElement {
+    const input = fixture.nativeElement.querySelector('.chat-input') as HTMLTextAreaElement;
+    input.value = value;
+    return input;
+  }
+
+  async function remountComponent(): Promise<void> {
     fixture = TestBed.createComponent(Chat);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -161,9 +177,13 @@ describe('Chat', () => {
         currentBookId = bookId;
         return Promise.resolve();
       }),
-      openThread: vi.fn(async () => {
+      openThread: vi.fn(async (id: string) => {
         await Promise.resolve();
-        selectedThread = makeThreadDetail();
+        selectedThread = makeThreadDetail({
+          id,
+          title: id === 'thread-2' ? 'Second thread' : 'Draft chat',
+          messages: [],
+        });
       }),
       closeThread: vi.fn(() => {
         selectedThread = null;
@@ -180,12 +200,15 @@ describe('Chat', () => {
       }),
       createMessageBranch: vi.fn(),
       createAssistantMessage: vi.fn(async (data: {
+        threadId?: string;
         parentMessageId?: string | null;
         provider?: string | null;
         modelId?: string | null;
       } = {}) => {
+        const threadId = data.threadId ?? selectedThread?.id ?? 'thread-1';
         const message = makeMessage({
           id: 'assistant-1',
+          threadId,
           parentMessageId: data.parentMessageId ?? null,
           branchGroupId: 'branch-2',
           role: 'assistant',
@@ -195,10 +218,12 @@ describe('Chat', () => {
           provider: data.provider ?? null,
           modelId: data.modelId ?? null,
         });
-        selectedThread = {
-          ...(selectedThread ?? makeThreadDetail({ messages: [] })),
-          messages: [...(selectedThread?.messages ?? []), message],
-        };
+        if (selectedThread?.id === message.threadId) {
+          selectedThread = {
+            ...selectedThread,
+            messages: [...selectedThread.messages, message],
+          };
+        }
         return message;
       }),
       patchStreamingMessage: vi.fn((id: string, data: Partial<ChatMessageDetailDto>) => {
@@ -547,10 +572,9 @@ describe('Chat', () => {
     });
     router.navigate.mockClear();
     component.selectedModelId.set('openrouter/test-model');
-    const input = document.createElement('textarea');
-    input.value = 'Start here';
+    setComposerValue('Start here');
 
-    await component.sendPrompt(input);
+    await component.sendPrompt();
 
     expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here');
     expect(router.navigate).toHaveBeenCalledWith(['/workspace', 'book-1', 'thread', 'thread-1'], { replaceUrl: true });
@@ -571,16 +595,16 @@ describe('Chat', () => {
       },
     });
     component.selectedModelId.set('openrouter/test-model');
-    const input = document.createElement('textarea');
-    input.value = 'Start here';
+    setComposerValue('Start here');
 
-    await component.sendPrompt(input);
+    await component.sendPrompt();
 
-    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith({
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
       parentMessageId: 'message-1',
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
-    });
+      threadId: 'thread-1',
+    }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'pending-message-1',
       prompt: 'Start here',
@@ -595,6 +619,186 @@ describe('Chat', () => {
       content: 'AI reply',
       status: 'complete',
     }));
+  });
+
+  it('does not save or show an assistant message when generation returns no content', async () => {
+    aiStreamService.streamText.mockResolvedValueOnce('');
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    setComposerValue('Start here');
+
+    await component.sendPrompt();
+    fixture.detectChanges();
+
+    expect(chatStore.createAssistantMessage).not.toHaveBeenCalled();
+    expect(chatStore.updateMessage).not.toHaveBeenCalled();
+    expect(chatStore.deleteMessage).not.toHaveBeenCalled();
+    expect(selectedThread?.messages).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('.message-row.from-assistant')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.message-spinner')).toBeNull();
+  });
+
+  it('renders user and assistant markdown messages while sanitizing unsafe HTML', async () => {
+    selectedThread = makeThreadDetail({
+      messages: [
+        makeMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'Use **user bold** and *user italic*.',
+        }),
+        makeMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          branchGroupId: 'branch-2',
+          content: 'Use **assistant bold**, *assistant italic*, and <script>alert(1)</script>.',
+          position: 1,
+        }),
+      ],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const userMessage = fixture.nativeElement.querySelector('.message-row.from-user') as HTMLElement;
+    const assistantMessage = fixture.nativeElement.querySelector('.message-row.from-assistant') as HTMLElement;
+
+    expect(userMessage.querySelector('strong')?.textContent).toBe('user bold');
+    expect(userMessage.querySelector('em')?.textContent).toBe('user italic');
+    expect(assistantMessage.querySelector('strong')?.textContent).toBe('assistant bold');
+    expect(assistantMessage.querySelector('em')?.textContent).toBe('assistant italic');
+    expect(assistantMessage.querySelector('script')).toBeNull();
+  });
+
+  it('renders assistant single newlines as paragraph breaks without changing user newlines', async () => {
+    selectedThread = makeThreadDetail({
+      messages: [
+        makeMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'First paragraph\nSecond paragraph',
+        }),
+        makeMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          branchGroupId: 'branch-2',
+          content: 'First paragraph\nSecond paragraph',
+          position: 1,
+        }),
+      ],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const userMessage = fixture.nativeElement.querySelector('.message-row.from-user') as HTMLElement;
+    const assistantMessage = fixture.nativeElement.querySelector('.message-row.from-assistant') as HTMLElement;
+    const userParagraphs = userMessage.querySelectorAll('.message-text p');
+    const assistantParagraphs = assistantMessage.querySelectorAll('.message-text p');
+
+    expect(userParagraphs).toHaveLength(1);
+    expect(assistantParagraphs).toHaveLength(2);
+    expect(assistantParagraphs[0]?.textContent).toBe('First paragraph');
+    expect(assistantParagraphs[1]?.textContent).toBe('Second paragraph');
+  });
+
+  it('preserves assistant markdown block structure while preparing paragraph breaks', async () => {
+    selectedThread = makeThreadDetail({
+      messages: [
+        makeMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          content: [
+            '- First item',
+            '- Second item',
+            '```ts',
+            'const one = 1;',
+            'const two = 2;',
+            '```',
+          ].join('\n'),
+        }),
+      ],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const assistantMessage = fixture.nativeElement.querySelector('.message-row.from-assistant') as HTMLElement;
+    const listItems = assistantMessage.querySelectorAll('.message-text li');
+    const codeBlock = assistantMessage.querySelector('.message-text pre code') as HTMLElement | null;
+
+    expect(listItems).toHaveLength(2);
+    expect(listItems[0]?.textContent).toBe('First item');
+    expect(listItems[1]?.textContent).toBe('Second item');
+    expect(codeBlock?.textContent).toContain('const one = 1;\nconst two = 2;');
+  });
+
+  it('keeps markdown syntax inside the composer input without rendering a preview', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    const input = setComposerValue('Use **bold** and *italic*');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(input.value).toBe('Use **bold** and *italic*');
+    expect(fixture.nativeElement.querySelector('.chat-input strong')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chat-input em')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
+  });
+
+  it('serializes formatted composer content to markdown and clears after sending', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+
+    const input = setComposerValue('Send **this**');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
+
+    await component.sendPrompt();
+    fixture.detectChanges();
+
+    expect(input.value).toBe('');
+    expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**');
   });
 
   it('creates and selects an edited user-message branch before generating a response', async () => {
@@ -643,12 +847,13 @@ describe('Chat', () => {
     await component.saveMessageEdit('user-1', 'Keep this prompt');
 
     expect(chatStore.createMessageBranch).not.toHaveBeenCalled();
-    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith({
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
       parentMessageId: 'user-1',
       provider: 'openrouter',
       modelId: null,
       branchGroupId: 'assistant-group',
-    });
+      threadId: 'thread-1',
+    }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       prompt: 'Keep this prompt',
       messages: [{ role: 'user', content: 'Keep this prompt' }],
@@ -754,10 +959,9 @@ describe('Chat', () => {
       },
     });
     component.selectedModelId.set('openrouter/test-model');
-    const input = document.createElement('textarea');
-    input.value = 'Start here';
+    setComposerValue('Start here');
 
-    const sendPromise = component.sendPrompt(input);
+    const sendPromise = component.sendPrompt();
     await vi.waitFor(() => {
       expect(aiStreamService.streamText).toHaveBeenCalled();
     });
@@ -860,10 +1064,9 @@ describe('Chat', () => {
       parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
     });
     component.selectedModelId.set('openrouter/test-model');
-    const input = document.createElement('textarea');
-    input.value = 'Start here';
+    setComposerValue('Start here');
 
-    const sendPromise = component.sendPrompt(input);
+    const sendPromise = component.sendPrompt();
     await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
     fixture.detectChanges();
 
@@ -871,11 +1074,103 @@ describe('Chat', () => {
     expect(sendButton.getAttribute('aria-label')).toBe('Stop generating');
     expect(sendButton.querySelector('rect')).not.toBeNull();
 
-    await component.handleSendOrStop(input);
+    await component.handleSendOrStop();
     expect(aiStreamService.stopStream).toHaveBeenCalledWith('pending-message-1');
 
     resolveStream('');
     await sendPromise;
+  });
+
+  it('preserves the active stop control after leaving and returning during generation', async () => {
+    let resolveStream!: (value: string) => void;
+    aiStreamService.streamText.mockImplementationOnce(() => new Promise<string>((resolve) => {
+      resolveStream = resolve;
+    }));
+    const routeValue = {
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'thread-1' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    };
+
+    await createComponent(routeValue);
+    component.selectedModelId.set('openrouter/test-model');
+    setComposerValue('Start here');
+
+    const sendPromise = component.sendPrompt();
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
+
+    fixture.destroy();
+    await remountComponent();
+
+    const sendButton = fixture.nativeElement.querySelector('.send-btn') as HTMLButtonElement;
+    const composer = fixture.nativeElement.querySelector('.chat-input') as HTMLTextAreaElement;
+    expect(sendButton.getAttribute('aria-label')).toBe('Stop generating');
+    expect(sendButton.disabled).toBe(false);
+    expect(composer.readOnly).toBe(true);
+
+    await component.handleSendOrStop();
+
+    expect(aiStreamService.stopStream).toHaveBeenCalledWith('pending-message-1');
+
+    resolveStream('AI reply');
+    await sendPromise;
+
+    expect(chatStore.updateMessage).toHaveBeenCalledWith('assistant-1', expect.objectContaining({
+      content: 'AI reply',
+      status: 'complete',
+    }));
+  });
+
+  it('keeps generation attached to the original thread when another thread is opened before the first token', async () => {
+    let streamRequest!: { onToken?: (token: string) => void };
+    let resolveStream!: (value: string) => void;
+    aiStreamService.streamText.mockImplementationOnce((request: { onToken?: (token: string) => void }) => {
+      streamRequest = request;
+      return new Promise<string>((resolve) => {
+        resolveStream = resolve;
+      });
+    });
+    const routeValue = {
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'thread-1' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    };
+
+    await createComponent(routeValue);
+    component.selectedModelId.set('openrouter/test-model');
+    setComposerValue('Start here');
+
+    const sendPromise = component.sendPrompt();
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
+
+    expect(chatStore.createAssistantMessage).not.toHaveBeenCalled();
+
+    selectedThread = makeThreadDetail({ id: 'thread-2', title: 'Second thread', messages: [] });
+    component.selectedThreadId = 'thread-2';
+    fixture.destroy();
+
+    streamRequest.onToken?.('Thread A partial');
+    await vi.waitFor(() => expect(chatStore.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
+      threadId: 'thread-1',
+      parentMessageId: 'message-1',
+    })));
+    expect(selectedThread?.messages.some((message) => message.id === 'assistant-1')).toBe(false);
+
+    resolveStream('Thread A final');
+    await sendPromise;
+
+    expect(chatStore.updateMessage).toHaveBeenCalledWith('assistant-1', expect.objectContaining({
+      content: 'Thread A partial',
+      status: 'complete',
+    }));
   });
 
   it('pauses and resumes streaming auto-scroll based on the chat scroll position', async () => {
@@ -904,41 +1199,106 @@ describe('Chat', () => {
     });
 
     component.selectedModelId.set('openrouter/test-model');
-    const input = document.createElement('textarea');
-    input.value = 'Start here';
-    const sendPromise = component.sendPrompt(input);
+    setComposerValue('Start here');
+    const sendPromise = component.sendPrompt();
     await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
     fixture.detectChanges();
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 1_000, behavior: 'auto' });
 
+    chatBody.dispatchEvent(new Event('wheel'));
     chatBody.scrollTop = 200;
     chatBody.dispatchEvent(new Event('scroll'));
     fixture.detectChanges();
 
     expect(component.isAutoScrollEnabled()).toBe(false);
-    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).not.toBeNull();
+    let scrollButton = fixture.nativeElement.querySelector('.scroll-to-bottom-btn') as HTMLButtonElement;
+    expect(scrollButton).not.toBeNull();
+    expect(scrollButton.classList.contains('is-visible')).toBe(true);
+    expect(scrollButton.disabled).toBe(false);
+    expect(scrollButton.getAttribute('aria-hidden')).toBe('false');
 
     chatBody.scrollTop = 600;
     chatBody.dispatchEvent(new Event('scroll'));
     fixture.detectChanges();
 
     expect(component.isAutoScrollEnabled()).toBe(true);
-    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
+    scrollButton = fixture.nativeElement.querySelector('.scroll-to-bottom-btn') as HTMLButtonElement;
+    expect(scrollButton.classList.contains('is-visible')).toBe(false);
+    expect(scrollButton.disabled).toBe(true);
+    expect(scrollButton.getAttribute('aria-hidden')).toBe('true');
 
+    chatBody.dispatchEvent(new Event('wheel'));
     chatBody.scrollTop = 200;
     chatBody.dispatchEvent(new Event('scroll'));
     fixture.detectChanges();
-    (fixture.nativeElement.querySelector('.scroll-to-bottom-btn') as HTMLButtonElement).click();
+    scrollButton = fixture.nativeElement.querySelector('.scroll-to-bottom-btn') as HTMLButtonElement;
+    scrollButton.click();
     fixture.detectChanges();
 
-    expect(scrollTo).toHaveBeenCalledWith({ top: 1_000, behavior: 'smooth' });
     expect(component.isAutoScrollEnabled()).toBe(true);
-    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
+    expect(scrollButton.classList.contains('is-visible')).toBe(false);
+    expect(scrollButton.disabled).toBe(true);
+    expect(scrollButton.getAttribute('aria-hidden')).toBe('true');
 
     resolveStream('');
     await sendPromise;
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.scroll-to-bottom-btn')).toBeNull();
+    scrollButton = fixture.nativeElement.querySelector('.scroll-to-bottom-btn') as HTMLButtonElement;
+    expect(scrollButton.classList.contains('is-visible')).toBe(false);
+    expect(scrollButton.disabled).toBe(true);
+    expect(scrollButton.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('keeps streaming auto-scroll enabled when rendered content grows before scrolling catches up', async () => {
+    let resolveStream!: (value: string) => void;
+    aiStreamService.streamText.mockImplementationOnce(() => new Promise<string>((resolve) => {
+      resolveStream = resolve;
+    }));
+
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    const chatBody = fixture.nativeElement.querySelector('.chat-body') as HTMLElement;
+    let scrollHeight = 1_000;
+    const scrollTo = vi.fn((options?: ScrollToOptions) => {
+      if (typeof options?.top === 'number') {
+        chatBody.scrollTop = Math.max(0, options.top - chatBody.clientHeight);
+      }
+    });
+    Object.defineProperties(chatBody, {
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 600 },
+      scrollTo: { configurable: true, value: scrollTo },
+    });
+
+    component.selectedModelId.set('openrouter/test-model');
+    setComposerValue('Start here');
+    const sendPromise = component.sendPrompt();
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
+    fixture.detectChanges();
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1_000, behavior: 'auto' });
+
+    scrollHeight = 1_400;
+    chatBody.scrollTop = 600;
+    chatBody.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+
+    expect(component.isAutoScrollEnabled()).toBe(true);
+    expect(component.isChatAtBottom()).toBe(true);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1_400, behavior: 'auto' });
+    const scrollButton = fixture.nativeElement.querySelector('.scroll-to-bottom-btn') as HTMLButtonElement;
+    expect(scrollButton.classList.contains('is-visible')).toBe(false);
+
+    resolveStream('');
+    await sendPromise;
   });
 
   it('keeps the created thread selected when the thread route initializes after sending', async () => {

@@ -1,6 +1,5 @@
 <div class="chat-container">
-  <div class="chat-layout" appElementAnimation #chatAnimation="appElementAnimation"
-    appElementAnimationLeaveClass="thread-item-leaving" [class.is-detached]="isDetachedMode">
+  <div class="chat-layout" [class.is-detached]="isDetachedMode">
 
     <!-- Detached Sidebar -->
     @if (showDetachedSidebar) {
@@ -39,8 +38,10 @@
         </div>
       </div>
 
-      <div #chatBody class="chat-body" [class.thread-picker]="!hasActiveConversation" [hidden]="showMainDetachedState"
-        (scroll)="handleChatBodyScroll($event)">
+      <div class="chat-scroll-region" [hidden]="showMainDetachedState">
+        <div #chatBody class="chat-body" [class.thread-picker]="!hasActiveConversation"
+          (scroll)="handleChatBodyScroll($event)" (wheel)="handleChatBodyUserScrollIntent()"
+          (touchmove)="handleChatBodyUserScrollIntent()" (keydown)="handleChatBodyUserScrollIntent()">
         @if (!hasActiveConversation && !isDetachedMode) {
         <app-chat-threads [threads]="chatStore.threads()" [isDetachedMode]="false" [canDetach]="!isDetachedMode"
           [isNewChat]="isNewChat" (threadSelected)="selectThread($event)"
@@ -169,7 +170,11 @@
                     (click)="saveMessageEdit(message.id, messageEditInput.value)">Save</button>
                 </div>
                 } @else if (hasMessageContent(message)) {
-                <p>{{ message.content }}</p>
+                @if (message.role === 'system') {
+                <div class="message-text">{{ message.content }}</div>
+                } @else {
+                <markdown class="message-text" [data]="getMessageMarkdownData(message)"></markdown>
+                }
                 }
 
                 @if (isMessageStreaming(message)) {
@@ -274,22 +279,24 @@
         </section>
         }
         }
+        </div>
 
-        @if (showScrollToBottom()) {
-        <button class="scroll-to-bottom-btn" type="button" (click)="scrollToLatestResponse()"
+        <button class="scroll-to-bottom-btn" [class.is-visible]="showScrollToBottom()"
+          [attr.aria-hidden]="!showScrollToBottom()" [attr.tabindex]="showScrollToBottom() ? 0 : -1"
+          [disabled]="!showScrollToBottom()" type="button" (click)="scrollToLatestResponse()"
           aria-label="Jump to latest response" title="Jump to latest response">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round" aria-hidden="true">
             <path d="m6 9 6 6 6-6"></path>
           </svg>
         </button>
-        }
       </div>
 
       <div class="chat-footer" [hidden]="!hasActiveConversation || showMainDetachedState">
         <div class="chat-input-wrapper">
-          <textarea #chatInput rows="1" placeholder="Type a message..." class="chat-input"
-            (input)="resizePromptInput(chatInput)" (keydown)="handlePromptKeydown($event, chatInput)"></textarea>
+          <textarea #composerInput class="chat-input" rows="1" placeholder="Type a message..." spellcheck="true"
+            aria-label="Type a message" [readOnly]="isAiResponseActive()" (keydown)="handlePromptKeydown($event)"
+            (input)="resizePromptInput(composerInput)"></textarea>
 
           <div class="chat-input-footer">
             <app-autocomplete-dropdown [options]="modelOptions()" [selectedValue]="selectedModelId()"
@@ -310,10 +317,11 @@
 
           <button class="send-btn" [class.is-stop]="isGeneratingResponse()" type="button"
             [attr.aria-label]="isGeneratingResponse() ? 'Stop generating' : 'Send message'"
-            [title]="isGeneratingResponse() ? 'Stop generating' : 'Send message'"
-            [disabled]="isSendOrStopDisabled()" (click)="handleSendOrStop(chatInput)">
+            [title]="isGeneratingResponse() ? 'Stop generating' : 'Send message'" [disabled]="isSendOrStopDisabled()"
+            (click)="handleSendOrStop()">
             @if (isGeneratingResponse()) {
-            <svg class="stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="9"></circle>
               <rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" stroke="none"></rect>
             </svg>
