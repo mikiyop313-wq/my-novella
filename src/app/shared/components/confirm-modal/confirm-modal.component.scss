@@ -20,7 +20,9 @@
   border-radius: 16px;
   width: 420px;
   max-width: 90vw;
-  box-shadow: var(--color-shadow), 0 0 0 1px inset rgba(255, 255, 255, 0.05);
+  box-shadow:
+    var(--color-shadow),
+    0 0 0 1px inset rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -49,6 +51,66 @@
     font-size: 1.05rem;
     line-height: 1.6;
     font-weight: 400;
+  }
+}
+
+.confirm-modal-checkbox {
+  margin-top: 18px;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  user-select: none;
+  transition: color 0.18s ease;
+
+  &:hover {
+    color: var(--color-text-primary);
+
+    input {
+      border-color: var(--color-text-secondary);
+      background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+    }
+  }
+
+  input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 2px 0 0;
+    box-sizing: border-box;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+    transition:
+      border-color 0.18s ease,
+      background-color 0.18s ease;
+
+    &:checked {
+      border-color: var(--color-text-primary);
+      background: var(--color-text-primary);
+
+      &::before {
+        width: 8px;
+        height: 5px;
+        border-bottom: 2px solid var(--color-background);
+        border-left: 2px solid var(--color-background);
+        content: '';
+        transform: rotate(-45deg) translate(1px, -1px);
+      }
+    }
+
+    &:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--color-text-primary) 42%, transparent);
+      outline-offset: 2px;
+    }
   }
 }
 
