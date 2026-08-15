@@ -14,8 +14,12 @@ describe('AiConfigurationSettingsComponent', () => {
   let fixture: ComponentFixture<AiConfigurationSettingsComponent>;
   let element: HTMLElement;
   let invoke: ReturnType<typeof vi.fn>;
+  let toastSuccess: ReturnType<typeof vi.fn>;
+  let toastError: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    toastSuccess = vi.fn();
+    toastError = vi.fn();
     invoke = vi.fn(async (channel: string, request?: unknown) => {
       if (channel === 'ai:config:load') return configuration();
       if (channel === 'ai:config:load-api-key') {
@@ -31,13 +35,17 @@ describe('AiConfigurationSettingsComponent', () => {
       if (channel === 'ai:config:save-server-url') {
         return (request as SaveAiServerUrlRequest).serverUrl;
       }
+      if (channel === 'ai:config:test-connection') return undefined;
       throw new Error(`Unexpected IPC channel: ${channel}`);
     });
     await TestBed.configureTestingModule({
       imports: [AiConfigurationSettingsComponent],
       providers: [
         { provide: ElectronService, useValue: { invoke } },
-        { provide: ToastService, useValue: { error: vi.fn() } },
+        {
+          provide: ToastService,
+          useValue: { success: toastSuccess, error: toastError },
+        },
       ],
     }).compileComponents();
 
@@ -197,6 +205,123 @@ describe('AiConfigurationSettingsComponent', () => {
     expect(element.querySelector('.field-status')?.textContent).toContain(
       'Enter a valid absolute server URL.',
     );
+  });
+
+  it('saves a dirty key before testing and reports success inline', async () => {
+    clickProvider('openai');
+    const input = element.querySelector<HTMLInputElement>('#openai-api-key')!;
+    input.dispatchEvent(new FocusEvent('focus'));
+    fixture.detectChanges();
+    setInputValue(input, 'sk-test-abcd');
+
+    const button = element.querySelector<HTMLButtonElement>('.connection-test-button')!;
+    const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    expect(button.dispatchEvent(mouseDown)).toBe(false);
+    input.dispatchEvent(new FocusEvent('blur'));
+    button.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const saveIndex = invoke.mock.calls.findIndex(([channel]) =>
+      channel === 'ai:config:save-api-key');
+    const testIndex = invoke.mock.calls.findIndex(([channel]) =>
+      channel === 'ai:config:test-connection');
+    expect(saveIndex).toBeGreaterThan(-1);
+    expect(testIndex).toBeGreaterThan(saveIndex);
+    expect(saveCalls('ai:config:save-api-key')).toHaveLength(1);
+    expect(invoke.mock.calls[testIndex]).toEqual([
+      'ai:config:test-connection',
+      { providerId: 'openai' },
+    ]);
+    const result = element.querySelector('.connection-result');
+    expect(result?.textContent).toContain('Connection to OpenAI succeeded.');
+    expect(result?.classList.contains('is-success')).toBe(true);
+    expect(result?.querySelector('.connection-result-icon')).not.toBeNull();
+    expect(result?.querySelectorAll('path')).toHaveLength(1);
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it('stops before testing when a dirty server URL is invalid', async () => {
+    clickProvider('lm-studio');
+    const input = element.querySelector<HTMLInputElement>('#lm-studio-server-url')!;
+    setInputValue(input, 'not a URL');
+
+    element.querySelector<HTMLButtonElement>('.connection-test-button')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(saveCalls('ai:config:save-server-url')).toHaveLength(0);
+    expect(saveCalls('ai:config:test-connection')).toHaveLength(0);
+    expect(element.querySelector('.field-status')?.textContent).toContain(
+      'Enter a valid absolute server URL.',
+    );
+  });
+
+  it('reports connection failures inline', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'ai:config:test-connection') {
+        throw new Error('OpenRouter API error (401): Invalid key.');
+      }
+      throw new Error(`Unexpected IPC channel: ${channel}`);
+    });
+    clickProvider('openrouter');
+
+    element.querySelector<HTMLButtonElement>('.connection-test-button')!.click();
+    await fixture.whenStable();
+
+    fixture.detectChanges();
+    const result = element.querySelector('.connection-result');
+    expect(result?.textContent).toContain('OpenRouter API error (401): Invalid key.');
+    expect(result?.classList.contains('is-error')).toBe(true);
+    expect(result?.querySelector('.connection-result-icon')).not.toBeNull();
+    expect(result?.querySelectorAll('path')).toHaveLength(1);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('clears a stale connection result when the configuration changes', async () => {
+    clickProvider('openai');
+    const button = element.querySelector<HTMLButtonElement>('.connection-test-button')!;
+    button.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(element.querySelector('.connection-result')).not.toBeNull();
+
+    const input = element.querySelector<HTMLInputElement>('#openai-api-key')!;
+    setInputValue(input, 'sk-changed');
+
+    expect(element.querySelector('.connection-result')).toBeNull();
+  });
+
+  it('allows only one connection test at a time', async () => {
+    let resolveTest!: () => void;
+    const pendingTest = new Promise<void>((resolve) => {
+      resolveTest = resolve;
+    });
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'ai:config:test-connection') return pendingTest;
+      throw new Error(`Unexpected IPC channel: ${channel}`);
+    });
+    clickProvider('openrouter');
+    const button = element.querySelector<HTMLButtonElement>('.connection-test-button')!;
+
+    button.click();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain('Testing');
+    expect(button.querySelector('.connection-test-spinner')).not.toBeNull();
+    button.click();
+    expect(saveCalls('ai:config:test-connection')).toHaveLength(1);
+
+    resolveTest();
+    await pendingTest;
+    await vi.waitFor(() => {
+      expect(fixture.componentInstance.testingProvider()).toBeNull();
+    });
+    fixture.detectChanges();
+    expect(button.disabled).toBe(false);
+    expect(button.querySelector('.connection-test-spinner')).toBeNull();
   });
 
   it('keeps a newer key draft when an older save finishes later', async () => {

@@ -115,6 +115,24 @@ export class OpenRouterProvider implements AiProvider {
             });
     }
 
+    async testConnection(): Promise<void> {
+        const apiKey = await this.keys.getApiKey('openrouter');
+        if (!apiKey) {
+            throw new Error('OpenRouter connection test requires an API key configured in Settings.');
+        }
+
+        const response = await fetch('https://openrouter.ai/api/v1/key', {
+            signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+        });
+        await assertSuccessfulResponse(response, this.name);
+
+        const body = asObject(await parseJsonResponse(response, this.name));
+        if (!asObject(body?.['data'])) {
+            throw new Error('OpenRouter returned a malformed connection response.');
+        }
+    }
+
     private parseModel(rawModel: unknown): OpenRouterModel {
         const model = asObject(rawModel);
         if (!model || typeof model['id'] !== 'string' || typeof model['name'] !== 'string') {

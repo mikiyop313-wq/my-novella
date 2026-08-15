@@ -80,10 +80,15 @@ export class OpenAiProvider implements AiProvider {
         });
     }
 
-    private async requireApiKey(): Promise<string> {
+    async testConnection(): Promise<void> {
+        await this.requireApiKey('connection test');
+        await this.listModels();
+    }
+
+    private async requireApiKey(action = 'generation'): Promise<string> {
         const apiKey = await this.keys.getApiKey('openai');
         if (!apiKey) {
-            throw new Error('OpenAI generation requires an API key configured in Settings.');
+            throw new Error(`OpenAI ${action} requires an API key configured in Settings.`);
         }
         return apiKey;
     }

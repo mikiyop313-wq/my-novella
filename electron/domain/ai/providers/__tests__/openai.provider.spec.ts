@@ -107,6 +107,16 @@ describe('OpenAiProvider', () => {
         expect(fetch).not.toHaveBeenCalled();
     });
 
+    it('accepts an authenticated connection with zero models', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), {
+            status: 200,
+        }));
+        const provider = new OpenAiProvider({ getApiKey } as any);
+
+        await expect(provider.testConnection()).resolves.toBeUndefined();
+        expect(fetch).toHaveBeenCalledOnce();
+    });
+
     it('reports safe HTTP failures and preserves generation aborts', async () => {
         const provider = new OpenAiProvider({ getApiKey } as any);
         vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({

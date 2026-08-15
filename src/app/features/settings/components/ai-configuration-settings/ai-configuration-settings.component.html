@@ -160,6 +160,61 @@
               </button>
             }
           </div>
+          <div class="connection-actions">
+            @if (connectionResults()[provider.id]; as result) {
+              <span
+                class="connection-result"
+                [class.is-success]="result.status === 'success'"
+                [class.is-error]="result.status === 'error'"
+                aria-live="polite"
+              >
+                @if (result.status === 'success') {
+                  <svg
+                    class="connection-result-icon"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8" cy="8" r="6.25"></circle>
+                    <path d="m5 8 2 2 4-4"></path>
+                  </svg>
+                } @else {
+                  <svg
+                    class="connection-result-icon"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8" cy="8" r="6.25"></circle>
+                    <path d="m6 6 4 4M10 6l-4 4"></path>
+                  </svg>
+                }
+                <span>{{ result.message }}</span>
+              </span>
+            }
+            <button
+              class="connection-test-button"
+              type="button"
+              [disabled]="isLoading() || !!loadError() || testingProvider() !== null"
+              [attr.aria-busy]="testingProvider() === provider.id"
+              (mousedown)="$event.preventDefault()"
+              (click)="testConnection(provider.id, provider.name)"
+            >
+              @if (testingProvider() === provider.id) {
+                <span class="connection-test-spinner" aria-hidden="true"></span>
+                <span>Testing...</span>
+              } @else {
+                <span>Test connection</span>
+              }
+            </button>
+          </div>
         </div>
       }
     </section>
@@ -243,6 +298,61 @@
             (input)="updateServerUrl(provider.id, $event)"
             (blur)="saveServerUrlOnBlur(provider.id)"
           />
+          <div class="connection-actions">
+            @if (connectionResults()[provider.id]; as result) {
+              <span
+                class="connection-result"
+                [class.is-success]="result.status === 'success'"
+                [class.is-error]="result.status === 'error'"
+                aria-live="polite"
+              >
+                @if (result.status === 'success') {
+                  <svg
+                    class="connection-result-icon"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8" cy="8" r="6.25"></circle>
+                    <path d="m5 8 2 2 4-4"></path>
+                  </svg>
+                } @else {
+                  <svg
+                    class="connection-result-icon"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8" cy="8" r="6.25"></circle>
+                    <path d="m6 6 4 4M10 6l-4 4"></path>
+                  </svg>
+                }
+                <span>{{ result.message }}</span>
+              </span>
+            }
+            <button
+              class="connection-test-button"
+              type="button"
+              [disabled]="isLoading() || !!loadError() || testingProvider() !== null"
+              [attr.aria-busy]="testingProvider() === provider.id"
+              (mousedown)="$event.preventDefault()"
+              (click)="testConnection(provider.id, provider.name)"
+            >
+              @if (testingProvider() === provider.id) {
+                <span class="connection-test-spinner" aria-hidden="true"></span>
+                <span>Testing...</span>
+              } @else {
+                <span>Test connection</span>
+              }
+            </button>
+          </div>
         </div>
       }
     </section>

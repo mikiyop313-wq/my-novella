@@ -7,4 +7,5 @@ export interface AiProvider {
 
     generate(request: AiPromptRequest): Promise<AiPromptResponse>;
     listModels(): Promise<AiModel[]>;
+    testConnection(): Promise<void>;
 }

@@ -139,6 +139,9 @@ describe('local OpenAI-compatible providers', () => {
         await expect(provider.generate({
             model: 'ollama', modelId: 'llama3.2', prompt: 'Write.',
         })).rejects.toThrow('server URL configured in Settings');
+        await expect(provider.testConnection()).rejects.toThrow(
+            'connection test requires a server URL configured in Settings',
+        );
         expect(fetch).not.toHaveBeenCalled();
     });
 
@@ -177,5 +180,23 @@ describe('local OpenAI-compatible providers', () => {
         await expect(provider.generate({
             model: 'ollama', modelId: 'model', prompt: 'Write.',
         })).rejects.toBe(abortError);
+    });
+
+    it('accepts local connections with zero models on each provider endpoint', async () => {
+        getServerUrl.mockImplementation(async (providerId: string) => providerId === 'ollama'
+            ? 'http://localhost:11434'
+            : 'http://localhost:1234/v1');
+        vi.mocked(fetch)
+            .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+
+        await expect(new OllamaProvider({ getServerUrl } as any).testConnection())
+            .resolves.toBeUndefined();
+        await expect(new LmStudioProvider({ getServerUrl } as any).testConnection())
+            .resolves.toBeUndefined();
+        expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+            'http://localhost:11434/v1/models',
+            'http://localhost:1234/v1/models',
+        ]);
     });
 });

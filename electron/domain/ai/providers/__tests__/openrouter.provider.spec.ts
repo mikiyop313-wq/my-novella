@@ -135,4 +135,42 @@ describe('OpenRouterProvider', () => {
         expect(timeout).toHaveBeenCalledWith(10_000);
         timeout.mockRestore();
     });
+
+    it('tests the saved key through the authenticated current-key endpoint', async () => {
+        const timeoutSignal = new AbortController().signal;
+        const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal);
+        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+            data: { label: 'My Novella' },
+        }), { status: 200 }));
+        const provider = new OpenRouterProvider({ getApiKey } as any);
+
+        await expect(provider.testConnection()).resolves.toBeUndefined();
+        expect(fetch).toHaveBeenCalledWith('https://openrouter.ai/api/v1/key', {
+            signal: timeoutSignal,
+            headers: { Authorization: 'Bearer saved-openrouter-key' },
+        });
+        expect(timeout).toHaveBeenCalledWith(10_000);
+        timeout.mockRestore();
+    });
+
+    it('rejects a connection test without a saved key', async () => {
+        getApiKey.mockResolvedValue(null);
+        const provider = new OpenRouterProvider({ getApiKey } as any);
+
+        await expect(provider.testConnection()).rejects.toThrow(
+            'connection test requires an API key configured in Settings',
+        );
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed current-key response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ data: null }), {
+            status: 200,
+        }));
+        const provider = new OpenRouterProvider({ getApiKey } as any);
+
+        await expect(provider.testConnection()).rejects.toThrow(
+            'malformed connection response',
+        );
+    });
 });

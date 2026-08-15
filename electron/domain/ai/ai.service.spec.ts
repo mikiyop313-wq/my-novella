@@ -72,6 +72,22 @@ describe('AiService', () => {
         );
         errorSpy.mockRestore();
     });
+
+    it('routes Google connection tests through the registered Gemini provider', async () => {
+        const provider = fakeProvider('gemini', []);
+        const service = new AiService([provider]);
+
+        await expect(service.testConnection('google')).resolves.toBeUndefined();
+        expect(provider.testConnection).toHaveBeenCalledOnce();
+    });
+
+    it('rejects connection tests for unregistered providers', async () => {
+        const service = new AiService([]);
+
+        await expect(service.testConnection('openai')).rejects.toThrow(
+            'Unsupported AI provider: openai.',
+        );
+    });
 });
 
 function fakeProvider(id: string, models: AiModel[] | Error): AiProvider {
@@ -82,5 +98,6 @@ function fakeProvider(id: string, models: AiModel[] | Error): AiProvider {
         listModels: models instanceof Error
             ? vi.fn().mockRejectedValue(models)
             : vi.fn().mockResolvedValue(models),
+        testConnection: vi.fn().mockResolvedValue(undefined),
     };
 }

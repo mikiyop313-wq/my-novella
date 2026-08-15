@@ -125,10 +125,15 @@ export class AnthropicProvider implements AiProvider {
         return models;
     }
 
-    private async requireApiKey(): Promise<string> {
+    async testConnection(): Promise<void> {
+        await this.requireApiKey('connection test');
+        await this.listModels();
+    }
+
+    private async requireApiKey(action = 'generation'): Promise<string> {
         const apiKey = await this.keys.getApiKey('anthropic');
         if (!apiKey) {
-            throw new Error('Anthropic generation requires an API key configured in Settings.');
+            throw new Error(`Anthropic ${action} requires an API key configured in Settings.`);
         }
         return apiKey;
     }

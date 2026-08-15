@@ -3,6 +3,7 @@ import type {
     LoadAiApiKeyRequest,
     SaveAiApiKeyRequest,
     SaveAiServerUrlRequest,
+    TestAiProviderConnectionRequest,
 } from '../../../shared/models/ai.model';
 import { aiConfigurationService } from '../../domain/ai/ai-configuration.service';
 import { aiService } from '../../domain/ai/ai.service';
@@ -45,6 +46,17 @@ export function setupAiHandlers() {
             }
 
             return aiConfigurationService.saveServerUrl(request.providerId, request.serverUrl);
+        },
+    );
+
+    ipcMain.handle(
+        'ai:config:test-connection',
+        async (_event, request: TestAiProviderConnectionRequest) => {
+            if (!request || typeof request.providerId !== 'string') {
+                throw new Error('Invalid AI provider connection test request.');
+            }
+
+            return aiService.testConnection(request.providerId);
         },
     );
 

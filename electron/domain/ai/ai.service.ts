@@ -1,5 +1,5 @@
 import type { AiPromptRequest, AiPromptResponse } from './models';
-import type { AiModel } from '../../../shared/models/ai.model';
+import type { AiModel, AiProviderId } from '../../../shared/models/ai.model';
 import type { AiProvider } from './providers/ai-provider.interface';
 import { AnthropicProvider } from './providers/anthropic.provider';
 import { OpenAiProvider } from './providers/openai.provider';
@@ -58,6 +58,17 @@ export class AiService {
             );
             return [];
         });
+    }
+
+    async testConnection(providerId: AiProviderId): Promise<void> {
+        const registeredProviderId = providerId === 'google' ? 'gemini' : providerId;
+        const provider = this.providers.get(registeredProviderId);
+
+        if (!provider) {
+            throw new Error(`Unsupported AI provider: ${providerId}.`);
+        }
+
+        await provider.testConnection();
     }
 }
 

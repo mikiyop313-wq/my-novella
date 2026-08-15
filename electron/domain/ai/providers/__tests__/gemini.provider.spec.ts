@@ -113,6 +113,16 @@ describe('GeminiProvider', () => {
         await expect(provider.listModels()).rejects.toThrow('malformed model list');
     });
 
+    it('accepts an authenticated connection with zero models', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ models: [] }), {
+            status: 200,
+        }));
+        const provider = new GeminiProvider({ getApiKey } as any);
+
+        await expect(provider.testConnection()).resolves.toBeUndefined();
+        expect(fetch).toHaveBeenCalledOnce();
+    });
+
     it('does not list without a key and reports HTTP failures', async () => {
         const provider = new GeminiProvider({ getApiKey } as any);
         getApiKey.mockResolvedValueOnce(null);

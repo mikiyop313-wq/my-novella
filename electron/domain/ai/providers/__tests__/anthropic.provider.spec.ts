@@ -205,4 +205,15 @@ describe('AnthropicProvider', () => {
         vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 500 }));
         await expect(provider.listModels()).rejects.toThrow('Anthropic API error (500)');
     });
+
+    it('accepts an authenticated connection with zero models', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+            data: [],
+            has_more: false,
+        }), { status: 200 }));
+        const provider = new AnthropicProvider({ getApiKey } as any);
+
+        await expect(provider.testConnection()).resolves.toBeUndefined();
+        expect(fetch).toHaveBeenCalledOnce();
+    });
 });

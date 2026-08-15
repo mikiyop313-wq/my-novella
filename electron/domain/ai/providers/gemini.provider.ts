@@ -112,10 +112,15 @@ export class GeminiProvider implements AiProvider {
         return models;
     }
 
-    private async requireApiKey(): Promise<string> {
+    async testConnection(): Promise<void> {
+        await this.requireApiKey('connection test');
+        await this.listModels();
+    }
+
+    private async requireApiKey(action = 'generation'): Promise<string> {
         const apiKey = await this.keys.getApiKey('google');
         if (!apiKey) {
-            throw new Error('Google Gemini generation requires an API key configured in Settings.');
+            throw new Error(`Google Gemini ${action} requires an API key configured in Settings.`);
         }
         return apiKey;
     }

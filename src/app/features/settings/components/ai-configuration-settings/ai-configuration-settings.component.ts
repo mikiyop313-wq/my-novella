@@ -4,16 +4,21 @@ import type {
   AiApiKeyStatus,
   AiCloudProviderId,
   AiLocalProviderId,
+  AiProviderId,
   AiProviderConfiguration,
   SaveAiApiKeyRequest,
   SaveAiServerUrlRequest,
+  TestAiProviderConnectionRequest,
 } from '../../../../../../shared/models/ai.model';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { AiProviderIconComponent } from './ai-provider-icon.component';
 
-type ProviderId = AiCloudProviderId | AiLocalProviderId;
 type SaveState = 'idle' | 'saving' | 'saved';
+type ConnectionResult = {
+  status: 'success' | 'error';
+  message: string;
+};
 
 interface CloudProvider {
   id: AiCloudProviderId;
@@ -38,7 +43,7 @@ interface LocalProvider {
 export class AiConfigurationSettingsComponent implements OnInit {
   private readonly electronService = inject(ElectronService);
   private readonly toastService = inject(ToastService);
-  private readonly revisions: Record<ProviderId, number> = {
+  private readonly revisions: Record<AiProviderId, number> = {
     openrouter: 0,
     google: 0,
     openai: 0,
@@ -46,6 +51,10 @@ export class AiConfigurationSettingsComponent implements OnInit {
     ollama: 0,
     'lm-studio': 0,
   };
+  private readonly pendingSaves: Partial<Record<AiProviderId, {
+    revision: number;
+    promise: Promise<boolean>;
+  }>> = {};
 
   readonly cloudProviders: readonly CloudProvider[] = [
     {
@@ -89,7 +98,16 @@ export class AiConfigurationSettingsComponent implements OnInit {
     },
   ];
 
-  readonly selectedProvider = signal<ProviderId | null>(null);
+  readonly selectedProvider = signal<AiProviderId | null>(null);
+  readonly testingProvider = signal<AiProviderId | null>(null);
+  readonly connectionResults = signal<Record<AiProviderId, ConnectionResult | null>>({
+    openrouter: null,
+    google: null,
+    openai: null,
+    anthropic: null,
+    ollama: null,
+    'lm-studio': null,
+  });
   readonly focusedApiKeyProvider = signal<AiCloudProviderId | null>(null);
   readonly apiKeyVisible = signal(false);
   readonly isLoading = signal(true);
@@ -120,7 +138,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     ollama: false,
     'lm-studio': false,
   });
-  private readonly saveStates = signal<Record<ProviderId, SaveState>>({
+  private readonly saveStates = signal<Record<AiProviderId, SaveState>>({
     openrouter: 'idle',
     google: 'idle',
     openai: 'idle',
@@ -128,7 +146,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     ollama: 'idle',
     'lm-studio': 'idle',
   });
-  readonly fieldErrors = signal<Record<ProviderId, string | null>>({
+  readonly fieldErrors = signal<Record<AiProviderId, string | null>>({
     openrouter: null,
     google: null,
     openai: null,
@@ -171,7 +189,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     }
   }
 
-  selectProvider(providerId: ProviderId): void {
+  selectProvider(providerId: AiProviderId): void {
     this.selectedProvider.set(providerId);
   }
 
@@ -199,6 +217,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     this.apiKeyDrafts.update((drafts) => ({ ...drafts, [providerId]: value }));
     this.apiKeyDirty.update((dirty) => ({ ...dirty, [providerId]: true }));
     this.revisions[providerId] += 1;
+    this.setConnectionResult(providerId, null);
     this.setFieldError(providerId, null);
     this.setSaveState(providerId, 'idle');
   }
@@ -234,6 +253,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     this.serverUrls.update((urls) => ({ ...urls, [providerId]: value }));
     this.serverUrlDirty.update((dirty) => ({ ...dirty, [providerId]: true }));
     this.revisions[providerId] += 1;
+    this.setConnectionResult(providerId, null);
     this.setFieldError(providerId, null);
     this.setSaveState(providerId, 'idle');
   }
@@ -248,7 +268,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     this.apiKeyVisible.update((visible) => !visible);
   }
 
-  fieldStatus(providerId: ProviderId): string {
+  fieldStatus(providerId: AiProviderId): string {
     const error = this.fieldErrors()[providerId];
     if (error) return error;
 
@@ -262,7 +282,40 @@ export class AiConfigurationSettingsComponent implements OnInit {
     }
   }
 
-  private async saveApiKey(providerId: AiCloudProviderId): Promise<void> {
+  async testConnection(providerId: AiProviderId, providerName: string): Promise<void> {
+    if (this.testingProvider() !== null) return;
+
+    this.testingProvider.set(providerId);
+    this.setConnectionResult(providerId, null);
+    try {
+      const saved = this.isLocalProvider(providerId)
+        ? !this.serverUrlDirty()[providerId] || await this.saveServerUrl(providerId)
+        : !this.apiKeyDirty()[providerId] || await this.saveApiKey(providerId);
+      if (!saved) return;
+
+      const request: TestAiProviderConnectionRequest = { providerId };
+      await this.electronService.invoke('ai:config:test-connection', request);
+      this.setConnectionResult(providerId, {
+        status: 'success',
+        message: `Connection to ${providerName} succeeded.`,
+      });
+    } catch (error) {
+      this.setConnectionResult(providerId, {
+        status: 'error',
+        message: this.errorMessage(error, `Unable to connect to ${providerName}.`),
+      });
+    } finally {
+      if (this.testingProvider() === providerId) {
+        this.testingProvider.set(null);
+      }
+    }
+  }
+
+  private saveApiKey(providerId: AiCloudProviderId): Promise<boolean> {
+    return this.runSave(providerId, () => this.persistApiKey(providerId));
+  }
+
+  private async persistApiKey(providerId: AiCloudProviderId): Promise<boolean> {
     const apiKey = (this.apiKeyDrafts()[providerId] ?? '').trim();
     const revision = this.revisions[providerId];
 
@@ -274,19 +327,21 @@ export class AiConfigurationSettingsComponent implements OnInit {
         request,
       )) as AiApiKeyStatus;
 
-      if (this.revisions[providerId] !== revision) return;
+      if (this.revisions[providerId] !== revision) return false;
 
       this.apiKeyStatuses.update((statuses) => ({ ...statuses, [providerId]: status }));
       this.apiKeyDrafts.update((drafts) => ({ ...drafts, [providerId]: apiKey }));
       this.apiKeyDirty.update((dirty) => ({ ...dirty, [providerId]: false }));
       this.setFieldError(providerId, null);
       this.setSaveState(providerId, status.configured ? 'saved' : 'idle');
+      return true;
     } catch (error) {
-      if (this.revisions[providerId] !== revision) return;
+      if (this.revisions[providerId] !== revision) return false;
 
       const message = this.errorMessage(error, 'Unable to save the API key.');
       this.setFieldError(providerId, message);
       this.toastService.error(message, 'API key save failed');
+      return false;
     }
   }
 
@@ -327,14 +382,18 @@ export class AiConfigurationSettingsComponent implements OnInit {
     }
   }
 
-  private async saveServerUrl(providerId: AiLocalProviderId): Promise<void> {
+  private saveServerUrl(providerId: AiLocalProviderId): Promise<boolean> {
+    return this.runSave(providerId, () => this.persistServerUrl(providerId));
+  }
+
+  private async persistServerUrl(providerId: AiLocalProviderId): Promise<boolean> {
     const serverUrl = this.serverUrls()[providerId].trim();
     const revision = this.revisions[providerId];
     const validationError = this.validateServerUrl(serverUrl);
 
     if (validationError) {
       this.setFieldError(providerId, validationError);
-      return;
+      return false;
     }
 
     this.setSaveState(providerId, 'saving');
@@ -345,18 +404,20 @@ export class AiConfigurationSettingsComponent implements OnInit {
         request,
       )) as string;
 
-      if (this.revisions[providerId] !== revision) return;
+      if (this.revisions[providerId] !== revision) return false;
 
       this.serverUrls.update((urls) => ({ ...urls, [providerId]: savedUrl }));
       this.serverUrlDirty.update((dirty) => ({ ...dirty, [providerId]: false }));
       this.setFieldError(providerId, null);
       this.setSaveState(providerId, 'saved');
+      return true;
     } catch (error) {
-      if (this.revisions[providerId] !== revision) return;
+      if (this.revisions[providerId] !== revision) return false;
 
       const message = this.errorMessage(error, 'Unable to save the server URL.');
       this.setFieldError(providerId, message);
       this.toastService.error(message, 'Server URL save failed');
+      return false;
     }
   }
 
@@ -373,19 +434,51 @@ export class AiConfigurationSettingsComponent implements OnInit {
     }
   }
 
-  private isConfigured(providerId: ProviderId): boolean {
-    if (providerId === 'ollama' || providerId === 'lm-studio') {
+  private isConfigured(providerId: AiProviderId): boolean {
+    if (this.isLocalProvider(providerId)) {
       return Boolean(this.serverUrls()[providerId].trim()) && !this.serverUrlDirty()[providerId];
     }
     return this.apiKeyStatuses()[providerId].configured && !this.apiKeyDirty()[providerId];
   }
 
-  private setSaveState(providerId: ProviderId, state: SaveState): void {
+  private isLocalProvider(providerId: AiProviderId): providerId is AiLocalProviderId {
+    return providerId === 'ollama' || providerId === 'lm-studio';
+  }
+
+  private runSave(
+    providerId: AiProviderId,
+    operation: () => Promise<boolean>,
+  ): Promise<boolean> {
+    const pendingSave = this.pendingSaves[providerId];
+    const revision = this.revisions[providerId];
+    if (pendingSave) {
+      if (pendingSave.revision === revision) return pendingSave.promise;
+      return pendingSave.promise.then(() => this.runSave(providerId, operation));
+    }
+
+    const save = operation();
+    this.pendingSaves[providerId] = { revision, promise: save };
+    void save.finally(() => {
+      if (this.pendingSaves[providerId]?.promise === save) {
+        delete this.pendingSaves[providerId];
+      }
+    });
+    return save;
+  }
+
+  private setSaveState(providerId: AiProviderId, state: SaveState): void {
     this.saveStates.update((states) => ({ ...states, [providerId]: state }));
   }
 
-  private setFieldError(providerId: ProviderId, error: string | null): void {
+  private setFieldError(providerId: AiProviderId, error: string | null): void {
     this.fieldErrors.update((errors) => ({ ...errors, [providerId]: error }));
+  }
+
+  private setConnectionResult(
+    providerId: AiProviderId,
+    result: ConnectionResult | null,
+  ): void {
+    this.connectionResults.update((results) => ({ ...results, [providerId]: result }));
   }
 
   private errorMessage(error: unknown, fallback: string): string {

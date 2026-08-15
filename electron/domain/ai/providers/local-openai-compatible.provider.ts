@@ -91,10 +91,15 @@ export class LocalOpenAiCompatibleProvider implements AiProvider {
         });
     }
 
-    private async requireServerUrl(): Promise<string> {
+    async testConnection(): Promise<void> {
+        await this.requireServerUrl('connection test');
+        await this.listModels();
+    }
+
+    private async requireServerUrl(action = 'generation'): Promise<string> {
         const serverUrl = await this.configuration.getServerUrl(this.id);
         if (!serverUrl) {
-            throw new Error(`${this.name} generation requires a server URL configured in Settings.`);
+            throw new Error(`${this.name} ${action} requires a server URL configured in Settings.`);
         }
         return serverUrl;
     }

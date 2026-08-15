@@ -357,6 +357,82 @@
   padding: 0 12px;
 }
 
+.connection-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.connection-result {
+  margin-right: auto;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  &.is-success {
+    color: #4f9d69;
+  }
+
+  &.is-error {
+    color: #c45757;
+  }
+}
+
+.connection-result-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.connection-test-button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+
+  &:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-text-primary) 38%, var(--color-border));
+    background: var(--color-hover-bg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 42%, transparent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.58;
+  }
+}
+
+.connection-test-spinner {
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: connection-test-spin 700ms linear infinite;
+}
+
 .visibility-button {
   position: absolute;
   top: 50%;
@@ -422,9 +498,19 @@
   }
 }
 
+@keyframes connection-test-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ai-configuration-panel,
   .provider-editor {
+    animation: none;
+  }
+
+  .connection-test-spinner {
     animation: none;
   }
 }

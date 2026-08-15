@@ -19,6 +19,7 @@ export const AI_LOCAL_PROVIDER_IDS = ['ollama', 'lm-studio'] as const;
 
 export type AiCloudProviderId = (typeof AI_CLOUD_PROVIDER_IDS)[number];
 export type AiLocalProviderId = (typeof AI_LOCAL_PROVIDER_IDS)[number];
+export type AiProviderId = AiCloudProviderId | AiLocalProviderId;
 
 export interface AiApiKeyStatus {
   configured: boolean;
@@ -42,4 +43,8 @@ export interface LoadAiApiKeyRequest {
 export interface SaveAiServerUrlRequest {
   providerId: AiLocalProviderId;
   serverUrl: string;
+}
+
+export interface TestAiProviderConnectionRequest {
+  providerId: AiProviderId;
 }
