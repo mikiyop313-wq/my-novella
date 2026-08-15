@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { ElectronService } from './core/services/electron.service';
+import { ThemeService } from './core/services/theme.service';
 
 @Component({
   selector: 'app-root',
@@ -12,7 +13,7 @@ export class App {
 
   protected readonly title = signal('my-novella');
 
-  constructor(private electronService: ElectronService) {
+  constructor(private electronService: ElectronService, private themeService: ThemeService) {
     this.electronService.on('reply', (data: any) => {
       console.log('Received reply from main:', data);
     });
@@ -20,6 +21,10 @@ export class App {
 
   sendToMain() {
     this.electronService.send('message', 'Hello from renderer!');
+  }
+
+  toggleTheme() {
+    this.themeService.toggleTheme();
   }
 
 }
