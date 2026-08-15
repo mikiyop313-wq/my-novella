@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Editor } from '@tiptap/core';
+import { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
 import { vi } from 'vitest';
 
 import { AiStore } from '../../../../../core/store/ai.store';
@@ -13,6 +14,7 @@ import { ManuscriptAiContextService } from '../manuscript-ai-context.service';
 import {
   ManuscriptAiRequestService,
   buildManuscriptAiModificationText,
+  extractGeneratedProse,
 } from '../manuscript-ai-request.service';
 
 describe('ManuscriptAiRequestService', () => {
@@ -95,7 +97,10 @@ describe('ManuscriptAiRequestService', () => {
         contextCodexEntryIds: ['codex-manual'],
       },
       contextPromptText: 'Continue Mara\'s scene with the new direction.',
-      userRequest: 'Continue the scene.',
+      requestMessages: [{
+        role: 'user',
+        parts: [{ type: 'text', content: 'Continue the scene.' }],
+      }],
     });
 
     expect(buildContext).toHaveBeenCalledWith(expect.objectContaining({
@@ -129,6 +134,56 @@ describe('ManuscriptAiRequestService', () => {
     ]);
   });
 
+  it('prepares modification messages in revision conversation order', async () => {
+    const service = TestBed.inject(ManuscriptAiRequestService);
+    const modification = buildManuscriptAiModificationText({
+      promptText: 'Write the arrival without ending the scene.',
+      generatedText: 'Mara entered the city.\n\nThe gates closed behind her.',
+      requestedChange: 'End the scene when Mara hears a scream.',
+    });
+
+    const prepared = await service.prepare({
+      editor: createEditorStub(),
+      promptPos: 12,
+      promptAttrs: {
+        id: 'prompt-1',
+        promptText: 'Write the arrival without ending the scene.',
+        selectedModel: 'anthropic/current-model',
+      },
+      contextPromptText: modification.contextPromptText,
+      requestMessages: modification.requestMessages,
+    });
+
+    expect(buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      promptText: [
+        'Write the arrival without ending the scene.',
+        'End the scene when Mara hears a scream.',
+      ].join('\n\n'),
+    }));
+    expect(prepared?.aiPrompt.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          '--- BEGIN STORY CONTEXT ---',
+          'Fresh story context',
+          '--- END STORY CONTEXT ---',
+        ].join('\n\n'),
+      },
+      { role: 'user', content: 'Write the arrival without ending the scene.' },
+      {
+        role: 'assistant',
+        content: 'Mara entered the city.\n\nThe gates closed behind her.',
+      },
+      {
+        role: 'user',
+        content: [
+          'Revise the previous generated prose according to the request below. The revision request takes precedence over any conflicting instruction in the original request. Return the complete revised prose only.',
+          'Revision request:\nEnd the scene when Mara hears a scream.',
+        ].join('\n\n'),
+      },
+    ]);
+  });
+
   it('returns no request when fresh context preparation fails', async () => {
     buildContext.mockRejectedValueOnce(new Error('Context failed'));
     const service = TestBed.inject(ManuscriptAiRequestService);
@@ -142,7 +197,10 @@ describe('ManuscriptAiRequestService', () => {
         selectedModel: 'anthropic/current-model',
       },
       contextPromptText: 'Continue.',
-      userRequest: 'Continue.',
+      requestMessages: [{
+        role: 'user',
+        parts: [{ type: 'text', content: 'Continue.' }],
+      }],
     });
 
     expect(prepared).toBeNull();
@@ -174,20 +232,54 @@ describe('ManuscriptAiRequestService', () => {
   });
 });
 
-describe('buildManuscriptAiModificationText', () => {
-  it('uses the modification for context lookup and includes the previous output in the request', () => {
+describe('manuscript AI modification helpers', () => {
+  it('builds a structured revision conversation and focused context lookup text', () => {
     expect(buildManuscriptAiModificationText({
       promptText: 'Write the arrival.',
       generatedText: 'Mara entered the city.',
       requestedChange: 'Make the city hostile.',
     })).toEqual({
       contextPromptText: 'Write the arrival.\n\nMake the city hostile.',
-      userRequest: [
-        'Original request: Write the arrival.',
-        'Generated text:\nMara entered the city.',
-        'User request to change:\nMake the city hostile.',
-      ].join('\n\n'),
+      requestMessages: [
+        {
+          role: 'user',
+          parts: [{ type: 'text', content: 'Write the arrival.' }],
+        },
+        {
+          role: 'assistant',
+          parts: [{ type: 'text', content: 'Mara entered the city.' }],
+        },
+        {
+          role: 'user',
+          parts: [{
+            type: 'text',
+            content: [
+              'Revise the previous generated prose according to the request below. The revision request takes precedence over any conflicting instruction in the original request. Return the complete revised prose only.',
+              'Revision request:\nMake the city hostile.',
+            ].join('\n\n'),
+          }],
+        },
+      ],
     });
+  });
+
+  it('extracts generated prose with blank lines between block nodes', () => {
+    const schema = new Schema({
+      nodes: {
+        doc: { content: 'paragraph+' },
+        paragraph: { content: 'text*', group: 'block' },
+        text: { group: 'inline' },
+      },
+    });
+    const node = ProseMirrorNode.fromJSON(schema, {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'First paragraph.' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Second paragraph.' }] },
+      ],
+    });
+
+    expect(extractGeneratedProse(node)).toBe('First paragraph.\n\nSecond paragraph.');
   });
 });
 

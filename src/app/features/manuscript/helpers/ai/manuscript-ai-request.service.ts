@@ -6,7 +6,11 @@ import { AiStore } from '../../../../core/store/ai.store';
 import { isVectorSearchSetting } from '../../../../shared/models/vector-search.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { resolveAiModelTarget } from '../../../../shared/utils/ai-model-selection';
-import { buildAiPrompt, type BuiltAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
+import {
+  buildAiPrompt,
+  type AiPromptMessageInput,
+  type BuiltAiPrompt,
+} from '../../../../shared/utils/ai-prompt-builder';
 import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
 import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
@@ -30,7 +34,7 @@ export interface PrepareManuscriptAiRequest {
   editor: Editor;
   promptPos: number;
   promptAttrs: Record<string, unknown>;
-  userRequest: string;
+  requestMessages: readonly AiPromptMessageInput[];
   contextPromptText: string;
 }
 
@@ -45,8 +49,14 @@ export interface PreparedManuscriptAiRequest {
 
 export interface ManuscriptAiModificationText {
   contextPromptText: string;
-  userRequest: string;
+  requestMessages: readonly AiPromptMessageInput[];
 }
+
+const COMPLETE_REVISION_INSTRUCTION = [
+  'Revise the previous generated prose according to the request below.',
+  'The revision request takes precedence over any conflicting instruction in the original request.',
+  'Return the complete revised prose only.',
+].join(' ');
 
 export function buildManuscriptAiModificationText({
   promptText,
@@ -59,12 +69,28 @@ export function buildManuscriptAiModificationText({
 }): ManuscriptAiModificationText {
   return {
     contextPromptText: [promptText, requestedChange].filter(Boolean).join('\n\n'),
-    userRequest: [
-      `Original request: ${promptText}`,
-      `Generated text:\n${generatedText}`,
-      `User request to change:\n${requestedChange}`,
-    ].join('\n\n'),
+    requestMessages: [
+      {
+        role: 'user',
+        parts: [{ type: 'text', content: promptText }],
+      },
+      {
+        role: 'assistant',
+        parts: [{ type: 'text', content: generatedText }],
+      },
+      {
+        role: 'user',
+        parts: [{
+          type: 'text',
+          content: `${COMPLETE_REVISION_INSTRUCTION}\n\nRevision request:\n${requestedChange}`,
+        }],
+      },
+    ],
   };
+}
+
+export function extractGeneratedProse(node: ProseMirrorNode): string {
+  return node.textBetween(0, node.content.size, '\n\n').trim();
 }
 
 @Injectable({ providedIn: 'root' })
@@ -94,11 +120,10 @@ export class ManuscriptAiRequestService {
 
   async prepare(request: PrepareManuscriptAiRequest): Promise<PreparedManuscriptAiRequest | null> {
     const promptText = this.readString(request.promptAttrs['promptText']).trim();
-    const userRequest = request.userRequest.trim();
     const selectedModelId = this.readString(request.promptAttrs['selectedModel']);
     const selectedModel = this.aiStore.models().find(model => model.id === selectedModelId);
 
-    if (!promptText || !userRequest) {
+    if (!promptText || !this.hasUserRequestContent(request.requestMessages)) {
       this.toastService.error('The original AI prompt is empty.', 'AI Generation');
       return null;
     }
@@ -183,10 +208,7 @@ export class ManuscriptAiRequestService {
             role: 'user',
             parts: [{ type: 'section', name: 'STORY CONTEXT', content: storyContext }],
           },
-          {
-            role: 'user',
-            parts: [{ type: 'text', content: userRequest }],
-          },
+          ...request.requestMessages,
         ],
       }),
       bookId,
@@ -199,6 +221,13 @@ export class ManuscriptAiRequestService {
 
   private readString(value: unknown): string {
     return typeof value === 'string' ? value : '';
+  }
+
+  private hasUserRequestContent(messages: readonly AiPromptMessageInput[]): boolean {
+    return messages.some(message => (
+      message.role === 'user'
+      && message.parts.some(part => part.content.trim().length > 0)
+    ));
   }
 
   private readNullableString(value: unknown): string | null {

@@ -7,6 +7,7 @@ import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service
 import {
   ManuscriptAiRequestService,
   buildManuscriptAiModificationText,
+  extractGeneratedProse,
 } from '../../helpers/ai/manuscript-ai-request.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { ToastService } from '../../../../shared/services/toast.service';
@@ -240,17 +241,20 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     const modificationText = requestedChange
       ? buildManuscriptAiModificationText({
         promptText,
-        generatedText: this.node().textContent,
+        generatedText: extractGeneratedProse(this.node()),
         requestedChange,
       })
       : null;
-    const userRequest = modificationText?.userRequest ?? promptText;
+    const requestMessages = modificationText?.requestMessages ?? [{
+      role: 'user' as const,
+      parts: [{ type: 'text' as const, content: promptText }],
+    }];
     const contextPromptText = modificationText?.contextPromptText ?? promptText;
     const prepared = await this.manuscriptAiRequest.prepare({
       editor,
       promptPos: source.pos,
       promptAttrs: source.node.attrs,
-      userRequest,
+      requestMessages,
       contextPromptText,
     });
     if (!prepared) return;

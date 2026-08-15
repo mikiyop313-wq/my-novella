@@ -392,7 +392,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         editor: this.editor(),
         promptPos: pos,
         promptAttrs: this.node().attrs,
-        userRequest: text,
+        requestMessages: [{
+          role: 'user',
+          parts: [{ type: 'text', content: text }],
+        }],
         contextPromptText: text,
       });
       if (!prepared) return;
