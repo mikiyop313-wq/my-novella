@@ -248,5 +248,5 @@ function createSnapshot(bookTitle?: string): DataExportSnapshot {
       systemPromptPresets: [],
       activeSystemPromptPresets: [],
     },
-  } as DataExportSnapshot;
+  } as unknown as DataExportSnapshot;
 }

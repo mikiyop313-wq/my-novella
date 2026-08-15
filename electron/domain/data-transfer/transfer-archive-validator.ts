@@ -593,7 +593,7 @@ function validateMessageCycles(
         );
       }
       seen.add(id);
-      const parentId = current['parentMessageId'];
+      const parentId: unknown = current['parentMessageId'];
       current = typeof parentId === 'string' ? messageById.get(parentId) : undefined;
     }
   }
