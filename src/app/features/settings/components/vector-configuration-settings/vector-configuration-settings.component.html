@@ -284,7 +284,11 @@
             }
           </div>
           <p class="field-help connection-cost-notice" role="note">
-            Testing sends a real embedding request and may incur a small charge from the provider.
+            @if (provider.id === 'openrouter') {
+              Testing validates the saved API key without generating an embedding.
+            } @else {
+              Testing sends a real embedding request and may incur a small charge from the provider.
+            }
           </p>
           <div class="connection-actions">
             @if (connectionResults()[provider.id]; as result) {

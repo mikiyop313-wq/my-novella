@@ -2,10 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => unknown>(),
-  getApiKeyStatus: vi.fn(),
-  loadApiKey: vi.fn(),
-  saveApiKey: vi.fn(),
-  testConnection: vi.fn(),
   getOpenRouterEmbeddingModel: vi.fn(),
   selectOpenRouterModel: vi.fn(),
 }));
@@ -16,16 +12,6 @@ vi.mock('electron', () => ({
       mocks.handlers.set(channel, handler);
     }),
   },
-}));
-vi.mock('../../../domain/vector/vector-api-key.service', () => ({
-  vectorApiKeyService: {
-    getApiKeyStatus: mocks.getApiKeyStatus,
-    getApiKey: mocks.loadApiKey,
-    saveApiKey: mocks.saveApiKey,
-  },
-}));
-vi.mock('../../../domain/vector/openrouter-connection', () => ({
-  testOpenRouterConnection: mocks.testConnection,
 }));
 vi.mock('../../../../db/repositories/book.repository', () => ({
   bookRepository: { getOpenRouterEmbeddingModel: mocks.getOpenRouterEmbeddingModel },
@@ -45,10 +31,6 @@ describe('OpenRouter embedding IPC handlers', () => {
 
   it('registers the backend-only OpenRouter channels', () => {
     expect([...mocks.handlers.keys()]).toEqual([
-      'vectors:openrouter:get-api-key-status',
-      'vectors:openrouter:load-api-key',
-      'vectors:openrouter:save-api-key',
-      'vectors:openrouter:test-connection',
       'vectors:openrouter:get-models',
       'vectors:openrouter:get-book-selection',
       'vectors:openrouter:select-for-book',
@@ -66,12 +48,8 @@ describe('OpenRouter embedding IPC handlers', () => {
     )).resolves.toEqual({ bookId: 'book-1', modelName: null });
   });
 
-  it('delegates credential operations and explicit model selection with progress', async () => {
+  it('delegates explicit model selection with progress', async () => {
     const sender = { send: vi.fn() };
-    await mocks.handlers.get('vectors:openrouter:get-api-key-status')?.({});
-    await mocks.handlers.get('vectors:openrouter:load-api-key')?.({});
-    await mocks.handlers.get('vectors:openrouter:save-api-key')?.({}, { apiKey: 'secret' });
-    await mocks.handlers.get('vectors:openrouter:test-connection')?.({});
     mocks.selectOpenRouterModel.mockImplementationOnce(
       async (_bookId, _modelName, _reindex, onProgress) => {
         onProgress({
@@ -88,10 +66,6 @@ describe('OpenRouter embedding IPC handlers', () => {
       { bookId: 'book-1', modelName: 'qwen/qwen3-embedding-4b', reindex: true },
     );
 
-    expect(mocks.getApiKeyStatus).toHaveBeenCalledWith('openrouter');
-    expect(mocks.loadApiKey).toHaveBeenCalledWith('openrouter');
-    expect(mocks.saveApiKey).toHaveBeenCalledWith('openrouter', 'secret');
-    expect(mocks.testConnection).toHaveBeenCalledOnce();
     expect(mocks.selectOpenRouterModel).toHaveBeenCalledWith(
       'book-1',
       'qwen/qwen3-embedding-4b',
@@ -104,11 +78,7 @@ describe('OpenRouter embedding IPC handlers', () => {
     );
   });
 
-  it('rejects unsupported model and malformed credential requests', async () => {
-    await expect(async () => mocks.handlers.get('vectors:openrouter:save-api-key')?.(
-      {},
-      {},
-    )).rejects.toThrow('Invalid OpenRouter vector API key request');
+  it('rejects unsupported models and malformed book requests', async () => {
     await expect(async () => mocks.handlers.get('vectors:openrouter:select-for-book')?.(
       { sender: { send: vi.fn() } },
       { bookId: 'book-1', modelName: 'unsupported/model', reindex: true },

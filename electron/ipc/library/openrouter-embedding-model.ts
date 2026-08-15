@@ -1,12 +1,9 @@
 import { ipcMain } from 'electron';
 
 import type {
-  SaveOpenRouterVectorApiKeyRequest,
   SelectBookOpenRouterEmbeddingModelPayload,
 } from '../../../shared/models/vector.model';
 import { bookRepository } from '../../../db/repositories/book.repository';
-import { testOpenRouterConnection } from '../../domain/vector/openrouter-connection';
-import { vectorApiKeyService } from '../../domain/vector/vector-api-key.service';
 import {
   OPENROUTER_EMBEDDING_MODELS,
   isOpenRouterEmbeddingModelName,
@@ -15,31 +12,6 @@ import { manuscriptVectorIndexService } from '../../../vectors/services/manuscri
 
 /** Registers backend-only OpenRouter embedding configuration and selection handlers. */
 export function setupOpenRouterEmbeddingModelHandlers(): void {
-  ipcMain.handle(
-    'vectors:openrouter:get-api-key-status',
-    () => vectorApiKeyService.getApiKeyStatus('openrouter'),
-  );
-
-  ipcMain.handle(
-    'vectors:openrouter:load-api-key',
-    () => vectorApiKeyService.getApiKey('openrouter'),
-  );
-
-  ipcMain.handle(
-    'vectors:openrouter:save-api-key',
-    (_event, payload: SaveOpenRouterVectorApiKeyRequest) => {
-      if (!payload || typeof payload.apiKey !== 'string') {
-        throw new Error('Invalid OpenRouter vector API key request.');
-      }
-      return vectorApiKeyService.saveApiKey('openrouter', payload.apiKey);
-    },
-  );
-
-  ipcMain.handle(
-    'vectors:openrouter:test-connection',
-    () => testOpenRouterConnection(),
-  );
-
   ipcMain.handle(
     'vectors:openrouter:get-models',
     () => OPENROUTER_EMBEDDING_MODELS,

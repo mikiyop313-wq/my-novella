@@ -3,18 +3,16 @@ import { safeStorage } from 'electron';
 import type { AppSettingsStore } from '../../../db/repositories/app-settings.repository';
 import { appSettingsRepository } from '../../../db/repositories/app-settings.repository';
 import {
-    VECTOR_CLOUD_PROVIDER_IDS,
+    VECTOR_CONFIGURATION_PROVIDER_IDS,
     type VectorApiKeyStatus,
+    type VectorConfigurationProviderId,
 } from '../../../shared/models/vector.model';
 
 const API_KEY_SETTING_PREFIX = 'vectors.apiKey.';
 
-export const VECTOR_API_KEY_PROVIDER_IDS = [
-    ...VECTOR_CLOUD_PROVIDER_IDS,
-    'openrouter',
-] as const;
+export const VECTOR_API_KEY_PROVIDER_IDS = VECTOR_CONFIGURATION_PROVIDER_IDS;
 
-export type VectorApiKeyProviderId = (typeof VECTOR_API_KEY_PROVIDER_IDS)[number];
+export type VectorApiKeyProviderId = VectorConfigurationProviderId;
 
 export class VectorApiKeyService {
     constructor(private readonly settingsStore: AppSettingsStore = appSettingsRepository) {}

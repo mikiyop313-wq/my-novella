@@ -44,12 +44,12 @@ describe('vector configuration IPC handlers', () => {
     });
 
     it('delegates valid save and connection-test requests', async () => {
-        const saveRequest = { providerId: 'openai', apiKey: 'secret' };
+        const saveRequest = { providerId: 'openrouter', apiKey: 'secret' };
         await mocks.handlers.get('vectors:config:save-api-key')?.({}, saveRequest);
-        await mocks.handlers.get('vectors:config:test-connection')?.({}, { providerId: 'voyage' });
+        await mocks.handlers.get('vectors:config:test-connection')?.({}, { providerId: 'openrouter' });
 
-        expect(mocks.saveApiKey).toHaveBeenCalledWith('openai', 'secret');
-        expect(mocks.testConnection).toHaveBeenCalledWith('voyage');
+        expect(mocks.saveApiKey).toHaveBeenCalledWith('openrouter', 'secret');
+        expect(mocks.testConnection).toHaveBeenCalledWith('openrouter');
     });
 
     it.each([

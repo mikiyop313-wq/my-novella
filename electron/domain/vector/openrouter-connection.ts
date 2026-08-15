@@ -1,11 +1,11 @@
-import { vectorApiKeyService, type VectorApiKeyService } from './vector-api-key.service';
+import type { VectorApiKeyService } from './vector-api-key.service';
 
 const OPENROUTER_KEY_URL = 'https://openrouter.ai/api/v1/key';
 const CONNECTION_TIMEOUT_MS = 10_000;
 
 /** Validates the saved OpenRouter key without selecting an embedding model. */
 export async function testOpenRouterConnection(
-  keys: VectorApiKeyService = vectorApiKeyService,
+  keys: VectorApiKeyService,
 ): Promise<void> {
   const apiKey = await keys.getApiKey('openrouter');
   if (!apiKey) {

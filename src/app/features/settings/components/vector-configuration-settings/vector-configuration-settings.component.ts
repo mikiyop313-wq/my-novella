@@ -8,7 +8,7 @@ import type {
     SaveVectorApiKeyRequest,
     TestVectorProviderConnectionRequest,
     VectorApiKeyStatus,
-    VectorCloudProviderId,
+    VectorConfigurationProviderId,
     VectorProviderConfiguration,
 } from '../../../../../../shared/models/vector.model';
 import { ElectronService } from '../../../../core/services/electron.service';
@@ -25,7 +25,7 @@ type SaveState = 'idle' | 'saving' | 'saved';
 type ConnectionResult = { status: 'success' | 'error'; message: string };
 
 interface VectorCloudProvider {
-  id: VectorCloudProviderId;
+  id: VectorConfigurationProviderId;
   name: string;
   description: string;
   keyPlaceholder: string;
@@ -42,11 +42,12 @@ export class VectorConfigurationSettingsComponent implements OnInit {
   private readonly localModelState = inject(LocalEmbeddingModelStateService);
   private readonly confirmService = inject(ConfirmModalService);
   private readonly toastService = inject(ToastService);
-  private readonly revisions: Record<VectorCloudProviderId, number> = {
+  private readonly revisions: Record<VectorConfigurationProviderId, number> = {
     openai: 0,
     voyage: 0,
+    openrouter: 0,
   };
-  private readonly pendingSaves: Partial<Record<VectorCloudProviderId, {
+  private readonly pendingSaves: Partial<Record<VectorConfigurationProviderId, {
     revision: number;
     promise: Promise<boolean>;
   }>> = {};
@@ -64,6 +65,12 @@ export class VectorConfigurationSettingsComponent implements OnInit {
       description: 'Create manuscript embeddings with Voyage models.',
       keyPlaceholder: 'Enter your Voyage AI API key',
     },
+    {
+      id: 'openrouter',
+      name: 'OpenRouter',
+      description: 'Create manuscript embeddings with curated OpenRouter models.',
+      keyPlaceholder: 'sk-or-v1-...',
+    },
   ];
   readonly localModelTiers: readonly { id: LocalEmbeddingModelTier; label: string }[] = [
     { id: 'large', label: 'Large' },
@@ -71,35 +78,41 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     { id: 'small', label: 'Small' },
   ];
 
-  readonly selectedProviderId = signal<VectorCloudProviderId | null>(null);
-  readonly focusedApiKeyProvider = signal<VectorCloudProviderId | null>(null);
+  readonly selectedProviderId = signal<VectorConfigurationProviderId | null>(null);
+  readonly focusedApiKeyProvider = signal<VectorConfigurationProviderId | null>(null);
   readonly apiKeyVisible = signal(false);
-  readonly apiKeyDrafts = signal<Record<VectorCloudProviderId, string | null>>({
+  readonly apiKeyDrafts = signal<Record<VectorConfigurationProviderId, string | null>>({
     openai: null,
     voyage: null,
+    openrouter: null,
   });
   readonly isConfigurationLoading = signal(true);
   readonly configurationLoadError = signal<string | null>(null);
-  readonly testingProvider = signal<VectorCloudProviderId | null>(null);
-  readonly connectionResults = signal<Record<VectorCloudProviderId, ConnectionResult | null>>({
+  readonly testingProvider = signal<VectorConfigurationProviderId | null>(null);
+  readonly connectionResults = signal<Record<VectorConfigurationProviderId, ConnectionResult | null>>({
     openai: null,
     voyage: null,
+    openrouter: null,
   });
-  readonly fieldErrors = signal<Record<VectorCloudProviderId, string | null>>({
+  readonly fieldErrors = signal<Record<VectorConfigurationProviderId, string | null>>({
     openai: null,
     voyage: null,
+    openrouter: null,
   });
-  private readonly apiKeyStatuses = signal<Record<VectorCloudProviderId, VectorApiKeyStatus>>({
+  private readonly apiKeyStatuses = signal<Record<VectorConfigurationProviderId, VectorApiKeyStatus>>({
     openai: { configured: false, suffix: null },
     voyage: { configured: false, suffix: null },
+    openrouter: { configured: false, suffix: null },
   });
-  private readonly apiKeyDirty = signal<Record<VectorCloudProviderId, boolean>>({
+  private readonly apiKeyDirty = signal<Record<VectorConfigurationProviderId, boolean>>({
     openai: false,
     voyage: false,
+    openrouter: false,
   });
-  private readonly saveStates = signal<Record<VectorCloudProviderId, SaveState>>({
+  private readonly saveStates = signal<Record<VectorConfigurationProviderId, SaveState>>({
     openai: 'idle',
     voyage: 'idle',
+    openrouter: 'idle',
   });
   readonly localModelStatuses = this.localModelState.statuses;
   readonly selectedLocalModelTier = this.localModelState.selectedTier;
@@ -216,12 +229,12 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     return Math.round(Math.min(100, Math.max(0, value)));
   }
 
-  selectProvider(providerId: VectorCloudProviderId): void {
+  selectProvider(providerId: VectorConfigurationProviderId): void {
     this.selectedProviderId.set(providerId);
     this.apiKeyVisible.set(false);
   }
 
-  beginApiKeyEdit(providerId: VectorCloudProviderId, event: FocusEvent): void {
+  beginApiKeyEdit(providerId: VectorConfigurationProviderId, event: FocusEvent): void {
     if (this.isConfigurationLoading()) return;
 
     const input = event.target as HTMLInputElement;
@@ -237,7 +250,7 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     queueMicrotask(() => input.select());
   }
 
-  updateApiKey(providerId: VectorCloudProviderId, event: Event): void {
+  updateApiKey(providerId: VectorConfigurationProviderId, event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     this.apiKeyDrafts.update((drafts) => ({ ...drafts, [providerId]: value }));
     this.apiKeyDirty.update((dirty) => ({ ...dirty, [providerId]: true }));
@@ -251,7 +264,7 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     this.apiKeyVisible.update((visible) => !visible);
   }
 
-  apiKeyInputValue(providerId: VectorCloudProviderId): string {
+  apiKeyInputValue(providerId: VectorConfigurationProviderId): string {
     if (this.focusedApiKeyProvider() === providerId) {
       const draft = this.apiKeyDrafts()[providerId];
       if (draft !== null) return draft;
@@ -260,12 +273,12 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     return status.configured ? `••••••••${status.suffix ?? ''}` : '';
   }
 
-  apiKeyInputType(providerId: VectorCloudProviderId): 'text' | 'password' {
+  apiKeyInputType(providerId: VectorConfigurationProviderId): 'text' | 'password' {
     if (this.focusedApiKeyProvider() !== providerId) return 'text';
     return this.apiKeyVisible() ? 'text' : 'password';
   }
 
-  fieldStatus(providerId: VectorCloudProviderId): string {
+  fieldStatus(providerId: VectorConfigurationProviderId): string {
     const error = this.fieldErrors()[providerId];
     if (error) return error;
     switch (this.saveStates()[providerId]) {
@@ -275,13 +288,13 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     }
   }
 
-  saveApiKeyOnBlur(providerId: VectorCloudProviderId): void {
+  saveApiKeyOnBlur(providerId: VectorConfigurationProviderId): void {
     if (this.focusedApiKeyProvider() === providerId) this.focusedApiKeyProvider.set(null);
     this.apiKeyVisible.set(false);
     if (this.apiKeyDirty()[providerId]) void this.saveApiKey(providerId);
   }
 
-  async testConnection(providerId: VectorCloudProviderId, providerName: string): Promise<void> {
+  async testConnection(providerId: VectorConfigurationProviderId, providerName: string): Promise<void> {
     if (this.testingProvider() !== null) return;
 
     this.testingProvider.set(providerId);
@@ -306,11 +319,11 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     }
   }
 
-  private saveApiKey(providerId: VectorCloudProviderId): Promise<boolean> {
+  private saveApiKey(providerId: VectorConfigurationProviderId): Promise<boolean> {
     return this.runSave(providerId, () => this.persistApiKey(providerId));
   }
 
-  private async persistApiKey(providerId: VectorCloudProviderId): Promise<boolean> {
+  private async persistApiKey(providerId: VectorConfigurationProviderId): Promise<boolean> {
     const apiKey = (this.apiKeyDrafts()[providerId] ?? '').trim();
     const revision = this.revisions[providerId];
     this.setSaveState(providerId, 'saving');
@@ -338,7 +351,7 @@ export class VectorConfigurationSettingsComponent implements OnInit {
   }
 
   private async loadApiKeyForEditing(
-    providerId: VectorCloudProviderId,
+    providerId: VectorConfigurationProviderId,
     input: HTMLInputElement,
     revision: number,
   ): Promise<void> {
@@ -371,7 +384,7 @@ export class VectorConfigurationSettingsComponent implements OnInit {
   }
 
   private runSave(
-    providerId: VectorCloudProviderId,
+    providerId: VectorConfigurationProviderId,
     operation: () => Promise<boolean>,
   ): Promise<boolean> {
     const pendingSave = this.pendingSaves[providerId];
@@ -388,20 +401,20 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     return save;
   }
 
-  private isConfigured(providerId: VectorCloudProviderId): boolean {
+  private isConfigured(providerId: VectorConfigurationProviderId): boolean {
     return this.apiKeyStatuses()[providerId].configured && !this.apiKeyDirty()[providerId];
   }
 
-  private setSaveState(providerId: VectorCloudProviderId, state: SaveState): void {
+  private setSaveState(providerId: VectorConfigurationProviderId, state: SaveState): void {
     this.saveStates.update(states => ({ ...states, [providerId]: state }));
   }
 
-  private setFieldError(providerId: VectorCloudProviderId, error: string | null): void {
+  private setFieldError(providerId: VectorConfigurationProviderId, error: string | null): void {
     this.fieldErrors.update(errors => ({ ...errors, [providerId]: error }));
   }
 
   private setConnectionResult(
-    providerId: VectorCloudProviderId,
+    providerId: VectorConfigurationProviderId,
     result: ConnectionResult | null,
   ): void {
     this.connectionResults.update(results => ({ ...results, [providerId]: result }));

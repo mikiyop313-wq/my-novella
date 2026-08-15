@@ -68,6 +68,7 @@ describe('VectorConfigurationSettingsComponent', () => {
     apiKeys: {
       openai: { configured: true, suffix: '1234' },
       voyage: { configured: false, suffix: null },
+      openrouter: { configured: true, suffix: '5678' },
     },
   };
 
@@ -309,13 +310,48 @@ describe('VectorConfigurationSettingsComponent', () => {
     updateVisibleKey('sk-openai-draft');
     selectProvider('voyage');
     updateVisibleKey('pa-voyage-draft');
+    selectProvider('openrouter');
+    updateVisibleKey('sk-or-vector-draft');
 
     expect(fixture.componentInstance.apiKeyDrafts()).toEqual({
       openai: 'sk-openai-draft',
       voyage: 'pa-voyage-draft',
+      openrouter: 'sk-or-vector-draft',
+    });
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('OpenRouter');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Testing validates the saved API key without generating an embedding.',
+    );
+  });
+
+  it('loads, saves, and tests the configured OpenRouter vector credential', async () => {
+    selectProvider('openrouter');
+    const input = credentialInput();
+
+    expect(input.value).toContain('5678');
+    input.dispatchEvent(new FocusEvent('focus'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(invoke).toHaveBeenCalledWith('vectors:config:load-api-key', {
+      providerId: 'openrouter',
+    });
+
+    updateVisibleKey('sk-or-vector-abcd');
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.connection-test-button')
+      ?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:save-api-key', {
+      providerId: 'openrouter',
+      apiKey: 'sk-or-vector-abcd',
+    });
+    expect(invoke).toHaveBeenCalledWith('vectors:config:test-connection', {
+      providerId: 'openrouter',
     });
     expect((fixture.nativeElement as HTMLElement).textContent).toContain(
-      'Testing sends a real embedding request and may incur a small charge from the provider.',
+      'Connection to OpenRouter succeeded.',
     );
   });
 
@@ -375,7 +411,7 @@ describe('VectorConfigurationSettingsComponent', () => {
     return card;
   }
 
-  function selectProvider(providerId: 'openai' | 'voyage'): void {
+  function selectProvider(providerId: 'openai' | 'voyage' | 'openrouter'): void {
     (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>(`[data-provider="${providerId}"]`)
       ?.click();

@@ -10,26 +10,34 @@ export const VECTOR_CLOUD_PROVIDER_IDS = ['openai', 'voyage'] as const;
 
 export type VectorCloudProviderId = (typeof VECTOR_CLOUD_PROVIDER_IDS)[number];
 
+export const VECTOR_CONFIGURATION_PROVIDER_IDS = [
+    ...VECTOR_CLOUD_PROVIDER_IDS,
+    'openrouter',
+] as const;
+
+export type VectorConfigurationProviderId =
+    (typeof VECTOR_CONFIGURATION_PROVIDER_IDS)[number];
+
 export interface VectorApiKeyStatus {
     configured: boolean;
     suffix: string | null;
 }
 
 export interface VectorProviderConfiguration {
-    apiKeys: Record<VectorCloudProviderId, VectorApiKeyStatus>;
+    apiKeys: Record<VectorConfigurationProviderId, VectorApiKeyStatus>;
 }
 
 export interface SaveVectorApiKeyRequest {
-    providerId: VectorCloudProviderId;
+    providerId: VectorConfigurationProviderId;
     apiKey: string;
 }
 
 export interface LoadVectorApiKeyRequest {
-    providerId: VectorCloudProviderId;
+    providerId: VectorConfigurationProviderId;
 }
 
 export interface TestVectorProviderConnectionRequest {
-    providerId: VectorCloudProviderId;
+    providerId: VectorConfigurationProviderId;
 }
 
 /** Identifies one mutually compatible vector space. */
@@ -63,10 +71,6 @@ export interface OpenRouterEmbeddingModelDescriptor {
     displayName: string;
     providerName: string;
     dimensions: number;
-}
-
-export interface SaveOpenRouterVectorApiKeyRequest {
-    apiKey: string;
 }
 
 export interface SelectBookOpenRouterEmbeddingModelPayload {
