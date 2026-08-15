@@ -15,6 +15,8 @@ import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-s
 import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
 
 const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
+import { WorkspaceBookStore } from '../workspace/workspace-book.store';
+import type { ActDto } from '../../../../shared/models/manuscript.model';
 
 describe('Manuscript', () => {
   let component: Manuscript;
@@ -221,6 +223,68 @@ describe('Manuscript', () => {
 
     completeUpsert();
     await flush.mock.results[0].value;
+  });
+
+  it('builds labels for each manuscript scope', () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    const hierarchy: ActDto[] = [{
+      id: 'act-1',
+      title: 'The Beginning',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'First Steps',
+        actId: 'act-1',
+        position: 2,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'A Door Opens',
+          chapterId: 'chapter-1',
+          position: 1,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: null,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }];
+    workspaceBookStore.setBookHierarchy(hierarchy);
+
+    component.store.setRouteParams('book', 'book-1');
+    expect(component.currentScopeLabel()).toBe('Full Novel');
+
+    component.store.setRouteParams('act', 'act-1');
+    expect(component.currentScopeLabel()).toBe('Act 1: The Beginning');
+
+    component.store.setRouteParams('chapter', 'chapter-1');
+    expect(component.currentScopeLabel()).toBe('Chapter 3: First Steps');
+
+    component.store.setRouteParams('scene', 'scene-1');
+    expect(component.currentScopeLabel()).toBe('Scene 2: A Door Opens');
+  });
+
+  it('uses untitled labels in the view scope', () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: '',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [],
+    }]);
+
+    component.store.setRouteParams('act', 'act-1');
+
+    expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
   });
 
   it('highlights across inline marks without joining separate editor blocks', async () => {

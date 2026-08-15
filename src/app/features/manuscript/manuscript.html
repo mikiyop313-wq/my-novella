@@ -108,15 +108,10 @@
 
     <!-- View Scope & Stats -->
     <div class="toolbar-group view-scope-group">
-      <button class="dropdown-trigger-btn view-scope-btn" [cdkMenuTriggerFor]="bookMenu" title="View Scope">
+      <button class="dropdown-trigger-btn view-scope-btn" [cdkMenuTriggerFor]="bookMenu"
+        [attr.aria-label]="'View scope: ' + currentScopeLabel()" [attr.title]="currentScopeLabel()">
         <span class="active-style-label">
-          @let headerTitle = currentHeaderTitle();
-          @let position = currentPosition();
-          @if (store.mode() === 'book') {
-          {{ headerTitle }}
-          } @else if (position !== null) {
-          {{ store.mode() | titlecase }} {{ position }}: {{ headerTitle }}
-          }
+          {{ currentScopeLabel() }}
         </span>
         <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
           stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
@@ -131,8 +126,6 @@
         <span>{{ store.estimatedReadTime() }} min read</span>
       </div>
     </div>
-
-    <div class="toolbar-separator"></div>
 
     <!-- History / Undo Redo -->
     <div class="toolbar-group">

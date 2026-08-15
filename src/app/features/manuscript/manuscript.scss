@@ -222,7 +222,7 @@
       .active-style-label {
         font-weight: 600;
         letter-spacing: 0.02em;
-        max-width: 250px;
+        max-width: 360px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -265,6 +265,33 @@
       font-size: 0.85rem;
       width: auto;
       height: 32px;
+    }
+  }
+}
+
+@media (max-width: 1800px) {
+  .editor-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+
+    .view-scope-group {
+      position: static;
+      order: -1;
+      flex-basis: 100%;
+      transform: none;
+      padding-bottom: 4px;
+
+      .view-scope-btn {
+        max-width: min(100%, 720px);
+
+        .active-style-label {
+          max-width: min(100%, 620px);
+        }
+      }
+    }
+
+    .format-toggle {
+      margin-left: 0;
     }
   }
 }

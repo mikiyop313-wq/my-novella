@@ -3,6 +3,7 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { Component, Injector, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
+import { Markdown } from '@tiptap/markdown';
 import Placeholder from '@tiptap/extension-placeholder';
 import StarterKit from '@tiptap/starter-kit';
 import { TiptapEditorDirective } from 'ngx-tiptap';
@@ -76,7 +77,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
   indexItems = signal<ManuscriptIndexItem[]>([]);
 
-  currentHeaderTitle = computed<string>(() => {
+  currentScopeLabel = computed<string>(() => {
     const mode = this.store.mode();
     const id = this.store.activeEntityId();
 
@@ -85,48 +86,22 @@ export class Manuscript implements OnInit, OnDestroy {
 
     for (const act of this.store.bookHierarchy()) {
       if (mode === 'act' && act.id === id) {
-        return act.title || 'Untitled Act';
+        return `Act ${act.position + 1}: ${act.title || 'Untitled Act'}`;
       }
 
       for (const chapter of act.chapters || []) {
         if (mode === 'chapter' && chapter.id === id) {
-          return chapter.title || 'Untitled Chapter';
+          return `Chapter ${chapter.position + 1}: ${chapter.title || 'Untitled Chapter'}`;
         }
 
         const scene = (chapter.scenes || []).find(s => s.id === id);
         if (mode === 'scene' && scene) {
-          return scene.title || 'Untitled Scene';
+          return `Scene ${scene.position + 1}: ${scene.title || 'Untitled Scene'}`;
         }
       }
     }
 
     return '';
-  });
-
-  currentPosition = computed<number | null>(() => {
-    const mode = this.store.mode();
-    const id = this.store.activeEntityId();
-
-    if (!mode || mode === 'book' || !id) return null;
-
-    for (const act of this.store.bookHierarchy()) {
-      if (mode === 'act' && act.id === id) {
-        return act.position + 1;
-      }
-
-      for (const chapter of act.chapters || []) {
-        if (mode === 'chapter' && chapter.id === id) {
-          return chapter.position + 1;
-        }
-
-        const scene = (chapter.scenes || []).find(s => s.id === id);
-        if (mode === 'scene' && scene) {
-          return scene.position + 1;
-        }
-      }
-    }
-
-    return null;
   });
 
 
@@ -221,6 +196,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
       extensions: [
         StarterKit,
+        Markdown,
         Placeholder.configure({
           placeholder: 'Start writing or type /ai for AI assistant...',
           emptyEditorClass: 'is-editor-empty',
