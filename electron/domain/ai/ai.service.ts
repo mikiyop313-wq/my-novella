@@ -1,5 +1,12 @@
 import type { AiPromptRequest, AiPromptResponse } from './models';
-import type { AiModel, AiProviderId } from '../../../shared/models/ai.model';
+import {
+    AI_PROVIDER_IDS,
+    type AiModelProviderGroup,
+    type AiProviderConfiguration,
+    type AiProviderId,
+} from '../../../shared/models/ai.model';
+import { aiConfigurationService } from './ai-configuration.service';
+import type { AiConfigurationService } from './ai-configuration.service';
 import type { AiProvider } from './providers/ai-provider.interface';
 import { AnthropicProvider } from './providers/anthropic.provider';
 import { OpenAiProvider } from './providers/openai.provider';
@@ -18,7 +25,8 @@ export class AiService {
         new OpenRouterProvider(),
         new OllamaProvider(),
         new LmStudioProvider(),
-    ]) {
+    ], private readonly configuration: Pick<AiConfigurationService, 'loadConfiguration'> =
+        aiConfigurationService) {
         this.providers = new Map();
 
         providers.forEach((provider) => this.registerProvider(provider));
@@ -43,25 +51,19 @@ export class AiService {
         }
     }
 
-    async listModels(): Promise<AiModel[]> {
-        const providers = [...this.providers.values()];
-        const results = await Promise.allSettled(
-            providers.map((provider) => provider.listModels()),
-        );
+    async listModels(): Promise<AiModelProviderGroup[]> {
+        const configuration = await this.configuration.loadConfiguration();
 
-        return results.flatMap((result, index) => {
-            if (result.status === 'fulfilled') return result.value;
+        return Promise.all(AI_PROVIDER_IDS.flatMap((providerId) => {
+            const provider = this.providers.get(this.registeredProviderId(providerId));
+            if (!provider) return [];
 
-            console.error(
-                `[AiService] Failed to list models from ${providers[index].name}:`,
-                result.reason,
-            );
-            return [];
-        });
+            return [this.listProviderModels(providerId, provider, configuration)];
+        }));
     }
 
     async testConnection(providerId: AiProviderId): Promise<void> {
-        const registeredProviderId = providerId === 'google' ? 'gemini' : providerId;
+        const registeredProviderId = this.registeredProviderId(providerId);
         const provider = this.providers.get(registeredProviderId);
 
         if (!provider) {
@@ -69,6 +71,42 @@ export class AiService {
         }
 
         await provider.testConnection();
+    }
+
+    private async listProviderModels(
+        providerId: AiProviderId,
+        provider: AiProvider,
+        configuration: AiProviderConfiguration,
+    ): Promise<AiModelProviderGroup> {
+        if (!this.isConfigured(providerId, configuration)) {
+            return { id: providerId, name: provider.name, state: 'unconfigured', models: [] };
+        }
+
+        try {
+            return {
+                id: providerId,
+                name: provider.name,
+                state: 'ready',
+                models: await provider.listModels(),
+            };
+        } catch (error) {
+            console.error(`[AiService] Failed to list models from ${provider.name}:`, error);
+            return { id: providerId, name: provider.name, state: 'error', models: [] };
+        }
+    }
+
+    private isConfigured(
+        providerId: AiProviderId,
+        configuration: AiProviderConfiguration,
+    ): boolean {
+        if (providerId === 'ollama' || providerId === 'lm-studio') {
+            return Boolean(configuration.serverUrls[providerId]);
+        }
+        return configuration.apiKeys[providerId].configured;
+    }
+
+    private registeredProviderId(providerId: AiProviderId): string {
+        return providerId === 'google' ? 'gemini' : providerId;
     }
 }
 

@@ -172,7 +172,7 @@ export class Manuscript implements OnInit, OnDestroy {
     this.editor = this.createEditor();
 
     this.store.setEditor(this.editor);
-    this.aiStore.loadModels();
+    void this.aiStore.refreshModels();
 
     this.electronService.onBeforeClose(this.closeHandler);
 

@@ -11,6 +11,7 @@ import type {
   TestAiProviderConnectionRequest,
 } from '../../../../../../shared/models/ai.model';
 import { ElectronService } from '../../../../core/services/electron.service';
+import { AiStore } from '../../../../core/store/ai.store';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { AiProviderIconComponent } from './ai-provider-icon.component';
 
@@ -42,6 +43,7 @@ interface LocalProvider {
 })
 export class AiConfigurationSettingsComponent implements OnInit {
   private readonly electronService = inject(ElectronService);
+  private readonly aiStore = inject(AiStore);
   private readonly toastService = inject(ToastService);
   private readonly revisions: Record<AiProviderId, number> = {
     openrouter: 0,
@@ -334,6 +336,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
       this.apiKeyDirty.update((dirty) => ({ ...dirty, [providerId]: false }));
       this.setFieldError(providerId, null);
       this.setSaveState(providerId, status.configured ? 'saved' : 'idle');
+      this.aiStore.invalidateModels();
       return true;
     } catch (error) {
       if (this.revisions[providerId] !== revision) return false;
@@ -410,6 +413,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
       this.serverUrlDirty.update((dirty) => ({ ...dirty, [providerId]: false }));
       this.setFieldError(providerId, null);
       this.setSaveState(providerId, 'saved');
+      this.aiStore.invalidateModels();
       return true;
     } catch (error) {
       if (this.revisions[providerId] !== revision) return false;

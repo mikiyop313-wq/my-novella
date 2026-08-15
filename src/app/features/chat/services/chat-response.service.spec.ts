@@ -127,6 +127,18 @@ describe('ChatResponseService', () => {
           source: 'direct',
           supportsReasoning: false,
         },
+        {
+          id: 'gemini/gemini-pro',
+          provider: 'google',
+          source: 'direct',
+          supportsReasoning: false,
+        },
+        {
+          id: 'ollama/library/model:tag',
+          provider: 'ollama',
+          source: 'local',
+          supportsReasoning: false,
+        },
       ]),
     };
     aiStreamService = {
@@ -195,6 +207,25 @@ describe('ChatResponseService', () => {
       reasoningSummary: 'Checking context',
     }));
     expect(service.isGeneratingResponse()).toBe(false);
+  });
+
+  it.each([
+    ['gemini/gemini-pro', 'gemini', 'gemini-pro'],
+    ['ollama/library/model:tag', 'ollama', 'library/model:tag'],
+  ])('routes %s through %s without truncating its model ID', async (
+    selectedModelId,
+    provider,
+    modelId,
+  ) => {
+    await service.generateResponse(messages[0], 'Write a scene', {
+      selectedModelId,
+      reasoningMode: false,
+    });
+
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      provider,
+      modelId,
+    }));
   });
 
   it('places only the current user message context immediately before its prompt', async () => {

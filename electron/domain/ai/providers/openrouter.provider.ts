@@ -8,10 +8,10 @@ import {
     asObject,
     assertSuccessfulResponse,
     parseJsonResponse,
+    requireModelId,
 } from './provider-utils';
 import { consumeOpenAiCompatibleStream } from './streaming/openai-compatible-stream';
 
-const DEFAULT_OPENROUTER_MODEL_ID = 'minimax/minimax-m2.5:free';
 const MODEL_LIST_TIMEOUT_MS = 10_000;
 
 export class OpenRouterProvider implements AiProvider {
@@ -32,9 +32,10 @@ export class OpenRouterProvider implements AiProvider {
         console.log(`[OpenRouter] Generating prompt: ${this.getPromptPreview(request).substring(0, 50)}...`);
 
         try {
+            const modelId = requireModelId(request.modelId, this.name);
             const payload = await promptBuilderService.buildChatCompletionPayload(
                 request,
-                DEFAULT_OPENROUTER_MODEL_ID,
+                modelId,
             );
 
             console.log('[OpenRouter] Sending payload:', JSON.stringify(payload, null, 2));

@@ -10,7 +10,11 @@ vi.mock('./ai-configuration.service', () => ({
     aiConfigurationService: { getServerUrl: vi.fn() },
 }));
 
-import type { AiModel } from '../../../shared/models/ai.model';
+import type {
+    AiModel,
+    AiProviderConfiguration,
+    AiProviderId,
+} from '../../../shared/models/ai.model';
 import type { AiProvider } from './providers/ai-provider.interface';
 import { AiService } from './ai.service';
 
@@ -24,9 +28,13 @@ describe('AiService', () => {
             fakeProvider('anthropic', [anthropicModel]),
         ];
         const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        const service = new AiService(providers);
+        const service = serviceWithConfiguration(providers, ['openai', 'google', 'anthropic']);
 
-        await expect(service.listModels()).resolves.toEqual([openAiModel, anthropicModel]);
+        await expect(service.listModels()).resolves.toEqual([
+            { id: 'google', name: 'Google Gemini', state: 'error', models: [] },
+            { id: 'openai', name: 'openai', state: 'ready', models: [openAiModel] },
+            { id: 'anthropic', name: 'anthropic', state: 'ready', models: [anthropicModel] },
+        ]);
         expect(providers.every((provider) => vi.mocked(provider.listModels).mock.calls.length === 1))
             .toBe(true);
         expect(errorSpy).toHaveBeenCalledWith(
@@ -63,9 +71,12 @@ describe('AiService', () => {
             fakeProvider('lm-studio', new Error('offline')),
         ];
         const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        const service = new AiService(providers);
+        const service = serviceWithConfiguration(providers, ['ollama', 'lm-studio']);
 
-        await expect(service.listModels()).resolves.toEqual([ollamaModel]);
+        await expect(service.listModels()).resolves.toEqual([
+            { id: 'ollama', name: 'ollama', state: 'ready', models: [ollamaModel] },
+            { id: 'lm-studio', name: 'lm-studio', state: 'error', models: [] },
+        ]);
         expect(errorSpy).toHaveBeenCalledWith(
             expect.stringContaining('lm-studio'),
             expect.any(Error),
@@ -79,6 +90,25 @@ describe('AiService', () => {
 
         await expect(service.testConnection('google')).resolves.toBeUndefined();
         expect(provider.testConnection).toHaveBeenCalledOnce();
+    });
+
+    it('does not query an unconfigured provider', async () => {
+        const provider = fakeProvider('openai', [{ id: 'openai/a' } as AiModel]);
+        const service = serviceWithConfiguration([provider], []);
+
+        await expect(service.listModels()).resolves.toEqual([
+            { id: 'openai', name: 'openai', state: 'unconfigured', models: [] },
+        ]);
+        expect(provider.listModels).not.toHaveBeenCalled();
+    });
+
+    it('keeps a configured provider with an empty successful model list ready', async () => {
+        const provider = fakeProvider('anthropic', []);
+        const service = serviceWithConfiguration([provider], ['anthropic']);
+
+        await expect(service.listModels()).resolves.toEqual([
+            { id: 'anthropic', name: 'anthropic', state: 'ready', models: [] },
+        ]);
     });
 
     it('rejects connection tests for unregistered providers', async () => {
@@ -100,4 +130,24 @@ function fakeProvider(id: string, models: AiModel[] | Error): AiProvider {
             : vi.fn().mockResolvedValue(models),
         testConnection: vi.fn().mockResolvedValue(undefined),
     };
+}
+
+function serviceWithConfiguration(
+    providers: AiProvider[],
+    configuredProviders: readonly AiProviderId[],
+): AiService {
+    const configured = new Set(configuredProviders);
+    const configuration: AiProviderConfiguration = {
+        apiKeys: {
+            openrouter: { configured: configured.has('openrouter'), suffix: null },
+            google: { configured: configured.has('google'), suffix: null },
+            openai: { configured: configured.has('openai'), suffix: null },
+            anthropic: { configured: configured.has('anthropic'), suffix: null },
+        },
+        serverUrls: {
+            ollama: configured.has('ollama') ? 'http://localhost:11434' : null,
+            'lm-studio': configured.has('lm-studio') ? 'http://localhost:1234' : null,
+        },
+    };
+    return new AiService(providers, { loadConfiguration: vi.fn().mockResolvedValue(configuration) });
 }

@@ -63,7 +63,7 @@
             </svg>
           </button>
           } @else {
-          <button class="submit-btn" [disabled]="!promptText().trim()" (click)="onSubmit()"
+          <button class="submit-btn" [disabled]="!promptText().trim() || !isSelectedModelAvailable()" (click)="onSubmit()"
             title="Send Prompt">
             <span class="model-name">{{ selectedModelName() }}</span>
             <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"

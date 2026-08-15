@@ -7,6 +7,7 @@ import type {
   SaveAiServerUrlRequest,
 } from '../../../../../../shared/models/ai.model';
 import { ElectronService } from '../../../../core/services/electron.service';
+import { AiStore } from '../../../../core/store/ai.store';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { AiConfigurationSettingsComponent } from './ai-configuration-settings.component';
 
@@ -16,10 +17,12 @@ describe('AiConfigurationSettingsComponent', () => {
   let invoke: ReturnType<typeof vi.fn>;
   let toastSuccess: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
+  let invalidateModels: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     toastSuccess = vi.fn();
     toastError = vi.fn();
+    invalidateModels = vi.fn();
     invoke = vi.fn(async (channel: string, request?: unknown) => {
       if (channel === 'ai:config:load') return configuration();
       if (channel === 'ai:config:load-api-key') {
@@ -42,6 +45,7 @@ describe('AiConfigurationSettingsComponent', () => {
       imports: [AiConfigurationSettingsComponent],
       providers: [
         { provide: ElectronService, useValue: { invoke } },
+        { provide: AiStore, useValue: { invalidateModels } },
         {
           provide: ToastService,
           useValue: { success: toastSuccess, error: toastError },
@@ -134,6 +138,7 @@ describe('AiConfigurationSettingsComponent', () => {
     expect(saveCalls('ai:config:save-api-key')).toEqual([
       ['ai:config:save-api-key', { providerId: 'openai', apiKey: 'sk-new-key-abcd' }],
     ]);
+    expect(invalidateModels).toHaveBeenCalledOnce();
     expect(input.value).toBe('••••••••abcd');
 
     input.dispatchEvent(new FocusEvent('focus'));
@@ -189,6 +194,7 @@ describe('AiConfigurationSettingsComponent', () => {
         { providerId: 'ollama', serverUrl: 'https://localhost:22000/v1' },
       ],
     ]);
+    expect(invalidateModels).toHaveBeenCalledOnce();
     expect(element.querySelector('.field-status')?.textContent).toContain('Saved');
   });
 

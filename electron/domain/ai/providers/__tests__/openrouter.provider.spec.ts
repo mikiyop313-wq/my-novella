@@ -39,7 +39,7 @@ describe('OpenRouterProvider', () => {
         const provider = new OpenRouterProvider({ getApiKey } as any);
 
         await expect(provider.generate({
-            model: 'openrouter', prompt: 'Write.', onToken, onReasoningToken,
+            model: 'openrouter', modelId: 'model-1', prompt: 'Write.', onToken, onReasoningToken,
         })).resolves.toMatchObject({ text: 'Hello', modelUsed: 'model-1' });
         expect(onToken).toHaveBeenCalledWith('Hello');
         expect(onReasoningToken).toHaveBeenCalledWith('Think');
@@ -51,7 +51,7 @@ describe('OpenRouterProvider', () => {
             resolvePayload = resolve;
         }));
         const provider = new OpenRouterProvider({ getApiKey } as any);
-        const request = { model: 'openrouter' as const, prompt: 'Write.' };
+        const request = { model: 'openrouter' as const, modelId: 'selected/model', prompt: 'Write.' };
         const generation = provider.generate(request);
 
         expect(fetch).not.toHaveBeenCalled();
@@ -70,7 +70,7 @@ describe('OpenRouterProvider', () => {
         await expect(generation).resolves.toMatchObject({ modelUsed: 'model-1' });
         expect(buildChatCompletionPayload).toHaveBeenCalledWith(
             request,
-            'minimax/minimax-m2.5:free',
+            'selected/model',
         );
         expect(fetch).toHaveBeenCalledWith(
             'https://openrouter.ai/api/v1/chat/completions',
@@ -95,8 +95,17 @@ describe('OpenRouterProvider', () => {
         const provider = new OpenRouterProvider({ getApiKey } as any);
 
         await expect(provider.generate({
-            model: 'openrouter', prompt: 'Write.',
+            model: 'openrouter', modelId: 'model-1', prompt: 'Write.',
         })).rejects.toThrow('OpenRouter API error (429): Rate limit reached.');
+    });
+
+    it('requires the model selected in the catalog for generation', async () => {
+        const provider = new OpenRouterProvider({ getApiKey } as any);
+
+        await expect(provider.generate({
+            model: 'openrouter', prompt: 'Write.',
+        })).rejects.toThrow('explicitly selected model');
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it('does not list models without a saved key', async () => {

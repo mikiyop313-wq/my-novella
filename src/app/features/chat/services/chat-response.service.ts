@@ -1,6 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
 
-import { type AiModel } from '../../../../../shared/models/ai.model';
 import {
   type ChatMessageDetailDto,
   type ChatThreadDetailDto,
@@ -9,6 +8,7 @@ import { AiStore } from '../../../core/store/ai.store';
 import { type AiChatMessage } from '../../../core/services/ai-state.service';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
 import { ToastService } from '../../../shared/services/toast.service';
+import { resolveAiModelTarget } from '../../../shared/utils/ai-model-selection';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
 import { WorkspaceStore } from '../../workspace/workspace.store';
 import { ChatAiContextService } from './chat-ai-context.service';
@@ -25,7 +25,7 @@ export interface ChatResponseSettings {
 
 interface ResolvedModel {
   provider: string;
-  modelId: string | null;
+  modelId: string;
 }
 
 /**
@@ -306,14 +306,8 @@ export class ChatResponseService {
     const savedModelId = lastAssistantMessage.modelId;
     const savedProvider = lastAssistantMessage.provider;
     const matchingModel = this.aiStore.models().find((model) => {
-      if (model.source !== 'direct') {
-        return savedProvider === 'openrouter' && model.id === savedModelId;
-      }
-
-      return (
-        this.resolveDirectProvider(model) === savedProvider &&
-        (model.id.split('/')[1] || model.id) === savedModelId
-      );
+      const target = resolveAiModelTarget(model);
+      return target.provider === savedProvider && target.modelId === savedModelId;
     });
 
     return (
@@ -452,34 +446,15 @@ export class ChatResponseService {
 
   private resolveSelectedModel(selectedModelId: string | null): ResolvedModel {
     if (!selectedModelId) {
-      return { provider: 'openrouter', modelId: null };
+      throw new Error('Select an available AI model before generating.');
     }
 
     const selectedModel = this.aiStore.models().find((model) => model.id === selectedModelId);
     if (!selectedModel) {
-      return { provider: 'openrouter', modelId: selectedModelId };
+      throw new Error('The selected AI model is no longer available.');
     }
 
-    if (selectedModel.source !== 'direct') {
-      return { provider: 'openrouter', modelId: selectedModel.id };
-    }
-
-    return {
-      provider: this.resolveDirectProvider(selectedModel),
-      modelId: selectedModel.id.split('/')[1] || selectedModel.id,
-    };
-  }
-
-  private resolveDirectProvider(model: AiModel): string {
-    if (model.provider === 'google' || model.id.startsWith('gemini/')) {
-      return 'gemini';
-    }
-
-    if (model.provider === 'openai' || model.id.startsWith('openai/')) {
-      return 'openai';
-    }
-
-    return model.provider || 'openrouter';
+    return resolveAiModelTarget(selectedModel);
   }
 
   private getDirectModelSelectorId(provider: string | null, modelId: string): string | null {
