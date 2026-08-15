@@ -14,6 +14,7 @@ import {
   serializeCodexContext,
   serializeFullOutline,
   serializeNarrativeGuidance,
+  serializePartialOutline,
   serializeSelectedManuscript,
   serializeTiptapDocument,
 } from './story-context-builder';
@@ -46,6 +47,37 @@ describe('Story context builder', () => {
       '--- BEGIN SCENE 2 ---\n\nSummary:\nSecond summary.\n\nProse:\nSelected prose.',
     );
     expect(result.match(/Selected prose\./g)).toHaveLength(1);
+  });
+
+  it('renders a Partial Outline with summaries only for scenes before the current scene', () => {
+    const result = serializePartialOutline(
+      createHierarchy(),
+      'Silver Key',
+      'scene-3',
+    );
+
+    expect(result).toContain('## Partial Outline');
+    expect(result).toContain('--- BEGIN NOVEL — Silver Key ---');
+    expect(result).toContain('--- BEGIN ACT 1 — Act One ---');
+    expect(result).toContain('--- BEGIN CHAPTER 1 — Chapter One ---');
+    expect(result).toContain('--- BEGIN SCENE 1 — Opening ---');
+    expect(result).toContain('Summary:\nFirst summary.');
+    expect(result).toContain('--- BEGIN SCENE 2 ---');
+    expect(result).toContain('Summary:\nSecond summary.');
+    expect(result.indexOf('SCENE 1')).toBeLessThan(result.indexOf('SCENE 2'));
+    expect(result).not.toContain('Act summary.');
+    expect(result).not.toContain('Chapter summary.');
+    expect(result).not.toContain('SCENE 1 — Ending');
+    expect(result).not.toContain('BEGIN ACT 2');
+    expect(result).not.toContain('Prose:');
+  });
+
+  it.each([
+    ['the first scene', createHierarchy(), 'scene-1'],
+    ['an unknown scene', createHierarchy(), 'missing-scene'],
+    ['an empty hierarchy', [], 'scene-1'],
+  ])('omits the Partial Outline for %s', (_label, hierarchy, currentSceneId) => {
+    expect(serializePartialOutline(hierarchy, 'Silver Key', currentSceneId)).toBe('');
   });
 
   it('renders a pruned selected tree without summaries or an unnecessary novel wrapper', () => {

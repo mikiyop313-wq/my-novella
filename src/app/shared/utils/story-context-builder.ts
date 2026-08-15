@@ -24,6 +24,7 @@ const EXCLUDED_PROSE_NODES = new Set([
 ]);
 
 const FULL_OUTLINE_HEADING = '## Full Outline';
+const PARTIAL_OUTLINE_HEADING = '## Partial Outline';
 const SELECTED_MANUSCRIPT_HEADING = '## Selected Manuscript Context';
 const AUTOMATIC_MANUSCRIPT_HEADING = '## Automatic Manuscript Context';
 const NARRATIVE_GUIDANCE_HEADING = '## Narrative Guidance';
@@ -151,7 +152,8 @@ export function serializeFullOutline(
     bookTitle,
     includeAll: true,
     includeNovel: true,
-    includeSummaries: true,
+    includeParentSummaries: true,
+    includeSceneSummaries: true,
     selectedSceneIds: new Set(proseBySceneId.keys()),
     sceneContent: new Map(
       [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: PROSE_LABEL, text }]),
@@ -160,6 +162,32 @@ export function serializeFullOutline(
   });
 
   return body ? `${FULL_OUTLINE_HEADING}\n\n${body}` : '';
+}
+
+export function serializePartialOutline(
+  hierarchy: readonly ActDto[],
+  bookTitle: string | undefined,
+  currentSceneId: string,
+): string {
+  const scenes = flattenScenes(hierarchy);
+  const currentSceneIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
+  if (currentSceneIndex <= 0) return '';
+
+  const precedingSceneIds = new Set(
+    scenes.slice(0, currentSceneIndex).map((scene) => scene.id),
+  );
+  const body = serializeHierarchy({
+    hierarchy,
+    bookTitle,
+    includeAll: false,
+    includeNovel: true,
+    includeParentSummaries: false,
+    includeSceneSummaries: true,
+    selectedSceneIds: precedingSceneIds,
+    sceneContent: new Map(),
+  });
+
+  return body ? `${PARTIAL_OUTLINE_HEADING}\n\n${body}` : '';
 }
 
 export function serializeSelectedManuscript(
@@ -175,7 +203,8 @@ export function serializeSelectedManuscript(
     bookTitle,
     includeAll: false,
     includeNovel: refs.includes('novel'),
-    includeSummaries: false,
+    includeParentSummaries: false,
+    includeSceneSummaries: false,
     selectedSceneIds,
     sceneContent: new Map(
       [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: PROSE_LABEL, text }]),
@@ -194,7 +223,8 @@ export function serializeAutomaticManuscript(
     hierarchy,
     includeAll: false,
     includeNovel: false,
-    includeSummaries: false,
+    includeParentSummaries: false,
+    includeSceneSummaries: false,
     selectedSceneIds: new Set(sceneContent.keys()),
     sceneContent,
   });
@@ -266,7 +296,8 @@ interface HierarchySerializationRequest {
   bookTitle?: string;
   includeAll: boolean;
   includeNovel: boolean;
-  includeSummaries: boolean;
+  includeParentSummaries: boolean;
+  includeSceneSummaries: boolean;
   selectedSceneIds: ReadonlySet<string>;
   sceneContent: ReadonlyMap<string, { label: string; text: string }>;
   promptBoundary?: ManuscriptPromptBoundary;
@@ -320,7 +351,7 @@ function serializeAct(
   return [
     boundary,
     delimiter.begin,
-    request.includeSummaries ? summaryBlock(act.summary) : '',
+    request.includeParentSummaries ? summaryBlock(act.summary) : '',
     chapters.join('\n\n'),
     delimiter.end,
   ]
@@ -351,7 +382,7 @@ function serializeChapter(
   return [
     boundary,
     delimiter.begin,
-    request.includeSummaries ? summaryBlock(chapter.summary) : '',
+    request.includeParentSummaries ? summaryBlock(chapter.summary) : '',
     scenes.join('\n\n'),
     delimiter.end,
   ]
@@ -396,7 +427,7 @@ function serializeScene(
 
     return [
       delimiter.begin,
-      request.includeSummaries ? summaryBlock(scene.summary) : '',
+      request.includeSceneSummaries ? summaryBlock(scene.summary) : '',
       prose,
       delimiter.end,
     ]
@@ -407,7 +438,7 @@ function serializeScene(
   return [
     boundary,
     delimiter.begin,
-    request.includeSummaries ? summaryBlock(scene.summary) : '',
+    request.includeSceneSummaries ? summaryBlock(scene.summary) : '',
     content?.text.trim() ? `${content.label}:\n${content.text.trim()}` : '',
     delimiter.end,
   ]
