@@ -9,10 +9,11 @@ import { CommonModule } from '@angular/common';
 import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
-import { LibraryService } from '../../services/library.service';
 import { LibraryStore } from '../../store/book.store';
 import { ConfigStore } from '../../../../core/store/config.store';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 
 
 
@@ -31,7 +32,8 @@ export class BookModalComponent {
   close = output<void>();
   bookDeleted = output<string>();
 
-  private libraryService = inject(LibraryService);
+  private confirmService = inject(ConfirmModalService);
+  private toastService = inject(ToastService);
   readonly store = inject(LibraryStore);
   readonly config = inject(ConfigStore);
   private router = inject(Router);
@@ -64,6 +66,7 @@ export class BookModalComponent {
 
   currentView = signal<'details' | 'settings'>('details');
   activeSlideModalAnimation = signal<boolean>(false);
+  isLifecycleActionPending = signal(false);
 
   // Settings State
   selectedTense = signal<'past' | 'present'>('past');
@@ -257,26 +260,63 @@ export class BookModalComponent {
     }
   }
 
-  async onArchive() {
-    try {
-      const updatedBook = await this.store.updateBook(this.book().id, { status: 'archived' });
-      this.book.set(updatedBook);
-    } catch (error) {
-      console.error('Failed to archive book:', error);
-    }
+  onArchive() {
+    const book = this.book();
+    if (this.isLifecycleActionPending()) return;
+
+    this.confirmService.open(
+      'Archive book?',
+      `Archive “${book.title}”? You can restore it later from the archived books view.`,
+      () => void this.updateBookStatus('archived'),
+      undefined,
+      { confirmLabel: 'Archive' },
+    );
   }
 
-  async onRestore() {
-    try {
-      const updatedBook = await this.store.updateBook(this.book().id, { status: 'draft' });
-      this.book.set(updatedBook);
-    } catch (error) {
-      console.error('Failed to restore book:', error);
-    }
+  onRestore() {
+    const book = this.book();
+    if (this.isLifecycleActionPending()) return;
+
+    this.confirmService.open(
+      'Restore book?',
+      `Restore “${book.title}” to your active library?`,
+      () => void this.updateBookStatus('draft'),
+      undefined,
+      { confirmLabel: 'Restore' },
+    );
   }
 
   onDelete() {
-    this.bookDeleted.emit(this.book().id);
+    const book = this.book();
+    if (this.isLifecycleActionPending()) return;
+
+    this.confirmService.open(
+      'Delete book permanently?',
+      `Delete “${book.title}” and all of its manuscript content, notes, chats, and search data? This cannot be undone.`,
+      () => this.bookDeleted.emit(book.id),
+      undefined,
+      { confirmLabel: 'Delete permanently' },
+    );
+  }
+
+  private async updateBookStatus(status: BookDto['status']): Promise<void> {
+    if (this.isLifecycleActionPending()) return;
+
+    this.isLifecycleActionPending.set(true);
+    try {
+      const updatedBook = await this.store.updateBook(this.book().id, { status });
+      this.book.set(updatedBook);
+      this.toastService.success(
+        status === 'archived' ? 'The book was archived.' : 'The book was restored.',
+      );
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : `Unable to ${status === 'archived' ? 'archive' : 'restore'} this book.`,
+        status === 'archived' ? 'Archive failed' : 'Restore failed',
+      );
+    } finally {
+      this.isLifecycleActionPending.set(false);
+    }
   }
 
   onClose() {

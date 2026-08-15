@@ -1041,6 +1041,67 @@
                 </div>
               </div>
             </section>
+
+            <section class="setting-card danger-card" aria-labelledby="danger-zone-heading">
+              <header class="card-header danger-card-header">
+                <div class="card-icon danger-card-icon" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.9"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"></path>
+                    <path d="M12 9v4"></path>
+                    <path d="M12 17h.01"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 id="danger-zone-heading">Danger Zone</h2>
+                  <p>Archiving is reversible. Permanent deletion cannot be undone.</p>
+                </div>
+              </header>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>{{ activeBook.status === 'archived' ? 'Restore book' : 'Archive book' }}</h3>
+                  <p>
+                    {{ activeBook.status === 'archived'
+                      ? 'Return this book to your active library.'
+                      : 'Remove this book from your active library without deleting its content.' }}
+                  </p>
+                </div>
+                <div class="setting-control">
+                  <button
+                    class="lifecycle-button archive-lifecycle-button"
+                    type="button"
+                    [disabled]="isLifecycleActionPending()"
+                    (click)="confirmArchiveOrRestore()"
+                  >
+                    {{ activeBook.status === 'archived' ? 'Restore book' : 'Archive book' }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Delete book permanently</h3>
+                  <p>Delete the book and all associated content and search data.</p>
+                </div>
+                <div class="setting-control">
+                  <button
+                    class="lifecycle-button delete-lifecycle-button"
+                    type="button"
+                    [disabled]="isLifecycleActionPending()"
+                    (click)="confirmDeleteBook()"
+                  >
+                    Delete permanently
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
         }
       </div>

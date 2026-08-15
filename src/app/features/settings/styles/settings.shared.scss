@@ -361,6 +361,65 @@
   box-shadow: 0 12px 30px -24px rgba(0, 0, 0, 0.45);
 }
 
+.danger-card {
+  border-color: color-mix(in srgb, #dc4c4c 38%, var(--color-border));
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, #dc4c4c 5%, var(--color-surface)),
+    color-mix(in srgb, #dc4c4c 2%, var(--color-background))
+  );
+}
+
+.danger-card-header {
+  border-bottom-color: color-mix(in srgb, #dc4c4c 22%, var(--color-border));
+}
+
+.danger-card-icon {
+  border-color: color-mix(in srgb, #dc4c4c 34%, var(--color-border));
+  background: color-mix(in srgb, #dc4c4c 10%, transparent);
+  color: #dc4c4c;
+}
+
+.lifecycle-button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.58;
+  }
+}
+
+.archive-lifecycle-button {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-text-secondary);
+    background: var(--color-hover-bg);
+  }
+}
+
+.delete-lifecycle-button {
+  border: 1px solid #c83f3f;
+  background: #dc4c4c;
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    background: #c83f3f;
+  }
+}
+
 .card-header {
   padding: 20px 22px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);

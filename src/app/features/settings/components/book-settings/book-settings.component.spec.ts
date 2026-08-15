@@ -9,6 +9,7 @@ import { ElectronService } from '../../../../core/services/electron.service';
 import { ThemeService, type Theme } from '../../../../core/services/theme.service';
 import { ConfigStore } from '../../../../core/store/config.store';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
@@ -36,11 +37,13 @@ describe('BookSettingsComponent', () => {
   let navigateByUrl: ReturnType<typeof vi.fn>;
   let getBooks: ReturnType<typeof vi.fn>;
   let updateBook: ReturnType<typeof vi.fn>;
+  let removeBook: ReturnType<typeof vi.fn>;
   let getCodexEntries: ReturnType<typeof vi.fn>;
   let getArchiveOverview: ReturnType<typeof vi.fn>;
   let getBookHierarchy: ReturnType<typeof vi.fn>;
   let setBookTitle: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
+  let toastSuccess: ReturnType<typeof vi.fn>;
   let loadLanguages: ReturnType<typeof vi.fn>;
   let loadGenres: ReturnType<typeof vi.fn>;
   let loadTropes: ReturnType<typeof vi.fn>;
@@ -134,6 +137,7 @@ describe('BookSettingsComponent', () => {
     getBookHierarchy = vi.fn().mockResolvedValue([]);
     setBookTitle = vi.fn((title: string) => bookTitle.set(title));
     toastError = vi.fn();
+    toastSuccess = vi.fn();
     loadLanguages = vi.fn().mockResolvedValue(undefined);
     loadGenres = vi.fn().mockResolvedValue(undefined);
     loadTropes = vi.fn().mockResolvedValue(undefined);
@@ -166,6 +170,7 @@ describe('BookSettingsComponent', () => {
         lastEditedAt: '2026-01-03T00:00:00.000Z',
       }),
     );
+    removeBook = vi.fn().mockResolvedValue({ success: true });
 
     await TestBed.configureTestingModule({
       imports: [BookSettingsComponent],
@@ -181,7 +186,7 @@ describe('BookSettingsComponent', () => {
         },
         {
           provide: LibraryService,
-          useValue: { getBooks, updateBook },
+          useValue: { getBooks, updateBook, removeBook },
         },
         {
           provide: ElectronService,
@@ -235,7 +240,7 @@ describe('BookSettingsComponent', () => {
         },
         {
           provide: ToastService,
-          useValue: { error: toastError },
+          useValue: { error: toastError, success: toastSuccess },
         },
         {
           provide: ThemeService,
@@ -294,7 +299,7 @@ describe('BookSettingsComponent', () => {
       type: 'character',
       status: 'active',
     });
-    expect(element.querySelectorAll('.setting-card')).toHaveLength(3);
+    expect(element.querySelectorAll('.setting-card')).toHaveLength(4);
     expect(element.textContent).toContain('The Glass Orchard');
     expect(element.textContent).toContain('Mira Vale');
     expect(element.textContent).toContain('English');
@@ -681,6 +686,102 @@ describe('BookSettingsComponent', () => {
     await component.saveEditing();
 
     expect(updateBook).toHaveBeenCalledWith('book-1', { author: 'Rowan Hart' });
+  });
+
+  it('shows the Danger Zone only in book-level general settings', () => {
+    const element = fixture.nativeElement as HTMLElement;
+    const dangerZone = element.querySelector('.danger-card');
+
+    expect(dangerZone?.textContent).toContain('Danger Zone');
+    expect(dangerZone?.textContent).toContain('Archive book');
+    expect(dangerZone?.textContent).toContain('Delete permanently');
+    expect(element.querySelector('.settings-sections')?.lastElementChild).toBe(dangerZone);
+
+    fixture.destroy();
+    (TestBed.inject(Router) as Router & { url: string }).url = '/settings';
+    fixture = TestBed.createComponent(BookSettingsComponent);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.danger-card')).toBeNull();
+  });
+
+  it('does not archive when confirmation is cancelled', () => {
+    const confirmService = TestBed.inject(ConfirmModalService);
+
+    fixture.componentInstance.confirmArchiveOrRestore();
+
+    expect(confirmService.state().title).toBe('Archive book?');
+    confirmService.state().onCancel();
+    expect(updateBook).not.toHaveBeenCalled();
+    expect(navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  it('archives and restores a book after confirmation, then returns to the library', async () => {
+    const confirmService = TestBed.inject(ConfirmModalService);
+
+    fixture.componentInstance.confirmArchiveOrRestore();
+    confirmService.state().onConfirm();
+    await fixture.whenStable();
+
+    expect(updateBook).toHaveBeenCalledWith('book-1', { status: 'archived' });
+    expect(navigateByUrl).toHaveBeenCalledWith('/library');
+    expect(toastSuccess).toHaveBeenCalledWith('The book was archived.');
+
+    updateBook.mockClear();
+    navigateByUrl.mockClear();
+    fixture.componentInstance.book.set({ ...book, status: 'archived' });
+    fixture.componentInstance.confirmArchiveOrRestore();
+    confirmService.state().onConfirm();
+    await fixture.whenStable();
+
+    expect(updateBook).toHaveBeenCalledWith('book-1', { status: 'draft' });
+    expect(navigateByUrl).toHaveBeenCalledWith('/library');
+  });
+
+  it('permanently deletes only after confirmation', async () => {
+    const confirmService = TestBed.inject(ConfirmModalService);
+
+    fixture.componentInstance.confirmDeleteBook();
+    expect(confirmService.state().message).toContain('This cannot be undone.');
+    expect(removeBook).not.toHaveBeenCalled();
+
+    confirmService.state().onConfirm();
+    await fixture.whenStable();
+
+    expect(removeBook).toHaveBeenCalledWith('book-1');
+    expect(navigateByUrl).toHaveBeenCalledWith('/library');
+    expect(toastSuccess).toHaveBeenCalledWith('The book was permanently deleted.');
+  });
+
+  it('stays in settings and reports failed lifecycle actions', async () => {
+    const confirmService = TestBed.inject(ConfirmModalService);
+    updateBook.mockRejectedValueOnce(new Error('Archive unavailable'));
+
+    fixture.componentInstance.confirmArchiveOrRestore();
+    confirmService.state().onConfirm();
+    await fixture.whenStable();
+
+    expect(navigateByUrl).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith('Archive unavailable', 'Archive failed');
+
+    removeBook.mockResolvedValueOnce({ success: false });
+    fixture.componentInstance.confirmDeleteBook();
+    confirmService.state().onConfirm();
+    await fixture.whenStable();
+
+    expect(navigateByUrl).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith('The book could not be deleted.', 'Delete failed');
+  });
+
+  it('disables lifecycle controls while an action is pending', () => {
+    fixture.componentInstance.isLifecycleActionPending.set(true);
+    fixture.detectChanges();
+
+    const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      '.lifecycle-button',
+    );
+    expect(buttons).toHaveLength(2);
+    expect([...buttons].every((button) => button.disabled)).toBe(true);
   });
 
   it('allows the synopsis to be cleared', async () => {

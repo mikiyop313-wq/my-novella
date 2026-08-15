@@ -24,6 +24,7 @@ import {
   DropdownOption,
 } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
@@ -75,6 +76,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   private readonly libraryService = inject(LibraryService);
   private readonly codexService = inject(CodexService);
   private readonly toastService = inject(ToastService);
+  private readonly confirmService = inject(ConfirmModalService);
   readonly themeService = inject(ThemeService);
   readonly config = inject(ConfigStore);
 
@@ -93,6 +95,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   readonly editValue = signal('');
   readonly editArrayValue = signal<string[]>([]);
   readonly isSaving = signal(false);
+  readonly isLifecycleActionPending = signal(false);
   readonly validationError = signal<string | null>(null);
   readonly characters = signal<DropdownOption[]>([]);
 
@@ -279,6 +282,38 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     }
   }
 
+  confirmArchiveOrRestore(): void {
+    const book = this.book();
+    if (!book || this.isLifecycleActionPending()) return;
+
+    const isArchived = book.status === 'archived';
+    const action = isArchived ? 'Restore' : 'Archive';
+    const message = isArchived
+      ? `Restore “${book.title}” to your active library?`
+      : `Archive “${book.title}”? You can restore it later from the archived books view.`;
+
+    this.confirmService.open(
+      `${action} book?`,
+      message,
+      () => void this.setBookStatus(isArchived ? 'draft' : 'archived'),
+      undefined,
+      { confirmLabel: action },
+    );
+  }
+
+  confirmDeleteBook(): void {
+    const book = this.book();
+    if (!book || this.isLifecycleActionPending()) return;
+
+    this.confirmService.open(
+      'Delete book permanently?',
+      `Delete “${book.title}” and all of its manuscript content, notes, chats, and search data? This cannot be undone.`,
+      () => void this.deleteBook(book),
+      undefined,
+      { confirmLabel: 'Delete permanently' },
+    );
+  }
+
   hasSynopsis(book: BookDto): boolean {
     return Boolean(book.synopsis?.trim());
   }
@@ -414,6 +449,49 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     void flush.then((saved) => {
       if (saved) action();
     });
+  }
+
+  private async setBookStatus(status: BookDto['status']): Promise<void> {
+    const book = this.book();
+    if (!book || this.isLifecycleActionPending()) return;
+
+    this.isLifecycleActionPending.set(true);
+    try {
+      const updatedBook = await this.libraryService.updateBook(book.id, { status });
+      this.book.set(updatedBook);
+      this.toastService.success(
+        status === 'archived' ? 'The book was archived.' : 'The book was restored.',
+      );
+      await this.router.navigateByUrl('/library');
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : `Unable to ${status === 'archived' ? 'archive' : 'restore'} this book.`,
+        status === 'archived' ? 'Archive failed' : 'Restore failed',
+      );
+    } finally {
+      this.isLifecycleActionPending.set(false);
+    }
+  }
+
+  private async deleteBook(book: BookDto): Promise<void> {
+    if (this.isLifecycleActionPending()) return;
+
+    this.isLifecycleActionPending.set(true);
+    try {
+      const result = await this.libraryService.removeBook(book.id);
+      if (!result.success) {
+        throw new Error('The book could not be deleted.');
+      }
+      this.toastService.success('The book was permanently deleted.');
+      await this.router.navigateByUrl('/library');
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : 'Unable to delete this book.',
+        'Delete failed',
+      );
+    } finally {
+      this.isLifecycleActionPending.set(false);
+    }
   }
 
   private flushActiveConfiguration(): Promise<boolean> | null {

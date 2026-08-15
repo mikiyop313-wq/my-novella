@@ -351,21 +351,21 @@
             <div class="danger-zone">
                 <div class="danger-header">
                     <span class="section-label danger-label">DANGER ZONE</span>
-                    <p class="danger-description">These actions are destructive and cannot be undone.</p>
+                    <p class="danger-description">Archiving is reversible. Permanent deletion cannot be undone.</p>
                 </div>
                 <div class="danger-actions">
                     @if (book().status === 'archived') {
-                    <button class="btn-neutral-outline" (click)="onRestore()">
+                    <button class="btn-neutral-outline" [disabled]="isLifecycleActionPending()" (click)="onRestore()">
                         <i class="icon-archive"></i>
                         Restore Book
                     </button>
                     } @else {
-                    <button class="btn-neutral-outline" (click)="onArchive()">
+                    <button class="btn-neutral-outline" [disabled]="isLifecycleActionPending()" (click)="onArchive()">
                         <i class="icon-archive"></i>
                         Archive Book
                     </button>
                     }
-                    <button class="btn-danger" (click)="onDelete()">
+                    <button class="btn-danger" [disabled]="isLifecycleActionPending()" (click)="onDelete()">
                         <i class="icon-trash"></i>
                         Delete Permanently
                     </button>
