@@ -9,6 +9,7 @@ export interface ChatThreadDto {
   bookId: string;
   title: string;
   status: ChatThreadStatus;
+  lastModelId: string | null;
   createdAt: string;
   lastEditedAt: string;
 }
@@ -50,6 +51,7 @@ export interface CreateChatThreadDto {
   bookId: string;
   title?: string;
   status?: ChatThreadStatus;
+  lastModelId?: string | null;
 }
 
 export type UpdateChatThreadDto = Partial<Omit<CreateChatThreadDto, 'bookId'>>;

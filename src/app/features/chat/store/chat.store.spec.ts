@@ -16,6 +16,7 @@ function makeThread(overrides: Partial<ChatThreadDto> = {}): ChatThreadDto {
     bookId: 'book-1',
     title: 'New chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -144,6 +145,21 @@ describe('ChatStore', () => {
       messages: [],
     });
     expect(store.isSaving()).toBe(false);
+  });
+
+  it('persists and locally patches the selected model on a thread', async () => {
+    chatService.getThread.mockResolvedValueOnce(makeThreadDetail({ lastModelId: null }));
+    chatService.updateThread.mockResolvedValueOnce(makeThread({
+      lastModelId: 'openrouter/test-model',
+    }));
+
+    await store.openThread('thread-1');
+    await store.updateThread('thread-1', { lastModelId: 'openrouter/test-model' });
+
+    expect(chatService.updateThread).toHaveBeenCalledWith('thread-1', {
+      lastModelId: 'openrouter/test-model',
+    });
+    expect(store.selectedThread()?.lastModelId).toBe('openrouter/test-model');
   });
 
   it('sends a message to the selected thread', async () => {

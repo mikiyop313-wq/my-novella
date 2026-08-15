@@ -44,6 +44,7 @@ export class ChatRepository {
       bookId: thread.bookId,
       title: thread.title,
       status: thread.status,
+      lastModelId: thread.lastModelId,
       createdAt: this.dateToIso(thread.createdAt),
       lastEditedAt: this.dateToIso(thread.lastEditedAt),
     };
@@ -88,6 +89,7 @@ export class ChatRepository {
       bookId: data.bookId,
       title: data.title ?? 'New chat',
       status: data.status ?? 'active',
+      lastModelId: data.lastModelId ?? null,
     };
   }
 
@@ -98,6 +100,7 @@ export class ChatRepository {
 
     if (data.title !== undefined) updatePayload.title = data.title;
     if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.lastModelId !== undefined) updatePayload.lastModelId = data.lastModelId;
 
     return updatePayload;
   }

@@ -22,6 +22,7 @@ export const chatThreads = sqliteTable(
       .references(() => books.id, { onDelete: 'cascade' }),
     title: text('title').notNull().default('New chat'),
     status: text('status').$type<ChatThreadStatus>().notNull().default('active'),
+    lastModelId: text('last_model_id'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
     lastEditedAt: integer('last_edited_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   },

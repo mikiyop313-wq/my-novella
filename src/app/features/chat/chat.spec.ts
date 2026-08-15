@@ -34,6 +34,7 @@ function makeThreadDetail(overrides: Partial<ChatThreadDetailDto> = {}): ChatThr
     bookId: 'book-1',
     title: 'Draft chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     messages: [],
@@ -48,6 +49,7 @@ function makeThread(overrides: Partial<ChatThreadDto> = {}): ChatThreadDto {
     bookId: 'book-1',
     title: 'Draft chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -96,6 +98,7 @@ describe('Chat', () => {
     openThread: ReturnType<typeof vi.fn>;
     closeThread: ReturnType<typeof vi.fn>;
     createThread: ReturnType<typeof vi.fn>;
+    updateThread: ReturnType<typeof vi.fn>;
     sendMessage: ReturnType<typeof vi.fn>;
     createMessageBranch: ReturnType<typeof vi.fn>;
     createAssistantMessage: ReturnType<typeof vi.fn>;
@@ -281,6 +284,11 @@ describe('Chat', () => {
         const thread = makeThread();
         selectedThread = { ...thread, messages: [], branchSelections: [] };
         return thread;
+      }),
+      updateThread: vi.fn(async (id: string, data: Partial<ChatThreadDto>) => {
+        if (selectedThread?.id === id) {
+          selectedThread = { ...selectedThread, ...data };
+        }
       }),
       sendMessage: vi.fn(async (content: string) => {
         const message = makeMessage({ content });
@@ -581,17 +589,7 @@ describe('Chat', () => {
   it('restores the last model used in an opened thread', async () => {
     chatStore.openThread.mockImplementation(async () => {
       selectedThread = makeThreadDetail({
-        messages: [
-          makeMessage({ id: 'user-1' }),
-          makeMessage({
-            id: 'assistant-1',
-            parentMessageId: 'user-1',
-            role: 'assistant',
-            position: 1,
-            modelId: 'openrouter/test-model',
-            provider: 'openrouter',
-          }),
-        ],
+        lastModelId: 'openrouter/test-model',
       });
     });
 
@@ -680,6 +678,102 @@ describe('Chat', () => {
     expect(component.isSendButtonDisabled()).toBe(true);
   });
 
+  it('restores the model saved on an opened thread', async () => {
+    currentBookId = 'book-1';
+    selectedThread = makeThreadDetail({ lastModelId: 'openrouter/test-model' });
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    expect(component.selectedModelId()).toBe('openrouter/test-model');
+  });
+
+  it('persists model picker changes on the selected thread', async () => {
+    currentBookId = 'book-1';
+    selectedThread = makeThreadDetail();
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    await component.onModelSelectionChange('openrouter/test-model');
+
+    expect(component.selectedModelId()).toBe('openrouter/test-model');
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', {
+      lastModelId: 'openrouter/test-model',
+    });
+  });
+
+  it('persists an unsaved chat model after the first message creates its thread', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    await component.onModelSelectionChange('openrouter/test-model');
+    expect(chatStore.updateThread).not.toHaveBeenCalled();
+    expect(component.hasSelectedModel()).toBe(true);
+
+    setComposerValue('Start the thread');
+    await component.sendPrompt();
+
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start the thread');
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', {
+      lastModelId: 'openrouter/test-model',
+    });
+  });
+
+  it('blocks message editing and retrying when no model is selected', async () => {
+    currentBookId = 'book-1';
+    const user = makeMessage({ id: 'user-1' });
+    const assistant = makeMessage({
+      id: 'assistant-1',
+      parentMessageId: 'user-1',
+      role: 'assistant',
+      position: 1,
+    });
+    selectedThread = makeThreadDetail({ messages: [user, assistant] });
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    component.editMessage('user-1');
+    await component.retryMessage('assistant-1');
+    fixture.detectChanges();
+
+    expect(component.editingMessageId).toBeNull();
+    expect(chatStore.createAssistantMessage).not.toHaveBeenCalled();
+    const editButton = fixture.nativeElement.querySelector(
+      '.message-actions .action-btn[title="Edit"]',
+    ) as HTMLButtonElement;
+    const retryButton = fixture.nativeElement.querySelector(
+      '.message-actions .action-btn[title="Retry"]',
+    ) as HTMLButtonElement;
+    expect(editButton.disabled).toBe(true);
+    expect(retryButton.disabled).toBe(true);
+  });
+
   it('starts an unsaved new chat without creating a thread', async () => {
     await createComponent({
       snapshot: { paramMap: convertToParamMap({}) },
@@ -691,12 +785,14 @@ describe('Chat', () => {
       },
     });
 
+    component.selectedModelId.set('openrouter/test-model');
     await component.startNewConversation();
 
     expect(chatStore.closeThread).toHaveBeenCalled();
     expect(chatStore.createThread).not.toHaveBeenCalled();
     expect(component.hasActiveConversation).toBe(true);
     expect(component.selectedThreadId).toBeNull();
+    expect(component.selectedModelId()).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith(['/workspace', 'book-1', 'thread', 'new-chat'], { replaceUrl: false });
   });
 
@@ -786,7 +882,7 @@ describe('Chat', () => {
           status: 'active',
           prose: null,
           summary: null,
-          wordCount: 0,
+          wordCount: 1,
           pointOfViewOverride: null,
           povCharacterIdOverride: null,
         }],

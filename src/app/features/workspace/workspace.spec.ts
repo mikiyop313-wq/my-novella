@@ -16,6 +16,7 @@ function makeThread(overrides: Partial<ChatThreadDetailDto> = {}): ChatThreadDet
     bookId: 'book-1',
     title: 'Draft chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     messages: [],

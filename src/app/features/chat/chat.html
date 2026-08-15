@@ -167,7 +167,8 @@
                   (keydown.meta.enter)="saveMessageEdit(message.id, messageEditInput.value)"></textarea>
                 <div class="message-edit-actions">
                   <button type="button" class="message-edit-btn" (click)="cancelMessageEdit()">Cancel</button>
-                  <button type="button" class="message-edit-btn primary" [disabled]="!messageEditInput.value.trim()"
+                  <button type="button" class="message-edit-btn primary"
+                    [disabled]="!messageEditInput.value.trim() || isPromptSubmitDisabled()"
                     (click)="saveMessageEdit(message.id, messageEditInput.value)">Save</button>
                 </div>
                 } @else if (hasMessageContent(message)) {
@@ -304,7 +305,7 @@
           <div class="chat-input-footer">
             <app-autocomplete-dropdown [sections]="modelDropdownSections()" [selectedValue]="selectedModelId()"
               placeholder="Select model" searchPlaceholder="Search models..." [closeOnOutsideScroll]="true"
-              (selectionChange)="selectedModelId.set($event)" customDropdownClass="chat-model-minimal">
+              (selectionChange)="onModelSelectionChange($any($event))" customDropdownClass="chat-model-minimal">
             </app-autocomplete-dropdown>
 
             <button class="reasoning-toggle" [class.is-enabled]="reasoningMode()" [disabled]="!supportsReasoning()"

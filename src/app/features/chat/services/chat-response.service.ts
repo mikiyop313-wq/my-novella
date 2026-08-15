@@ -304,28 +304,6 @@ export class ChatResponseService {
     });
   }
 
-  /** Resolves the matching selector ID for the most recent assistant response. */
-  getLastUsedModelId(messages: ChatMessageDetailDto[]): string | null {
-    const lastAssistantMessage = [...messages]
-      .reverse()
-      .find((message) => message.role === 'assistant' && !!message.modelId);
-
-    if (!lastAssistantMessage?.modelId) return null;
-
-    const savedModelId = lastAssistantMessage.modelId;
-    const savedProvider = lastAssistantMessage.provider;
-    const matchingModel = this.aiStore.models().find((model) => {
-      const target = resolveAiModelTarget(model);
-      return target.provider === savedProvider && target.modelId === savedModelId;
-    });
-
-    return (
-      matchingModel?.id ??
-      this.getDirectModelSelectorId(savedProvider, savedModelId) ??
-      savedModelId
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Private Helpers
   // ---------------------------------------------------------------------------
@@ -486,12 +464,6 @@ export class ChatResponseService {
     }
 
     return resolveAiModelTarget(selectedModel);
-  }
-
-  private getDirectModelSelectorId(provider: string | null, modelId: string): string | null {
-    if (provider === 'openai') return `openai/${modelId}`;
-    if (provider === 'gemini' || provider === 'google') return `gemini/${modelId}`;
-    return null;
   }
 
   private getReasoningSummary(reasoningSummary: string): string | null {

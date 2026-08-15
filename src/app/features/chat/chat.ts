@@ -178,6 +178,12 @@ export class Chat implements OnInit, OnDestroy {
     })
   ));
 
+  readonly hasSelectedModel = computed(() => {
+    const selectedModelId = this.selectedModelId();
+    return !!selectedModelId
+      && this.aiStore.models().some((model) => model.id === selectedModelId);
+  });
+
   readonly supportsReasoning = computed(() => {
     const modelId = this.selectedModelId();
     return !!modelId && this.aiStore.models()
@@ -247,6 +253,7 @@ export class Chat implements OnInit, OnDestroy {
         && !this.aiStore.models().some((model) => model.id === selectedModelId)
       ) {
         this.selectedModelId.set(null);
+        this.editingMessageId = null;
       }
     });
 
@@ -333,6 +340,8 @@ export class Chat implements OnInit, OnDestroy {
     this.chatStore.closeThread();
     this.hasActiveConversation = true;
     this.selectedThreadId = null;
+    this.selectedModelId.set(null);
+    this.reasoningMode.set(false);
 
     if (!this.isDetachedMode) {
       await this.navigateToNewChat(replaceUrl);
@@ -520,14 +529,11 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   isPromptSubmitDisabled(): boolean {
-    return this.chatStore.isSaving() || this.isAiResponseActive();
+    return !this.hasSelectedModel() || this.chatStore.isSaving() || this.isAiResponseActive();
   }
 
   isSendButtonDisabled(): boolean {
-    const selectedModelId = this.selectedModelId();
-    return !selectedModelId
-      || !this.aiStore.models().some((model) => model.id === selectedModelId)
-      || this.isPromptSubmitDisabled();
+    return this.isPromptSubmitDisabled();
   }
 
   isSendOrStopDisabled(): boolean {
@@ -540,6 +546,18 @@ export class Chat implements OnInit, OnDestroy {
     if (this.supportsReasoning()) {
       this.reasoningMode.update((enabled) => !enabled);
     }
+  }
+
+  async onModelSelectionChange(modelId: string | null): Promise<void> {
+    this.selectedModelId.set(modelId);
+    if (!modelId) {
+      this.editingMessageId = null;
+    }
+
+    const thread = this.chatStore.selectedThread();
+    if (!thread) return;
+
+    await this.chatStore.updateThread(thread.id, { lastModelId: modelId });
   }
 
   openComposerKeyword(event: MarkdownKeywordClick): void {
@@ -605,8 +623,15 @@ export class Chat implements OnInit, OnDestroy {
     const responseSettings = this.getResponseSettings();
     if (!responseSettings) return;
 
+    const isUnsavedChat = this.chatStore.selectedThread() === null;
     const userMessage = await this.chatStore.sendMessage(content);
     if (!userMessage || this.chatStore.error()) return;
+
+    if (isUnsavedChat && responseSettings.selectedModelId) {
+      await this.chatStore.updateThread(userMessage.threadId, {
+        lastModelId: responseSettings.selectedModelId,
+      });
+    }
 
     this.composerValue.set('');
 
@@ -642,7 +667,7 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   editMessage(messageId: string): void {
-    if (this.chatStore.isSaving() || this.isAiResponseActive()) return;
+    if (this.isPromptSubmitDisabled()) return;
 
     const message = this.chatStore.visibleMessages().find((item) => item.id === messageId);
     if (!message || message.role !== 'user') return;
@@ -661,7 +686,7 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   async saveMessageEdit(messageId: string, content: string): Promise<void> {
-    if (this.editingMessageId !== messageId || this.chatStore.isSaving() || this.isAiResponseActive()) return;
+    if (this.editingMessageId !== messageId || this.isPromptSubmitDisabled()) return;
 
     const message = this.chatStore.visibleMessages().find((item) => item.id === messageId);
     const trimmedContent = content.trim();
@@ -716,6 +741,8 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   async retryMessage(messageId: string): Promise<void> {
+    if (this.isPromptSubmitDisabled()) return;
+
     const responseSettings = this.getResponseSettings();
     if (!responseSettings) return;
 
@@ -795,6 +822,8 @@ export class Chat implements OnInit, OnDestroy {
     if (this.isNewChatThreadId(threadId) || isNewChatRoute) {
       this.selectedThreadId = null;
       this.hasActiveConversation = true;
+      this.selectedModelId.set(null);
+      this.reasoningMode.set(false);
       return;
     }
 
@@ -836,6 +865,10 @@ export class Chat implements OnInit, OnDestroy {
       const hadSavedThreadOpen = this.selectedThreadId !== null;
       this.hasActiveConversation = true;
       this.selectedThreadId = null;
+      if (hadSavedThreadOpen) {
+        this.selectedModelId.set(null);
+        this.reasoningMode.set(false);
+      }
       if (hadSavedThreadOpen || !this.chatStore.selectedThread()) {
         this.chatStore.closeThread();
       }
@@ -844,8 +877,13 @@ export class Chat implements OnInit, OnDestroy {
 
     if (!threadId) {
       if (this.isNewChatRoute()) {
+        const hadSavedThreadOpen = this.selectedThreadId !== null;
         this.hasActiveConversation = true;
         this.selectedThreadId = null;
+        if (hadSavedThreadOpen) {
+          this.selectedModelId.set(null);
+          this.reasoningMode.set(false);
+        }
         this.chatStore.closeThread();
         return;
       }
@@ -859,6 +897,8 @@ export class Chat implements OnInit, OnDestroy {
     if (this.chatStore.selectedThread()?.id === threadId) {
       this.selectedThreadId = threadId;
       this.hasActiveConversation = true;
+      this.selectedModelId.set(this.chatStore.selectedThread()?.lastModelId ?? null);
+      this.reasoningMode.set(false);
       return;
     }
 
@@ -880,7 +920,7 @@ export class Chat implements OnInit, OnDestroy {
       return;
     }
 
-    this.selectedModelId.set(this.response.getLastUsedModelId(this.chatStore.visibleMessages()));
+    this.selectedModelId.set(this.chatStore.selectedThread()?.lastModelId ?? null);
     this.reasoningMode.set(false);
   }
 

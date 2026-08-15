@@ -40,6 +40,7 @@ function makeThreadDetail(overrides: Partial<ChatThreadDetailDto> = {}): ChatThr
     bookId: 'book-1',
     title: 'Draft chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     messages: [],
@@ -399,16 +400,6 @@ describe('ChatResponseService', () => {
       branchGroupId: 'assistant-branch',
     }));
     expect(chatStore.selectMessageBranch).toHaveBeenCalledWith('assistant-1');
-  });
-
-  it('restores selector IDs for OpenRouter and direct-provider messages', () => {
-    expect(service.getLastUsedModelId([
-      makeMessage({ role: 'assistant', modelId: 'openrouter/test-model', provider: 'openrouter' }),
-    ])).toBe('openrouter/test-model');
-
-    expect(service.getLastUsedModelId([
-      makeMessage({ role: 'assistant', modelId: 'gpt-4o-mini', provider: 'openai' }),
-    ])).toBe('openai/gpt-4o-mini');
   });
 
   it('stops an active response through the stream service', async () => {
