@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
+  listGlobal: vi.fn(),
   listAvailableForBook: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('electron', () => ({
 
 vi.mock('../../../db/repositories/system-prompt.repository', () => ({
   systemPromptRepository: {
+    listGlobal: mocks.listGlobal,
     listAvailableForBook: mocks.listAvailableForBook,
     create: mocks.create,
     update: mocks.update,
@@ -57,22 +59,30 @@ describe('system prompt IPC handlers', () => {
       ownership: { scope: 'book' as const, bookId: 'book-1' },
     };
 
+    await mocks.handlers.get('system-prompts:list-global')?.({});
     await mocks.handlers.get('system-prompts:list-available')?.({}, { bookId: 'book-1' });
     await mocks.handlers.get('system-prompts:create')?.({}, { data: createData });
     await mocks.handlers.get('system-prompts:update')?.({}, { id: 'preset-1', data: updateData });
     await mocks.handlers.get('system-prompts:delete')?.({}, { id: 'preset-1' });
     await mocks.handlers.get('system-prompts:list-active')?.({}, { bookId: 'book-1' });
-    await mocks.handlers.get('system-prompts:set-active')?.({}, {
-      bookId: 'book-1',
-      category: 'chat',
-      presetId: 'preset-1',
-    });
-    await mocks.handlers.get('system-prompts:reset-active')?.({}, {
-      bookId: 'book-1',
-      category: 'chat',
-    });
+    await mocks.handlers.get('system-prompts:set-active')?.(
+      {},
+      {
+        bookId: 'book-1',
+        category: 'chat',
+        presetId: 'preset-1',
+      },
+    );
+    await mocks.handlers.get('system-prompts:reset-active')?.(
+      {},
+      {
+        bookId: 'book-1',
+        category: 'chat',
+      },
+    );
 
     expect([...mocks.handlers.keys()]).toEqual([
+      'system-prompts:list-global',
       'system-prompts:list-available',
       'system-prompts:create',
       'system-prompts:update',
@@ -81,6 +91,7 @@ describe('system prompt IPC handlers', () => {
       'system-prompts:set-active',
       'system-prompts:reset-active',
     ]);
+    expect(mocks.listGlobal).toHaveBeenCalledOnce();
     expect(mocks.listAvailableForBook).toHaveBeenCalledWith('book-1');
     expect(mocks.create).toHaveBeenCalledWith(createData);
     expect(mocks.update).toHaveBeenCalledWith('preset-1', updateData);

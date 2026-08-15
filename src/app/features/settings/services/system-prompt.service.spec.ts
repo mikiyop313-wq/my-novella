@@ -39,23 +39,26 @@ describe('SystemPromptService', () => {
     };
     invoke
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ id: 'preset-1' })
       .mockResolvedValueOnce({ id: 'preset-1' })
       .mockResolvedValueOnce({ success: true });
 
+    await service.listGlobal();
     await service.listAvailable('book-1');
     await service.create(createData);
     await service.update('preset-1', updateData);
     await service.delete('preset-1');
 
-    expect(invoke).toHaveBeenNthCalledWith(1, 'system-prompts:list-available', {
+    expect(invoke).toHaveBeenNthCalledWith(1, 'system-prompts:list-global');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'system-prompts:list-available', {
       bookId: 'book-1',
     });
-    expect(invoke).toHaveBeenNthCalledWith(2, 'system-prompts:create', { data: createData });
-    expect(invoke).toHaveBeenNthCalledWith(3, 'system-prompts:update', {
+    expect(invoke).toHaveBeenNthCalledWith(3, 'system-prompts:create', { data: createData });
+    expect(invoke).toHaveBeenNthCalledWith(4, 'system-prompts:update', {
       id: 'preset-1',
       data: updateData,
     });
-    expect(invoke).toHaveBeenNthCalledWith(4, 'system-prompts:delete', { id: 'preset-1' });
+    expect(invoke).toHaveBeenNthCalledWith(5, 'system-prompts:delete', { id: 'preset-1' });
   });
 });

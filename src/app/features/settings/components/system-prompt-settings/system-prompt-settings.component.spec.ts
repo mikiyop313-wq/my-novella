@@ -17,6 +17,7 @@ import { SystemPromptSettingsComponent } from './system-prompt-settings.componen
 describe('SystemPromptSettingsComponent', () => {
   let fixture: ComponentFixture<SystemPromptSettingsComponent>;
   let component: SystemPromptSettingsComponent;
+  let listGlobal: ReturnType<typeof vi.fn>;
   let listAvailable: ReturnType<typeof vi.fn>;
   let create: ReturnType<typeof vi.fn>;
   let update: ReturnType<typeof vi.fn>;
@@ -43,6 +44,7 @@ describe('SystemPromptSettingsComponent', () => {
   });
 
   beforeEach(async () => {
+    listGlobal = vi.fn().mockResolvedValue([globalPreset]);
     listAvailable = vi.fn().mockResolvedValue([savedScenePreset, globalPreset]);
     create = vi.fn();
     update = vi.fn();
@@ -63,7 +65,7 @@ describe('SystemPromptSettingsComponent', () => {
       providers: [
         {
           provide: SystemPromptService,
-          useValue: { listAvailable, create, update, delete: deletePreset },
+          useValue: { listGlobal, listAvailable, create, update, delete: deletePreset },
         },
         {
           provide: SystemPromptSelectionService,
@@ -108,6 +110,43 @@ describe('SystemPromptSettingsComponent', () => {
     expect(element.querySelector('.preset-option .preset-meta')?.textContent).toContain(
       'Built-in default',
     );
+  });
+
+  it('supports a library-only global preset manager without book activation controls', async () => {
+    listGlobal.mockClear();
+    getActivePresetIds.mockClear();
+
+    const globalFixture = TestBed.createComponent(SystemPromptSettingsComponent);
+    globalFixture.componentRef.setInput('globalOnly', true);
+    globalFixture.detectChanges();
+    await settle();
+    globalFixture.detectChanges();
+
+    const globalComponent = globalFixture.componentInstance;
+    const element = globalFixture.nativeElement as HTMLElement;
+    expect(listGlobal).toHaveBeenCalledOnce();
+    expect(getActivePresetIds).not.toHaveBeenCalled();
+    expect(globalComponent.filteredPresets().map((preset) => preset.id)).toEqual([
+      'default-assistant',
+      'global-chat',
+    ]);
+    expect(element.querySelector('.content-title')?.textContent).toContain('Global Prompts');
+    expect(element.querySelector('.scope-selector')).toBeNull();
+    expect(element.querySelector('.use-preset-button')).toBeNull();
+    expect(element.querySelector('.in-use-badge')).toBeNull();
+
+    const created = presetDto({
+      id: 'library-global',
+      name: 'Untitled Preset',
+      scope: 'global',
+      bookId: null,
+    });
+    create.mockResolvedValueOnce(created);
+    await globalComponent.addPreset();
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ scope: 'global' }));
+    expect(create.mock.calls.at(-1)?.[0]).not.toHaveProperty('bookId');
+
+    globalFixture.destroy();
   });
 
   it('switches to current-book presets and keeps built-ins global-only', () => {

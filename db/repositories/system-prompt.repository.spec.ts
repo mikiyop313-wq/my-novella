@@ -110,6 +110,15 @@ describe('SystemPromptRepository', () => {
     expect(available.map(({ id }) => id).sort()).toEqual([global.id, firstBook.id].sort());
   });
 
+  it('lists only global presets without a book context', async () => {
+    const global = await repository.create(globalPreset('Shared Editor', 'rephrase'));
+    await repository.create(bookPreset('book-1', 'Book One', 'summary'));
+
+    const available = await repository.listGlobal();
+
+    expect(available.map(({ id }) => id)).toEqual([global.id]);
+  });
+
   it('moves presets between global and book ownership', async () => {
     const created = await repository.create(globalPreset('Movable', 'chat'));
 
@@ -186,12 +195,15 @@ describe('SystemPromptRepository', () => {
     const otherBook = await repository.create(bookPreset('book-2', 'Other Book', 'chat'));
     const summary = await repository.create(globalPreset('Summary', 'summary'));
 
-    await expect(repository.setActivePreset('book-1', 'chat', otherBook.id))
-      .rejects.toThrow('another book');
-    await expect(repository.setActivePreset('book-1', 'chat', summary.id))
-      .rejects.toThrow('category');
-    await expect(repository.setActivePreset('book-1', 'chat', 'missing'))
-      .rejects.toThrow('does not exist');
+    await expect(repository.setActivePreset('book-1', 'chat', otherBook.id)).rejects.toThrow(
+      'another book',
+    );
+    await expect(repository.setActivePreset('book-1', 'chat', summary.id)).rejects.toThrow(
+      'category',
+    );
+    await expect(repository.setActivePreset('book-1', 'chat', 'missing')).rejects.toThrow(
+      'does not exist',
+    );
   });
 
   it('cascades active selections when a preset or book is deleted', async () => {
@@ -203,8 +215,9 @@ describe('SystemPromptRepository', () => {
     expect((await repository.listActivePresetIdsForBook('book-2')).chat).toBe(global.id);
 
     await repository.delete(global.id);
-    expect((await repository.listActivePresetIdsForBook('book-2')).chat)
-      .toBe(BUILT_IN_SYSTEM_PROMPT_PRESETS.chat.id);
+    expect((await repository.listActivePresetIdsForBook('book-2')).chat).toBe(
+      BUILT_IN_SYSTEM_PROMPT_PRESETS.chat.id,
+    );
   });
 
   it('cascades book presets while retaining global presets', async () => {

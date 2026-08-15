@@ -13,6 +13,10 @@ import { ElectronService } from '../../../core/services/electron.service';
 export class SystemPromptService {
   private readonly electronService = inject(ElectronService);
 
+  async listGlobal(): Promise<SystemPromptPresetDto[]> {
+    return await this.electronService.invoke('system-prompts:list-global');
+  }
+
   async listAvailable(bookId: string): Promise<SystemPromptPresetDto[]> {
     return await this.electronService.invoke('system-prompts:list-available', { bookId });
   }

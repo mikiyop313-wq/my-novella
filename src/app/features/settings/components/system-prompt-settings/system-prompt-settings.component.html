@@ -1,39 +1,47 @@
 <div class="settings-section-panel system-prompts-panel">
   <header class="content-header">
     <div class="content-header-copy">
-      <h1 class="content-title">System Prompts</h1>
+      <h1 class="content-title">{{ globalOnly() ? 'Global Prompts' : 'System Prompts' }}</h1>
       <p class="content-subtitle">
-        @if (selectedScope() === 'global') {
+        @if (globalOnly()) {
+          Manage reusable presets available to every book.
+        } @else if (selectedScope() === 'global') {
           Manage reusable presets available to every book. Activating one applies it to this book.
         } @else {
           Manage prompt presets available only to this book.
         }
       </p>
     </div>
-    <div class="scope-selector" role="radiogroup" aria-label="Prompt preset library">
-      <label class="scope-option" [class.is-selected]="selectedScope() === 'global'">
-        <input
-          type="radio"
-          name="prompt-preset-library"
-          value="global"
-          [checked]="selectedScope() === 'global'"
-          [disabled]="isCreating() || deletingPresetId() !== null || activatingPresetId() !== null"
-          (change)="changeScope('global')"
-        />
-        <span>Global</span>
-      </label>
-      <label class="scope-option" [class.is-selected]="selectedScope() === 'book'">
-        <input
-          type="radio"
-          name="prompt-preset-library"
-          value="book"
-          [checked]="selectedScope() === 'book'"
-          [disabled]="isCreating() || deletingPresetId() !== null || activatingPresetId() !== null"
-          (change)="changeScope('book')"
-        />
-        <span>Book</span>
-      </label>
-    </div>
+    @if (!globalOnly()) {
+      <div class="scope-selector" role="radiogroup" aria-label="Prompt preset library">
+        <label class="scope-option" [class.is-selected]="selectedScope() === 'global'">
+          <input
+            type="radio"
+            name="prompt-preset-library"
+            value="global"
+            [checked]="selectedScope() === 'global'"
+            [disabled]="
+              isCreating() || deletingPresetId() !== null || activatingPresetId() !== null
+            "
+            (change)="changeScope('global')"
+          />
+          <span>Global</span>
+        </label>
+        <label class="scope-option" [class.is-selected]="selectedScope() === 'book'">
+          <input
+            type="radio"
+            name="prompt-preset-library"
+            value="book"
+            [checked]="selectedScope() === 'book'"
+            [disabled]="
+              isCreating() || deletingPresetId() !== null || activatingPresetId() !== null
+            "
+            (change)="changeScope('book')"
+          />
+          <span>Book</span>
+        </label>
+      </div>
+    }
   </header>
 
   @if (isLoading()) {
@@ -41,7 +49,9 @@
       <span class="prompt-spinner" aria-hidden="true"></span>
       <div>
         <strong>Loading system prompts</strong>
-        <p>Preparing global and book presets.</p>
+        <p>
+          {{ globalOnly() ? 'Preparing global presets.' : 'Preparing global and book presets.' }}
+        </p>
       </div>
     </div>
   } @else if (loadError()) {
@@ -108,7 +118,7 @@
               type="button"
               role="option"
               [class.is-selected]="preset.id === selectedPresetId()"
-              [class.is-in-use]="isPresetInUse(preset.id, preset.category)"
+              [class.is-in-use]="!globalOnly() && isPresetInUse(preset.id, preset.category)"
               [attr.aria-selected]="preset.id === selectedPresetId()"
               (click)="selectPreset(preset.id)"
             >
@@ -138,7 +148,7 @@
                   }}
                 </span>
               </span>
-              @if (isPresetInUse(preset.id, preset.category)) {
+              @if (!globalOnly() && isPresetInUse(preset.id, preset.category)) {
                 <span class="in-use-badge">
                   <svg
                     viewBox="0 0 24 24"
@@ -188,39 +198,41 @@
               <h2 id="preset-editor-heading">{{ preset.name || 'Untitled Preset' }}</h2>
             </div>
             <div class="preset-actions">
-              <button
-                class="use-preset-button"
-                type="button"
-                [class.is-active]="isPresetInUse(preset.id, preset.category)"
-                [disabled]="
-                  isPresetInUse(preset.id, preset.category) ||
-                  activatingPresetId() !== null ||
-                  isPresetPendingOrSaving(preset.id) ||
-                  isCreating() ||
-                  deletingPresetId() !== null
-                "
-                [attr.aria-pressed]="isPresetInUse(preset.id, preset.category)"
-                (click)="useSelectedPreset()"
-              >
-                @if (activatingPresetId() === preset.id) {
-                  Activating…
-                } @else if (isPresetInUse(preset.id, preset.category)) {
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.4"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="m5 12 4 4L19 6"></path>
-                  </svg>
-                  In use
-                } @else {
-                  Use preset
-                }
-              </button>
+              @if (!globalOnly()) {
+                <button
+                  class="use-preset-button"
+                  type="button"
+                  [class.is-active]="isPresetInUse(preset.id, preset.category)"
+                  [disabled]="
+                    isPresetInUse(preset.id, preset.category) ||
+                    activatingPresetId() !== null ||
+                    isPresetPendingOrSaving(preset.id) ||
+                    isCreating() ||
+                    deletingPresetId() !== null
+                  "
+                  [attr.aria-pressed]="isPresetInUse(preset.id, preset.category)"
+                  (click)="useSelectedPreset()"
+                >
+                  @if (activatingPresetId() === preset.id) {
+                    Activating…
+                  } @else if (isPresetInUse(preset.id, preset.category)) {
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.4"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="m5 12 4 4L19 6"></path>
+                    </svg>
+                    In use
+                  } @else {
+                    Use preset
+                  }
+                </button>
+              }
               <button
                 class="icon-action"
                 type="button"

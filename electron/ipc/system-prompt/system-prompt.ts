@@ -12,6 +12,15 @@ import type {
 } from '../../../shared/models/system-prompt.model';
 
 export function setupSystemPromptHandlers(): void {
+  ipcMain.handle('system-prompts:list-global', async () => {
+    try {
+      return await systemPromptRepository.listGlobal();
+    } catch (error) {
+      console.error('Failed to list global system prompt presets:', error);
+      throw error;
+    }
+  });
+
   ipcMain.handle(
     'system-prompts:list-available',
     async (_, { bookId }: ListAvailableSystemPromptPresetsPayload) => {

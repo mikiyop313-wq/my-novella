@@ -64,7 +64,8 @@ const AUTOSAVE_DELAY_MS = 500;
   styleUrl: './system-prompt-settings.component.scss',
 })
 export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
-  readonly bookId = input.required<string>();
+  readonly bookId = input<string>();
+  readonly globalOnly = input(false);
 
   private readonly systemPromptService = inject(SystemPromptService);
   private readonly systemPromptSelectionService = inject(SystemPromptSelectionService);
@@ -127,10 +128,17 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     this.loadError.set(null);
 
     try {
-      const [available, activePresetIds] = await Promise.all([
-        this.systemPromptService.listAvailable(this.bookId()),
-        this.systemPromptSelectionService.getActivePresetIds(this.bookId()),
-      ]);
+      const bookId = this.bookId();
+      if (!this.globalOnly() && !bookId) {
+        throw new Error('A book is required to load book prompt presets.');
+      }
+
+      const [available, activePresetIds] = this.globalOnly()
+        ? [await this.systemPromptService.listGlobal(), null]
+        : await Promise.all([
+            this.systemPromptService.listAvailable(bookId!),
+            this.systemPromptSelectionService.getActivePresetIds(bookId!),
+          ]);
       const savedPresets = available.map(mapDtoToPreset);
 
       this.confirmedPresets.clear();
@@ -156,6 +164,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   async useSelectedPreset(): Promise<void> {
     const selected = this.selectedPreset();
     if (
+      this.globalOnly() ||
       !selected ||
       this.isPresetInUse(selected.id, selected.category) ||
       this.activatingPresetId() !== null ||
@@ -170,11 +179,11 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     try {
       const activePresetIds = selected.isBuiltIn
         ? await this.systemPromptSelectionService.resetActivePreset(
-            this.bookId(),
+            this.requiredBookId(),
             selected.category,
           )
         : await this.systemPromptSelectionService.setActivePreset(
-            this.bookId(),
+            this.requiredBookId(),
             selected.category,
             selected.id,
           );
@@ -192,6 +201,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
 
   changeScope(scope: SystemPromptScope): void {
     if (
+      this.globalOnly() ||
       (scope !== 'global' && scope !== 'book') ||
       scope === this.selectedScope() ||
       this.isCreating() ||
@@ -330,11 +340,15 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     if (selected.scope === 'global') {
       this.systemPromptSelectionService.invalidateAll();
     } else {
-      this.systemPromptSelectionService.invalidate(this.bookId());
+      this.systemPromptSelectionService.invalidate(this.requiredBookId());
+    }
+    if (this.globalOnly()) {
+      this.deletingPresetId.set(null);
+      return;
     }
     try {
       this.activePresetIds.set(
-        await this.systemPromptSelectionService.getActivePresetIds(this.bookId(), true),
+        await this.systemPromptSelectionService.getActivePresetIds(this.requiredBookId(), true),
       );
     } catch (error) {
       const message = errorMessage(error, 'Unable to refresh the active system prompt preset.');
@@ -484,6 +498,12 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     return (event.target as HTMLInputElement | HTMLTextAreaElement).value;
   }
 
+  private requiredBookId(): string {
+    const bookId = this.bookId();
+    if (!bookId) throw new Error('A book is required for this prompt preset operation.');
+    return bookId;
+  }
+
   private uniqueName(baseName: string, scope: SystemPromptScope): string {
     const names = new Set(
       this.presets()
@@ -562,8 +582,10 @@ function defaultPresetIdFor(category: SystemPromptCategory): string {
   return BUILT_IN_SYSTEM_PROMPT_PRESETS[category].id;
 }
 
-function ownershipFor(scope: SystemPromptScope, bookId: string): SystemPromptOwnership {
-  return scope === 'global' ? { scope: 'global' } : { scope: 'book', bookId };
+function ownershipFor(scope: SystemPromptScope, bookId: string | undefined): SystemPromptOwnership {
+  if (scope === 'global') return { scope: 'global' };
+  if (!bookId) throw new Error('Book-scoped system prompt presets require a book ID.');
+  return { scope: 'book', bookId };
 }
 
 function isSystemPromptCategory(value: string): value is SystemPromptCategory {

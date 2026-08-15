@@ -45,6 +45,7 @@ type EditableField =
 type SettingsSection =
   | 'general'
   | 'system-prompts'
+  | 'global-prompts'
   | 'editor-display'
   | 'ai-configuration'
   | 'archive';
@@ -300,7 +301,9 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
 
     this.cancelEditing();
     this.activeView.set(
-      section === 'editor-display' || section === 'ai-configuration' ? 'general' : 'book',
+      section === 'editor-display' || section === 'ai-configuration' || section === 'global-prompts'
+        ? 'general'
+        : 'book',
     );
     this.activeSection.set(section);
   }

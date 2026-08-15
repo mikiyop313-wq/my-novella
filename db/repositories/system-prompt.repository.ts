@@ -72,6 +72,20 @@ export class SystemPromptRepository {
     return presets.map((preset) => this.mapToDto(preset));
   }
 
+  async listGlobal(): Promise<SystemPromptPresetDto[]> {
+    const presets = await db
+      .select()
+      .from(systemPromptPresets)
+      .where(eq(systemPromptPresets.scope, 'global'))
+      .orderBy(
+        asc(systemPromptPresets.category),
+        asc(systemPromptPresets.createdAt),
+        asc(systemPromptPresets.id),
+      );
+
+    return presets.map((preset) => this.mapToDto(preset));
+  }
+
   async getById(id: string): Promise<SystemPromptPresetDto | undefined> {
     const preset = await db.query.systemPromptPresets.findFirst({
       where: eq(systemPromptPresets.id, id),

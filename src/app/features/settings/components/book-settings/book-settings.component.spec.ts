@@ -211,6 +211,7 @@ describe('BookSettingsComponent', () => {
         {
           provide: SystemPromptService,
           useValue: {
+            listGlobal: vi.fn().mockResolvedValue([]),
             listAvailable: vi.fn().mockResolvedValue([]),
             create: vi.fn(),
             update: vi.fn(),
@@ -438,9 +439,17 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
     expect(element.querySelector('.settings-view-switcher')).toBeNull();
-    expect(element.querySelectorAll('.section-item')).toHaveLength(2);
+    expect(element.querySelectorAll('.section-item')).toHaveLength(3);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(getBooks).not.toHaveBeenCalled();
+
+    const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
+    expect(sections[1].textContent).toContain('Global Prompts');
+    sections[1].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeSection()).toBe('global-prompts');
+    expect(element.querySelector('.content-title')?.textContent).toContain('Global Prompts');
+    expect(element.querySelector('.scope-selector')).toBeNull();
 
     element.querySelector<HTMLButtonElement>('.settings-back-button')?.click();
     expect(navigateByUrl).toHaveBeenCalledWith('/library');
@@ -582,9 +591,7 @@ describe('BookSettingsComponent', () => {
 
     expect(toggle?.disabled).toBe(true);
     expect(toggle?.getAttribute('aria-checked')).toBe('false');
-    expect(toggle?.getAttribute('aria-describedby')).toBe(
-      'synopsis-ai-context-disabled-reason',
-    );
+    expect(toggle?.getAttribute('aria-describedby')).toBe('synopsis-ai-context-disabled-reason');
     expect(reason?.textContent).toContain('Add a synopsis to enable this setting.');
 
     component.book.set({ ...book, synopsis: 'A restored synopsis.' });
@@ -603,10 +610,7 @@ describe('BookSettingsComponent', () => {
     fixture.detectChanges();
 
     expect(component.book()?.settings?.synopsisAiContext).toBe(true);
-    expect(toastError).toHaveBeenCalledWith(
-      'Database unavailable',
-      'Settings update failed',
-    );
+    expect(toastError).toHaveBeenCalledWith('Database unavailable', 'Settings update failed');
   });
 
   it('saves a selected language', async () => {

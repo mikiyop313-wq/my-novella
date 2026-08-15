@@ -181,6 +181,37 @@
           <span class="active-indicator" aria-hidden="true"></span>
         </button>
 
+        @if (!isBookContext) {
+          <button
+            class="nav-item section-item"
+            type="button"
+            [class.is-active]="activeSection() === 'global-prompts'"
+            [attr.aria-current]="activeSection() === 'global-prompts' ? 'page' : null"
+            (click)="selectSection('global-prompts')"
+          >
+            <span class="nav-icon-wrapper" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="m16 3 1.2 2.8L20 7l-2.8 1.2L16 11l-1.2-2.8L12 7l2.8-1.2L16 3z"></path>
+                <path d="M7 12h6"></path>
+                <path d="M7 16h10"></path>
+              </svg>
+            </span>
+            <span class="nav-text">
+              <span class="nav-label">Global Prompts</span>
+              <span class="nav-sub">Reusable AI presets</span>
+            </span>
+            <span class="active-indicator" aria-hidden="true"></span>
+          </button>
+        }
+
         <button
           class="nav-item section-item"
           type="button"
@@ -786,10 +817,7 @@
                   <h3>Include synopsis in AI context</h3>
                   <p>Make the synopsis available as creative context for AI features.</p>
                   @if (!hasSynopsis(activeBook)) {
-                    <p
-                      id="synopsis-ai-context-disabled-reason"
-                      class="setting-disabled-reason"
-                    >
+                    <p id="synopsis-ai-context-disabled-reason" class="setting-disabled-reason">
                       Add a synopsis to enable this setting.
                     </p>
                   }
@@ -803,9 +831,7 @@
                     [class.is-active]="isSynopsisAiContextEnabled(activeBook)"
                     [attr.aria-checked]="isSynopsisAiContextEnabled(activeBook)"
                     [attr.aria-describedby]="
-                      !hasSynopsis(activeBook)
-                        ? 'synopsis-ai-context-disabled-reason'
-                        : null
+                      !hasSynopsis(activeBook) ? 'synopsis-ai-context-disabled-reason' : null
                     "
                     [disabled]="isSaving() || !hasSynopsis(activeBook)"
                     (click)="toggleSynopsisAiContext()"
@@ -962,6 +988,8 @@
       </div>
     } @else if (activeSection() === 'system-prompts') {
       <app-system-prompt-settings [bookId]="activeBookId()!"></app-system-prompt-settings>
+    } @else if (activeSection() === 'global-prompts') {
+      <app-system-prompt-settings [globalOnly]="true"></app-system-prompt-settings>
     } @else if (activeSection() === 'ai-configuration') {
       <app-ai-configuration-settings></app-ai-configuration-settings>
     } @else if (activeSection() === 'editor-display') {
