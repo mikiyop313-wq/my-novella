@@ -6,6 +6,7 @@ import { type Mock, vi } from 'vitest';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
+import { WorkspaceStore } from '../../../workspace/workspace.store';
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
 import { ManuscriptStore } from '../manuscript.store';
 
@@ -24,6 +25,7 @@ describe('ManuscriptStore structural insertion', () => {
   };
   let runInsertion: ReturnType<typeof vi.fn>;
   let insertContentAt: Mock<(...args: unknown[]) => void>;
+  let resetLastManuscriptRouteForRemovedEntity: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     manuscriptStructureService = {
@@ -37,6 +39,7 @@ describe('ManuscriptStore structural insertion', () => {
       addChapterStructure: vi.fn(),
       addScene: vi.fn(),
     };
+    resetLastManuscriptRouteForRemovedEntity = vi.fn();
 
     TestBed.configureTestingModule({
       providers: [
@@ -47,6 +50,13 @@ describe('ManuscriptStore structural insertion', () => {
           useValue: workspaceBookStore,
         },
         { provide: ManuscriptStructureService, useValue: manuscriptStructureService },
+        {
+          provide: WorkspaceStore,
+          useValue: {
+            bookId: signal<string | null>('book-1'),
+            resetLastManuscriptRouteForRemovedEntity,
+          },
+        },
       ],
     });
 
@@ -100,9 +110,9 @@ describe('ManuscriptStore structural insertion', () => {
     expect(insertContentAt).toHaveBeenCalledWith(
       { from: 0, to: 2 },
       [
-        { type: 'actHeader', attrs: { id: 'act-new', title: '', position: 1 } },
-        { type: 'chapterHeader', attrs: { id: 'chapter-new', title: '', position: 0 } },
-        { type: 'sceneSummary', attrs: { id: 'scene-new', title: 'New Scene', summary: '', position: 1 } },
+        { type: 'actHeader', attrs: { id: 'act-new', bookId: 'book-1', title: '', position: 1 } },
+        { type: 'chapterHeader', attrs: { id: 'chapter-new', actId: 'act-new', title: '', position: 0 } },
+        { type: 'sceneSummary', attrs: { id: 'scene-new', chapterId: 'chapter-new', title: 'New Scene', summary: '', position: 1 } },
         { type: 'paragraph' },
       ],
       { updateSelection: true },
@@ -136,11 +146,20 @@ describe('ManuscriptStore structural insertion', () => {
     };
     manuscriptStructureService.createChapterStructure.mockResolvedValue(created);
     store.setRouteParams('act', 'act-a');
-    store.setEditor(createEditor({ actId: 'act-a', chapterId: 'chapter-a', runInsertion }));
+    store.setEditor(createEditor({ actId: 'act-a', chapterId: 'chapter-a', insertContentAt, runInsertion }));
 
     await store.insertChapter();
 
     expect(manuscriptStructureService.createChapterStructure).toHaveBeenCalledWith('act-a');
+    expect(insertContentAt).toHaveBeenCalledWith(
+      10,
+      [
+        { type: 'chapterHeader', attrs: { id: 'chapter-new', actId: 'act-a', title: '', position: 0 } },
+        { type: 'sceneSummary', attrs: { id: 'scene-new', chapterId: 'chapter-new', title: 'New Scene', summary: '', position: 1 } },
+        { type: 'paragraph' },
+      ],
+      { updateSelection: true },
+    );
     expect(runInsertion).toHaveBeenCalledOnce();
     expect(workspaceBookStore.addChapterStructure).toHaveBeenCalledWith(created);
   });
@@ -150,11 +169,19 @@ describe('ManuscriptStore structural insertion', () => {
     manuscriptStructureService.createScene.mockResolvedValue(created);
 
     store.setRouteParams('chapter', 'chapter-a');
-    store.setEditor(createEditor({ chapterId: 'chapter-a', runInsertion }));
+    store.setEditor(createEditor({ chapterId: 'chapter-a', insertContentAt, runInsertion }));
 
     await store.insertScene();
 
     expect(runInsertion).toHaveBeenCalledOnce();
+    expect(insertContentAt).toHaveBeenCalledWith(
+      10,
+      [
+        { type: 'sceneSummary', attrs: { id: 'scene-new', chapterId: 'chapter-a', title: 'New Scene', summary: '', position: 1 } },
+        { type: 'paragraph' },
+      ],
+      { updateSelection: true },
+    );
     expect(workspaceBookStore.addScene).toHaveBeenCalledWith(created);
   });
 });

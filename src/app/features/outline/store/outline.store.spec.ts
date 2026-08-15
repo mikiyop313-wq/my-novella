@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 
 import { ActDto, ChapterDto, SceneDto } from '../../../../../shared/models/manuscript.model';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
+import { WorkspaceStore } from '../../workspace/workspace.store';
 import { OutlineStore } from './outline.store';
 
 function makeScene(overrides: Partial<SceneDto> = {}): SceneDto {
@@ -81,6 +82,7 @@ describe('OutlineStore', () => {
     updateStructurePositions: ReturnType<typeof vi.fn>;
     setContextInclusion: ReturnType<typeof vi.fn>;
   };
+  let resetLastManuscriptRouteForRemovedEntity: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     outlineService = {
@@ -100,11 +102,16 @@ describe('OutlineStore', () => {
       updateStructurePositions: vi.fn(),
       setContextInclusion: vi.fn(),
     };
+    resetLastManuscriptRouteForRemovedEntity = vi.fn();
 
     TestBed.configureTestingModule({
       providers: [
         OutlineStore,
         { provide: ManuscriptStructureService, useValue: outlineService },
+        {
+          provide: WorkspaceStore,
+          useValue: { resetLastManuscriptRouteForRemovedEntity },
+        },
       ],
     });
 
@@ -227,6 +234,16 @@ describe('OutlineStore', () => {
     const remainingChapter = store.bookHierarchy()[0].chapters?.[0];
     expect(remainingChapter).toMatchObject({ id: 'chapter-2', position: 0 });
     expect(remainingChapter?.scenes).toMatchObject([{ id: 'scene-3', position: 0 }]);
+    expect(resetLastManuscriptRouteForRemovedEntity).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      mode: 'chapter',
+      id: 'chapter-1',
+    });
+    expect(resetLastManuscriptRouteForRemovedEntity).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      mode: 'scene',
+      id: 'scene-2',
+    });
   });
 
   it('does not remove an item when delete fails', async () => {
@@ -238,6 +255,28 @@ describe('OutlineStore', () => {
 
     expect(store.bookHierarchy()).toHaveLength(1);
     expect(store.bookHierarchy()[0].id).toBe('act-1');
+    expect(resetLastManuscriptRouteForRemovedEntity).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { action: 'deleteAct' as const, mode: 'act' as const, id: 'act-1' },
+    { action: 'deleteChapter' as const, mode: 'chapter' as const, id: 'chapter-1' },
+    { action: 'deleteScene' as const, mode: 'scene' as const, id: 'scene-1' },
+    { action: 'archiveAct' as const, mode: 'act' as const, id: 'act-1' },
+    { action: 'archiveChapter' as const, mode: 'chapter' as const, id: 'chapter-1' },
+    { action: 'archiveScene' as const, mode: 'scene' as const, id: 'scene-1' },
+  ])('checks the remembered route after $action succeeds', async ({ action, mode, id }) => {
+    outlineService.getOutline.mockResolvedValueOnce([makeAct()]);
+    outlineService[action].mockResolvedValueOnce(undefined);
+    await store.enterBook('book-1');
+
+    await store[action](id);
+
+    expect(resetLastManuscriptRouteForRemovedEntity).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      mode,
+      id,
+    });
   });
 
   it('updates titles and summaries after IPC success while preserving nested children', async () => {

@@ -4,6 +4,7 @@ import { Editor } from '@tiptap/core';
 
 import { ElectronService } from '../../../core/services/electron.service';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
+import { WorkspaceStore } from '../../workspace/workspace.store';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
 import {
   ActDto,
@@ -329,8 +330,20 @@ export const ManuscriptStore = signalStore(
     store,
     electronService = inject(ElectronService),
     workspaceBookStore = inject(WorkspaceBookStore),
+    workspaceStore = inject(WorkspaceStore),
     manuscriptStructureService = inject(ManuscriptStructureService),
-  ) => ({
+  ) => {
+    const resetLastRouteForRemovedEntity = (
+      mode: Exclude<ManuscriptMode, 'book'>,
+      id: string,
+    ): void => {
+      const bookId = workspaceStore.bookId();
+      if (!bookId) return;
+
+      workspaceStore.resetLastManuscriptRouteForRemovedEntity({ bookId, mode, id });
+    };
+
+    return ({
 
     // -------------------------------------------------------------------------
     // Route / State
@@ -539,9 +552,9 @@ export const ManuscriptStore = signalStore(
         tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
         return true;
       }).insertContentAt(insertionPosition, [
-        { type: ACT_HEADER_NODE, attrs: { id: act.id, title: act.title, position: act.position } },
-        { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
-        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: ACT_HEADER_NODE, attrs: { id: act.id, bookId: act.bookId, title: act.title, position: act.position } },
+        { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, actId: chapter.actId, title: chapter.title, position: chapter.position } },
+        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, chapterId: scene.chapterId, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();
       workspaceBookStore.addActStructure(created);
@@ -575,8 +588,8 @@ export const ManuscriptStore = signalStore(
         tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
         return true;
       }).insertContentAt(endPosition, [
-        { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
-        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, actId: chapter.actId, title: chapter.title, position: chapter.position } },
+        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, chapterId: scene.chapterId, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();
       workspaceBookStore.addChapterStructure(created);
@@ -609,7 +622,7 @@ export const ManuscriptStore = signalStore(
         tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
         return true;
       }).insertContentAt(endPosition, [
-        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
+        { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, chapterId: scene.chapterId, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();
       workspaceBookStore.addScene(scene);
@@ -625,6 +638,7 @@ export const ManuscriptStore = signalStore(
       if (!editor) return;
 
       deleteNodeRangeInDoc({ editor, targetType: ACT_HEADER_NODE, id, stopTypes: [ACT_HEADER_NODE] });
+      resetLastRouteForRemovedEntity('act', id);
     },
 
     deleteChapter(id: string): void {
@@ -637,6 +651,7 @@ export const ManuscriptStore = signalStore(
         id,
         stopTypes: [CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
       });
+      resetLastRouteForRemovedEntity('chapter', id);
     },
 
     deleteScene(id: string): void {
@@ -649,6 +664,7 @@ export const ManuscriptStore = signalStore(
         id,
         stopTypes: [SCENE_SUMMARY_NODE, CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
       });
+      resetLastRouteForRemovedEntity('scene', id);
     },
 
     async archiveAct(id: string): Promise<void> {
@@ -663,6 +679,7 @@ export const ManuscriptStore = signalStore(
         stopTypes: [ACT_HEADER_NODE],
         skipSaver: true,
       });
+      resetLastRouteForRemovedEntity('act', id);
     },
 
     async archiveChapter(id: string): Promise<void> {
@@ -677,6 +694,7 @@ export const ManuscriptStore = signalStore(
         stopTypes: [CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
         skipSaver: true,
       });
+      resetLastRouteForRemovedEntity('chapter', id);
     },
 
     async archiveScene(id: string): Promise<void> {
@@ -691,6 +709,8 @@ export const ManuscriptStore = signalStore(
         stopTypes: [SCENE_SUMMARY_NODE, CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
         skipSaver: true,
       });
+      resetLastRouteForRemovedEntity('scene', id);
     },
-  }))
+    });
+  }),
 );

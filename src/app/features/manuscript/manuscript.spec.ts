@@ -17,6 +17,7 @@ import { ToastService } from '../../shared/services/toast.service';
 
 const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
+import { WorkspaceStore } from '../workspace/workspace.store';
 import type { ActDto } from '../../../../shared/models/manuscript.model';
 
 describe('Manuscript', () => {
@@ -393,20 +394,67 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
   });
 
+  it('indexes the first act structure inserted into an empty book', async () => {
+    electronInvoke.mockImplementation(async (channel: string) => {
+      if (channel === 'manuscript:createActStructure') {
+        return {
+          act: {
+            id: 'act-new',
+            title: 'Opening',
+            bookId: 'book-1',
+            position: 0,
+            status: 'active',
+            summary: null,
+          },
+          chapter: {
+            id: 'chapter-new',
+            title: 'Arrival',
+            actId: 'act-new',
+            position: 0,
+            status: 'active',
+            summary: null,
+          },
+          scene: {
+            id: 'scene-new',
+            title: 'The Door',
+            chapterId: 'chapter-new',
+            position: 0,
+            status: 'active',
+            summary: null,
+            prose: null,
+            wordCount: 0,
+            pointOfViewOverride: null,
+            povCharacterIdOverride: null,
+          },
+        };
+      }
+      return undefined;
+    });
+
+    await component.store.insertAct();
+
+    expect(component.indexItems()).toEqual([
+      { id: 'act-new', label: 'Act 1: Opening', type: 'act' },
+      { id: 'chapter-new', label: 'Chapter 1: Arrival', type: 'chapter' },
+      { id: 'scene-new', label: 'The Door', type: 'scene' },
+    ]);
+  });
+
   it.each([
-    { mode: 'scene' as const, id: 'scene-1', deleteEntity: 'deleteScene' as const, parentMode: 'chapter', parentId: 'chapter-1', channel: 'manuscript:deleteScene' },
-    { mode: 'chapter' as const, id: 'chapter-1', deleteEntity: 'deleteChapter' as const, parentMode: 'act', parentId: 'act-1', channel: 'manuscript:deleteChapter' },
-    { mode: 'act' as const, id: 'act-1', deleteEntity: 'deleteAct' as const, parentMode: 'book', parentId: 'book-1', channel: 'manuscript:deleteAct' },
+    { mode: 'scene' as const, id: 'scene-1', deleteEntity: 'deleteScene' as const, channel: 'manuscript:deleteScene' },
+    { mode: 'chapter' as const, id: 'chapter-1', deleteEntity: 'deleteChapter' as const, channel: 'manuscript:deleteChapter' },
+    { mode: 'act' as const, id: 'act-1', deleteEntity: 'deleteAct' as const, channel: 'manuscript:deleteAct' },
   ])('persists and navigates after deleting the active $mode', async ({
     mode,
     id,
     deleteEntity,
-    parentMode,
-    parentId,
     channel,
   }) => {
     setRemovalHierarchyAndDocument();
     component.store.setRouteParams(mode, id);
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode, id });
     routerNavigate.mockClear();
     electronInvoke.mockClear();
 
@@ -415,28 +463,33 @@ describe('Manuscript', () => {
     await vi.waitFor(() => {
       expect(electronInvoke).toHaveBeenCalledWith(channel, { id });
       expect(routerNavigate).toHaveBeenCalledWith(
-        ['/workspace', 'book-1', 'manuscript', parentMode, parentId],
+        ['/workspace', 'book-1', 'manuscript', 'book', 'book-1'],
         { replaceUrl: true },
       );
       expect(electronInvoke.mock.invocationCallOrder.at(-1))
         .toBeLessThan(routerNavigate.mock.invocationCallOrder[0]);
+      expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+        mode: 'book',
+        id: 'book-1',
+      });
     });
   });
 
   it.each([
-    { mode: 'scene' as const, id: 'scene-1', archiveEntity: 'archiveScene' as const, parentMode: 'chapter', parentId: 'chapter-1', channel: 'manuscript:archiveScene' },
-    { mode: 'chapter' as const, id: 'chapter-1', archiveEntity: 'archiveChapter' as const, parentMode: 'act', parentId: 'act-1', channel: 'manuscript:archiveChapter' },
-    { mode: 'act' as const, id: 'act-1', archiveEntity: 'archiveAct' as const, parentMode: 'book', parentId: 'book-1', channel: 'manuscript:archiveAct' },
+    { mode: 'scene' as const, id: 'scene-1', archiveEntity: 'archiveScene' as const, channel: 'manuscript:archiveScene' },
+    { mode: 'chapter' as const, id: 'chapter-1', archiveEntity: 'archiveChapter' as const, channel: 'manuscript:archiveChapter' },
+    { mode: 'act' as const, id: 'act-1', archiveEntity: 'archiveAct' as const, channel: 'manuscript:archiveAct' },
   ])('navigates after archiving the active $mode', async ({
     mode,
     id,
     archiveEntity,
-    parentMode,
-    parentId,
     channel,
   }) => {
     setRemovalHierarchyAndDocument();
     component.store.setRouteParams(mode, id);
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode, id });
     routerNavigate.mockClear();
     electronInvoke.mockClear();
 
@@ -444,24 +497,38 @@ describe('Manuscript', () => {
 
     expect(electronInvoke).toHaveBeenCalledWith(channel, { id });
     await vi.waitFor(() => expect(routerNavigate).toHaveBeenCalledWith(
-      ['/workspace', 'book-1', 'manuscript', parentMode, parentId],
+      ['/workspace', 'book-1', 'manuscript', 'book', 'book-1'],
       { replaceUrl: true },
     ));
+    expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+      mode: 'book',
+      id: 'book-1',
+    });
   });
 
   it('does not navigate when removing a nested entity from a broader view', async () => {
     setRemovalHierarchyAndDocument();
     component.store.setRouteParams('chapter', 'chapter-1');
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode: 'chapter', id: 'chapter-1' });
     routerNavigate.mockClear();
 
     await component.store.archiveScene('scene-1');
 
     expect(routerNavigate).not.toHaveBeenCalled();
+    expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+      mode: 'chapter',
+      id: 'chapter-1',
+    });
   });
 
   it('retains the active entity and route when archiving fails', async () => {
     setRemovalHierarchyAndDocument();
     component.store.setRouteParams('act', 'act-1');
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode: 'act', id: 'act-1' });
     routerNavigate.mockClear();
     electronInvoke.mockRejectedValueOnce(new Error('Archive failed'));
 
@@ -471,6 +538,10 @@ describe('Manuscript', () => {
       node.type === 'actHeader' && node.attrs?.['id'] === 'act-1'
     ))).toBe(true);
     expect(routerNavigate).not.toHaveBeenCalled();
+    expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+      mode: 'act',
+      id: 'act-1',
+    });
   });
 
   it('highlights across inline marks without joining separate editor blocks', async () => {

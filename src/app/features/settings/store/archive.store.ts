@@ -8,6 +8,7 @@ import type {
 } from '../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { ToastService } from '../../../shared/services/toast.service';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
+import { WorkspaceStore } from '../../workspace/workspace.store';
 
 interface ArchiveState {
   bookId: string | null;
@@ -71,6 +72,7 @@ export const ArchiveStore = signalStore(
       store,
       manuscriptStructureService = inject(ManuscriptStructureService),
       toastService = inject(ToastService),
+      workspaceStore = inject(WorkspaceStore),
     ) => {
       const fetchArchiveData = async (
         bookId: string,
@@ -92,6 +94,16 @@ export const ArchiveStore = signalStore(
           activeHierarchy: hierarchy,
           loadError: null,
         });
+      };
+
+      const resetLastRouteForRemovedEntity = (
+        mode: 'act' | 'chapter' | 'scene',
+        id: string,
+      ): void => {
+        const bookId = store.bookId();
+        if (!bookId) return;
+
+        workspaceStore.resetLastManuscriptRouteForRemovedEntity({ bookId, mode, id });
       };
 
       const runRestore = async (key: string, operation: () => Promise<void>): Promise<boolean> => {
@@ -193,15 +205,24 @@ export const ArchiveStore = signalStore(
         },
 
         deleteAct(id: string): Promise<boolean> {
-          return runDelete(`act:${id}`, () => manuscriptStructureService.deleteAct(id));
+          return runDelete(`act:${id}`, async () => {
+            await manuscriptStructureService.deleteAct(id);
+            resetLastRouteForRemovedEntity('act', id);
+          });
         },
 
         deleteChapter(id: string): Promise<boolean> {
-          return runDelete(`chapter:${id}`, () => manuscriptStructureService.deleteChapter(id));
+          return runDelete(`chapter:${id}`, async () => {
+            await manuscriptStructureService.deleteChapter(id);
+            resetLastRouteForRemovedEntity('chapter', id);
+          });
         },
 
         deleteScene(id: string): Promise<boolean> {
-          return runDelete(`scene:${id}`, () => manuscriptStructureService.deleteScene(id));
+          return runDelete(`scene:${id}`, async () => {
+            await manuscriptStructureService.deleteScene(id);
+            resetLastRouteForRemovedEntity('scene', id);
+          });
         },
       };
     },

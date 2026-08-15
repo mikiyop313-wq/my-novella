@@ -13,6 +13,7 @@ import {
 } from '../../../../../shared/models/manuscript.model';
 import { withEffectiveContextInclusion } from '../../../../../shared/utils/manuscript-context-inclusion';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
+import { WorkspaceStore } from '../../workspace/workspace.store';
 
 // -----------------------------------------------------------------------------
 // State
@@ -132,10 +133,21 @@ export const OutlineStore = signalStore(
   withMethods((
     store,
     manuscriptStructureService = inject(ManuscriptStructureService),
+    workspaceStore = inject(WorkspaceStore),
   ) => {
     // Convert unknown errors into strings that can be stored/displayed.
     const getErrorMessage = (error: unknown, fallback: string): string =>
       error instanceof Error ? error.message : fallback;
+
+    const resetLastRouteForRemovedEntity = (
+      mode: 'act' | 'chapter' | 'scene',
+      id: string,
+    ): void => {
+      const bookId = store.bookId();
+      if (!bookId) return;
+
+      workspaceStore.resetLastManuscriptRouteForRemovedEntity({ bookId, mode, id });
+    };
 
     // -------------------------------------------------------------------------
     // Local Append Helpers
@@ -345,6 +357,7 @@ export const OutlineStore = signalStore(
         try {
           await manuscriptStructureService.deleteAct(id);
           removeAct(id);
+          resetLastRouteForRemovedEntity('act', id);
         } catch (error) {
           throw error;
         }
@@ -356,6 +369,7 @@ export const OutlineStore = signalStore(
         try {
           await manuscriptStructureService.deleteChapter(id);
           removeChapter(id);
+          resetLastRouteForRemovedEntity('chapter', id);
         } catch (error) {
           throw error;
         }
@@ -367,6 +381,7 @@ export const OutlineStore = signalStore(
         try {
           await manuscriptStructureService.deleteScene(id);
           removeScene(id);
+          resetLastRouteForRemovedEntity('scene', id);
         } catch (error) {
           throw error;
         }
@@ -383,6 +398,7 @@ export const OutlineStore = signalStore(
         try {
           await manuscriptStructureService.archiveAct(id);
           removeAct(id);
+          resetLastRouteForRemovedEntity('act', id);
         } catch (error) {
           throw error;
         }
@@ -394,6 +410,7 @@ export const OutlineStore = signalStore(
         try {
           await manuscriptStructureService.archiveChapter(id);
           removeChapter(id);
+          resetLastRouteForRemovedEntity('chapter', id);
         } catch (error) {
           throw error;
         }
@@ -405,6 +422,7 @@ export const OutlineStore = signalStore(
         try {
           await manuscriptStructureService.archiveScene(id);
           removeScene(id);
+          resetLastRouteForRemovedEntity('scene', id);
         } catch (error) {
           throw error;
         }

@@ -42,11 +42,6 @@ import { AiStreamEditorService } from './helpers/ai/ai-stream-editor.service';
 import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
 import { ToastService } from '../../shared/services/toast.service';
 
-interface ManuscriptRouteTarget {
-  mode: ManuscriptMode;
-  id: string;
-}
-
 @Component({
   selector: 'app-manuscript',
   standalone: true,
@@ -479,16 +474,15 @@ export class Manuscript implements OnInit, OnDestroy {
       || this.activeScopeExistsInEditor()
     ) return;
 
-    const target = this.getActiveScopeParentRoute();
     const bookId = this.getWorkspaceBookId();
-    if (!target || !bookId) return;
+    if (!bookId) return;
 
     this.isNavigatingAfterRemoval = true;
 
     try {
       await this.saver.flushStructuralChanges();
       const navigated = await this.router.navigate(
-        ['/workspace', bookId, 'manuscript', target.mode, target.id],
+        ['/workspace', bookId, 'manuscript', 'book', bookId],
         { replaceUrl: true },
       );
 
@@ -523,30 +517,6 @@ export class Manuscript implements OnInit, OnDestroy {
     });
 
     return exists;
-  }
-
-  private getActiveScopeParentRoute(): ManuscriptRouteTarget | null {
-    const mode = this.store.mode();
-    const activeEntityId = this.store.activeEntityId();
-    if (!mode || !activeEntityId || mode === 'book') return null;
-
-    for (const act of this.store.bookHierarchy()) {
-      if (mode === 'act' && act.id === activeEntityId) {
-        return { mode: 'book', id: act.bookId };
-      }
-
-      for (const chapter of act.chapters || []) {
-        if (mode === 'chapter' && chapter.id === activeEntityId) {
-          return { mode: 'act', id: act.id };
-        }
-
-        if (mode === 'scene' && chapter.scenes?.some(scene => scene.id === activeEntityId)) {
-          return { mode: 'chapter', id: chapter.id };
-        }
-      }
-    }
-
-    return null;
   }
 
   private getWorkspaceBookId(): string | null {

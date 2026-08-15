@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActDto, ArchiveOverviewDto } from '../../../../../shared/models/manuscript.model';
 import { ToastService } from '../../../shared/services/toast.service';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
+import { WorkspaceStore } from '../../workspace/workspace.store';
 import { ArchiveStore } from './archive.store';
 
 describe('ArchiveStore', () => {
@@ -19,6 +20,7 @@ describe('ArchiveStore', () => {
     deleteScene: ReturnType<typeof vi.fn>;
   };
   let toastError: ReturnType<typeof vi.fn>;
+  let resetLastManuscriptRouteForRemovedEntity: ReturnType<typeof vi.fn>;
 
   const overview: ArchiveOverviewDto = {
     archivedActs: [
@@ -69,12 +71,17 @@ describe('ArchiveStore', () => {
       deleteScene: vi.fn().mockResolvedValue(undefined),
     };
     toastError = vi.fn();
+    resetLastManuscriptRouteForRemovedEntity = vi.fn();
 
     TestBed.configureTestingModule({
       providers: [
         ArchiveStore,
         { provide: ManuscriptStructureService, useValue: outlineService },
         { provide: ToastService, useValue: { error: toastError } },
+        {
+          provide: WorkspaceStore,
+          useValue: { resetLastManuscriptRouteForRemovedEntity },
+        },
       ],
     });
 
@@ -179,6 +186,11 @@ describe('ArchiveStore', () => {
     expect(outlineService.getArchiveOverview).toHaveBeenCalledTimes(4);
     expect(outlineService.getBookHierarchy).toHaveBeenCalledTimes(4);
     expect(store.deletingKey()).toBeNull();
+    expect(resetLastManuscriptRouteForRemovedEntity.mock.calls).toEqual([
+      [{ bookId: 'book-1', mode: 'act', id: 'archived-act' }],
+      [{ bookId: 'book-1', mode: 'chapter', id: 'chapter-old' }],
+      [{ bookId: 'book-1', mode: 'scene', id: 'scene-old' }],
+    ]);
   });
 
   it('blocks restore and duplicate delete actions while a delete is in progress', async () => {
@@ -215,5 +227,6 @@ describe('ArchiveStore', () => {
     expect(store.isBusy()).toBe(false);
     expect(toastError).toHaveBeenCalledWith('Delete unavailable', 'Delete failed');
     expect(outlineService.getArchiveOverview).toHaveBeenCalledOnce();
+    expect(resetLastManuscriptRouteForRemovedEntity).not.toHaveBeenCalled();
   });
 });
