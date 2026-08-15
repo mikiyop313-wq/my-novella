@@ -90,7 +90,8 @@
                 (keyup.enter)="updateActTitle(act.id, $any($event.target).value)" />
             </span>
             } @else {
-            <span class="act-label" (click)="openManuscript('act', act.id)">
+            <span #actTitle class="act-label" (mouseenter)="updateOverflowTooltip(actTitle)"
+              (click)="openManuscript('act', act.id)">
               Act {{ actIdx + 1 }}{{ act.title ? ': ' + act.title : '' }}
             </span>
             }
@@ -157,7 +158,8 @@
                                   " />
                       </span>
                       } @else {
-                      <span class="chapter-label" (click)="openManuscript('chapter', chapter.id)">
+                      <span #chapterTitle class="chapter-label" (mouseenter)="updateOverflowTooltip(chapterTitle)"
+                        (click)="openManuscript('chapter', chapter.id)">
                         Chapter {{ chapter.position + 1
                         }}{{ chapter.title ? ': ' + chapter.title : '' }}
                       </span>
@@ -225,7 +227,8 @@
                                                 )
                                               " />
                                   } @else {
-                                  <span class="scene-title-display">
+                                  <span #sceneTitle class="scene-title-display"
+                                    (mouseenter)="updateOverflowTooltip(sceneTitle)">
                                     {{ scene.title || 'Untitled Scene' }}
                                   </span>
                                   }

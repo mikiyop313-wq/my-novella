@@ -165,6 +165,26 @@ describe('Outline', () => {
     expect(store.enterBook).toHaveBeenCalledWith('book-1');
   });
 
+  it('adds title text as a tooltip only when the title overflows', () => {
+    const title = document.createElement('span');
+    title.textContent = 'A very long scene title';
+    Object.defineProperties(title, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 180 },
+      clientHeight: { configurable: true, value: 20 },
+      scrollHeight: { configurable: true, value: 20 },
+    });
+
+    component.updateOverflowTooltip(title);
+
+    expect(title.getAttribute('title')).toBe('A very long scene title');
+
+    Object.defineProperty(title, 'scrollWidth', { configurable: true, value: 100 });
+    component.updateOverflowTooltip(title);
+
+    expect(title.hasAttribute('title')).toBe(false);
+  });
+
   it('uses compact scene cards when no mode has been saved', () => {
     expect(component.sceneCardMode()).toBe('compact');
   });

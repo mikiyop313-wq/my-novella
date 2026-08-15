@@ -284,6 +284,21 @@ export class Outline implements OnInit {
     }));
   }
 
+  updateOverflowTooltip(element: HTMLElement): void {
+    const isOverflowing = element.scrollWidth > element.clientWidth
+      || element.scrollHeight > element.clientHeight;
+
+    if (!isOverflowing) {
+      element.removeAttribute('title');
+      return;
+    }
+
+    const title = element.textContent?.trim();
+    if (title) {
+      element.setAttribute('title', title);
+    }
+  }
+
   setSceneCardMode(mode: SceneCardMode): void {
     if (this.sceneCardMode() === mode) return;
 
