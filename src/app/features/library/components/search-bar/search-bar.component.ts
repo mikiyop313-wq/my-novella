@@ -1,7 +1,6 @@
-import { Component, signal } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
-
-export type OrderByType = 'name' | 'lastUpdate' | 'latestCreation' | 'oldestCreation';
+import { LibraryStore } from '../../store/book.store';
 
 @Component({
   selector: 'app-search-bar',
@@ -10,9 +9,14 @@ export type OrderByType = 'name' | 'lastUpdate' | 'latestCreation' | 'oldestCrea
   styleUrl: './search-bar.component.scss',
 })
 export class SearchBarComponent {
-  currentOrderBy = signal<OrderByType>('lastUpdate');
+  libraryStore = inject(LibraryStore);
 
-  setOrderBy(order: OrderByType) {
-    this.currentOrderBy.set(order);
+  setOrderBy(order: any) {
+    this.libraryStore.setOrderBy(order);
+  }
+
+  onSearch(event: Event) {
+    const query = (event.target as HTMLInputElement).value;
+    this.libraryStore.setSearchQuery(query);
   }
 }

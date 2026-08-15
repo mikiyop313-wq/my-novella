@@ -5,23 +5,24 @@
             <path
                 d="M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z" />
         </svg>
-        <input type="text" placeholder="Find your manuscripts by title, theme, or ink..." class="search-input" />
+        <input type="text" placeholder="Find your manuscripts by title, theme, or ink..." class="search-input" 
+            (input)="onSearch($event)" />
     </div>
     <button class="filter-btn" [appOverlayMenu]="filterMenuTemplate" #filterMenuTrigger="appOverlayMenu">
         <svg class="icon filter-icon" xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960"
             width="20px" fill="currentColor">
             <path d="M400-240v-80h160v80H400ZM240-440v-80h480v80H240ZM120-640v-80h720v80H120Z" />
         </svg>
-        <span>Order by: {{ currentOrderBy() === 'name' ? 'Name' : currentOrderBy() === 'lastUpdate' ? 'Last Update' :
+        <span>Order by: {{ libraryStore.orderBy() === 'name' ? 'Name' : libraryStore.orderBy() === 'lastUpdate' ? 'Last Update' :
             'Creation' }}</span>
     </button>
 </div>
 
 <ng-template #filterMenuTemplate let-closeMenu>
     <div class="overlay-menu">
-        <button class="menu-item" [class.active-item]="currentOrderBy() === 'name'"
+        <button class="menu-item" [class.active-item]="libraryStore.orderBy() === 'name'"
             (click)="setOrderBy('name'); closeMenu()">
-            @if (currentOrderBy() === 'name') {
+            @if (libraryStore.orderBy() === 'name') {
             <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
                 fill="var(--color-text)">
                 <path
@@ -36,9 +37,9 @@
             }
             Name
         </button>
-        <button class="menu-item" [class.active-item]="currentOrderBy() === 'lastUpdate'"
+        <button class="menu-item" [class.active-item]="libraryStore.orderBy() === 'lastUpdate'"
             (click)="setOrderBy('lastUpdate'); closeMenu()">
-            @if (currentOrderBy() === 'lastUpdate') {
+            @if (libraryStore.orderBy() === 'lastUpdate') {
             <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
                 fill="var(--color-text)">
                 <path
@@ -53,9 +54,9 @@
             }
             Last Update
         </button>
-        <button class="menu-item" [class.active-item]="currentOrderBy() === 'latestCreation'"
+        <button class="menu-item" [class.active-item]="libraryStore.orderBy() === 'latestCreation'"
             (click)="setOrderBy('latestCreation'); closeMenu()">
-            @if (currentOrderBy() === 'latestCreation') {
+            @if (libraryStore.orderBy() === 'latestCreation') {
             <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
                 fill="var(--color-text)">
                 <path
@@ -71,9 +72,9 @@
             Latest created books
         </button>
 
-        <button class="menu-item" [class.active-item]="currentOrderBy() === 'oldestCreation'"
+        <button class="menu-item" [class.active-item]="libraryStore.orderBy() === 'oldestCreation'"
             (click)="setOrderBy('oldestCreation'); closeMenu()">
-            @if (currentOrderBy() === 'oldestCreation') {
+            @if (libraryStore.orderBy() === 'oldestCreation') {
             <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
                 fill="var(--color-text)">
                 <path
