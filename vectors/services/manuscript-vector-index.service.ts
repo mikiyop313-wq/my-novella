@@ -7,6 +7,8 @@ import type {
     TiptapNode,
 } from '../../shared/models/manuscript.model';
 import type {
+    BookCloudEmbeddingReindexProgress,
+    BookCloudEmbeddingSelectionResult,
     BookEmbeddingReindexProgress,
     BookEmbeddingSelectionResult,
     BookOpenRouterEmbeddingReindexProgress,
@@ -15,6 +17,7 @@ import type {
     ManuscriptVectorRecord,
     OpenRouterEmbeddingModelName,
     SimilarParagraphResult,
+    VectorCloudProviderId,
 } from '../../shared/models/vector.model';
 import {
     hashParagraphVectorText,
@@ -22,10 +25,12 @@ import {
 } from '../../shared/utils/paragraph-vector';
 import { bookRepository } from '../../db/repositories/book.repository';
 import {
+    getCloudEmbeddingProvider,
     getEmbeddingProvider,
     getLocalEmbeddingProvider,
     getOpenRouterEmbeddingProvider,
 } from '../embeddings/factory';
+import { vectorApiKeyService } from '../../electron/domain/vector/vector-api-key.service';
 import { localEmbeddingModelManager } from '../embeddings/local-model-manager';
 import { getOpenRouterEmbeddingModelDefinition } from '../embeddings/openrouter-model-definition';
 import { assertEmbeddingDimensions, type EmbeddingProvider } from '../embeddings/types';
@@ -91,10 +96,53 @@ export class ManuscriptVectorIndexService {
     /** Returns whether the book preference and selected provider both permit vector work. */
     async isBookIndexingAvailable(bookId: string): Promise<boolean> {
         if (!await bookRepository.getVectorSearchEnabled(bookId)) return false;
-        if (await bookRepository.getEmbeddingModel(bookId) !== 'local') return true;
+        const model = await bookRepository.getEmbeddingModel(bookId);
+        if (model === 'local') {
+            const modelName = await bookRepository.getLocalEmbeddingModel(bookId);
+            return localEmbeddingModelManager.isInstalled(modelName);
+        }
+        const providerId = model === 'openAI'
+            ? 'openai'
+            : model === 'openRouter' ? 'openrouter' : 'voyage';
+        return await vectorApiKeyService.getApiKey(providerId) !== null;
+    }
 
-        const modelName = await bookRepository.getLocalEmbeddingModel(bookId);
-        return localEmbeddingModelManager.isInstalled(modelName);
+    /** Selects a fixed-model cloud provider, reconciling its vector space when requested. */
+    async selectCloudProvider(
+        bookId: string,
+        providerId: VectorCloudProviderId,
+        reindex: boolean,
+        onProgress?: (progress: BookCloudEmbeddingReindexProgress) => void,
+    ): Promise<BookCloudEmbeddingSelectionResult> {
+        if (this.switchingBooks.has(bookId)) {
+            throw new Error('An embedding model switch is already in progress for this book.');
+        }
+
+        this.switchingBooks.add(bookId);
+        try {
+            const provider = await getCloudEmbeddingProvider(providerId);
+            if (!reindex) {
+                await bookRepository.selectCloudEmbeddingProvider(bookId, providerId);
+                return { bookId, providerId, reindexed: false };
+            }
+
+            const result = await this.runBookOperation(bookId, async () => {
+                const summary = await this.reconcileBook(bookId, provider, (
+                    processedParagraphs,
+                    totalParagraphs,
+                ) => onProgress?.({
+                    bookId,
+                    providerId,
+                    processedParagraphs,
+                    totalParagraphs,
+                }));
+                return { bookId, providerId, reindexed: true as const, ...summary };
+            });
+            await bookRepository.selectCloudEmbeddingProvider(bookId, providerId);
+            return result;
+        } finally {
+            this.switchingBooks.delete(bookId);
+        }
     }
 
     /** Serializes one vector operation with all other vector work for the same book. */

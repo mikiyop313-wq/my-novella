@@ -19,6 +19,12 @@ describe('BookVectorSettingsComponent', () => {
   );
   const installedModel = model('BAAI/bge-m3', 'BGE-M3', true);
   const hiddenModel = model('BAAI/bge-large-en-v1.5', 'BGE Large', false);
+  const openRouterModel = {
+    modelName: 'openai/text-embedding-3-small' as const,
+    displayName: 'Text Embedding 3 Small',
+    providerName: 'OpenAI',
+    dimensions: 1536,
+  };
 
   let fixture: ComponentFixture<BookVectorSettingsComponent>;
   let invoke: ReturnType<typeof vi.fn>;
@@ -40,6 +46,19 @@ describe('BookVectorSettingsComponent', () => {
           bookId: 'book-1',
           modelName: 'mixedbread-ai/mxbai-embed-large-v1',
         };
+      }
+      if (channel === 'vectors:config:load') {
+        return {
+          apiKeys: {
+            openai: { configured: true, suffix: '1234' },
+            voyage: { configured: false, suffix: null },
+            openrouter: { configured: true, suffix: '5678' },
+          },
+        };
+      }
+      if (channel === 'vectors:openrouter:get-models') return [openRouterModel];
+      if (channel === 'vectors:openrouter:get-book-selection') {
+        return { bookId: 'book-1', modelName: null };
       }
       if (channel === 'vectors:local-model:select-for-book') {
         if (payload?.['reindex']) {
@@ -97,7 +116,7 @@ describe('BookVectorSettingsComponent', () => {
   it('reindexes an enabled book and immediately removes its old unavailable model', async () => {
     await create(book());
 
-    await fixture.componentInstance.selectModel(installedModel);
+    await fixture.componentInstance.selectLocalModel(installedModel);
     fixture.detectChanges();
 
     expect(invoke).toHaveBeenCalledWith('vectors:local-model:select-for-book', {
@@ -117,7 +136,7 @@ describe('BookVectorSettingsComponent', () => {
   it('changes models without reindexing when the saved preference is disabled', async () => {
     await create(book(false));
 
-    await fixture.componentInstance.selectModel(installedModel);
+    await fixture.componentInstance.selectLocalModel(installedModel);
 
     expect(invoke).toHaveBeenCalledWith('vectors:local-model:select-for-book', {
       bookId: 'book-1',
@@ -135,6 +154,19 @@ describe('BookVectorSettingsComponent', () => {
       }
       if (channel === 'vectors:local-model:select-for-book') {
         return { bookId: 'book-1', modelName: payload?.['modelName'], reindexed: true };
+      }
+      if (channel === 'vectors:config:load') {
+        return {
+          apiKeys: {
+            openai: { configured: true, suffix: '1234' },
+            voyage: { configured: false, suffix: null },
+            openrouter: { configured: true, suffix: '5678' },
+          },
+        };
+      }
+      if (channel === 'vectors:openrouter:get-models') return [openRouterModel];
+      if (channel === 'vectors:openrouter:get-book-selection') {
+        return { bookId: 'book-1', modelName: null };
       }
       return undefined;
     });
@@ -170,6 +202,19 @@ describe('BookVectorSettingsComponent', () => {
       if (channel === 'vectors:local-model:get-book-selection') {
         return { bookId: 'book-1', modelName: installedModel.modelName };
       }
+      if (channel === 'vectors:config:load') {
+        return {
+          apiKeys: {
+            openai: { configured: true, suffix: '1234' },
+            voyage: { configured: false, suffix: null },
+            openrouter: { configured: true, suffix: '5678' },
+          },
+        };
+      }
+      if (channel === 'vectors:openrouter:get-models') return [openRouterModel];
+      if (channel === 'vectors:openrouter:get-book-selection') {
+        return { bookId: 'book-1', modelName: null };
+      }
       return undefined;
     });
     await create(book(true, installedModel.modelName, true));
@@ -187,6 +232,148 @@ describe('BookVectorSettingsComponent', () => {
       'vectors:local-model:select-for-book',
       expect.anything(),
     );
+  });
+
+  it('renders all providers and disables cloud providers without an API key', async () => {
+    await create(book());
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelectorAll('.provider-tab')).toHaveLength(4);
+    expect(providerTab('local').classList.contains('is-selected')).toBe(true);
+    expect(providerTab('openai').disabled).toBe(false);
+    expect(providerTab('voyage').disabled).toBe(true);
+    expect(providerTab('openrouter').disabled).toBe(false);
+    expect(element.textContent).toContain('General Settings → Vector Search');
+  });
+
+  it('selects configured OpenAI immediately and reindexes an enabled book', async () => {
+    await create(book());
+    const emitted = vi.fn();
+    fixture.componentInstance.bookChange.subscribe(emitted);
+
+    await fixture.componentInstance.selectProvider('openai');
+
+    expect(invoke).toHaveBeenCalledWith('vectors:cloud-provider:select-for-book', {
+      bookId: 'book-1',
+      providerId: 'openai',
+      reindex: true,
+    });
+    expect(emitted).toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ embeddingModel: 'openAI' }),
+    }));
+  });
+
+  it('selects an OpenRouter model and preserves the indexing preference', async () => {
+    await create(book(false));
+    const emitted = vi.fn();
+    fixture.componentInstance.bookChange.subscribe(emitted);
+
+    await fixture.componentInstance.selectProvider('openrouter');
+    await fixture.componentInstance.selectOpenRouterModel(openRouterModel);
+
+    expect(invoke).toHaveBeenCalledWith('vectors:openrouter:select-for-book', {
+      bookId: 'book-1',
+      modelName: openRouterModel.modelName,
+      reindex: false,
+    });
+    expect(emitted).toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({
+        embeddingModel: 'openRouter',
+        openRouterEmbeddingModel: openRouterModel.modelName,
+      }),
+    }));
+  });
+
+  it('keeps the previous provider selected when a cloud switch fails', async () => {
+    invoke.mockImplementation(async (channel: string, payload?: Record<string, unknown>) => {
+      if (channel === 'vectors:cloud-provider:select-for-book') throw new Error('cloud failed');
+      if (channel === 'vectors:local-model:get-status') return [installedModel];
+      if (channel === 'vectors:local-model:get-book-selection') {
+        return { bookId: 'book-1', modelName: installedModel.modelName };
+      }
+      if (channel === 'vectors:config:load') {
+        return {
+          apiKeys: {
+            openai: { configured: true, suffix: '1234' },
+            voyage: { configured: false, suffix: null },
+            openrouter: { configured: true, suffix: '5678' },
+          },
+        };
+      }
+      if (channel === 'vectors:openrouter:get-models') return [openRouterModel];
+      if (channel === 'vectors:openrouter:get-book-selection') {
+        return { bookId: 'book-1', modelName: null };
+      }
+      return payload;
+    });
+    await create(book(true, installedModel.modelName));
+
+    await fixture.componentInstance.selectProvider('openai');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedProviderId()).toBe('local');
+    expect(fixture.componentInstance.viewedProviderId()).toBe('local');
+    expect(fixture.componentInstance.operationError()).toBe('cloud failed');
+  });
+
+  it('disables indexing when the saved cloud provider no longer has a key', async () => {
+    const input = book();
+    input.settings = { ...input.settings!, embeddingModel: 'voyage' };
+
+    await create(input);
+
+    const indexingSwitch = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.indexing-switch');
+    expect(fixture.componentInstance.selectedProviderUnavailable()).toBe(true);
+    expect(indexingSwitch?.disabled).toBe(true);
+    expect(indexingSwitch?.getAttribute('aria-checked')).toBe('false');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Configure it in General Settings → Vector Search',
+    );
+  });
+
+  it('shows cloud reindex progress while a provider switch is pending', async () => {
+    let finishSwitch!: () => void;
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'vectors:local-model:get-status') return [installedModel];
+      if (channel === 'vectors:local-model:get-book-selection') {
+        return { bookId: 'book-1', modelName: installedModel.modelName };
+      }
+      if (channel === 'vectors:config:load') {
+        return {
+          apiKeys: {
+            openai: { configured: true, suffix: '1234' },
+            voyage: { configured: false, suffix: null },
+            openrouter: { configured: true, suffix: '5678' },
+          },
+        };
+      }
+      if (channel === 'vectors:openrouter:get-models') return [openRouterModel];
+      if (channel === 'vectors:openrouter:get-book-selection') {
+        return { bookId: 'book-1', modelName: null };
+      }
+      if (channel === 'vectors:cloud-provider:select-for-book') {
+        listeners.get('vectors:cloud-provider:reindex-progress')?.({
+          bookId: 'book-1',
+          providerId: 'openai',
+          processedParagraphs: 2,
+          totalParagraphs: 4,
+        });
+        return new Promise<void>(resolve => {
+          finishSwitch = resolve;
+        });
+      }
+      return undefined;
+    });
+    await create(book(true, installedModel.modelName));
+
+    const switching = fixture.componentInstance.selectProvider('openai');
+    await vi.waitFor(() => expect(fixture.componentInstance.reindexProgress()).not.toBeNull());
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('2 / 4');
+    finishSwitch();
+    await switching;
   });
 
   async function create(inputBook: BookDto): Promise<void> {
@@ -211,6 +398,14 @@ describe('BookVectorSettingsComponent', () => {
     );
     if (required && !option) throw new Error(`Expected model option: ${modelName}`);
     return option;
+  }
+
+  function providerTab(providerId: string): HTMLButtonElement {
+    const tab = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      `[data-provider="${providerId}"]`,
+    );
+    if (!tab) throw new Error(`Expected provider tab: ${providerId}`);
+    return tab;
   }
 });
 

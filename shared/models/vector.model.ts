@@ -40,6 +40,42 @@ export interface TestVectorProviderConnectionRequest {
     providerId: VectorConfigurationProviderId;
 }
 
+/** Selects one of the fixed-model cloud providers for a book. */
+export interface SelectBookCloudEmbeddingProviderPayload {
+    bookId: string;
+    providerId: VectorCloudProviderId;
+    reindex: boolean;
+}
+
+/** Progress emitted while rebuilding a book with a fixed-model cloud provider. */
+export interface BookCloudEmbeddingReindexProgress {
+    bookId: string;
+    providerId: VectorCloudProviderId;
+    processedParagraphs: number;
+    totalParagraphs: number;
+}
+
+export interface BookCloudEmbeddingSelectionOnlyResult {
+    bookId: string;
+    providerId: VectorCloudProviderId;
+    reindexed: false;
+}
+
+export interface BookCloudEmbeddingSelectionReindexResult {
+    bookId: string;
+    providerId: VectorCloudProviderId;
+    reindexed: true;
+    totalParagraphs: number;
+    reusedParagraphs: number;
+    embeddedParagraphs: number;
+    metadataUpdatedParagraphs: number;
+    deletedParagraphs: number;
+}
+
+export type BookCloudEmbeddingSelectionResult =
+    | BookCloudEmbeddingSelectionOnlyResult
+    | BookCloudEmbeddingSelectionReindexResult;
+
 /** Identifies one mutually compatible vector space. */
 export interface EmbeddingSpaceDescriptor {
     provider: EmbeddingModel;

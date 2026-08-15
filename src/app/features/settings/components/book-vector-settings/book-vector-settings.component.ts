@@ -11,17 +11,42 @@ import {
 
 import type { BookDto, BookSettingsDto } from '../../../../../../shared/models/book.model';
 import type {
+  BookCloudEmbeddingReindexProgress,
   BookEmbeddingReindexProgress,
   BookLocalEmbeddingModelSelection,
+  BookOpenRouterEmbeddingModelSelection,
+  BookOpenRouterEmbeddingReindexProgress,
   LocalEmbeddingModelName,
   LocalEmbeddingModelStatus,
+  OpenRouterEmbeddingModelDescriptor,
+  OpenRouterEmbeddingModelName,
+  SelectBookCloudEmbeddingProviderPayload,
   SelectBookLocalEmbeddingModelPayload,
+  SelectBookOpenRouterEmbeddingModelPayload,
+  VectorApiKeyStatus,
+  VectorCloudProviderId,
+  VectorConfigurationProviderId,
+  VectorProviderConfiguration,
 } from '../../../../../../shared/models/vector.model';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { LocalEmbeddingModelStateService } from '../../services/local-embedding-model-state.service';
 
+type BookVectorProviderId = 'local' | VectorConfigurationProviderId;
 type BookVectorOperation = 'select' | 'enable' | 'disable' | 'automatic';
+type ReindexProgress = { processedParagraphs: number; totalParagraphs: number };
+
+interface BookVectorProviderOption {
+  id: BookVectorProviderId;
+  name: string;
+  description: string;
+}
+
+const EMPTY_API_KEY_STATUSES: Record<VectorConfigurationProviderId, VectorApiKeyStatus> = {
+  openai: { configured: false, suffix: null },
+  voyage: { configured: false, suffix: null },
+  openrouter: { configured: false, suffix: null },
+};
 
 @Component({
   selector: 'app-book-vector-settings',
@@ -35,48 +60,79 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   private readonly electronService = inject(ElectronService);
   private readonly libraryService = inject(LibraryService);
   private readonly localModelState = inject(LocalEmbeddingModelStateService);
-  private removeProgressListener: () => void = () => undefined;
+  private readonly removeProgressListeners: Array<() => void> = [];
 
-  readonly selectedModelName = signal<LocalEmbeddingModelName | null>(null);
+  readonly providers: readonly BookVectorProviderOption[] = [
+    { id: 'local', name: 'Local', description: 'Process embeddings on this device.' },
+    { id: 'openai', name: 'OpenAI', description: 'Use text-embedding-3-large.' },
+    { id: 'voyage', name: 'Voyage AI', description: 'Use voyage-3.' },
+    { id: 'openrouter', name: 'OpenRouter', description: 'Choose a curated cloud model.' },
+  ];
+
+  readonly viewedProviderId = signal<BookVectorProviderId>('local');
+  readonly selectedLocalModelName = signal<LocalEmbeddingModelName | null>(null);
+  readonly selectedOpenRouterModelName = signal<OpenRouterEmbeddingModelName | null>(null);
+  readonly openRouterModels = signal<readonly OpenRouterEmbeddingModelDescriptor[]>([]);
+  readonly apiKeyStatuses = signal<Record<VectorConfigurationProviderId, VectorApiKeyStatus>>({
+    ...EMPTY_API_KEY_STATUSES,
+  });
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
   readonly operation = signal<BookVectorOperation | null>(null);
-  readonly operationModelName = signal<LocalEmbeddingModelName | null>(null);
+  readonly operationTarget = signal<string | null>(null);
   readonly operationError = signal<string | null>(null);
-  readonly reindexProgress = signal<BookEmbeddingReindexProgress | null>(null);
+  readonly reindexProgress = signal<ReindexProgress | null>(null);
   readonly localModelStatuses = this.localModelState.statuses;
 
-  readonly visibleModels = computed(() => {
-    const selectedModelName = this.selectedModelName();
+  readonly selectedProviderId = computed(() => this.providerIdFromBook(this.book()));
+
+  readonly visibleLocalModels = computed(() => {
+    const selectedModelName = this.selectedLocalModelName();
     return this.localModelStatuses().filter(
-      (status) => status.installed || status.modelName === selectedModelName,
+      status => status.installed || status.modelName === selectedModelName,
     );
   });
 
-  readonly selectedModelStatus = computed(() => {
-    const selectedModelName = this.selectedModelName();
-    return this.localModelStatuses().find(
-      (status) => status.modelName === selectedModelName,
-    ) ?? null;
+  readonly selectedLocalModelStatus = computed(() => {
+    const selectedModelName = this.selectedLocalModelName();
+    return this.localModelStatuses().find(status => status.modelName === selectedModelName) ?? null;
   });
 
-  readonly selectedModelUnavailable = computed(() => {
-    const status = this.selectedModelStatus();
-    return status !== null && !status.installed;
+  readonly selectedProviderUnavailable = computed(() => {
+    const providerId = this.selectedProviderId();
+    if (providerId === 'local') {
+      const status = this.selectedLocalModelStatus();
+      return status !== null && !status.installed;
+    }
+    if (!this.isProviderConfigured(providerId)) return true;
+    return providerId === 'openrouter' && this.selectedOpenRouterModelName() === null;
   });
 
-  readonly savedIndexingEnabled = computed(
-    () => this.book().settings?.vectorSearchEnabled ?? true,
-  );
+  readonly unavailableMessage = computed(() => {
+    const providerId = this.selectedProviderId();
+    if (providerId === 'local') {
+      const status = this.selectedLocalModelStatus();
+      return status
+        ? `${status.displayName} is not installed. Install it from General Settings → Vector Search, or select another installed model.`
+        : null;
+    }
+    if (!this.isProviderConfigured(providerId)) {
+      const provider = this.providers.find(candidate => candidate.id === providerId);
+      return `${provider?.name ?? providerId} does not have a vector API key. Configure it in General Settings → Vector Search.`;
+    }
+    if (providerId === 'openrouter' && !this.selectedOpenRouterModelName()) {
+      return 'Choose an OpenRouter embedding model before enabling book indexing.';
+    }
+    return null;
+  });
 
+  readonly savedIndexingEnabled = computed(() => this.book().settings?.vectorSearchEnabled ?? true);
   readonly effectiveIndexingEnabled = computed(
-    () => this.savedIndexingEnabled() && !this.selectedModelUnavailable(),
+    () => this.savedIndexingEnabled() && !this.selectedProviderUnavailable(),
   );
-
   readonly automaticIndexingEnabled = computed(
     () => this.book().settings?.automaticIndexingEnabled ?? true,
   );
-
   readonly reindexPercentage = computed(() => {
     const progress = this.reindexProgress();
     if (!progress || progress.totalParagraphs === 0) return 0;
@@ -84,36 +140,49 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    this.removeProgressListener = this.electronService.on(
+    this.viewedProviderId.set(this.selectedProviderId());
+    this.listenForProgress<BookEmbeddingReindexProgress>(
       'vectors:local-model:reindex-progress',
-      (progress: BookEmbeddingReindexProgress) => {
-        if (
-          this.operation()
-          && progress.bookId === this.book().id
-          && progress.modelName === this.operationModelName()
-        ) {
-          this.reindexProgress.set(progress);
-        }
-      },
+      progress => progress.modelName,
+    );
+    this.listenForProgress<BookCloudEmbeddingReindexProgress>(
+      'vectors:cloud-provider:reindex-progress',
+      progress => progress.providerId,
+    );
+    this.listenForProgress<BookOpenRouterEmbeddingReindexProgress>(
+      'vectors:openrouter:reindex-progress',
+      progress => progress.modelName,
     );
     void this.load();
   }
 
   ngOnDestroy(): void {
-    this.removeProgressListener();
+    this.removeProgressListeners.forEach(remove => remove());
   }
 
   async load(): Promise<void> {
     this.loading.set(true);
     this.loadError.set(null);
     try {
-      const [, selection] = await Promise.all([
-        this.localModelState.reloadStatuses(),
-        this.electronService.invoke('vectors:local-model:get-book-selection', {
-          bookId: this.book().id,
-        }) as Promise<BookLocalEmbeddingModelSelection>,
-      ]);
-      this.selectedModelName.set(selection.modelName);
+      const [, localSelection, configuration, openRouterModels, openRouterSelection] =
+        await Promise.all([
+          this.localModelState.reloadStatuses(),
+          this.electronService.invoke('vectors:local-model:get-book-selection', {
+            bookId: this.book().id,
+          }) as Promise<BookLocalEmbeddingModelSelection>,
+          this.electronService.invoke('vectors:config:load') as Promise<VectorProviderConfiguration>,
+          this.electronService.invoke('vectors:openrouter:get-models') as Promise<
+            readonly OpenRouterEmbeddingModelDescriptor[]
+          >,
+          this.electronService.invoke('vectors:openrouter:get-book-selection', {
+            bookId: this.book().id,
+          }) as Promise<BookOpenRouterEmbeddingModelSelection>,
+        ]);
+      this.selectedLocalModelName.set(localSelection.modelName);
+      this.apiKeyStatuses.set(configuration.apiKeys);
+      this.openRouterModels.set(openRouterModels);
+      this.selectedOpenRouterModelName.set(openRouterSelection.modelName);
+      this.viewedProviderId.set(this.selectedProviderId());
     } catch (error) {
       this.loadError.set(this.errorMessage(error));
     } finally {
@@ -121,18 +190,43 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     }
   }
 
-  async selectModel(status: LocalEmbeddingModelStatus): Promise<void> {
-    if (
-      !status.installed
-      || this.operation()
-      || status.modelName === this.selectedModelName()
-    ) return;
+  async selectProvider(providerId: BookVectorProviderId): Promise<void> {
+    if (this.operation()) return;
+    if (providerId === 'local' || providerId === 'openrouter') {
+      if (providerId === 'local' || this.isProviderConfigured(providerId)) {
+        this.viewedProviderId.set(providerId);
+      }
+      return;
+    }
+    if (!this.isProviderConfigured(providerId)) return;
+    if (providerId === this.selectedProviderId()) {
+      this.viewedProviderId.set(providerId);
+      return;
+    }
 
+    this.viewedProviderId.set(providerId);
+    this.beginOperation('select', providerId);
+    try {
+      await this.selectCloudProviderForBook(providerId, this.savedIndexingEnabled());
+      this.emitSettingsUpdate({ embeddingModel: providerId === 'openai' ? 'openAI' : 'voyage' });
+    } catch (error) {
+      this.operationError.set(this.errorMessage(error));
+      this.viewedProviderId.set(this.selectedProviderId());
+    } finally {
+      this.finishOperation();
+    }
+  }
+
+  async selectLocalModel(status: LocalEmbeddingModelStatus): Promise<void> {
+    if (!status.installed || this.operation() || this.isLocalModelSelected(status)) return;
     this.beginOperation('select', status.modelName);
     try {
-      await this.selectForBook(status.modelName, this.savedIndexingEnabled());
-      this.selectedModelName.set(status.modelName);
-      this.emitSelectedModel(status.modelName);
+      await this.selectLocalModelForBook(status.modelName, this.savedIndexingEnabled());
+      this.selectedLocalModelName.set(status.modelName);
+      this.emitSettingsUpdate({
+        embeddingModel: 'local',
+        localEmbeddingModel: status.modelName,
+      });
       await this.localModelState.reloadStatuses().catch(() => undefined);
     } catch (error) {
       this.operationError.set(this.errorMessage(error));
@@ -141,16 +235,40 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     }
   }
 
-  async toggleIndexing(): Promise<void> {
-    if (this.operation() || this.selectedModelUnavailable()) return;
+  async selectOpenRouterModel(model: OpenRouterEmbeddingModelDescriptor): Promise<void> {
+    if (
+      this.operation()
+      || !this.isProviderConfigured('openrouter')
+      || (
+        model.modelName === this.selectedOpenRouterModelName()
+        && this.selectedProviderId() === 'openrouter'
+      )
+    ) return;
 
-    const modelName = this.selectedModelName();
-    if (!modelName) return;
+    this.beginOperation('select', model.modelName);
+    try {
+      await this.selectOpenRouterModelForBook(model.modelName, this.savedIndexingEnabled());
+      this.selectedOpenRouterModelName.set(model.modelName);
+      this.emitSettingsUpdate({
+        embeddingModel: 'openRouter',
+        openRouterEmbeddingModel: model.modelName,
+      });
+    } catch (error) {
+      this.operationError.set(this.errorMessage(error));
+    } finally {
+      this.finishOperation();
+    }
+  }
+
+  async toggleIndexing(): Promise<void> {
+    if (this.operation() || this.selectedProviderUnavailable()) return;
+    const target = this.currentSelectionTarget();
+    if (!target) return;
 
     if (this.savedIndexingEnabled()) {
-      this.beginOperation('disable', modelName);
+      this.beginOperation('disable', target);
       try {
-        await this.saveIndexingPreference(false);
+        await this.saveSettingsUpdate({ vectorSearchEnabled: false });
       } catch {
         // The persisted preference is unchanged and the error is rendered in the section.
       } finally {
@@ -159,10 +277,10 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.beginOperation('enable', modelName);
+    this.beginOperation('enable', target);
     try {
-      await this.selectForBook(modelName, true);
-      await this.saveIndexingPreference(true);
+      await this.reconcileCurrentSelection();
+      await this.saveSettingsUpdate({ vectorSearchEnabled: true });
     } catch (error) {
       this.operationError.set(this.errorMessage(error));
     } finally {
@@ -172,11 +290,9 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
 
   async toggleAutomaticIndexing(): Promise<void> {
     if (this.operation() || !this.effectiveIndexingEnabled()) return;
-
-    const modelName = this.selectedModelName();
-    if (!modelName) return;
-
-    this.beginOperation('automatic', modelName);
+    const target = this.currentSelectionTarget();
+    if (!target) return;
+    this.beginOperation('automatic', target);
     try {
       await this.saveSettingsUpdate({
         automaticIndexingEnabled: !this.automaticIndexingEnabled(),
@@ -188,24 +304,67 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     }
   }
 
-  isSelected(status: LocalEmbeddingModelStatus): boolean {
-    return status.modelName === this.selectedModelName();
+  isProviderConfigured(providerId: BookVectorProviderId): boolean {
+    return providerId === 'local' || this.apiKeyStatuses()[providerId].configured;
   }
 
-  private async selectForBook(
-    modelName: LocalEmbeddingModelName,
-    reindex: boolean,
-  ): Promise<void> {
+  isProviderSelected(providerId: BookVectorProviderId): boolean {
+    return this.selectedProviderId() === providerId;
+  }
+
+  isLocalModelSelected(status: LocalEmbeddingModelStatus): boolean {
+    return this.selectedProviderId() === 'local'
+      && status.modelName === this.selectedLocalModelName();
+  }
+
+  isOpenRouterModelSelected(model: OpenRouterEmbeddingModelDescriptor): boolean {
+    return this.selectedProviderId() === 'openrouter'
+      && model.modelName === this.selectedOpenRouterModelName();
+  }
+
+  private async reconcileCurrentSelection(): Promise<void> {
+    const providerId = this.selectedProviderId();
+    if (providerId === 'local') {
+      const modelName = this.selectedLocalModelName();
+      if (modelName) await this.selectLocalModelForBook(modelName, true);
+      return;
+    }
+    if (providerId === 'openrouter') {
+      const modelName = this.selectedOpenRouterModelName();
+      if (modelName) await this.selectOpenRouterModelForBook(modelName, true);
+      return;
+    }
+    await this.selectCloudProviderForBook(providerId, true);
+  }
+
+  private selectLocalModelForBook(modelName: LocalEmbeddingModelName, reindex: boolean): Promise<unknown> {
     const payload: SelectBookLocalEmbeddingModelPayload = {
       bookId: this.book().id,
       modelName,
       reindex,
     };
-    await this.electronService.invoke('vectors:local-model:select-for-book', payload);
+    return this.electronService.invoke('vectors:local-model:select-for-book', payload);
   }
 
-  private async saveIndexingPreference(vectorSearchEnabled: boolean): Promise<void> {
-    await this.saveSettingsUpdate({ vectorSearchEnabled });
+  private selectCloudProviderForBook(providerId: VectorCloudProviderId, reindex: boolean): Promise<unknown> {
+    const payload: SelectBookCloudEmbeddingProviderPayload = {
+      bookId: this.book().id,
+      providerId,
+      reindex,
+    };
+    return this.electronService.invoke('vectors:cloud-provider:select-for-book', payload);
+  }
+
+  private selectOpenRouterModelForBook(
+    modelName: OpenRouterEmbeddingModelName,
+    reindex: boolean,
+  ): Promise<unknown> {
+    const payload: SelectBookOpenRouterEmbeddingModelPayload = {
+      bookId: this.book().id,
+      modelName,
+      reindex,
+    };
+    return this.electronService.invoke('vectors:openrouter:select-for-book', payload);
   }
 
   private async saveSettingsUpdate(update: Partial<BookSettingsDto>): Promise<void> {
@@ -222,14 +381,11 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     }
   }
 
-  private emitSelectedModel(modelName: LocalEmbeddingModelName): void {
+  private emitSettingsUpdate(update: Partial<BookSettingsDto>): void {
     const book = this.book();
     this.bookChange.emit({
       ...book,
-      settings: this.mergeSettings(book, {
-        embeddingModel: 'local',
-        localEmbeddingModel: modelName,
-      }),
+      settings: this.mergeSettings(book, update),
     });
   }
 
@@ -244,16 +400,47 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     };
   }
 
-  private beginOperation(operation: BookVectorOperation, modelName: LocalEmbeddingModelName): void {
+  private providerIdFromBook(book: BookDto): BookVectorProviderId {
+    switch (book.settings?.embeddingModel) {
+      case 'openAI': return 'openai';
+      case 'voyage': return 'voyage';
+      case 'openRouter': return 'openrouter';
+      default: return 'local';
+    }
+  }
+
+  private currentSelectionTarget(): string | null {
+    const providerId = this.selectedProviderId();
+    if (providerId === 'local') return this.selectedLocalModelName();
+    if (providerId === 'openrouter') return this.selectedOpenRouterModelName();
+    return providerId;
+  }
+
+  private listenForProgress<T extends ReindexProgress & { bookId: string }>(
+    channel: string,
+    target: (progress: T) => string,
+  ): void {
+    this.removeProgressListeners.push(this.electronService.on(channel, (progress: T) => {
+      if (
+        this.operation()
+        && progress.bookId === this.book().id
+        && target(progress) === this.operationTarget()
+      ) {
+        this.reindexProgress.set(progress);
+      }
+    }));
+  }
+
+  private beginOperation(operation: BookVectorOperation, target: string): void {
     this.operation.set(operation);
-    this.operationModelName.set(modelName);
+    this.operationTarget.set(target);
     this.operationError.set(null);
     this.reindexProgress.set(null);
   }
 
   private finishOperation(): void {
     this.operation.set(null);
-    this.operationModelName.set(null);
+    this.operationTarget.set(null);
     this.reindexProgress.set(null);
   }
 

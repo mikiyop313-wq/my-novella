@@ -13,6 +13,7 @@ import {
   EmbeddingModel,
   LocalEmbeddingModelName,
   OpenRouterEmbeddingModelName,
+  VectorCloudProviderId,
 } from '../../shared/models/vector.model';
 
 type BookEntity = typeof books.$inferSelect;
@@ -347,6 +348,19 @@ export class BookRepository {
     const updated = await db
       .update(bookSettings)
       .set({ embeddingModel: 'openRouter', openRouterEmbeddingModel: modelName })
+      .where(eq(bookSettings.bookSettingId, bookId))
+      .returning({ bookId: bookSettings.bookSettingId });
+    if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);
+  }
+
+  async selectCloudEmbeddingProvider(
+    bookId: string,
+    providerId: VectorCloudProviderId,
+  ): Promise<void> {
+    const embeddingModel: EmbeddingModel = providerId === 'openai' ? 'openAI' : 'voyage';
+    const updated = await db
+      .update(bookSettings)
+      .set({ embeddingModel })
       .where(eq(bookSettings.bookSettingId, bookId))
       .returning({ bookId: bookSettings.bookSettingId });
     if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);

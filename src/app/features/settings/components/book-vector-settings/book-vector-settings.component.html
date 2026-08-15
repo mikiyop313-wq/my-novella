@@ -21,11 +21,9 @@
         <div class="vector-card-copy">
           <h2 id="book-indexing-heading">Book indexing</h2>
           <p>Keep paragraph embeddings current and allow semantic manuscript search.</p>
-          @if (selectedModelUnavailable()) {
+          @if (selectedProviderUnavailable()) {
             <p id="indexing-unavailable-reason" class="unavailable-message" role="note">
-              <strong>{{ selectedModelStatus()?.displayName }}</strong> is not installed.
-              Install it from General Settings &rarr; Vector Search, or select another installed
-              model.
+              {{ unavailableMessage() }}
             </p>
           }
         </div>
@@ -36,8 +34,8 @@
           role="switch"
           [class.is-active]="effectiveIndexingEnabled()"
           [attr.aria-checked]="effectiveIndexingEnabled()"
-          [attr.aria-describedby]="selectedModelUnavailable() ? 'indexing-unavailable-reason' : null"
-          [disabled]="operation() !== null || selectedModelUnavailable()"
+          [attr.aria-describedby]="selectedProviderUnavailable() ? 'indexing-unavailable-reason' : null"
+          [disabled]="operation() !== null || selectedProviderUnavailable()"
           (click)="toggleIndexing()"
         >
           <span class="switch-track" aria-hidden="true"><span></span></span>
@@ -67,48 +65,129 @@
 
       <section class="vector-card model-section" aria-labelledby="embedding-model-heading">
         <div class="vector-card-copy">
-          <h2 id="embedding-model-heading">Embedding model</h2>
-          <p>Select an installed local model for this book.</p>
+          <h2 id="embedding-model-heading">Embedding provider</h2>
+          <p>Select where this book creates embeddings and, when available, its model.</p>
         </div>
 
-        <div class="model-list" role="radiogroup" aria-label="Installed embedding models">
-          @for (status of visibleModels(); track status.modelName) {
+        <div class="provider-tabs" role="tablist" aria-label="Embedding providers">
+          @for (provider of providers; track provider.id) {
             <button
-              class="model-option"
+              class="provider-tab"
               type="button"
-              role="radio"
-              [class.is-selected]="isSelected(status)"
-              [class.is-unavailable]="!status.installed"
-              [attr.aria-checked]="isSelected(status)"
-              [disabled]="!status.installed || operation() !== null"
-              [attr.data-model]="status.modelName"
-              (click)="selectModel(status)"
+              role="tab"
+              [class.is-active]="viewedProviderId() === provider.id"
+              [class.is-selected]="isProviderSelected(provider.id)"
+              [class.is-unavailable]="provider.id !== 'local' && !isProviderConfigured(provider.id)"
+              [attr.aria-selected]="viewedProviderId() === provider.id"
+              [attr.data-provider]="provider.id"
+              [disabled]="operation() !== null || provider.id !== 'local' && !isProviderConfigured(provider.id)"
+              (click)="selectProvider(provider.id)"
             >
-              <span class="model-mark" aria-hidden="true">{{ status.providerInitials }}</span>
-              <span class="model-copy">
-                <span class="model-heading">
-                  <strong>{{ status.displayName }}</strong>
-                  @if (!status.installed) {
-                    <span class="model-badge">Unavailable</span>
-                  } @else if (isSelected(status)) {
-                    <span class="model-badge is-selected">Selected</span>
-                  }
-                </span>
-                <code>{{ status.modelName }}</code>
-                <span class="model-meta">
-                  {{ status.providerName }} &middot; {{ status.dimensions }} dimensions &middot;
-                  {{ status.language }}
-                </span>
+              <span class="provider-tab-heading">
+                <strong>{{ provider.name }}</strong>
+                @if (isProviderSelected(provider.id)) {
+                  <span class="model-badge is-selected">Selected</span>
+                } @else if (provider.id !== 'local' && !isProviderConfigured(provider.id)) {
+                  <span class="model-badge">Needs API key</span>
+                }
               </span>
-              <span class="radio-indicator" aria-hidden="true"><span></span></span>
+              <span>{{ provider.description }}</span>
             </button>
-          } @empty {
-            <div class="no-models" role="note">
-              No local embedding models are installed. Install one from General Settings &rarr;
-              Vector Search.
-            </div>
           }
         </div>
+        <p class="provider-help" role="note">
+          Cloud providers marked <strong>Needs API key</strong> can be configured in General
+          Settings &rarr; Vector Search.
+        </p>
+
+        @if (viewedProviderId() === 'local') {
+          <div class="model-list" role="radiogroup" aria-label="Installed local embedding models">
+            @for (status of visibleLocalModels(); track status.modelName) {
+              <button
+                class="model-option"
+                type="button"
+                role="radio"
+                [class.is-selected]="isLocalModelSelected(status)"
+                [class.is-unavailable]="!status.installed"
+                [attr.aria-checked]="isLocalModelSelected(status)"
+                [disabled]="!status.installed || operation() !== null"
+                [attr.data-model]="status.modelName"
+                (click)="selectLocalModel(status)"
+              >
+                <span class="model-mark" aria-hidden="true">{{ status.providerInitials }}</span>
+                <span class="model-copy">
+                  <span class="model-heading">
+                    <strong>{{ status.displayName }}</strong>
+                    @if (!status.installed) {
+                      <span class="model-badge">Unavailable</span>
+                    } @else if (isLocalModelSelected(status)) {
+                      <span class="model-badge is-selected">Selected</span>
+                    }
+                  </span>
+                  <code>{{ status.modelName }}</code>
+                  <span class="model-meta">
+                    {{ status.providerName }} &middot; {{ status.dimensions }} dimensions &middot;
+                    {{ status.language }}
+                  </span>
+                </span>
+                <span class="radio-indicator" aria-hidden="true"><span></span></span>
+              </button>
+            } @empty {
+              <div class="no-models" role="note">
+                No local embedding models are installed. Install one from General Settings &rarr;
+                Vector Search.
+              </div>
+            }
+          </div>
+        } @else if (viewedProviderId() === 'openrouter') {
+          <div class="model-list" role="radiogroup" aria-label="OpenRouter embedding models">
+            @for (model of openRouterModels(); track model.modelName) {
+              <button
+                class="model-option"
+                type="button"
+                role="radio"
+                [class.is-selected]="isOpenRouterModelSelected(model)"
+                [attr.aria-checked]="isOpenRouterModelSelected(model)"
+                [disabled]="operation() !== null || !isProviderConfigured('openrouter')"
+                [attr.data-model]="model.modelName"
+                (click)="selectOpenRouterModel(model)"
+              >
+                <span class="model-mark" aria-hidden="true">OR</span>
+                <span class="model-copy">
+                  <span class="model-heading">
+                    <strong>{{ model.displayName }}</strong>
+                    @if (isOpenRouterModelSelected(model)) {
+                      <span class="model-badge is-selected">Selected</span>
+                    }
+                  </span>
+                  <code>{{ model.modelName }}</code>
+                  <span class="model-meta">
+                    {{ model.providerName }} &middot; {{ model.dimensions }} dimensions
+                  </span>
+                </span>
+                <span class="radio-indicator" aria-hidden="true"><span></span></span>
+              </button>
+            }
+          </div>
+        } @else if (viewedProviderId() === 'openai') {
+          <div class="cloud-model-summary" role="status">
+            <span class="model-mark" aria-hidden="true">OA</span>
+            <span class="model-copy">
+              <strong>Text Embedding 3 Large</strong>
+              <code>text-embedding-3-large</code>
+              <span class="model-meta">OpenAI &middot; 3072 dimensions</span>
+            </span>
+          </div>
+        } @else {
+          <div class="cloud-model-summary" role="status">
+            <span class="model-mark" aria-hidden="true">VA</span>
+            <span class="model-copy">
+              <strong>Voyage 3</strong>
+              <code>voyage-3</code>
+              <span class="model-meta">Voyage AI &middot; 1024 dimensions</span>
+            </span>
+          </div>
+        }
 
         @if (operation() && reindexProgress(); as progress) {
           <div class="reindex-progress" role="status" aria-live="polite">

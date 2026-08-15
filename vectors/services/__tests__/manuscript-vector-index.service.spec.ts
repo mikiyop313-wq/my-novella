@@ -7,14 +7,17 @@ const mocks = vi.hoisted(() => ({
     getManuscript: vi.fn(),
     updateScene: vi.fn(),
     getEmbeddingProvider: vi.fn(),
+    getCloudEmbeddingProvider: vi.fn(),
     getLocalEmbeddingProvider: vi.fn(),
     getOpenRouterEmbeddingProvider: vi.fn(),
     selectLocalEmbeddingModel: vi.fn(),
     selectOpenRouterEmbeddingModel: vi.fn(),
+    selectCloudEmbeddingProvider: vi.fn(),
     getVectorSearchEnabled: vi.fn(),
     getEmbeddingModel: vi.fn(),
     getLocalEmbeddingModel: vi.fn(),
     isInstalled: vi.fn(),
+    getVectorApiKey: vi.fn(),
     getBookParagraphStates: vi.fn(),
     updateParagraphMetadata: vi.fn(),
     upsertParagraphs: vi.fn(),
@@ -34,6 +37,7 @@ vi.mock('../../../db/repositories/book.repository', () => ({
     bookRepository: {
         selectLocalEmbeddingModel: mocks.selectLocalEmbeddingModel,
         selectOpenRouterEmbeddingModel: mocks.selectOpenRouterEmbeddingModel,
+        selectCloudEmbeddingProvider: mocks.selectCloudEmbeddingProvider,
         getVectorSearchEnabled: mocks.getVectorSearchEnabled,
         getEmbeddingModel: mocks.getEmbeddingModel,
         getLocalEmbeddingModel: mocks.getLocalEmbeddingModel,
@@ -45,9 +49,14 @@ vi.mock('../../embeddings/local-model-manager', () => ({
 }));
 
 vi.mock('../../embeddings/factory', () => ({
+    getCloudEmbeddingProvider: mocks.getCloudEmbeddingProvider,
     getEmbeddingProvider: mocks.getEmbeddingProvider,
     getLocalEmbeddingProvider: mocks.getLocalEmbeddingProvider,
     getOpenRouterEmbeddingProvider: mocks.getOpenRouterEmbeddingProvider,
+}));
+
+vi.mock('../../../electron/domain/vector/vector-api-key.service', () => ({
+    vectorApiKeyService: { getApiKey: mocks.getVectorApiKey },
 }));
 
 vi.mock('../../repositories/paragraph-vector.repository', () => ({
@@ -83,6 +92,7 @@ describe('ManuscriptVectorIndexService', () => {
             embedQuery: vi.fn().mockResolvedValue([1, 2, 3]),
         };
         mocks.getEmbeddingProvider.mockResolvedValue(provider);
+        mocks.getCloudEmbeddingProvider.mockResolvedValue(provider);
         mocks.getLocalEmbeddingProvider.mockReturnValue(provider);
         mocks.getOpenRouterEmbeddingProvider.mockResolvedValue(provider);
         mocks.getBookParagraphStates.mockResolvedValue(new Map());
@@ -92,10 +102,12 @@ describe('ManuscriptVectorIndexService', () => {
         mocks.retireLegacyManuscriptTable.mockResolvedValue(undefined);
         mocks.selectLocalEmbeddingModel.mockResolvedValue(undefined);
         mocks.selectOpenRouterEmbeddingModel.mockResolvedValue(undefined);
+        mocks.selectCloudEmbeddingProvider.mockResolvedValue(undefined);
         mocks.getVectorSearchEnabled.mockResolvedValue(true);
         mocks.getEmbeddingModel.mockResolvedValue('local');
         mocks.getLocalEmbeddingModel.mockResolvedValue('BAAI/bge-m3');
         mocks.isInstalled.mockResolvedValue(true);
+        mocks.getVectorApiKey.mockResolvedValue('configured-key');
         mocks.searchSimilar.mockResolvedValue([]);
         mocks.updateScene.mockResolvedValue(undefined);
         mocks.getManuscript.mockResolvedValue(manuscript([
@@ -266,6 +278,63 @@ describe('ManuscriptVectorIndexService', () => {
         });
     });
 
+    it('reindexes before persisting a fixed-model cloud provider selection', async () => {
+        provider = {
+            ...provider,
+            space: {
+                provider: 'openAI',
+                model: 'text-embedding-3-large',
+                dimensions: 3,
+                revision: '1',
+            },
+        };
+        mocks.getCloudEmbeddingProvider.mockResolvedValue(provider);
+        const progress = vi.fn();
+
+        await expect(service.selectCloudProvider(
+            'book-1',
+            'openai',
+            true,
+            progress,
+        )).resolves.toMatchObject({
+            bookId: 'book-1',
+            providerId: 'openai',
+            reindexed: true,
+            embeddedParagraphs: 2,
+        });
+
+        expect(mocks.getCloudEmbeddingProvider).toHaveBeenCalledWith('openai');
+        expect(mocks.selectCloudEmbeddingProvider).toHaveBeenCalledWith('book-1', 'openai');
+        expect(progress).toHaveBeenLastCalledWith({
+            bookId: 'book-1',
+            providerId: 'openai',
+            processedParagraphs: 2,
+            totalParagraphs: 2,
+        });
+    });
+
+    it('validates and persists a cloud provider without reconciling when indexing is disabled', async () => {
+        await expect(service.selectCloudProvider('book-1', 'voyage', false)).resolves.toEqual({
+            bookId: 'book-1',
+            providerId: 'voyage',
+            reindexed: false,
+        });
+
+        expect(mocks.getCloudEmbeddingProvider).toHaveBeenCalledWith('voyage');
+        expect(mocks.selectCloudEmbeddingProvider).toHaveBeenCalledWith('book-1', 'voyage');
+        expect(mocks.getManuscript).not.toHaveBeenCalled();
+    });
+
+    it('does not persist a cloud provider when reconciliation fails', async () => {
+        vi.mocked(provider.embedDocuments).mockRejectedValueOnce(new Error('cloud embedding failed'));
+
+        await expect(service.selectCloudProvider('book-1', 'openai', true)).rejects.toThrow(
+            'cloud embedding failed',
+        );
+
+        expect(mocks.selectCloudEmbeddingProvider).not.toHaveBeenCalled();
+    });
+
     it('preserves the previous selection when OpenRouter reconciliation fails', async () => {
         vi.mocked(provider.embedDocuments).mockRejectedValueOnce(new Error('embedding failed'));
 
@@ -287,6 +356,17 @@ describe('ManuscriptVectorIndexService', () => {
 
         expect(mocks.searchSimilar).not.toHaveBeenCalled();
         expect(provider.embedQuery).not.toHaveBeenCalled();
+    });
+
+    it('reports cloud indexing as unavailable when the selected provider has no key', async () => {
+        mocks.getEmbeddingModel.mockResolvedValue('openAI');
+        mocks.getVectorApiKey.mockResolvedValue(null);
+
+        await expect(service.isBookIndexingAvailable('book-1')).resolves.toBe(false);
+        expect(mocks.getVectorApiKey).toHaveBeenCalledWith('openai');
+
+        mocks.getVectorApiKey.mockResolvedValue('openai-key');
+        await expect(service.isBookIndexingAvailable('book-1')).resolves.toBe(true);
     });
 });
 
