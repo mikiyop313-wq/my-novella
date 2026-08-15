@@ -5,16 +5,22 @@ import { appSettingsRepository } from '../../../db/repositories/app-settings.rep
 import {
     VECTOR_CLOUD_PROVIDER_IDS,
     type VectorApiKeyStatus,
-    type VectorCloudProviderId,
 } from '../../../shared/models/vector.model';
 
 const API_KEY_SETTING_PREFIX = 'vectors.apiKey.';
+
+export const VECTOR_API_KEY_PROVIDER_IDS = [
+    ...VECTOR_CLOUD_PROVIDER_IDS,
+    'openrouter',
+] as const;
+
+export type VectorApiKeyProviderId = (typeof VECTOR_API_KEY_PROVIDER_IDS)[number];
 
 export class VectorApiKeyService {
     constructor(private readonly settingsStore: AppSettingsStore = appSettingsRepository) {}
 
     async saveApiKey(
-        providerId: VectorCloudProviderId,
+        providerId: VectorApiKeyProviderId,
         rawApiKey: string,
     ): Promise<VectorApiKeyStatus> {
         this.assertProviderId(providerId);
@@ -30,14 +36,14 @@ export class VectorApiKeyService {
         return this.statusForKey(apiKey);
     }
 
-    async getApiKeyStatus(providerId: VectorCloudProviderId): Promise<VectorApiKeyStatus> {
+    async getApiKeyStatus(providerId: VectorApiKeyProviderId): Promise<VectorApiKeyStatus> {
         const apiKey = await this.getApiKey(providerId);
         return apiKey === null
             ? { configured: false, suffix: null }
             : this.statusForKey(apiKey);
     }
 
-    async getApiKey(providerId: VectorCloudProviderId): Promise<string | null> {
+    async getApiKey(providerId: VectorApiKeyProviderId): Promise<string | null> {
         this.assertProviderId(providerId);
 
         const encryptedKey = await this.settingsStore.get(this.settingKey(providerId));
@@ -64,7 +70,7 @@ export class VectorApiKeyService {
         }
     }
 
-    private settingKey(providerId: VectorCloudProviderId): string {
+    private settingKey(providerId: VectorApiKeyProviderId): string {
         return `${API_KEY_SETTING_PREFIX}${providerId}`;
     }
 
@@ -72,8 +78,8 @@ export class VectorApiKeyService {
         return { configured: true, suffix: apiKey.slice(-4) };
     }
 
-    private assertProviderId(providerId: string): asserts providerId is VectorCloudProviderId {
-        if (!VECTOR_CLOUD_PROVIDER_IDS.some(candidate => candidate === providerId)) {
+    private assertProviderId(providerId: string): asserts providerId is VectorApiKeyProviderId {
+        if (!VECTOR_API_KEY_PROVIDER_IDS.some(candidate => candidate === providerId)) {
             throw new Error(`Unsupported cloud vector provider: ${providerId}`);
         }
     }

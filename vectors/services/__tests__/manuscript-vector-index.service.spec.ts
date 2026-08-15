@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => ({
     updateScene: vi.fn(),
     getEmbeddingProvider: vi.fn(),
     getLocalEmbeddingProvider: vi.fn(),
+    getOpenRouterEmbeddingProvider: vi.fn(),
     selectLocalEmbeddingModel: vi.fn(),
+    selectOpenRouterEmbeddingModel: vi.fn(),
     getVectorSearchEnabled: vi.fn(),
     getEmbeddingModel: vi.fn(),
     getLocalEmbeddingModel: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock('../../../db/repositories/manuscript.repository', () => ({
 vi.mock('../../../db/repositories/book.repository', () => ({
     bookRepository: {
         selectLocalEmbeddingModel: mocks.selectLocalEmbeddingModel,
+        selectOpenRouterEmbeddingModel: mocks.selectOpenRouterEmbeddingModel,
         getVectorSearchEnabled: mocks.getVectorSearchEnabled,
         getEmbeddingModel: mocks.getEmbeddingModel,
         getLocalEmbeddingModel: mocks.getLocalEmbeddingModel,
@@ -44,6 +47,7 @@ vi.mock('../../embeddings/local-model-manager', () => ({
 vi.mock('../../embeddings/factory', () => ({
     getEmbeddingProvider: mocks.getEmbeddingProvider,
     getLocalEmbeddingProvider: mocks.getLocalEmbeddingProvider,
+    getOpenRouterEmbeddingProvider: mocks.getOpenRouterEmbeddingProvider,
 }));
 
 vi.mock('../../repositories/paragraph-vector.repository', () => ({
@@ -80,12 +84,14 @@ describe('ManuscriptVectorIndexService', () => {
         };
         mocks.getEmbeddingProvider.mockResolvedValue(provider);
         mocks.getLocalEmbeddingProvider.mockReturnValue(provider);
+        mocks.getOpenRouterEmbeddingProvider.mockResolvedValue(provider);
         mocks.getBookParagraphStates.mockResolvedValue(new Map());
         mocks.updateParagraphMetadata.mockResolvedValue(undefined);
         mocks.upsertParagraphs.mockResolvedValue(undefined);
         mocks.deleteParagraphs.mockResolvedValue(undefined);
         mocks.retireLegacyManuscriptTable.mockResolvedValue(undefined);
         mocks.selectLocalEmbeddingModel.mockResolvedValue(undefined);
+        mocks.selectOpenRouterEmbeddingModel.mockResolvedValue(undefined);
         mocks.getVectorSearchEnabled.mockResolvedValue(true);
         mocks.getEmbeddingModel.mockResolvedValue('local');
         mocks.getLocalEmbeddingModel.mockResolvedValue('BAAI/bge-m3');
@@ -218,6 +224,58 @@ describe('ManuscriptVectorIndexService', () => {
 
         expect(mocks.selectLocalEmbeddingModel).toHaveBeenCalledWith('book-1', 'BAAI/bge-m3');
         expect(mocks.getManuscript).not.toHaveBeenCalled();
+    });
+
+    it('persists an explicit OpenRouter selection only after successful reindexing', async () => {
+        provider = {
+            ...provider,
+            space: {
+                provider: 'openRouter',
+                model: 'openai/text-embedding-3-small',
+                dimensions: 3,
+                revision: '1',
+            },
+        };
+        mocks.getOpenRouterEmbeddingProvider.mockResolvedValue(provider);
+        const progress = vi.fn();
+
+        await expect(service.selectOpenRouterModel(
+            'book-1',
+            'openai/text-embedding-3-small',
+            true,
+            progress,
+        )).resolves.toMatchObject({
+            bookId: 'book-1',
+            modelName: 'openai/text-embedding-3-small',
+            reindexed: true,
+            embeddedParagraphs: 2,
+        });
+
+        expect(mocks.getOpenRouterEmbeddingProvider).toHaveBeenCalledWith(
+            'openai/text-embedding-3-small',
+        );
+        expect(mocks.selectOpenRouterEmbeddingModel).toHaveBeenCalledWith(
+            'book-1',
+            'openai/text-embedding-3-small',
+        );
+        expect(progress).toHaveBeenLastCalledWith({
+            bookId: 'book-1',
+            modelName: 'openai/text-embedding-3-small',
+            processedParagraphs: 2,
+            totalParagraphs: 2,
+        });
+    });
+
+    it('preserves the previous selection when OpenRouter reconciliation fails', async () => {
+        vi.mocked(provider.embedDocuments).mockRejectedValueOnce(new Error('embedding failed'));
+
+        await expect(service.selectOpenRouterModel(
+            'book-1',
+            'qwen/qwen3-embedding-4b',
+            true,
+        )).rejects.toThrow('embedding failed');
+
+        expect(mocks.selectOpenRouterEmbeddingModel).not.toHaveBeenCalled();
     });
 
     it('returns no search results when the preference is disabled or the model is missing', async () => {

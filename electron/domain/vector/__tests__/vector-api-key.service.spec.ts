@@ -46,6 +46,12 @@ describe('VectorApiKeyService', () => {
             Buffer.from('encrypted:sk-vector-1234').toString('base64'),
         );
         expect(store.values.has('ai.apiKey.openai')).toBe(false);
+
+        await service.saveApiKey('openrouter', 'openrouter-vector-5678');
+        expect(store.values.get('vectors.apiKey.openrouter')).toBe(
+            Buffer.from('encrypted:openrouter-vector-5678').toString('base64'),
+        );
+        expect(store.values.has('ai.apiKey.openrouter')).toBe(false);
     });
 
     it('decrypts the full key but exposes only status and suffix normally', async () => {

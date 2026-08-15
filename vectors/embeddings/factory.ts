@@ -10,12 +10,14 @@ import { vectorApiKeyService } from '../../electron/domain/vector/vector-api-key
 import { EmbeddingProvider } from './types';
 import type {
     EmbeddingModel,
+    OpenRouterEmbeddingModelName,
     VectorCloudProviderId,
 } from '../../shared/models/vector.model';
 import type { LocalEmbeddingModelName } from '../../shared/models/vector.model';
 import { LocalEmbeddingProvider } from './providers/local';
 import { OpenAIEmbeddingProvider } from './providers/openai';
 import { VoyageEmbeddingProvider } from './providers/voyage';
+import { OpenRouterEmbeddingProvider } from './providers/openrouter';
 import {
     EmbeddingProviderUnavailableError,
     requireEmbeddingApiKey,
@@ -25,6 +27,8 @@ import {
     getLocalEmbeddingModelDefinition,
     LOCAL_EMBEDDING_MODEL_NAME,
 } from './local-model-definition';
+import { getOpenRouterEmbeddingModelDefinition } from './openrouter-model-definition';
+import type { VectorApiKeyProviderId } from '../../electron/domain/vector/vector-api-key.service';
 
 export { EmbeddingProviderUnavailableError } from './provider-selection';
 
@@ -37,8 +41,10 @@ const providerCache = new Map<string, EmbeddingProvider>();
 const unavailableLocalModels = new Set<LocalEmbeddingModelName>();
 
 interface VectorApiKeyReader {
-    getApiKey(providerId: VectorCloudProviderId): Promise<string | null>;
+    getApiKey(providerId: VectorApiKeyProviderId): Promise<string | null>;
 }
+
+type DirectEmbeddingModel = 'openAI' | 'voyage';
 
 /** Creates the configured provider for an embedding-provider selection. */
 function buildLocalProvider(
@@ -61,7 +67,7 @@ function buildLocalProvider(
     });
 }
 
-function buildCloudProvider(model: Exclude<EmbeddingModel, 'local'>, apiKey: string): EmbeddingProvider {
+function buildCloudProvider(model: DirectEmbeddingModel, apiKey: string): EmbeddingProvider {
     switch (model) {
         case 'openAI':
             return new OpenAIEmbeddingProvider({
@@ -102,6 +108,13 @@ export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingPro
     console.log(`[EmbeddingFactory] book=${bookId} → model=${model}:${localModelName}`);
 
     if (model === 'local') return getOrCreateLocalProvider(localModelName);
+    if (model === 'openRouter') {
+        const openRouterModelName = await bookRepository.getOpenRouterEmbeddingModel(bookId);
+        if (!openRouterModelName) {
+            throw new Error('The selected OpenRouter embedding provider has no model selected.');
+        }
+        return getOpenRouterEmbeddingProvider(openRouterModelName);
+    }
     return getCloudEmbeddingProvider(vectorProviderId(model));
 }
 
@@ -116,6 +129,25 @@ export async function getCloudEmbeddingProvider(
         (await keys.getApiKey(providerId)) ?? undefined,
     );
     return buildCloudProvider(model, apiKey);
+}
+
+/** Creates a curated OpenRouter provider with the latest securely stored credential. */
+export async function getOpenRouterEmbeddingProvider(
+    modelName: OpenRouterEmbeddingModelName,
+    keys: VectorApiKeyReader = vectorApiKeyService,
+): Promise<OpenRouterEmbeddingProvider> {
+    const definition = getOpenRouterEmbeddingModelDefinition(modelName);
+    const apiKey = requireEmbeddingApiKey(
+        'openRouter',
+        (await keys.getApiKey('openrouter')) ?? undefined,
+    );
+    return new OpenRouterEmbeddingProvider({
+        type: 'openrouter',
+        modelName: definition.modelName,
+        dimensions: definition.dimensions,
+        apiKey,
+        definition,
+    });
 }
 
 /**
@@ -172,10 +204,16 @@ function providerCacheKey(
     return model === 'local' ? `${model}:${localModelName}` : model;
 }
 
-function vectorProviderId(model: Exclude<EmbeddingModel, 'local'>): VectorCloudProviderId {
-    return model === 'openAI' ? 'openai' : 'voyage';
+function vectorProviderId(model: DirectEmbeddingModel): VectorCloudProviderId {
+    switch (model) {
+        case 'openAI': return 'openai';
+        case 'voyage': return 'voyage';
+    }
 }
 
-function embeddingModel(providerId: VectorCloudProviderId): Exclude<EmbeddingModel, 'local'> {
-    return providerId === 'openai' ? 'openAI' : 'voyage';
+function embeddingModel(providerId: VectorCloudProviderId): DirectEmbeddingModel {
+    switch (providerId) {
+        case 'openai': return 'openAI';
+        case 'voyage': return 'voyage';
+    }
 }

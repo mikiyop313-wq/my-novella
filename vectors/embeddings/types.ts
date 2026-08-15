@@ -35,7 +35,7 @@ export function assertEmbeddingDimensions(
   }
 }
 
-export type EmbeddingProviderType = 'local' | 'openai' | 'voyage';
+export type EmbeddingProviderType = 'local' | 'openai' | 'voyage' | 'openrouter';
 
 export interface BaseEmbeddingConfig {
   type: EmbeddingProviderType;
@@ -74,4 +74,13 @@ export interface VoyageEmbeddingConfig extends CloudEmbeddingConfig {
   type: 'voyage';
 }
 
-export type EmbeddingConfig = LocalEmbeddingConfig | OpenAIEmbeddingConfig | VoyageEmbeddingConfig;
+export interface OpenRouterEmbeddingConfig extends CloudEmbeddingConfig {
+  type: 'openrouter';
+  dimensions: number;
+}
+
+export type EmbeddingConfig =
+  | LocalEmbeddingConfig
+  | OpenAIEmbeddingConfig
+  | VoyageEmbeddingConfig
+  | OpenRouterEmbeddingConfig;

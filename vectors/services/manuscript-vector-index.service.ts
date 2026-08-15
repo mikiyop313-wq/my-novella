@@ -9,8 +9,11 @@ import type {
 import type {
     BookEmbeddingReindexProgress,
     BookEmbeddingSelectionResult,
+    BookOpenRouterEmbeddingReindexProgress,
+    BookOpenRouterEmbeddingSelectionResult,
     LocalEmbeddingModelName,
     ManuscriptVectorRecord,
+    OpenRouterEmbeddingModelName,
     SimilarParagraphResult,
 } from '../../shared/models/vector.model';
 import {
@@ -18,8 +21,13 @@ import {
     normalizeParagraphVectorText,
 } from '../../shared/utils/paragraph-vector';
 import { bookRepository } from '../../db/repositories/book.repository';
-import { getEmbeddingProvider, getLocalEmbeddingProvider } from '../embeddings/factory';
+import {
+    getEmbeddingProvider,
+    getLocalEmbeddingProvider,
+    getOpenRouterEmbeddingProvider,
+} from '../embeddings/factory';
 import { localEmbeddingModelManager } from '../embeddings/local-model-manager';
+import { getOpenRouterEmbeddingModelDefinition } from '../embeddings/openrouter-model-definition';
 import { assertEmbeddingDimensions, type EmbeddingProvider } from '../embeddings/types';
 import { vectorDb } from '../lancedb.connection';
 import { paragraphVectorRepository } from '../repositories/paragraph-vector.repository';
@@ -143,6 +151,56 @@ export class ManuscriptVectorIndexService {
                 return { bookId, modelName, reindexed: true as const, ...summary };
             });
             await bookRepository.selectLocalEmbeddingModel(bookId, modelName);
+            return result;
+        } finally {
+            this.switchingBooks.delete(bookId);
+        }
+    }
+
+    /** Selects a curated OpenRouter model, reconciling its vector space when requested. */
+    async selectOpenRouterModel(
+        bookId: string,
+        modelName: OpenRouterEmbeddingModelName,
+        reindex: boolean,
+        onProgress?: (progress: BookOpenRouterEmbeddingReindexProgress) => void,
+    ): Promise<BookOpenRouterEmbeddingSelectionResult> {
+        const definition = getOpenRouterEmbeddingModelDefinition(modelName);
+        if (this.switchingBooks.has(bookId)) {
+            throw new Error('An embedding model switch is already in progress for this book.');
+        }
+
+        this.switchingBooks.add(bookId);
+        try {
+            const provider = await getOpenRouterEmbeddingProvider(definition.modelName);
+            if (!reindex) {
+                await bookRepository.selectOpenRouterEmbeddingModel(bookId, definition.modelName);
+                return {
+                    bookId,
+                    modelName: definition.modelName,
+                    reindexed: false,
+                };
+            }
+
+            const result = await this.runBookOperation(bookId, async () => {
+                const summary = await this.reconcileBook(bookId, provider, (
+                    processedParagraphs,
+                    totalParagraphs,
+                ) => {
+                    onProgress?.({
+                        bookId,
+                        modelName: definition.modelName,
+                        processedParagraphs,
+                        totalParagraphs,
+                    });
+                });
+                return {
+                    bookId,
+                    modelName: definition.modelName,
+                    reindexed: true as const,
+                    ...summary,
+                };
+            });
+            await bookRepository.selectOpenRouterEmbeddingModel(bookId, definition.modelName);
             return result;
         } finally {
             this.switchingBooks.delete(bookId);

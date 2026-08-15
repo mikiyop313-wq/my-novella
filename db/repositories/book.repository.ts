@@ -12,6 +12,7 @@ import {
 import {
   EmbeddingModel,
   LocalEmbeddingModelName,
+  OpenRouterEmbeddingModelName,
 } from '../../shared/models/vector.model';
 
 type BookEntity = typeof books.$inferSelect;
@@ -67,6 +68,7 @@ export class BookRepository {
       povCharacterId: settings.povCharacterId,
       embeddingModel: settings.embeddingModel,
       localEmbeddingModel: settings.localEmbeddingModel,
+      openRouterEmbeddingModel: settings.openRouterEmbeddingModel,
       vectorSearchEnabled: settings.vectorSearchEnabled,
       automaticIndexingEnabled: settings.automaticIndexingEnabled,
     };
@@ -112,6 +114,7 @@ export class BookRepository {
       embeddingModel: data.settings?.embeddingModel || 'local',
       localEmbeddingModel:
         data.settings?.localEmbeddingModel || 'mixedbread-ai/mxbai-embed-large-v1',
+      openRouterEmbeddingModel: data.settings?.openRouterEmbeddingModel ?? null,
       vectorSearchEnabled: data.settings?.vectorSearchEnabled ?? true,
       automaticIndexingEnabled: data.settings?.automaticIndexingEnabled ?? true,
     };
@@ -131,6 +134,8 @@ export class BookRepository {
       updatePayload.embeddingModel = settings.embeddingModel;
     if (settings.localEmbeddingModel !== undefined)
       updatePayload.localEmbeddingModel = settings.localEmbeddingModel;
+    if (settings.openRouterEmbeddingModel !== undefined)
+      updatePayload.openRouterEmbeddingModel = settings.openRouterEmbeddingModel;
     if (settings.vectorSearchEnabled !== undefined)
       updatePayload.vectorSearchEnabled = settings.vectorSearchEnabled;
     if (settings.automaticIndexingEnabled !== undefined)
@@ -297,6 +302,16 @@ export class BookRepository {
     return settings?.localEmbeddingModel ?? 'mixedbread-ai/mxbai-embed-large-v1';
   }
 
+  async getOpenRouterEmbeddingModel(
+    bookId: string,
+  ): Promise<OpenRouterEmbeddingModelName | null> {
+    const settings = await db.query.bookSettings.findFirst({
+      where: eq(bookSettings.bookSettingId, bookId),
+      columns: { openRouterEmbeddingModel: true },
+    });
+    return settings?.openRouterEmbeddingModel ?? null;
+  }
+
   async getVectorSearchEnabled(bookId: string): Promise<boolean> {
     const settings = await db.query.bookSettings.findFirst({
       where: eq(bookSettings.bookSettingId, bookId),
@@ -320,6 +335,18 @@ export class BookRepository {
     const updated = await db
       .update(bookSettings)
       .set({ embeddingModel: 'local', localEmbeddingModel: modelName })
+      .where(eq(bookSettings.bookSettingId, bookId))
+      .returning({ bookId: bookSettings.bookSettingId });
+    if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);
+  }
+
+  async selectOpenRouterEmbeddingModel(
+    bookId: string,
+    modelName: OpenRouterEmbeddingModelName,
+  ): Promise<void> {
+    const updated = await db
+      .update(bookSettings)
+      .set({ embeddingModel: 'openRouter', openRouterEmbeddingModel: modelName })
       .where(eq(bookSettings.bookSettingId, bookId))
       .returning({ bookId: bookSettings.bookSettingId });
     if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);

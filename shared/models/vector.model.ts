@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 /** The embedding model/provider used to generate a vector. */
-export type EmbeddingModel = 'local' | 'openAI' | 'voyage';
+export type EmbeddingModel = 'local' | 'openAI' | 'voyage' | 'openRouter';
 
 export const VECTOR_CLOUD_PROVIDER_IDS = ['openai', 'voyage'] as const;
 
@@ -39,6 +39,76 @@ export interface EmbeddingSpaceDescriptor {
     dimensions: number;
     revision: string;
 }
+
+// ---------------------------------------------------------------------------
+// OpenRouter embedding models
+// ---------------------------------------------------------------------------
+
+/** Curated OpenRouter embedding model identifiers supported by the backend. */
+export type OpenRouterEmbeddingModelName =
+    | 'voyageai/voyage-multimodal-3.5'
+    | 'voyageai/voyage-4-lite'
+    | 'voyageai/voyage-4'
+    | 'voyageai/voyage-4-large'
+    | 'google/gemini-embedding-2'
+    | 'openai/text-embedding-3-large'
+    | 'openai/text-embedding-3-small'
+    | 'nvidia/nemotron-3-embed-1b:free'
+    | 'qwen/qwen3-embedding-8b'
+    | 'qwen/qwen3-embedding-4b';
+
+/** Public metadata for one curated OpenRouter embedding model. */
+export interface OpenRouterEmbeddingModelDescriptor {
+    modelName: OpenRouterEmbeddingModelName;
+    displayName: string;
+    providerName: string;
+    dimensions: number;
+}
+
+export interface SaveOpenRouterVectorApiKeyRequest {
+    apiKey: string;
+}
+
+export interface SelectBookOpenRouterEmbeddingModelPayload {
+    bookId: string;
+    modelName: OpenRouterEmbeddingModelName;
+    reindex: boolean;
+}
+
+/** The nullable OpenRouter model selection stored for a book. */
+export interface BookOpenRouterEmbeddingModelSelection {
+    bookId: string;
+    modelName: OpenRouterEmbeddingModelName | null;
+}
+
+/** Progress emitted while rebuilding a book with an OpenRouter model. */
+export interface BookOpenRouterEmbeddingReindexProgress {
+    bookId: string;
+    modelName: OpenRouterEmbeddingModelName;
+    processedParagraphs: number;
+    totalParagraphs: number;
+}
+
+export interface BookOpenRouterEmbeddingSelectionOnlyResult {
+    bookId: string;
+    modelName: OpenRouterEmbeddingModelName;
+    reindexed: false;
+}
+
+export interface BookOpenRouterEmbeddingSelectionReindexResult {
+    bookId: string;
+    modelName: OpenRouterEmbeddingModelName;
+    reindexed: true;
+    totalParagraphs: number;
+    reusedParagraphs: number;
+    embeddedParagraphs: number;
+    metadataUpdatedParagraphs: number;
+    deletedParagraphs: number;
+}
+
+export type BookOpenRouterEmbeddingSelectionResult =
+    | BookOpenRouterEmbeddingSelectionOnlyResult
+    | BookOpenRouterEmbeddingSelectionReindexResult;
 
 // ---------------------------------------------------------------------------
 // LanceDB record shape
