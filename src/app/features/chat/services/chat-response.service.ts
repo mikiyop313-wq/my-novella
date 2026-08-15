@@ -1,6 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
 
-import { type AiModel } from '../../../../../shared/models/ai.model';
 import {
   type ChatMessageDetailDto,
   type ChatThreadDetailDto,
@@ -9,18 +8,13 @@ import { AiStore } from '../../../core/store/ai.store';
 import { type AiChatMessage } from '../../../core/services/ai-state.service';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
 import { ToastService } from '../../../shared/services/toast.service';
+import { resolveAiModelTarget } from '../../../shared/utils/ai-model-selection';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
 import { WorkspaceStore } from '../../workspace/workspace.store';
 import { ChatAiContextService } from './chat-ai-context.service';
 import { ChatStore } from '../store/chat.store';
 
 const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
-const CHAT_THREAD_TITLE_SYSTEM_PROMPT = [
-  'Create a concise title for this chat thread based only on the user message.',
-  'Return only the title.',
-  'Use 3 to 7 words.',
-  'Do not use quotation marks, markdown, labels, or terminal punctuation.',
-].join(' ');
 
 export interface ChatResponseSettings {
   selectedModelId: string | null;
@@ -31,7 +25,7 @@ export interface ChatResponseSettings {
 
 interface ResolvedModel {
   provider: string;
-  modelId: string | null;
+  modelId: string;
 }
 
 /**
@@ -77,6 +71,12 @@ export class ChatResponseService {
   ): Promise<void> {
     if (this.generatingResponse()) return;
 
+    const bookId = this.chatStore.bookId();
+    if (!bookId) {
+      this.toastService.error('No active book is available.', 'AI Generation');
+      return;
+    }
+
     const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
     let messages: AiChatMessage[];
     try {
@@ -91,10 +91,9 @@ export class ChatResponseService {
     }
     const streamId = `pending-${userMessage.id}`;
     const threadId = userMessage.threadId;
-    const shouldGenerateTitle = this.shouldGenerateThreadTitle(
-      this.chatStore.selectedThread(),
-      userMessage,
-    );
+    const selectedThread = this.chatStore.selectedThread();
+    const shouldGenerateTitle = this.shouldGenerateThreadTitle(selectedThread, userMessage);
+    const titleBookId = shouldGenerateTitle ? selectedThread.bookId : null;
 
     let assistantMessage: ChatMessageDetailDto | null = null;
     let assistantMessagePromise: Promise<ChatMessageDetailDto | null> | null = null;
@@ -156,6 +155,8 @@ export class ChatResponseService {
     try {
       const generatedText = await this.aiStreamService.streamText({
         streamId,
+        bookId,
+        systemPromptCategory: 'chat',
         prompt,
         messages,
         provider,
@@ -208,8 +209,8 @@ export class ChatResponseService {
       // The local patch keeps the UI responsive; the update persists the final
       // status and metadata once streaming has settled.
       await this.chatStore.updateMessage(assistantMessage.id, data);
-      if (shouldGenerateTitle) {
-        await this.generateThreadTitle(userMessage, provider, modelId);
+      if (shouldGenerateTitle && titleBookId) {
+        await this.generateThreadTitle(userMessage, titleBookId, provider, modelId);
       }
     } catch (error) {
       await lastStreamingPatch;
@@ -305,14 +306,8 @@ export class ChatResponseService {
     const savedModelId = lastAssistantMessage.modelId;
     const savedProvider = lastAssistantMessage.provider;
     const matchingModel = this.aiStore.models().find((model) => {
-      if (model.source !== 'direct') {
-        return savedProvider === 'openrouter' && model.id === savedModelId;
-      }
-
-      return (
-        this.resolveDirectProvider(model) === savedProvider &&
-        (model.id.split('/')[1] || model.id) === savedModelId
-      );
+      const target = resolveAiModelTarget(model);
+      return target.provider === savedProvider && target.modelId === savedModelId;
     });
 
     return (
@@ -364,20 +359,19 @@ export class ChatResponseService {
 
   private async generateThreadTitle(
     userMessage: ChatMessageDetailDto,
+    bookId: string,
     provider: string,
     modelId: string | null,
   ): Promise<void> {
     try {
       const rawTitle = await this.aiStreamService.streamText({
         streamId: `title-${userMessage.id}`,
+        bookId,
+        systemPromptCategory: 'title',
         prompt: userMessage.content,
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: false,
-        messages: [
-          { role: 'system', content: CHAT_THREAD_TITLE_SYSTEM_PROMPT },
-          { role: 'user', content: userMessage.content },
-        ],
       });
       const title = this.normalizeThreadTitle(rawTitle);
 
@@ -452,34 +446,15 @@ export class ChatResponseService {
 
   private resolveSelectedModel(selectedModelId: string | null): ResolvedModel {
     if (!selectedModelId) {
-      return { provider: 'openrouter', modelId: null };
+      throw new Error('Select an available AI model before generating.');
     }
 
     const selectedModel = this.aiStore.models().find((model) => model.id === selectedModelId);
     if (!selectedModel) {
-      return { provider: 'openrouter', modelId: selectedModelId };
+      throw new Error('The selected AI model is no longer available.');
     }
 
-    if (selectedModel.source !== 'direct') {
-      return { provider: 'openrouter', modelId: selectedModel.id };
-    }
-
-    return {
-      provider: this.resolveDirectProvider(selectedModel),
-      modelId: selectedModel.id.split('/')[1] || selectedModel.id,
-    };
-  }
-
-  private resolveDirectProvider(model: AiModel): string {
-    if (model.provider === 'google' || model.id.startsWith('gemini/')) {
-      return 'gemini';
-    }
-
-    if (model.provider === 'openai' || model.id.startsWith('openai/')) {
-      return 'openai';
-    }
-
-    return model.provider || 'openrouter';
+    return resolveAiModelTarget(selectedModel);
   }
 
   private getDirectModelSelectorId(provider: string | null, modelId: string): string | null {

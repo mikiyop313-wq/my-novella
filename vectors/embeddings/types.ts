@@ -1,11 +1,27 @@
-import type { EmbeddingSpaceDescriptor } from '../../shared/models/vector.model';
 
+/**
+ * Defines embedding-provider contracts, configurations, and shared validation helpers.
+ *
+ * @packageDocumentation
+ */
+
+import type { EmbeddingSpaceDescriptor } from '../../shared/models/vector.model';
+import type { LocalEmbeddingModelDownloadProgress } from '../../shared/models/vector.model';
+
+/** Produces query and document vectors within one compatible embedding space. */
 export interface EmbeddingProvider {
   readonly space: EmbeddingSpaceDescriptor;
   embedDocuments(texts: string[]): Promise<number[][]>;
   embedQuery(text: string): Promise<number[]>;
 }
 
+/**
+ * Ensures every generated vector matches the provider's declared dimensions.
+ *
+ * @param provider - Provider that generated the vectors.
+ * @param vectors - Vectors to validate.
+ * @throws Error when any vector has an incompatible length.
+ */
 export function assertEmbeddingDimensions(
   provider: EmbeddingProvider,
   vectors: readonly number[][],
@@ -19,7 +35,7 @@ export function assertEmbeddingDimensions(
   }
 }
 
-export type EmbeddingProviderType = 'local' | 'openai' | 'voyage';
+export type EmbeddingProviderType = 'local' | 'openai' | 'voyage' | 'openrouter';
 
 export interface BaseEmbeddingConfig {
   type: EmbeddingProviderType;
@@ -32,12 +48,21 @@ export interface CloudEmbeddingConfig extends BaseEmbeddingConfig {
   apiKey: string;
 }
 
+/** Configuration needed to load and manage an on-device embedding model. */
 export interface LocalEmbeddingConfig extends BaseEmbeddingConfig {
   type: 'local';
   dimensions: number; // Required for local
+  sourceModelName?: string; // Transformers.js repository when it differs from the canonical ID
+  quantized?: boolean;
   modelPath?: string; // Path to a pre-downloaded local model
   cacheDir?: string;  // Directory for caching models downloaded from HuggingFace
+  installationMarkerPath: string;
 }
+
+/** Receives normalized per-file progress from a local-model download. */
+export type LocalEmbeddingDownloadProgressCallback = (
+  progress: Omit<LocalEmbeddingModelDownloadProgress, 'modelName'>,
+) => void;
 
 export interface OpenAIEmbeddingConfig extends CloudEmbeddingConfig {
   type: 'openai';
@@ -49,4 +74,13 @@ export interface VoyageEmbeddingConfig extends CloudEmbeddingConfig {
   type: 'voyage';
 }
 
-export type EmbeddingConfig = LocalEmbeddingConfig | OpenAIEmbeddingConfig | VoyageEmbeddingConfig;
+export interface OpenRouterEmbeddingConfig extends CloudEmbeddingConfig {
+  type: 'openrouter';
+  dimensions: number;
+}
+
+export type EmbeddingConfig =
+  | LocalEmbeddingConfig
+  | OpenAIEmbeddingConfig
+  | VoyageEmbeddingConfig
+  | OpenRouterEmbeddingConfig;

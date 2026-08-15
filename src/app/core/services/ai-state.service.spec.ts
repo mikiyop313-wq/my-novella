@@ -46,7 +46,14 @@ describe('AIStateService', () => {
     ];
 
     await expect(
-      service.generate('Continue', 'openrouter', 'model-1', true, messages),
+      service.generate(
+        'Continue',
+        'openrouter',
+        'model-1',
+        true,
+        messages,
+        { category: 'chat', presetId: 'custom-chat' },
+      ),
     ).resolves.toBe('Done');
 
     expect(invoke).toHaveBeenCalledWith('ai:generate', {
@@ -55,6 +62,8 @@ describe('AIStateService', () => {
       prompt: 'Continue',
       reasoningMode: true,
       messages,
+      systemPromptPreset: { category: 'chat', presetId: 'custom-chat' },
     });
+    expect(invoke.mock.calls[0][1]).not.toHaveProperty('bookId');
   });
 });

@@ -1,6 +1,6 @@
 import { db } from '../index';
 import { books, categories, bookTags, language, subcategories, bookSettings } from '../schema';
-import { eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 
 import {
   BookDto,
@@ -9,7 +9,12 @@ import {
   CreateBookDto,
   UpdateBookDto,
 } from '../../shared/models/book.model';
-import { EmbeddingModel } from '../../shared/models/vector.model';
+import {
+  EmbeddingModel,
+  LocalEmbeddingModelName,
+  OpenRouterEmbeddingModelName,
+  VectorCloudProviderId,
+} from '../../shared/models/vector.model';
 
 type BookEntity = typeof books.$inferSelect;
 type BookSettingsEntity = typeof bookSettings.$inferSelect;
@@ -39,8 +44,8 @@ export class BookRepository {
       language: book.language,
       coverImage,
       wordCount: book.wordCount ?? 0,
-      createdAt: book.createdAt.toISOString(),
-      lastEditedAt: book.lastEditedAt.toISOString(),
+      createdAt: book.createdAt!.toISOString(),
+      lastEditedAt: book.lastEditedAt!.toISOString(),
       categories: bookCategories,
       ...(book.bookSettings ? { settings: this.mapSettingsToDto(book.bookSettings) } : {}),
     };
@@ -63,7 +68,10 @@ export class BookRepository {
       synopsisAiContext: settings.synopsisAiContext,
       povCharacterId: settings.povCharacterId,
       embeddingModel: settings.embeddingModel,
+      localEmbeddingModel: settings.localEmbeddingModel,
+      openRouterEmbeddingModel: settings.openRouterEmbeddingModel,
       vectorSearchEnabled: settings.vectorSearchEnabled,
+      automaticIndexingEnabled: settings.automaticIndexingEnabled,
     };
   }
 
@@ -105,7 +113,11 @@ export class BookRepository {
       synopsisAiContext: data.settings?.synopsisAiContext ?? true,
       povCharacterId: data.settings?.povCharacterId || null,
       embeddingModel: data.settings?.embeddingModel || 'local',
+      localEmbeddingModel:
+        data.settings?.localEmbeddingModel || 'mixedbread-ai/mxbai-embed-large-v1',
+      openRouterEmbeddingModel: data.settings?.openRouterEmbeddingModel ?? null,
       vectorSearchEnabled: data.settings?.vectorSearchEnabled ?? true,
+      automaticIndexingEnabled: data.settings?.automaticIndexingEnabled ?? true,
     };
   }
 
@@ -121,8 +133,14 @@ export class BookRepository {
       updatePayload.povCharacterId = settings.povCharacterId;
     if (settings.embeddingModel !== undefined)
       updatePayload.embeddingModel = settings.embeddingModel;
+    if (settings.localEmbeddingModel !== undefined)
+      updatePayload.localEmbeddingModel = settings.localEmbeddingModel;
+    if (settings.openRouterEmbeddingModel !== undefined)
+      updatePayload.openRouterEmbeddingModel = settings.openRouterEmbeddingModel;
     if (settings.vectorSearchEnabled !== undefined)
       updatePayload.vectorSearchEnabled = settings.vectorSearchEnabled;
+    if (settings.automaticIndexingEnabled !== undefined)
+      updatePayload.automaticIndexingEnabled = settings.automaticIndexingEnabled;
 
     return updatePayload;
   }
@@ -275,6 +293,90 @@ export class BookRepository {
       columns: { embeddingModel: true },
     });
     return settings?.embeddingModel ?? 'local';
+  }
+
+  async getLocalEmbeddingModel(bookId: string): Promise<LocalEmbeddingModelName> {
+    const settings = await db.query.bookSettings.findFirst({
+      where: eq(bookSettings.bookSettingId, bookId),
+      columns: { localEmbeddingModel: true },
+    });
+    return settings?.localEmbeddingModel ?? 'mixedbread-ai/mxbai-embed-large-v1';
+  }
+
+  async getOpenRouterEmbeddingModel(
+    bookId: string,
+  ): Promise<OpenRouterEmbeddingModelName | null> {
+    const settings = await db.query.bookSettings.findFirst({
+      where: eq(bookSettings.bookSettingId, bookId),
+      columns: { openRouterEmbeddingModel: true },
+    });
+    return settings?.openRouterEmbeddingModel ?? null;
+  }
+
+  async getVectorSearchEnabled(bookId: string): Promise<boolean> {
+    const settings = await db.query.bookSettings.findFirst({
+      where: eq(bookSettings.bookSettingId, bookId),
+      columns: { vectorSearchEnabled: true },
+    });
+    return settings?.vectorSearchEnabled ?? true;
+  }
+
+  async getAutomaticIndexingEnabled(bookId: string): Promise<boolean> {
+    const settings = await db.query.bookSettings.findFirst({
+      where: eq(bookSettings.bookSettingId, bookId),
+      columns: { automaticIndexingEnabled: true },
+    });
+    return settings?.automaticIndexingEnabled ?? true;
+  }
+
+  async selectLocalEmbeddingModel(
+    bookId: string,
+    modelName: LocalEmbeddingModelName,
+  ): Promise<void> {
+    const updated = await db
+      .update(bookSettings)
+      .set({ embeddingModel: 'local', localEmbeddingModel: modelName })
+      .where(eq(bookSettings.bookSettingId, bookId))
+      .returning({ bookId: bookSettings.bookSettingId });
+    if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);
+  }
+
+  async selectOpenRouterEmbeddingModel(
+    bookId: string,
+    modelName: OpenRouterEmbeddingModelName,
+  ): Promise<void> {
+    const updated = await db
+      .update(bookSettings)
+      .set({ embeddingModel: 'openRouter', openRouterEmbeddingModel: modelName })
+      .where(eq(bookSettings.bookSettingId, bookId))
+      .returning({ bookId: bookSettings.bookSettingId });
+    if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);
+  }
+
+  async selectCloudEmbeddingProvider(
+    bookId: string,
+    providerId: VectorCloudProviderId,
+  ): Promise<void> {
+    const embeddingModel: EmbeddingModel = providerId === 'openai' ? 'openAI' : 'voyage';
+    const updated = await db
+      .update(bookSettings)
+      .set({ embeddingModel })
+      .where(eq(bookSettings.bookSettingId, bookId))
+      .returning({ bookId: bookSettings.bookSettingId });
+    if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);
+  }
+
+  async countBooksUsingLocalEmbeddingModel(
+    modelName: LocalEmbeddingModelName,
+  ): Promise<number> {
+    const [result] = await db
+      .select({ value: count() })
+      .from(bookSettings)
+      .where(and(
+        eq(bookSettings.embeddingModel, 'local'),
+        eq(bookSettings.localEmbeddingModel, modelName),
+      ));
+    return result?.value ?? 0;
   }
 }
 

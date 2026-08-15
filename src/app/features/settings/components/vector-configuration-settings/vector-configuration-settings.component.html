@@ -1,0 +1,323 @@
+<div class="ai-configuration-panel vector-configuration-panel">
+  <header class="content-header">
+    <h1 class="content-title">Vector Search</h1>
+    <p class="content-subtitle">
+      Manage local embedding models and configure cloud providers for semantic manuscript context.
+    </p>
+  </header>
+
+  <div class="configuration-content">
+    <section class="provider-section local-model-section" aria-labelledby="local-models-heading">
+      <header class="section-header">
+        <div class="section-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.9"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <path d="M7 8h10M7 12h4M7 16h7"></path>
+          </svg>
+        </div>
+        <div>
+          <h2 id="local-models-heading">Available local models</h2>
+          <p>Download an embedding model to keep vector processing on this device.</p>
+        </div>
+      </header>
+
+      <div
+        class="local-model-tier-switch"
+        [class.is-medium]="selectedLocalModelTier() === 'medium'"
+        [class.is-small]="selectedLocalModelTier() === 'small'"
+        role="radiogroup"
+        aria-label="Local model size"
+      >
+        @for (tier of localModelTiers; track tier.id) {
+          <button
+            type="button"
+            role="radio"
+            [class.is-selected]="selectedLocalModelTier() === tier.id"
+            [attr.aria-checked]="selectedLocalModelTier() === tier.id"
+            (click)="selectLocalModelTier(tier.id)"
+          >
+            {{ tier.label }}
+          </button>
+        }
+      </div>
+
+      @if (localModelStatusLoading()) {
+        <div class="local-model-loading" role="status">Loading local model status…</div>
+      } @else if (localModelStatuses().length > 0) {
+        <div class="local-model-list">
+          @for (tier of localModelTiers; track tier.id) {
+            @if (selectedLocalModelTier() === tier.id) {
+              <section
+                class="local-model-tier"
+                [attr.aria-labelledby]="tier.id + '-models-heading'"
+              >
+                <h3 [id]="tier.id + '-models-heading'">{{ tier.label }} models</h3>
+                <div class="local-model-grid">
+                  @for (status of modelsForTier(tier.id); track status.modelName) {
+                    <article class="local-model-card" [attr.data-model]="status.modelName">
+                      <div class="local-model-summary">
+                        <div class="local-model-mark" aria-hidden="true">
+                          {{ status.providerInitials }}
+                        </div>
+                        <div class="local-model-copy">
+                          <div class="local-model-heading">
+                            <strong>{{ status.displayName }}</strong>
+                            <span
+                              class="local-model-badge"
+                              [class.is-installed]="status.installed"
+                              [class.is-partial]="!status.installed && status.cachedBytes > 0"
+                            >
+                              @if (status.installed) {
+                                Installed
+                              } @else if (status.cachedBytes > 0) {
+                                Incomplete download
+                              } @else {
+                                Not installed
+                              }
+                            </span>
+                          </div>
+                          <code>{{ status.modelName }}</code>
+                          <span class="local-model-meta">
+                            {{ status.providerName }} · {{ status.dimensions }} dimensions ·
+                            {{ status.language }} · Cache: {{ formatBytes(status.cachedBytes) }}
+                          </span>
+                        </div>
+                      </div>
+
+                      @if (isModelOperation(status.modelName, 'download')) {
+                        <div class="local-model-progress" role="status" aria-live="polite">
+                          <div class="local-model-progress-copy">
+                            <span>
+                              Downloading
+                              @if (localModelProgress()?.file; as file) {
+                                {{ file }}
+                              }
+                            </span>
+                            @if (downloadPercentage(status.modelName) !== null) {
+                              <span>{{ downloadPercentage(status.modelName) }}%</span>
+                            }
+                          </div>
+                          <div
+                            class="local-model-progress-track"
+                            [class.is-indeterminate]="downloadPercentage(status.modelName) === null"
+                            role="progressbar"
+                            [attr.aria-label]="status.displayName + ' download progress'"
+                            [attr.aria-valuenow]="downloadPercentage(status.modelName)"
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                          >
+                            <span
+                              [style.width.%]="downloadPercentage(status.modelName) ?? 100"
+                            ></span>
+                          </div>
+                        </div>
+                      }
+
+                      @if (modelError(status.modelName); as error) {
+                        <p class="local-model-error" role="alert">{{ error }}</p>
+                      }
+
+                      <div class="local-model-actions">
+                        @if (status.installed) {
+                          <button
+                            class="local-model-button is-danger"
+                            type="button"
+                            [disabled]="localModelOperation() !== null"
+                            (click)="requestLocalModelUninstall(status)"
+                          >
+                            {{
+                              isModelOperation(status.modelName, 'uninstall')
+                                ? 'Uninstalling…'
+                                : 'Uninstall'
+                            }}
+                          </button>
+                        } @else {
+                          <button
+                            class="local-model-button is-primary"
+                            type="button"
+                            [disabled]="localModelOperation() !== null"
+                            (click)="downloadLocalModel(status.modelName)"
+                          >
+                            @if (isModelOperation(status.modelName, 'download')) {
+                              Downloading…
+                            } @else if (status.cachedBytes > 0) {
+                              Retry download
+                            } @else {
+                              Download
+                            }
+                          </button>
+                          @if (status.cachedBytes > 0) {
+                            <button
+                              class="local-model-button"
+                              type="button"
+                              [disabled]="localModelOperation() !== null"
+                              (click)="requestLocalModelUninstall(status)"
+                            >
+                              {{
+                                isModelOperation(status.modelName, 'uninstall')
+                                  ? 'Removing…'
+                                  : 'Remove files'
+                              }}
+                            </button>
+                          }
+                        }
+                      </div>
+                    </article>
+                  }
+                </div>
+              </section>
+            }
+          }
+        </div>
+      } @else {
+        <div class="configuration-state is-error" role="alert">
+          <span>{{ localModelLoadError() ?? 'Unable to load local model statuses.' }}</span>
+          <button type="button" (click)="loadLocalModelStatus()">Retry</button>
+        </div>
+      }
+    </section>
+
+    <section class="provider-section" aria-labelledby="vector-providers-heading">
+      <header class="section-header">
+        <div class="section-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.9"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"></path>
+          </svg>
+        </div>
+        <div>
+          <h2 id="vector-providers-heading">Cloud embedding providers</h2>
+          <p>Choose a provider to prepare its vector-search credentials.</p>
+        </div>
+      </header>
+
+      <div class="provider-grid" aria-label="Cloud embedding providers">
+        @for (provider of providers; track provider.id) {
+          <button
+            class="provider-card"
+            type="button"
+            [class.is-selected]="selectedProviderId() === provider.id"
+            [attr.aria-pressed]="selectedProviderId() === provider.id"
+            [attr.data-provider]="provider.id"
+            [disabled]="isConfigurationLoading()"
+            (click)="selectProvider(provider.id)"
+          >
+            <span class="provider-mark" aria-hidden="true">
+              <app-ai-provider-icon [providerId]="provider.id" />
+            </span>
+            <span class="provider-copy">
+              <strong>{{ provider.name }}</strong>
+              <span>{{ provider.description }}</span>
+            </span>
+            <span class="selection-check" aria-hidden="true">
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m3 8 3 3 7-7"></path>
+              </svg>
+            </span>
+          </button>
+        }
+      </div>
+
+      @if (selectedProvider(); as provider) {
+        <div class="provider-editor">
+          <div class="field-heading">
+            <label [for]="provider.id + '-vector-api-key'">{{ provider.name }} API key</label>
+            <span
+              class="field-status"
+              [class.is-error]="fieldErrors()[provider.id]"
+              aria-live="polite"
+            >{{ fieldStatus(provider.id) }}</span>
+          </div>
+          <p class="field-help">Keys are encrypted on this device. Saving replaces the configured key.</p>
+          <div class="credential-input">
+            <input
+              [id]="provider.id + '-vector-api-key'"
+              [type]="apiKeyInputType(provider.id)"
+              [value]="apiKeyInputValue(provider.id)"
+              [placeholder]="provider.keyPlaceholder"
+              [disabled]="isConfigurationLoading() || !!configurationLoadError()"
+              autocomplete="off"
+              spellcheck="false"
+              (focus)="beginApiKeyEdit(provider.id, $event)"
+              (input)="updateApiKey(provider.id, $event)"
+              (blur)="saveApiKeyOnBlur(provider.id)"
+            />
+            @if (focusedApiKeyProvider() === provider.id) {
+              <button
+                class="visibility-button"
+                type="button"
+                [attr.aria-label]="apiKeyVisible() ? 'Hide API key' : 'Show API key'"
+                [attr.aria-pressed]="apiKeyVisible()"
+                (mousedown)="$event.preventDefault()"
+                (click)="toggleApiKeyVisibility()"
+              >
+                @if (apiKeyVisible()) {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m3 3 18 18"></path><path d="M10.6 10.7a2 2 0 0 0 2.7 2.7"></path><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9.5 5 9.5 5a18 18 0 0 1-2.1 2.5"></path><path d="M6.6 6.6C4 8.2 2.5 11 2.5 11S6.5 16 12 16c.7 0 1.4-.1 2-.2"></path>
+                  </svg>
+                } @else {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2.5 12S6.5 7 12 7s9.5 5 9.5 5-4 5-9.5 5-9.5-5-9.5-5Z"></path><circle cx="12" cy="12" r="2.5"></circle>
+                  </svg>
+                }
+              </button>
+            }
+          </div>
+          <p class="field-help connection-cost-notice" role="note">
+            @if (provider.id === 'openrouter') {
+              Testing validates the saved API key without generating an embedding.
+            } @else {
+              Testing sends a real embedding request and may incur a small charge from the provider.
+            }
+          </p>
+          <div class="connection-actions">
+            @if (connectionResults()[provider.id]; as result) {
+              <span
+                class="connection-result"
+                [class.is-success]="result.status === 'success'"
+                [class.is-error]="result.status === 'error'"
+                aria-live="polite"
+              >{{ result.message }}</span>
+            }
+            <button
+              class="connection-test-button"
+              type="button"
+              [disabled]="isConfigurationLoading() || !!configurationLoadError() || testingProvider() !== null"
+              [attr.aria-busy]="testingProvider() === provider.id"
+              (mousedown)="$event.preventDefault()"
+              (click)="testConnection(provider.id, provider.name)"
+            >
+              {{ testingProvider() === provider.id ? 'Testing...' : 'Test connection' }}
+            </button>
+          </div>
+        </div>
+      }
+      @if (configurationLoadError()) {
+        <div class="configuration-state is-error" role="alert">
+          <span>{{ configurationLoadError() }}</span>
+          <button type="button" (click)="loadConfiguration()">Retry</button>
+        </div>
+      }
+    </section>
+  </div>
+</div>

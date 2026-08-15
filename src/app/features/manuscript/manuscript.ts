@@ -3,6 +3,7 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { Component, Injector, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
+import { Markdown } from '@tiptap/markdown';
 import Placeholder from '@tiptap/extension-placeholder';
 import StarterKit from '@tiptap/starter-kit';
 import { TiptapEditorDirective } from 'ngx-tiptap';
@@ -29,6 +30,7 @@ import {
   extractTextFromManuscriptData,
 } from './helpers/content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
+import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
 import { AiStore } from '../../core/store/ai.store';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { ManuscriptStore } from './store/manuscript.store';
@@ -59,6 +61,7 @@ export class Manuscript implements OnInit, OnDestroy {
   readonly aiStore = inject(AiStore);
   readonly themeService = inject(ThemeService);
   readonly electronService = inject(ElectronService);
+  readonly paragraphVectorSync = inject(ManuscriptParagraphVectorSyncService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -74,7 +77,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
   indexItems = signal<ManuscriptIndexItem[]>([]);
 
-  currentHeaderTitle = computed<string>(() => {
+  currentScopeLabel = computed<string>(() => {
     const mode = this.store.mode();
     const id = this.store.activeEntityId();
 
@@ -83,48 +86,22 @@ export class Manuscript implements OnInit, OnDestroy {
 
     for (const act of this.store.bookHierarchy()) {
       if (mode === 'act' && act.id === id) {
-        return act.title || 'Untitled Act';
+        return `Act ${act.position + 1}: ${act.title || 'Untitled Act'}`;
       }
 
       for (const chapter of act.chapters || []) {
         if (mode === 'chapter' && chapter.id === id) {
-          return chapter.title || 'Untitled Chapter';
+          return `Chapter ${chapter.position + 1}: ${chapter.title || 'Untitled Chapter'}`;
         }
 
         const scene = (chapter.scenes || []).find(s => s.id === id);
         if (mode === 'scene' && scene) {
-          return scene.title || 'Untitled Scene';
+          return `Scene ${scene.position + 1}: ${scene.title || 'Untitled Scene'}`;
         }
       }
     }
 
     return '';
-  });
-
-  currentPosition = computed<number | null>(() => {
-    const mode = this.store.mode();
-    const id = this.store.activeEntityId();
-
-    if (!mode || mode === 'book' || !id) return null;
-
-    for (const act of this.store.bookHierarchy()) {
-      if (mode === 'act' && act.id === id) {
-        return act.position + 1;
-      }
-
-      for (const chapter of act.chapters || []) {
-        if (mode === 'chapter' && chapter.id === id) {
-          return chapter.position + 1;
-        }
-
-        const scene = (chapter.scenes || []).find(s => s.id === id);
-        if (mode === 'scene' && scene) {
-          return scene.position + 1;
-        }
-      }
-    }
-
-    return null;
   });
 
 
@@ -172,7 +149,7 @@ export class Manuscript implements OnInit, OnDestroy {
     this.editor = this.createEditor();
 
     this.store.setEditor(this.editor);
-    this.aiStore.loadModels();
+    void this.aiStore.refreshModels();
 
     this.electronService.onBeforeClose(this.closeHandler);
 
@@ -184,6 +161,13 @@ export class Manuscript implements OnInit, OnDestroy {
       const mode = params['mode'] as ManuscriptMode;
       const id = params['id'];
       this.store.setRouteParams(mode, id);
+
+      const bookId = this.getWorkspaceBookId();
+      if (bookId) {
+        void this.paragraphVectorSync.refreshIndexingConfiguration(bookId).catch(error => {
+          console.error('Failed to load manuscript indexing configuration:', error);
+        });
+      }
 
       if (mode && id && this.editor) {
         await this.loadEditorContent(mode, id);
@@ -212,6 +196,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
       extensions: [
         StarterKit,
+        Markdown,
         Placeholder.configure({
           placeholder: 'Start writing or type /ai for AI assistant...',
           emptyEditorClass: 'is-editor-empty',
@@ -301,6 +286,14 @@ export class Manuscript implements OnInit, OnDestroy {
     if (!bookId) return;
 
     this.router.navigate(['/workspace', bookId, 'manuscript', mode, id], { replaceUrl: true });
+  }
+
+  retryIndexing(): void {
+    void this.paragraphVectorSync.retryParagraphVectorChanges();
+  }
+
+  updateIndex(): void {
+    void this.paragraphVectorSync.flushParagraphVectorChanges();
   }
 
 

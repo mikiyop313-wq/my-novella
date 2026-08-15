@@ -6,7 +6,10 @@ import {
     DeleteParagraphsPayload,
     ManuscriptVectorRecord,
     SearchSimilarParagraphsPayload,
+    BookIndexingConfiguration,
+    ClearBookVectorIndexPayload,
 } from '../../../shared/models/vector.model';
+import { bookRepository } from '../../../db/repositories/book.repository';
 import { db } from '../../../db';
 import { inArray } from 'drizzle-orm';
 import { scene } from '../../../db/schema';
@@ -37,7 +40,18 @@ async function buildSceneMap(sceneIds: string[]) {
 // provider configured for the given book, and merges them into LanceDB.
 // ---------------------------------------------------------------------------
 
-async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPayload): Promise<void> {
+async function handleUpsertParagraphs(payload: UpsertParagraphsPayload): Promise<void> {
+    if (payload.upserts.length === 0) return;
+    if (!await manuscriptVectorIndexService.isBookIndexingAvailable(payload.bookId)) return;
+    await manuscriptVectorIndexService.runBookOperation(
+        payload.bookId,
+        () => handleUpsertParagraphsNow(payload),
+    );
+}
+
+async function handleUpsertParagraphsNow(
+    { bookId, upserts }: UpsertParagraphsPayload,
+): Promise<void> {
     if (upserts.length === 0) return;
 
     console.log(`[VectorDB] upsertParagraphs — book=${bookId}, ${upserts.length} paragraph(s)`);
@@ -100,7 +114,18 @@ async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPaylo
 // Receives a list of paragraphIds and removes them from LanceDB.
 // ---------------------------------------------------------------------------
 
-async function handleDeleteParagraphs({ bookId, deletes }: DeleteParagraphsPayload): Promise<void> {
+async function handleDeleteParagraphs(payload: DeleteParagraphsPayload): Promise<void> {
+    if (payload.deletes.length === 0) return;
+    if (!await manuscriptVectorIndexService.isBookIndexingAvailable(payload.bookId)) return;
+    await manuscriptVectorIndexService.runBookOperation(
+        payload.bookId,
+        () => handleDeleteParagraphsNow(payload),
+    );
+}
+
+async function handleDeleteParagraphsNow(
+    { bookId, deletes }: DeleteParagraphsPayload,
+): Promise<void> {
     if (deletes.length === 0) return;
 
     const ids = deletes.map(d => d.paragraphId);
@@ -116,6 +141,45 @@ async function handleDeleteParagraphs({ bookId, deletes }: DeleteParagraphsPaylo
 // ---------------------------------------------------------------------------
 
 export function setupVectorHandlers() {
+    ipcMain.handle(
+        'vectors:getBookIndexSizes',
+        async (_, payload: { bookId: string }) => {
+            if (!payload || typeof payload.bookId !== 'string' || !payload.bookId.trim()) {
+                throw new Error('Invalid book vector index size request.');
+            }
+            return manuscriptVectorIndexService.getBookIndexSizes(payload.bookId);
+        },
+    );
+
+    ipcMain.handle(
+        'vectors:clearBookIndex',
+        async (_, payload: ClearBookVectorIndexPayload) => {
+            const providers = ['local', 'openAI', 'voyage', 'openRouter'];
+            if (
+                !payload
+                || typeof payload.bookId !== 'string'
+                || !payload.bookId.trim()
+                || !providers.includes(payload.provider)
+                || typeof payload.model !== 'string'
+                || !payload.model.trim()
+            ) {
+                throw new Error('Invalid book vector index cleanup request.');
+            }
+            await manuscriptVectorIndexService.clearBookIndex(payload);
+        },
+    );
+
+    ipcMain.handle(
+        'vectors:getBookIndexingConfiguration',
+        async (_, payload: { bookId: string }): Promise<BookIndexingConfiguration> => {
+            const [available, automaticIndexingEnabled] = await Promise.all([
+                manuscriptVectorIndexService.isBookIndexingAvailable(payload.bookId),
+                bookRepository.getAutomaticIndexingEnabled(payload.bookId),
+            ]);
+            return { available, automaticIndexingEnabled };
+        },
+    );
+
     /**
      * vectors:upsertParagraphs
      *

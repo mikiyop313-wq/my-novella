@@ -29,10 +29,14 @@ describe('Workspace', () => {
   let component: Workspace;
   let currentBookId: string | null;
   let selectedThread: ChatThreadDetailDto | null;
+  let lastManuscriptRoutes: Record<string, { mode: 'book' | 'act' | 'chapter' | 'scene'; id: string }>;
+  let routerUrl: string;
 
   beforeEach(async () => {
     currentBookId = null;
     selectedThread = null;
+    lastManuscriptRoutes = {};
+    routerUrl = '/workspace/book-1/outline';
 
     await TestBed.configureTestingModule({
       imports: [Workspace],
@@ -43,6 +47,11 @@ describe('Workspace', () => {
             activeView: vi.fn(() => 'outline'),
             enterBook: vi.fn(),
             setActiveView: vi.fn(),
+            setLastWorkspaceUrl: vi.fn(),
+            rememberManuscriptRoute: vi.fn((bookId, route) => {
+              lastManuscriptRoutes[bookId] = route;
+            }),
+            getLastManuscriptRoute: vi.fn((bookId: string) => lastManuscriptRoutes[bookId] ?? null),
           },
         },
         { provide: WorkspaceBookStore, useValue: { clearBookHierarchy: vi.fn() } },
@@ -60,7 +69,11 @@ describe('Workspace', () => {
         },
         {
           provide: Router,
-          useValue: { events: NEVER, navigate: vi.fn(), url: '/workspace/book-1/outline' },
+          useValue: {
+            events: NEVER,
+            navigate: vi.fn(),
+            get url() { return routerUrl; },
+          },
         },
         { provide: ChildrenOutletContexts, useValue: { getContext: vi.fn() } },
       ],
@@ -78,6 +91,28 @@ describe('Workspace', () => {
     fixture.detectChanges();
 
     expect(codexContextTrie.loadForContext).toHaveBeenCalledWith('book-1');
+  });
+
+  it('sets settings as the active view for the settings route', () => {
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    routerUrl = '/workspace/book-1/settings';
+
+    fixture.detectChanges();
+
+    expect(workspaceStore.setActiveView).toHaveBeenCalledWith('settings');
+    expect(workspaceStore.setLastWorkspaceUrl).not.toHaveBeenCalled();
+  });
+
+  it('remembers the latest non-settings workspace route', () => {
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    routerUrl = '/workspace/book-1/thread/thread-1';
+
+    fixture.detectChanges();
+
+    expect(workspaceStore.setActiveView).toHaveBeenCalledWith('chat');
+    expect(workspaceStore.setLastWorkspaceUrl).toHaveBeenCalledWith(
+      '/workspace/book-1/thread/thread-1',
+    );
   });
 
   it('returns the selected thread route for the active book', () => {
@@ -103,5 +138,55 @@ describe('Workspace', () => {
     selectedThread = makeThread({ bookId: 'book-2' });
 
     expect(component.getChatRoute('book-1')).toEqual(['/workspace', 'book-1', 'threads']);
+  });
+
+  it('returns the full manuscript route when the book has no remembered scope', () => {
+    expect(component.getManuscriptRoute('book-1')).toEqual([
+      '/workspace',
+      'book-1',
+      'manuscript',
+      'book',
+      'book-1',
+    ]);
+  });
+
+  it('returns the remembered manuscript scope for the selected book', () => {
+    lastManuscriptRoutes['book-1'] = { mode: 'chapter', id: 'chapter-3' };
+
+    expect(component.getManuscriptRoute('book-1')).toEqual([
+      '/workspace',
+      'book-1',
+      'manuscript',
+      'chapter',
+      'chapter-3',
+    ]);
+  });
+
+  it('remembers the active manuscript route when the workspace opens', () => {
+    routerUrl = '/workspace/book-1/manuscript/chapter/chapter-3';
+
+    fixture.detectChanges();
+
+    expect(lastManuscriptRoutes['book-1']).toEqual({ mode: 'chapter', id: 'chapter-3' });
+  });
+
+  it('keeps remembered manuscript scopes isolated by book', () => {
+    lastManuscriptRoutes['book-1'] = { mode: 'scene', id: 'scene-1' };
+    lastManuscriptRoutes['book-2'] = { mode: 'act', id: 'act-2' };
+
+    expect(component.getManuscriptRoute('book-1')).toEqual([
+      '/workspace',
+      'book-1',
+      'manuscript',
+      'scene',
+      'scene-1',
+    ]);
+    expect(component.getManuscriptRoute('book-2')).toEqual([
+      '/workspace',
+      'book-2',
+      'manuscript',
+      'act',
+      'act-2',
+    ]);
   });
 });

@@ -1,3 +1,9 @@
+/**
+ * Composes and registers every Electron main-process IPC handler used by the application.
+ *
+ * @packageDocumentation
+ */
+
 import { setupIpcHandlers } from './core/handlers';
 import { setupLibraryHandlers } from './library/library';
 import { setupAiHandlers } from './ai/ai';
@@ -5,8 +11,14 @@ import { setupChatHandlers } from './chat/chat';
 import { setupCodexHandlers } from './codex/codex';
 import { setupManuscriptHandlers } from './library/manuscript';
 import { setupVectorHandlers } from './library/paragraph-vectors';
+import { setupSystemPromptHandlers } from './system-prompt/system-prompt';
+import { setupLocalEmbeddingModelHandlers } from './library/local-embedding-model';
+import { setupVectorConfigurationHandlers } from './library/vector-configuration';
+import { setupOpenRouterEmbeddingModelHandlers } from './library/openrouter-embedding-model';
+import { setupCloudEmbeddingProviderHandlers } from './library/cloud-embedding-provider';
 
-export function initializeIpc() {
+/** Initializes all application IPC domains once the Electron app is ready. */
+export function initializeIpc(): void {
     setupIpcHandlers();
     setupLibraryHandlers();
     setupAiHandlers();
@@ -14,6 +26,11 @@ export function initializeIpc() {
     setupCodexHandlers();
     setupManuscriptHandlers();
     setupVectorHandlers();
+    setupSystemPromptHandlers();
+    setupLocalEmbeddingModelHandlers();
+    setupVectorConfigurationHandlers();
+    setupOpenRouterEmbeddingModelHandlers();
+    setupCloudEmbeddingProviderHandlers();
 
     try {
         console.log('IPC handlers initialized');

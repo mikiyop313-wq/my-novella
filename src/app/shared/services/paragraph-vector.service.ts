@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import type {
+  BookIndexingConfiguration,
   DeleteParagraphsPayload,
   SearchSimilarParagraphsPayload,
   SimilarParagraphResult,
@@ -24,5 +25,9 @@ export class ParagraphVectorService {
 
   deleteParagraphs(payload: DeleteParagraphsPayload): Promise<void> {
     return this.electronService.invoke('vectors:deleteParagraphs', payload);
+  }
+
+  getBookIndexingConfiguration(bookId: string): Promise<BookIndexingConfiguration> {
+    return this.electronService.invoke('vectors:getBookIndexingConfiguration', { bookId });
   }
 }

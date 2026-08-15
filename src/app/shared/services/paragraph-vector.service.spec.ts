@@ -63,6 +63,17 @@ describe('ParagraphVectorService', () => {
     expect(invoke).toHaveBeenCalledWith('vectors:deleteParagraphs', payload);
   });
 
+  it('loads book indexing configuration through the vector IPC channel', async () => {
+    const configuration = { available: true, automaticIndexingEnabled: false };
+    invoke.mockResolvedValue(configuration);
+
+    await expect(service.getBookIndexingConfiguration('book-1')).resolves.toBe(configuration);
+    expect(invoke).toHaveBeenCalledWith(
+      'vectors:getBookIndexingConfiguration',
+      { bookId: 'book-1' },
+    );
+  });
+
   it('propagates IPC failures', async () => {
     const error = new Error('Vector IPC unavailable');
     invoke.mockRejectedValue(error);

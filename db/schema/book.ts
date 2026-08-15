@@ -1,6 +1,10 @@
 import { randomUUID } from 'crypto';
 import { relations } from 'drizzle-orm';
 import { blob, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core';
+import type {
+  LocalEmbeddingModelName,
+  OpenRouterEmbeddingModelName,
+} from '../../shared/models/vector.model';
 
 // ---------------------------------------------------------------------------
 // Shared value types
@@ -10,7 +14,7 @@ type BookStatus = 'archived' | 'draft';
 type CategoryType = 'genre' | 'trope' | 'demographic';
 type ProseTense = 'past' | 'present';
 type PointOfView = 'first' | 'second' | 'third_limited' | 'third_omni';
-type EmbeddingModel = 'local' | 'openAI' | 'voyage';
+type EmbeddingModel = 'local' | 'openAI' | 'voyage' | 'openRouter';
 
 // ---------------------------------------------------------------------------
 // Core book tables
@@ -50,7 +54,16 @@ export const bookSettings = sqliteTable('book_settings', {
   synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
   povCharacterId: text('pov_character_id'),
   embeddingModel: text('embedding_model').$type<EmbeddingModel>().notNull().default('local'),
+  localEmbeddingModel: text('local_embedding_model')
+    .$type<LocalEmbeddingModelName>()
+    .notNull()
+    .default('mixedbread-ai/mxbai-embed-large-v1'),
+  openRouterEmbeddingModel: text('openrouter_embedding_model')
+    .$type<OpenRouterEmbeddingModelName>(),
   vectorSearchEnabled: integer('vector_search_enabled', { mode: 'boolean' }).notNull().default(true),
+  automaticIndexingEnabled: integer('automatic_indexing_enabled', { mode: 'boolean' })
+    .notNull()
+    .default(true),
 });
 
 // ---------------------------------------------------------------------------

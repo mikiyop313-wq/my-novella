@@ -12,6 +12,11 @@ import { CodexContextTrieService } from '../codex/services/codex-context-trie.se
 import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.service';
 import { Manuscript } from './manuscript';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
+import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
+
+const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
+import { WorkspaceBookStore } from '../workspace/workspace-book.store';
+import type { ActDto } from '../../../../shared/models/manuscript.model';
 
 describe('Manuscript', () => {
   let component: Manuscript;
@@ -32,18 +37,23 @@ describe('Manuscript', () => {
     getEntryIdsAtPoint: vi.fn(() => []),
   };
   const electronServiceMock = {
-    invoke: async (channel: string) => {
-      if (channel === 'ai:list-models') return [];
-      if (channel === 'manuscript:getWordCount') return 0;
-      if (channel === 'manuscript:getBookHierarchy') return [];
-      if (channel === 'manuscript:get') return [];
-      return null;
-    },
+    invoke: (channel: string, payload?: unknown) => electronInvoke(channel, payload),
     onBeforeClose: () => undefined,
     removeBeforeCloseHandler: () => undefined,
   };
 
   beforeEach(async () => {
+    electronInvoke.mockReset();
+    electronInvoke.mockImplementation(async (channel: string) => {
+      if (channel === 'ai:list-models') return [];
+      if (channel === 'manuscript:getWordCount') return 0;
+      if (channel === 'manuscript:getBookHierarchy') return [];
+      if (channel === 'manuscript:get') return [];
+      if (channel === 'vectors:getBookIndexingConfiguration') {
+        return { available: true, automaticIndexingEnabled: true };
+      }
+      return undefined;
+    });
     frameCallbacks = new Map();
     nextFrameId = 1;
     originalRequestAnimationFrame = window.requestAnimationFrame;
@@ -126,6 +136,157 @@ describe('Manuscript', () => {
     expect(component).toBeTruthy();
   });
 
+  it('renders pending, active, and updated indexing states', async () => {
+    const vectorSync = TestBed.inject(ManuscriptParagraphVectorSyncService);
+    await vectorSync.refreshIndexingConfiguration('book-1');
+    fixture.detectChanges();
+    expect(statusText()).toContain('Index up to date');
+
+    vectorSync.snapshotDirtyParagraphs('scene-1', [paragraphNode('paragraph-1', 'Queued edit')]);
+    fixture.detectChanges();
+    expect(statusText()).toContain('Waiting to index');
+
+    let completeUpsert!: () => void;
+    electronInvoke.mockImplementation(async (channel: string) => {
+      if (channel === 'vectors:upsertParagraphs') {
+        return new Promise<void>(resolve => {
+          completeUpsert = resolve;
+        });
+      }
+      if (channel === 'vectors:getBookIndexingConfiguration') {
+        return { available: true, automaticIndexingEnabled: true };
+      }
+      return undefined;
+    });
+
+    const flush = vectorSync.flushParagraphVectorChanges();
+    fixture.detectChanges();
+    expect(statusText()).toContain('Indexing');
+
+    completeUpsert();
+    await flush;
+    fixture.detectChanges();
+    expect(statusText()).toContain('Index up to date');
+  });
+
+  it('renders indexing failures and retries them', async () => {
+    const vectorSync = TestBed.inject(ManuscriptParagraphVectorSyncService);
+    await vectorSync.refreshIndexingConfiguration('book-1');
+    vectorSync.snapshotDirtyParagraphs('scene-1', [paragraphNode('paragraph-1', 'Failed edit')]);
+    electronInvoke.mockRejectedValueOnce(new Error('Embedding failed'));
+
+    await vectorSync.flushParagraphVectorChanges();
+    fixture.detectChanges();
+
+    expect(statusText()).toContain('Indexing failed');
+    const retry = vi.spyOn(vectorSync, 'retryParagraphVectorChanges').mockResolvedValue();
+    const retryButton = fixture.nativeElement.querySelector('.indexing-status button') as HTMLButtonElement;
+    retryButton.click();
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('shows a manual indexing action without a loader while work is pending', async () => {
+    const vectorSync = TestBed.inject(ManuscriptParagraphVectorSyncService);
+    electronInvoke.mockResolvedValueOnce({
+      available: true,
+      automaticIndexingEnabled: false,
+    });
+    await vectorSync.refreshIndexingConfiguration('book-1');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.indexing-update-button')).toBeNull();
+
+    vectorSync.snapshotDirtyParagraphs('scene-1', [paragraphNode('paragraph-1', 'Queued edit')]);
+    fixture.detectChanges();
+
+    const updateButton = fixture.nativeElement.querySelector(
+      '.indexing-update-button',
+    ) as HTMLButtonElement;
+    expect(updateButton.getAttribute('aria-label')).toBe('Update index');
+    expect(updateButton.textContent).toContain('Manual indexing');
+    expect(fixture.nativeElement.querySelector('.indexing-spinner')).toBeNull();
+
+    let completeUpsert!: () => void;
+    electronInvoke.mockImplementation(async (channel: string) => {
+      if (channel === 'vectors:upsertParagraphs') {
+        return new Promise<void>(resolve => {
+          completeUpsert = resolve;
+        });
+      }
+      return undefined;
+    });
+    const flush = vi.spyOn(vectorSync, 'flushParagraphVectorChanges');
+    updateButton.click();
+    expect(flush).toHaveBeenCalledOnce();
+    fixture.detectChanges();
+    expect(statusText()).toContain('Indexing');
+    expect(fixture.nativeElement.querySelector('.indexing-spinner')).not.toBeNull();
+
+    completeUpsert();
+    await flush.mock.results[0].value;
+  });
+
+  it('builds labels for each manuscript scope', () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    const hierarchy: ActDto[] = [{
+      id: 'act-1',
+      title: 'The Beginning',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'First Steps',
+        actId: 'act-1',
+        position: 2,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'A Door Opens',
+          chapterId: 'chapter-1',
+          position: 1,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: null,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }];
+    workspaceBookStore.setBookHierarchy(hierarchy);
+
+    component.store.setRouteParams('book', 'book-1');
+    expect(component.currentScopeLabel()).toBe('Full Novel');
+
+    component.store.setRouteParams('act', 'act-1');
+    expect(component.currentScopeLabel()).toBe('Act 1: The Beginning');
+
+    component.store.setRouteParams('chapter', 'chapter-1');
+    expect(component.currentScopeLabel()).toBe('Chapter 3: First Steps');
+
+    component.store.setRouteParams('scene', 'scene-1');
+    expect(component.currentScopeLabel()).toBe('Scene 2: A Door Opens');
+  });
+
+  it('uses untitled labels in the view scope', () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: '',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [],
+    }]);
+
+    component.store.setRouteParams('act', 'act-1');
+
+    expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
+  });
+
   it('highlights across inline marks without joining separate editor blocks', async () => {
     setEditorContent();
     await Promise.resolve();
@@ -184,7 +345,19 @@ describe('Manuscript', () => {
     frameCallbacks.clear();
     callbacks.forEach((callback) => callback(performance.now()));
   }
+
+  function statusText(): string {
+    return fixture.nativeElement.querySelector('.indexing-status')?.textContent ?? '';
+  }
 });
+
+function paragraphNode(id: string, text: string): Record<string, unknown> {
+  return {
+    type: 'paragraph',
+    attrs: { id },
+    content: [{ type: 'text', text }],
+  };
+}
 
 function findMatches(text: string) {
   return [...text.matchAll(/Mara\s+Vale/gi)].map((match) => ({

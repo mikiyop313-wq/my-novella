@@ -60,6 +60,43 @@ export interface ActDto {
   chapters?: ChapterDto[];
 }
 
+/** Lightweight scene data used by the archive manager. */
+export interface ArchiveSceneDto {
+  id: string;
+  title: string;
+  chapterId: string | null;
+  archiveParentTitle: string | null;
+  position: number;
+  status: ManuscriptEntityStatus;
+}
+
+/** Lightweight chapter data used by the archive manager. */
+export interface ArchiveChapterDto {
+  id: string;
+  title: string;
+  actId: string | null;
+  archiveParentTitle: string | null;
+  position: number;
+  status: ManuscriptEntityStatus;
+  scenes: ArchiveSceneDto[];
+}
+
+/** Lightweight act data used by the archive manager. */
+export interface ArchiveActDto {
+  id: string;
+  title: string;
+  bookId: string;
+  position: number;
+  status: ManuscriptEntityStatus;
+  chapters: ArchiveChapterDto[];
+}
+
+export interface ArchiveOverviewDto {
+  archivedActs: ArchiveActDto[];
+  archivedChapters: ArchiveChapterDto[];
+  archivedScenes: ArchiveSceneDto[];
+}
+
 export type ManuscriptMode = 'scene' | 'chapter' | 'act' | 'book';
 
 export type ManuscriptModeDto<T extends ManuscriptMode> =
@@ -84,6 +121,12 @@ export interface DeleteScenePayload   { id: string; }
 export interface ArchiveActPayload     { id: string; }
 export interface ArchiveChapterPayload { id: string; }
 export interface ArchiveScenePayload   { id: string; }
+
+// Payloads for archive management IPC channels
+export interface GetArchiveOverviewPayload { bookId: string; }
+export interface RestoreActPayload          { id: string; }
+export interface RestoreChapterPayload      { id: string; targetActId: string; }
+export interface RestoreScenePayload        { id: string; targetChapterId: string; }
 
 // Payloads for manuscript structure position updates.
 export interface ActPositionUpdate     { id: string; bookId: string; position: number; }

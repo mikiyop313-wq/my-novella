@@ -65,6 +65,10 @@
     transform: translateX(200%);
   }
 
+  &.is-settings .active-pill {
+    opacity: 0;
+  }
+
   .active-pill {
     position: absolute;
     top: 0;
@@ -75,7 +79,9 @@
     border-radius: 7px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);
     z-index: -1;
-    transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+    transition:
+      transform 0.3s cubic-bezier(0.2, 0, 0, 1),
+      opacity 0.2s ease;
   }
 
   .view-btn {

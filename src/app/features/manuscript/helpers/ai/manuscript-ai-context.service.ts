@@ -31,6 +31,7 @@ import { extractManuscriptHierarchyById } from '../content/manuscript-content.ut
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 import type { SimilarParagraphResult } from '../../../../../../shared/models/vector.model';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 
 export type ManuscriptAiPointOfViewSetting = BookSettingsDto['pointOfView'] | 'global';
 
@@ -56,6 +57,7 @@ export interface ManuscriptAiContextRequest {
 @Injectable({ providedIn: 'root' })
 export class ManuscriptAiContextService {
   private readonly electronService = inject(ElectronService);
+  private readonly manuscriptStructureService = inject(ManuscriptStructureService);
   private readonly codexService = inject(CodexService);
   private readonly libraryStore = inject(LibraryStore);
   private readonly saver = inject(ManuscriptProseSaverService);
@@ -95,7 +97,7 @@ export class ManuscriptAiContextService {
 
     const [outlineHierarchy, databaseProse] = await Promise.all([
       request.includeFullOutline
-        ? this.electronService.invoke('manuscript:getOutline', { bookId: request.bookId }) as Promise<ActDto[]>
+        ? this.manuscriptStructureService.getOutline(request.bookId)
         : Promise.resolve(null),
       unloadedSceneIds.length > 0
         ? this.electronService.invoke('manuscript:getScenesProse', { sceneIds: unloadedSceneIds }) as Promise<Record<string, TiptapJsonDoc | null>>

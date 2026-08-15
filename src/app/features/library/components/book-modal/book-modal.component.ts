@@ -9,10 +9,12 @@ import { CommonModule } from '@angular/common';
 import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
-import { LibraryService } from '../../services/library.service';
 import { LibraryStore } from '../../store/book.store';
 import { ConfigStore } from '../../../../core/store/config.store';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { CodexService } from '../../../codex/services/codex.service';
 
 
 
@@ -31,9 +33,11 @@ export class BookModalComponent {
   close = output<void>();
   bookDeleted = output<string>();
 
-  private libraryService = inject(LibraryService);
+  private confirmService = inject(ConfirmModalService);
+  private toastService = inject(ToastService);
   readonly store = inject(LibraryStore);
   readonly config = inject(ConfigStore);
+  private readonly codexService = inject(CodexService);
   private router = inject(Router);
 
   constructor() {
@@ -64,15 +68,19 @@ export class BookModalComponent {
 
   currentView = signal<'details' | 'settings'>('details');
   activeSlideModalAnimation = signal<boolean>(false);
+  isLifecycleActionPending = signal(false);
 
   // Settings State
   selectedTense = signal<'past' | 'present'>('past');
   selectedLanguage = signal<string>('english');
   selectedPOV = signal<'first' | 'third_limited' | 'third_omni' | 'second'>('third_limited');
-  selectedPovCharacter = signal<string | null>(null);
+  selectedPovCharacter = signal('');
   characters = signal<DropdownOption[]>([]);
+  povCharacterOptions = computed<DropdownOption[]>(() => [
+    { value: '', label: 'None' },
+    ...this.characters(),
+  ]);
   useSynopsisInAiContext = signal<boolean>(false);
-  vectorSearchEnabled = signal<boolean>(true);
 
   // Edit Mode State
   editingField = signal<string | null>(null);
@@ -133,14 +141,14 @@ export class BookModalComponent {
     this.config.loadGenres();
     // Initialize settings from book data if available
     const book = this.book();
+    void this.loadCharacters(book.id);
     if (book.language) this.selectedLanguage.set(book.language);
 
     if (book.settings) {
       this.selectedTense.set(book.settings.proseTense);
       this.selectedPOV.set(book.settings.pointOfView);
       this.useSynopsisInAiContext.set(book.settings.synopsisAiContext);
-      this.selectedPovCharacter.set(book.settings.povCharacterId || null);
-      this.vectorSearchEnabled.set(book.settings.vectorSearchEnabled ?? true);
+      this.selectedPovCharacter.set(book.settings.povCharacterId ?? '');
     } else {
       this.useSynopsisInAiContext.set(book.synopsis !== '' ? true : false);
     }
@@ -236,8 +244,9 @@ export class BookModalComponent {
       this.selectedPOV.set(value);
       this.saveSettings({ pointOfView: value });
     } else if (type === 'povCharacter') {
-      this.selectedPovCharacter.set(value);
-      this.saveSettings({ povCharacterId: value });
+      const povCharacterId = typeof value === 'string' ? value : '';
+      this.selectedPovCharacter.set(povCharacterId);
+      this.saveSettings({ povCharacterId: povCharacterId || null });
     }
   }
 
@@ -245,12 +254,6 @@ export class BookModalComponent {
     const newVal = !this.useSynopsisInAiContext();
     this.useSynopsisInAiContext.set(newVal);
     this.saveSettings({ synopsisAiContext: newVal });
-  }
-
-  toggleVectorSearch() {
-    const enabled = !this.vectorSearchEnabled();
-    this.vectorSearchEnabled.set(enabled);
-    this.saveSettings({ vectorSearchEnabled: enabled });
   }
 
   private async saveSettings(settingsUpdate: any) {
@@ -265,26 +268,69 @@ export class BookModalComponent {
     }
   }
 
-  async onArchive() {
+  onArchive() {
+    if (this.isLifecycleActionPending()) return;
+
+    void this.updateBookStatus('archived');
+  }
+
+  private async loadCharacters(bookId: string): Promise<void> {
     try {
-      const updatedBook = await this.store.updateBook(this.book().id, { status: 'archived' });
-      this.book.set(updatedBook);
-    } catch (error) {
-      console.error('Failed to archive book:', error);
+      const characters = await this.codexService.getEntries(bookId, {
+        type: 'character',
+        status: 'active',
+      });
+      this.characters.set(
+        characters.map((character) => ({
+          value: character.id,
+          label: character.name,
+        })),
+      );
+    } catch {
+      this.characters.set([]);
     }
   }
 
-  async onRestore() {
-    try {
-      const updatedBook = await this.store.updateBook(this.book().id, { status: 'draft' });
-      this.book.set(updatedBook);
-    } catch (error) {
-      console.error('Failed to restore book:', error);
-    }
+  onRestore() {
+    const book = this.book();
+    if (this.isLifecycleActionPending()) return;
+
+    this.confirmService.open(
+      'Restore book?',
+      `Restore “${book.title}” to your active library?`,
+      () => void this.updateBookStatus('draft'),
+      undefined,
+      { confirmLabel: 'Restore' },
+    );
   }
 
   onDelete() {
-    this.bookDeleted.emit(this.book().id);
+    const book = this.book();
+    if (this.isLifecycleActionPending()) return;
+
+    this.bookDeleted.emit(book.id);
+    this.close.emit();
+  }
+
+  private async updateBookStatus(status: BookDto['status']): Promise<void> {
+    if (this.isLifecycleActionPending()) return;
+
+    this.isLifecycleActionPending.set(true);
+    try {
+      const updatedBook = await this.store.updateBook(this.book().id, { status });
+      this.book.set(updatedBook);
+      this.toastService.success(
+        status === 'archived' ? 'The book was archived.' : 'The book was restored.',
+      );
+      this.close.emit();
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : `Unable to ${status === 'archived' ? 'archive' : 'restore'} this book.`,
+        status === 'archived' ? 'Archive failed' : 'Restore failed',
+      );
+    } finally {
+      this.isLifecycleActionPending.set(false);
+    }
   }
 
   onClose() {

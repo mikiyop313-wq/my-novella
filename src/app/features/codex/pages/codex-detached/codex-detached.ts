@@ -12,8 +12,8 @@ import {
 } from '../../../../../../shared/models/codex-window.model';
 import { type ActDto } from '../../../../../../shared/models/manuscript.model';
 import { DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
-import { ElectronService } from '../../../../core/services/electron.service';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { CodexEntryMenuComponent } from '../../components/codex-entry-menu/codex-entry-menu.component';
 import { CodexEntryPersistenceService } from '../../services/codex-entry-persistence.service';
 import { CodexContextTrieService } from '../../services/codex-context-trie.service';
@@ -44,7 +44,7 @@ const CODEX_ENTITY_OPTIONS: readonly CodexEntityOption[] = [
 })
 export class CodexDetached implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
-  private readonly electronService = inject(ElectronService);
+  private readonly manuscriptStructureService = inject(ManuscriptStructureService);
   private readonly codexService = inject(CodexService);
   private readonly codexContextTrie = inject(CodexContextTrieService);
   private readonly codexWindowService = inject(CodexWindowService);
@@ -208,10 +208,7 @@ export class CodexDetached implements OnInit, OnDestroy {
     if (!bookId) return;
 
     try {
-      const hierarchy = await this.electronService.invoke('manuscript:getBookHierarchy', {
-        mode: 'book',
-        id: bookId,
-      }) as ActDto[];
+      const hierarchy = await this.manuscriptStructureService.getBookHierarchy('book', bookId);
       this.bookHierarchy.set(hierarchy);
     } catch {
       this.bookHierarchy.set([]);

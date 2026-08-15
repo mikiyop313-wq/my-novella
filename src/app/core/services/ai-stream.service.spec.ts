@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
+import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
+import { ToastService } from '../../shared/services/toast.service';
 import { AIStateService } from './ai-state.service';
 import { AiStreamService } from './ai-stream.service';
 
@@ -8,6 +10,9 @@ describe('AiStreamService', () => {
   let service: AiStreamService;
   let generate: ReturnType<typeof vi.fn>;
   let abort: ReturnType<typeof vi.fn>;
+  let getActivePresetId: ReturnType<typeof vi.fn>;
+  let toastError: ReturnType<typeof vi.fn>;
+  let onMessage: ReturnType<typeof vi.fn>;
   let listeners: Map<string, (...args: any[]) => void>;
   let cleanupFns: ReturnType<typeof vi.fn>[];
 
@@ -16,18 +21,21 @@ describe('AiStreamService', () => {
     cleanupFns = [];
     generate = vi.fn().mockResolvedValue('');
     abort = vi.fn().mockResolvedValue(undefined);
+    getActivePresetId = vi.fn().mockResolvedValue('chat-preset');
+    toastError = vi.fn();
+    onMessage = vi.fn((channel: string, callback: (...args: any[]) => void) => {
+      listeners.set(channel, callback);
+
+      const cleanup = vi.fn(() => listeners.delete(channel));
+      cleanupFns.push(cleanup);
+
+      return cleanup;
+    });
 
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
       value: {
-        onMessage: vi.fn((channel: string, callback: (...args: any[]) => void) => {
-          listeners.set(channel, callback);
-
-          const cleanup = vi.fn(() => listeners.delete(channel));
-          cleanupFns.push(cleanup);
-
-          return cleanup;
-        }),
+        onMessage,
       },
     });
 
@@ -35,6 +43,8 @@ describe('AiStreamService', () => {
       providers: [
         AiStreamService,
         { provide: AIStateService, useValue: { generate, abort } },
+        { provide: SystemPromptSelectionService, useValue: { getActivePresetId } },
+        { provide: ToastService, useValue: { error: toastError } },
       ],
     });
 
@@ -46,7 +56,7 @@ describe('AiStreamService', () => {
     TestBed.resetTestingModule();
   });
 
-  it('streams content tokens in order with CR/newline normalization', async () => {
+  it('streams content tokens in order while normalizing CRLF', async () => {
     generate.mockImplementation(async () => {
       listeners.get('ai:generate-stream')?.('Hel');
       listeners.get('ai:generate-stream')?.('lo\r\n\nthere');
@@ -57,14 +67,23 @@ describe('AiStreamService', () => {
 
     await service.streamText({
       streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       prompt: 'Write',
       provider: 'openrouter',
       modelId: 'model-1',
       onToken: token => tokens.push(token),
     });
 
-    expect(tokens.join('')).toBe('Hello\nthere');
-    expect(generate).toHaveBeenCalledWith('Write', 'openrouter', 'model-1', undefined, undefined);
+    expect(tokens.join('')).toBe('Hello\n\nthere');
+    expect(generate).toHaveBeenCalledWith(
+      'Write',
+      'openrouter',
+      'model-1',
+      undefined,
+      undefined,
+      { category: 'chat', presetId: 'chat-preset' },
+    );
   });
 
   it('passes structured chat messages to AIStateService', async () => {
@@ -76,12 +95,21 @@ describe('AiStreamService', () => {
 
     await service.streamText({
       streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       prompt: 'Continue',
       provider: 'openrouter',
       messages,
     });
 
-    expect(generate).toHaveBeenCalledWith('Continue', 'openrouter', undefined, undefined, messages);
+    expect(generate).toHaveBeenCalledWith(
+      'Continue',
+      'openrouter',
+      undefined,
+      undefined,
+      messages,
+      { category: 'chat', presetId: 'chat-preset' },
+    );
   });
 
   it('switches status to generating when content tokens arrive', async () => {
@@ -94,6 +122,8 @@ describe('AiStreamService', () => {
 
     await service.streamText({
       streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       prompt: 'Write',
       onToken: vi.fn(),
       onStatusChange: status => statuses.push(status),
@@ -113,6 +143,8 @@ describe('AiStreamService', () => {
 
     await service.streamText({
       streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       prompt: 'Write',
       reasoningMode: true,
       onReasoningUpdate: vi.fn(),
@@ -140,6 +172,8 @@ describe('AiStreamService', () => {
 
     await service.streamText({
       streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       prompt: 'Think',
       reasoningMode: true,
       onReasoningUpdate: reasoning => updates.push(reasoning),
@@ -162,6 +196,8 @@ describe('AiStreamService', () => {
 
     await service.streamText({
       streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       prompt: 'Write',
       reasoningMode: true,
       onToken: vi.fn(),
@@ -179,6 +215,8 @@ describe('AiStreamService', () => {
 
     await expect(service.streamText({
       streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       prompt: 'Write',
       reasoningMode: true,
       onToken: vi.fn(),
@@ -188,5 +226,30 @@ describe('AiStreamService', () => {
     expect(cleanupFns).toHaveLength(2);
     expect(cleanupFns.every(cleanup => cleanup.mock.calls.length === 1)).toBe(true);
     expect(listeners.size).toBe(0);
+  });
+
+  it('does not register listeners or generate when preset lookup fails', async () => {
+    const error = new Error('Selection unavailable');
+    getActivePresetId.mockRejectedValue(error);
+    const statuses: string[] = [];
+
+    await expect(service.streamText({
+      streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
+      prompt: 'Write',
+      onToken: vi.fn(),
+      onStatusChange: status => statuses.push(status),
+    })).rejects.toBe(error);
+
+    expect(getActivePresetId).toHaveBeenCalledWith('book-1', 'chat');
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      'Unable to load the active system prompt preset.',
+      'AI Generation',
+    );
+    expect(statuses).toEqual(['loading', 'idle']);
+    expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 });

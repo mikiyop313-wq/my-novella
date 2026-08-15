@@ -10,6 +10,64 @@ import {
 
 export const routeAnimations =
   trigger('routeAnimations', [
+    transition('* => SettingsPage', [
+      style({ position: 'relative' }),
+      query(':leave', [
+        style({
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 1
+        })
+      ], { optional: true }),
+      query(':enter', [
+        style({
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 2000,
+          transform: 'translateY(-100%)'
+        })
+      ], { optional: true }),
+      query(':enter', [
+        animate(
+          '500ms cubic-bezier(0.22, 1, 0.36, 1)',
+          style({ transform: 'translateY(0%)' })
+        )
+      ], { optional: true })
+    ]),
+    transition('SettingsPage => *', [
+      style({ position: 'relative' }),
+      query(':enter', [
+        style({
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 1
+        })
+      ], { optional: true }),
+      query(':leave', [
+        style({
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 2000,
+          transform: 'translateY(0%)'
+        }),
+        animate(
+          '500ms cubic-bezier(0.22, 1, 0.36, 1)',
+          style({ transform: 'translateY(-100%)' })
+        )
+      ], { optional: true })
+    ]),
     transition('LibraryPage => CreatePage', [
       style({ position: 'relative' }),
       query(':enter, :leave', [

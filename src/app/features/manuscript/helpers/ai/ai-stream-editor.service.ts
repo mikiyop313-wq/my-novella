@@ -53,6 +53,7 @@ export class AiStreamEditorService {
     provider: string,
     modelId: string,
     reasoningMode: boolean,
+    bookId: string,
     blockId?: string,
     messages?: AiChatMessage[],
   ): Promise<void> {
@@ -74,6 +75,7 @@ export class AiStreamEditorService {
       provider,
       modelId,
       reasoningMode,
+      bookId,
       messages,
     );
   }
@@ -89,7 +91,8 @@ export class AiStreamEditorService {
     newPrompt: string,
     provider: string,
     modelId: string,
-    reasoningMode: boolean
+    reasoningMode: boolean,
+    bookId: string,
   ): Promise<void> {
     const blockAttrs = this.createGeneratingBlockAttrs({
       id: currentAttrs['id'],
@@ -112,7 +115,8 @@ export class AiStreamEditorService {
       newPrompt,
       provider,
       modelId,
-      reasoningMode
+      reasoningMode,
+      bookId,
     );
   }
 
@@ -211,12 +215,15 @@ export class AiStreamEditorService {
     provider: string,
     modelId: string | undefined,
     reasoningMode: boolean,
+    bookId: string,
     messages?: AiChatMessage[],
   ): Promise<void> {
     let currentInsertPos = startInsertPos;
     let hasError = false;
     let hasWrittenContent = false;
     let reasoningBuffer = '';
+    let markdownSource = '';
+    let isNewlineSequence = false;
 
     const queue: string[] = [];
     let isAnimating = false;
@@ -255,6 +262,8 @@ export class AiStreamEditorService {
     try {
       await this.aiStreamService.streamText({
         streamId: blockAttrs['id'],
+        bookId,
+        systemPromptCategory: 'sceneBeat',
         prompt: promptText,
         provider,
         modelId,
@@ -263,9 +272,13 @@ export class AiStreamEditorService {
         onToken: token => {
           if (!token) return;
 
+          markdownSource += token;
+
           if (token === '\n') {
-            enqueue('\n');
+            if (!isNewlineSequence) enqueue('\n');
+            isNewlineSequence = true;
           } else {
+            isNewlineSequence = false;
             enqueue(token);
           }
         },
@@ -292,6 +305,7 @@ export class AiStreamEditorService {
       if (hasError && !hasWrittenContent) {
         this.removeGeneratingBlock(editor);
       } else {
+        this.renderGeneratedMarkdown(editor, markdownSource);
         this.finalizeGeneratingBlock(editor, reasoningBuffer);
         this.stoppedBlocks.delete(blockAttrs['id']);
       }
@@ -342,6 +356,40 @@ export class AiStreamEditorService {
   // ---------------------------------------------------------------------------
   // Block Finalization
   // ---------------------------------------------------------------------------
+
+  /** Converts completed AI Markdown into regular Tiptap content inside its review block. */
+  private renderGeneratedMarkdown(editor: Editor, markdown: string): void {
+    if (!markdown) return;
+
+    const blockPos = this.findGeneratingBlockPos(editor);
+    if (blockPos === null || !editor.markdown) return;
+
+    const blockNode = editor.state.doc.nodeAt(blockPos);
+    if (!blockNode) return;
+
+    try {
+      const parsedDocument = editor.markdown.parse(markdown);
+      const content = parsedDocument.content;
+
+      if (!content || content.length === 0) return;
+
+      const renderedBlock = editor.schema.nodeFromJSON({
+        type: AI_GENERATED_BLOCK_NODE,
+        attrs: blockNode.attrs,
+        content,
+      });
+      const tr = editor.state.tr.replaceWith(
+        blockPos,
+        blockPos + blockNode.nodeSize,
+        renderedBlock,
+      );
+
+      tr.setMeta('addToHistory', false);
+      editor.view.dispatch(tr);
+    } catch (error) {
+      console.warn('Failed to render generated Markdown:', error);
+    }
+  }
 
   private updateReasoningText(
     editor: Editor,

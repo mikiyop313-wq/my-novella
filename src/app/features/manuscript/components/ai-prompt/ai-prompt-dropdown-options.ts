@@ -1,5 +1,6 @@
 import type { CodexEntryDto, CodexEntryType } from '../../../../../../shared/models/codex.model';
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
+import type { AiModel, AiModelProviderGroup } from '../../../../../../shared/models/ai.model';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 import type {
   DropdownMenu,
@@ -15,12 +16,12 @@ export interface AiContextSelection {
   codexEntryIds: string[];
 }
 
-export interface AiPromptModel {
-  id: string;
-  name: string;
-  provider: string;
-  providerName?: string;
-  source: 'direct' | 'openrouter' | string;
+export type AiPromptModel = AiModel;
+
+export interface AiModelDropdownSource {
+  providers: readonly AiModelProviderGroup[];
+  loading: boolean;
+  error: string | null;
 }
 
 export interface AiContextDropdownSource {
@@ -46,11 +47,6 @@ const CODEX_CATEGORIES: readonly CodexCategory[] = [
   { type: 'subplot', label: 'Subplots' },
   { type: 'other', label: 'Other' },
 ];
-
-const DIRECT_PROVIDER_NAMES: Record<string, string> = {
-  openai: 'OpenAI (Direct)',
-  google: 'Google Gemini (Direct)',
-};
 
 export function buildContextDropdownSections(source: AiContextDropdownSource): DropdownSection<string>[] {
   const activeCodexEntries = [...source.codexEntries]
@@ -282,41 +278,38 @@ function buildCodexCategoryOption(
   };
 }
 
-export function buildModelDropdownSections(models: readonly AiPromptModel[]): DropdownSection<string>[] {
-  const directProviders = new Map<string, AiPromptModel[]>();
-  const openRouterModels: AiPromptModel[] = [];
-
-  for (const model of models) {
-    if (model.source === 'direct') {
-      const providerModels = directProviders.get(model.provider) ?? [];
-      providerModels.push(model);
-      directProviders.set(model.provider, providerModels);
-    } else if (model.source === 'openrouter') {
-      openRouterModels.push(model);
+export function buildModelDropdownSections(
+  source: AiModelDropdownSource,
+): DropdownSection<string>[] {
+  const providerOptions = source.providers.map((provider): DropdownOption<string> => {
+    if (provider.state !== 'ready') {
+      return unavailableProviderOption(
+        provider,
+        provider.state === 'unconfigured' ? 'Not configured' : 'Models unavailable',
+      );
     }
-  }
 
-  const providerOptions: DropdownOption<string>[] = [...directProviders.entries()]
-    .map(([providerId, providerModels]) => {
-      const title = directProviderDisplayName(providerId);
+    if (provider.models.length === 0) {
+      return unavailableProviderOption(provider, 'No models available');
+    }
+
+    if (provider.id !== 'openrouter') {
       return {
-        value: `provider:${providerId}`,
-        label: title,
+        value: `provider:${provider.id}`,
+        label: provider.name,
         selectable: false,
         submenu: {
-          title,
+          title: provider.name,
           sections: [{
-            key: `models:${providerId}`,
-            options: providerModels.map(model => modelOption(model, [title])),
+            key: `models:${provider.id}`,
+            options: provider.models.map((model) => modelOption(model, [provider.name])),
           }],
         },
       };
-    })
-    .sort((a, b) => a.label.localeCompare(b.label));
+    }
 
-  if (openRouterModels.length > 0) {
     const groups = new Map<string, AiPromptModel[]>();
-    for (const model of openRouterModels) {
+    for (const model of provider.models) {
       const providerName = (model.providerName || model.provider || 'Other')
         .replace(/^OpenRouter:\s*/, '');
       const providerModels = groups.get(providerName) ?? [];
@@ -324,9 +317,9 @@ export function buildModelDropdownSections(models: readonly AiPromptModel[]): Dr
       groups.set(providerName, providerModels);
     }
 
-    providerOptions.push({
+    return {
       value: 'provider:openrouter',
-      label: 'OpenRouter',
+      label: provider.name,
       selectable: false,
       submenu: {
         title: 'OpenRouter Models',
@@ -339,24 +332,56 @@ export function buildModelDropdownSections(models: readonly AiPromptModel[]): Dr
             options: providerModels.map(model => modelOption(model, ['OpenRouter', providerName])),
           })),
       },
-    });
-  }
+    };
+  });
 
-  return [{ key: 'model-providers', options: providerOptions }];
+  const isLocalProvider = (option: DropdownOption<string>): boolean => (
+    option.value === 'provider:ollama' || option.value === 'provider:lm-studio'
+  );
+  const cloudProviders = providerOptions.filter((option) => !isLocalProvider(option));
+  const localProviders = providerOptions.filter(isLocalProvider);
+
+  return [
+    {
+      key: 'cloud-model-providers',
+      title: 'Cloud providers',
+      options: cloudProviders,
+      message: source.loading
+        ? { text: 'Loading models...' }
+        : source.error
+          ? { text: 'Unable to load model providers.', tone: 'error' }
+          : undefined,
+    },
+    {
+      key: 'local-model-providers',
+      title: 'Local providers',
+      dividerBefore: true,
+      options: localProviders,
+    },
+  ];
 }
 
 function modelOption(model: AiPromptModel, searchTerms: readonly string[]): DropdownOption<string> {
   return {
     value: model.id,
-    label: model.name,
+    label: model.name || model.id,
     searchTerms: [...new Set([model.providerName, ...searchTerms].filter(
       (term): term is string => !!term,
     ))],
   };
 }
 
-function directProviderDisplayName(providerId: string): string {
-  return DIRECT_PROVIDER_NAMES[providerId] ?? providerId.charAt(0).toUpperCase() + providerId.slice(1);
+function unavailableProviderOption(
+  provider: AiModelProviderGroup,
+  hint: string,
+): DropdownOption<string> {
+  return {
+    value: `provider:${provider.id}`,
+    label: provider.name,
+    hint,
+    disabled: true,
+    selectable: false,
+  };
 }
 
 function sceneValue(id: string): `scene:${string}` {

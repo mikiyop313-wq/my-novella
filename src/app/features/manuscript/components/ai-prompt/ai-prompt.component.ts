@@ -25,6 +25,7 @@ import {
   type VectorSearchSetting,
 } from '../../../../shared/models/vector-search.model';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { resolveAiModelTarget } from '../../../../shared/utils/ai-model-selection';
 import {
   findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
@@ -116,6 +117,8 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   promptText = signal('');
   isFocused = signal(false);
   selectedModel = signal<string | null>(null);
+  private readonly modelSelectionInitialized = signal(false);
+  private readonly requiresModelReselection = signal(false);
 
   // Per-prompt generation settings persisted on the Tiptap node.
   wordCount = signal(DEFAULT_PROMPT_SETTINGS.wordCount);
@@ -138,7 +141,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   //  Computed Properties
   // ---------------------------------------------------------------------------
 
-  allModels = computed<AiPromptModel[]>(() => this.aiStore.models() as AiPromptModel[]);
+  allModels = computed<AiPromptModel[]>(() => this.aiStore.models());
 
   isEmpty = computed(() => {
     const text = this.promptText();
@@ -164,7 +167,16 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     return id.split('/').pop() || id;
   });
 
-  modelDropdownSections = computed(() => buildModelDropdownSections(this.allModels()));
+  isSelectedModelAvailable = computed(() => {
+    const selectedModel = this.selectedModel();
+    return !!selectedModel && this.allModels().some((model) => model.id === selectedModel);
+  });
+
+  modelDropdownSections = computed(() => buildModelDropdownSections({
+    providers: this.aiStore.modelProviders(),
+    loading: this.aiStore.isLoading(),
+    error: this.aiStore.error(),
+  }));
 
   contextDropdownSections = computed(() => buildContextDropdownSections({
     hierarchy: this.contextHierarchy(),
@@ -190,12 +202,25 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   constructor() {
     super();
 
-    // Auto-select once models arrive. This effect intentionally does not
-    // overwrite a model restored from persisted node attributes.
+    // Auto-select only for a genuinely new prompt. A persisted model that is
+    // no longer available is cleared and must be replaced explicitly.
     effect(() => {
-      const models = this.allModels();
+      if (
+        !this.modelSelectionInitialized()
+        || this.aiStore.isLoading()
+        || !this.aiStore.hasLoaded()
+      ) return;
 
-      if (models.length > 0 && !this.selectedModel()) {
+      const models = this.allModels();
+      const selectedModel = this.selectedModel();
+
+      if (selectedModel && !models.some((model) => model.id === selectedModel)) {
+        this.requiresModelReselection.set(true);
+        this.setAttribute(this.selectedModel, 'selectedModel', null);
+        return;
+      }
+
+      if (models.length > 0 && !selectedModel && !this.requiresModelReselection()) {
         const defaultModel = models.find(model => model.id.includes('free')) || models[0];
         this.selectedModel.set(defaultModel.id);
       }
@@ -217,8 +242,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   ngOnInit(): void {
     this.restoreAttributesFromNode();
+    this.modelSelectionInitialized.set(true);
     this.ensureBlockId();
-    this.aiStore.loadModels();
+    void this.aiStore.ensureModelsLoaded();
     this.contextTrackingInitialized = true;
     this.editor().on('transaction', this.onEditorTransaction);
     this.refreshContextAvailability();
@@ -271,6 +297,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   // ---------------------------------------------------------------------------
 
   onModelChange(model: string | null): void {
+    if (model) this.requiresModelReselection.set(false);
     this.setAttribute(this.selectedModel, 'selectedModel', model);
   }
 
@@ -360,7 +387,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const text = this.promptText().trim();
     const pos = this.currentNodePosition();
 
-    if (!text || pos === null) return;
+    if (!text || pos === null || !this.isSelectedModelAvailable()) return;
 
     const { provider, modelId } = this.resolveSelectedModel();
 
@@ -381,11 +408,15 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const loadingSig = this.loadingSignal(blockId);
     loadingSig?.set('loading');
 
+    const bookId = this.workspaceStore.bookId();
+    if (!bookId) {
+      this.toastService.error('No active book is available.', 'AI Generation');
+      loadingSig?.set('idle');
+      return;
+    }
+
     let messages: AiChatMessage[];
     try {
-      const bookId = this.workspaceStore.bookId();
-      if (!bookId) throw new Error('No active book is available.');
-
       messages = await this.manuscriptAiContext.buildMessages({
         editor: this.editor(),
         promptPos: pos,
@@ -425,6 +456,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         provider,
         modelId,
         this.reasoningMode(),
+        bookId,
         blockId,
         messages,
       );
@@ -577,14 +609,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       return { provider: 'openrouter', modelId: '' };
     }
 
-    if (selectedModelObj.source !== 'direct') {
-      return { provider: 'openrouter', modelId: selectedModelObj.id };
-    }
-
-    return {
-      provider: selectedModelObj.provider,
-      modelId: selectedModelObj.id.split('/')[1] || selectedModelObj.id
-    };
+    return resolveAiModelTarget(selectedModelObj);
   }
 
   private contextTrackingInitialized = false;

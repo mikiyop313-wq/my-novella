@@ -2,13 +2,21 @@ import { inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 
 import { LibraryService } from '../library/services/library.service';
+import { ManuscriptMode } from '../../../../shared/models/manuscript.model';
 
-export type WorkspaceView = 'manuscript' | 'outline' | 'chat';
+export type WorkspaceView = 'manuscript' | 'outline' | 'chat' | 'settings';
+
+export interface ManuscriptRoute {
+  mode: ManuscriptMode;
+  id: string;
+}
 
 export interface WorkspaceState {
   bookId: string | null;
   bookTitle: string;
   activeView: WorkspaceView;
+  lastWorkspaceUrl: string | null;
+  lastManuscriptRoutes: Record<string, ManuscriptRoute>;
   sidebarOpen: boolean;
   isLoadingBook: boolean;
   error: string | null;
@@ -18,6 +26,8 @@ const initialState: WorkspaceState = {
   bookId: null,
   bookTitle: 'Workspace',
   activeView: 'manuscript',
+  lastWorkspaceUrl: null,
+  lastManuscriptRoutes: {},
   sidebarOpen: true,
   isLoadingBook: false,
   error: null,
@@ -55,6 +65,27 @@ export const WorkspaceStore = signalStore(
 
     setActiveView(activeView: WorkspaceView): void {
       patchState(store, { activeView });
+    },
+
+    setBookTitle(bookTitle: string): void {
+      patchState(store, { bookTitle });
+    },
+
+    setLastWorkspaceUrl(lastWorkspaceUrl: string): void {
+      patchState(store, { lastWorkspaceUrl });
+    },
+
+    rememberManuscriptRoute(bookId: string, route: ManuscriptRoute): void {
+      patchState(store, {
+        lastManuscriptRoutes: {
+          ...store.lastManuscriptRoutes(),
+          [bookId]: route,
+        },
+      });
+    },
+
+    getLastManuscriptRoute(bookId: string): ManuscriptRoute | null {
+      return store.lastManuscriptRoutes()[bookId] ?? null;
     },
 
     openSidebar(): void {

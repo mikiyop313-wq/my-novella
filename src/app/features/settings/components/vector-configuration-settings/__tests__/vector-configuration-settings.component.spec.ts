@@ -1,0 +1,507 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type {
+  LocalEmbeddingModelDownloadProgress,
+  LocalEmbeddingModelName,
+  LocalEmbeddingModelStatus,
+  LocalEmbeddingModelTier,
+  VectorProviderConfiguration,
+} from '../../../../../../../shared/models/vector.model';
+import { ElectronService } from '../../../../../core/services/electron.service';
+import { ConfirmModalService } from '../../../../../shared/components/confirm-modal/confirm-modal.service';
+import { VectorConfigurationSettingsComponent } from '../vector-configuration-settings.component';
+
+describe('VectorConfigurationSettingsComponent', () => {
+  const catalog: LocalEmbeddingModelStatus[] = [
+    model(
+      'mixedbread-ai/mxbai-embed-large-v1',
+      'Mixedbread Large',
+      'Mixedbread',
+      'MB',
+      'large',
+      1024,
+      'English',
+    ),
+    model('BAAI/bge-large-en-v1.5', 'BGE Large', 'BAAI', 'BA', 'large', 1024, 'English'),
+    model('BAAI/bge-m3', 'BGE-M3', 'BAAI', 'BA', 'large', 1024, 'Multilingual (100+ languages)'),
+    model('nomic-ai/nomic-embed-text-v1.5', 'Nomic Embed', 'Nomic', 'NO', 'medium', 768, 'English'),
+    model('BAAI/bge-base-en-v1.5', 'BGE Base', 'BAAI', 'BA', 'medium', 768, 'English'),
+    model(
+      'Alibaba-NLP/gte-multilingual-base',
+      'GTE Multilingual',
+      'Alibaba',
+      'AL',
+      'medium',
+      768,
+      'Multilingual (75 languages)',
+    ),
+    model('BAAI/bge-small-en-v1.5', 'BGE Small', 'BAAI', 'BA', 'small', 384, 'English'),
+    model(
+      'sentence-transformers/all-MiniLM-L6-v2',
+      'MiniLM',
+      'Sentence Transformers',
+      'ST',
+      'small',
+      384,
+      'English',
+    ),
+    model(
+      'Snowflake/snowflake-arctic-embed-xs',
+      'Arctic XS',
+      'Snowflake',
+      'SF',
+      'small',
+      384,
+      'English',
+    ),
+  ];
+
+  let fixture: ComponentFixture<VectorConfigurationSettingsComponent>;
+  let invoke: ReturnType<typeof vi.fn>;
+  let on: ReturnType<typeof vi.fn>;
+  let removeProgressListener: ReturnType<typeof vi.fn>;
+  let progressListener: ((progress: LocalEmbeddingModelDownloadProgress) => void) | undefined;
+  let confirmService: ConfirmModalService;
+
+  const vectorConfiguration: VectorProviderConfiguration = {
+    apiKeys: {
+      openai: { configured: true, suffix: '1234' },
+      voyage: { configured: false, suffix: null },
+      openrouter: { configured: true, suffix: '5678' },
+    },
+  };
+
+  beforeEach(async () => {
+    invoke = vi.fn((channel: string) => {
+      if (channel === 'vectors:config:load') return Promise.resolve(vectorConfiguration);
+      if (channel === 'vectors:config:load-api-key') return Promise.resolve('sk-saved-1234');
+      if (channel === 'vectors:config:save-api-key') {
+        return Promise.resolve({ configured: true, suffix: 'abcd' });
+      }
+      if (channel === 'vectors:config:test-connection') return Promise.resolve();
+      return Promise.resolve(catalog);
+    });
+    removeProgressListener = vi.fn();
+    on = vi.fn(
+      (channel: string, callback: (progress: LocalEmbeddingModelDownloadProgress) => void) => {
+        if (channel === 'vectors:local-model:download-progress') progressListener = callback;
+        return removeProgressListener;
+      },
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [VectorConfigurationSettingsComponent],
+      providers: [
+        {
+          provide: ElectronService,
+          useValue: {
+            invoke,
+            on,
+            onBeforeClose: vi.fn(),
+            removeBeforeCloseHandler: vi.fn(),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(VectorConfigurationSettingsComponent);
+    confirmService = TestBed.inject(ConfirmModalService);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  it('loads the catalog and switches between model tiers', () => {
+    const element = fixture.nativeElement as HTMLElement;
+
+    expect(invoke).toHaveBeenCalledWith('vectors:local-model:get-status');
+    expect(element.querySelectorAll('.local-model-card')).toHaveLength(3);
+    expect(element.querySelector('.local-model-tier h3')?.textContent).toContain('Large models');
+    expect(modelCard('BAAI/bge-m3').textContent).toContain('1024 dimensions');
+    expect(modelCard('BAAI/bge-m3').textContent).toContain('Multilingual (100+ languages)');
+
+    selectTier('Medium');
+    expect(element.querySelectorAll('.local-model-card')).toHaveLength(3);
+    expect(element.querySelector('.local-model-tier h3')?.textContent).toContain('Medium models');
+    expect(modelCard('Alibaba-NLP/gte-multilingual-base').textContent).toContain('768 dimensions');
+
+    selectTier('Small');
+    expect(element.querySelectorAll('.local-model-card')).toHaveLength(3);
+    expect(element.querySelector('.local-model-tier h3')?.textContent).toContain('Small models');
+    expect(modelCard('Snowflake/snowflake-arctic-embed-xs').textContent).toContain(
+      '384 dimensions',
+    );
+  });
+
+  it('renders installed state and formats cached bytes independently', async () => {
+    invoke.mockResolvedValueOnce(
+      catalog.map((status) =>
+        status.modelName === 'BAAI/bge-m3'
+          ? { ...status, installed: true, cachedBytes: 1_572_864 }
+          : status,
+      ),
+    );
+
+    await fixture.componentInstance.loadLocalModelStatus();
+    fixture.detectChanges();
+
+    expect(modelCard('BAAI/bge-m3').querySelector('.local-model-badge')?.textContent).toContain(
+      'Installed',
+    );
+    expect(modelCard('BAAI/bge-m3').textContent).toContain('1.5 MB');
+    expect(modelCard('BAAI/bge-large-en-v1.5').textContent).toContain('Not installed');
+  });
+
+  it('routes tagged progress to the selected card and disables all model actions', async () => {
+    let finishDownload: ((status: LocalEmbeddingModelStatus) => void) | undefined;
+    const target = catalog[2];
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise<LocalEmbeddingModelStatus>((resolve) => {
+          finishDownload = resolve;
+        }),
+    );
+
+    const downloadPromise = fixture.componentInstance.downloadLocalModel(target.modelName);
+    fixture.detectChanges();
+    progressListener?.({
+      modelName: target.modelName,
+      status: 'progress',
+      file: 'onnx/model_quantized.onnx',
+      loaded: 25,
+      total: 100,
+    });
+    fixture.detectChanges();
+
+    expect(invoke).toHaveBeenCalledWith('vectors:local-model:download', {
+      modelName: target.modelName,
+    });
+    expect(
+      modelCard(target.modelName).querySelector('.local-model-progress')?.textContent,
+    ).toContain('25%');
+    expect(
+      [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+          '.local-model-button',
+        ),
+      ].every((button) => button.disabled),
+    ).toBe(true);
+
+    finishDownload?.({ ...target, installed: true, cachedBytes: 1024 });
+    await downloadPromise;
+    fixture.detectChanges();
+    expect(modelCard(target.modelName).textContent).toContain('Installed');
+  });
+
+  it('refreshes all statuses after a failed download and isolates the error', async () => {
+    const target = catalog[1];
+    invoke.mockClear();
+    invoke
+      .mockRejectedValueOnce(new Error('Download failed'))
+      .mockResolvedValueOnce(
+        catalog.map((status) =>
+          status.modelName === target.modelName ? { ...status, cachedBytes: 2048 } : status,
+        ),
+      );
+
+    await fixture.componentInstance.downloadLocalModel(target.modelName);
+    fixture.detectChanges();
+
+    expect(invoke).toHaveBeenNthCalledWith(2, 'vectors:local-model:get-status');
+    expect(modelCard(target.modelName).textContent).toContain('Incomplete download');
+    expect(modelCard(target.modelName).textContent).toContain('Download failed');
+    expect(modelCard(target.modelName).textContent).toContain('Retry download');
+    expect(modelCard(catalog[0].modelName).textContent).not.toContain('Download failed');
+  });
+
+  it('shows a retry action when catalog status cannot be loaded', async () => {
+    invoke.mockRejectedValueOnce(new Error('Status unavailable'));
+
+    await fixture.componentInstance.loadLocalModelStatus();
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.configuration-state')?.textContent).toContain(
+      'Status unavailable',
+    );
+    expect(element.querySelector('.configuration-state button')?.textContent).toContain('Retry');
+  });
+
+  it.each([
+    { clearVectors: false, checked: false },
+    { clearVectors: true, checked: true },
+  ])(
+    'confirms targeted uninstall with clearVectors=$clearVectors',
+    async ({ clearVectors, checked }) => {
+      const target = { ...catalog[2], installed: true, cachedBytes: 1024 };
+      fixture.componentInstance.localModelStatuses.set(
+        catalog.map((status) => (status.modelName === target.modelName ? target : status)),
+      );
+      fixture.detectChanges();
+      invoke.mockResolvedValueOnce({ ...target, installed: false, cachedBytes: 0 });
+
+      fixture.componentInstance.requestLocalModelUninstall(target);
+      expect(confirmService.state().show).toBe(true);
+      expect(confirmService.state().confirmLabel).toBe('Uninstall');
+
+      confirmService.setCheckboxChecked(checked);
+      confirmService.state().onConfirm();
+      await fixture.whenStable();
+
+      expect(invoke).toHaveBeenCalledWith('vectors:local-model:uninstall', {
+        modelName: target.modelName,
+        clearVectors,
+      });
+    },
+  );
+
+  it('warns when uninstalling pauses indexing for selected books', () => {
+    const target = {
+      ...catalog[2],
+      installed: true,
+      cachedBytes: 1024,
+      selectedBookCount: 2,
+    };
+
+    fixture.componentInstance.requestLocalModelUninstall(target);
+
+    expect(confirmService.state().message).toContain('Indexing will pause for 2 books');
+    expect(confirmService.state().message).toContain('choose another model');
+  });
+
+  it('keeps download progress and the selected tier when the settings view is recreated', async () => {
+    let finishDownload: ((status: LocalEmbeddingModelStatus) => void) | undefined;
+    const target = catalog[3];
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise<LocalEmbeddingModelStatus>((resolve) => {
+          finishDownload = resolve;
+        }),
+    );
+
+    fixture.componentInstance.selectLocalModelTier('medium');
+    const downloadPromise = fixture.componentInstance.downloadLocalModel(target.modelName);
+    fixture.destroy();
+
+    progressListener?.({
+      modelName: target.modelName,
+      status: 'progress',
+      file: 'onnx/model_quantized.onnx',
+      progress: 42,
+    });
+
+    fixture = TestBed.createComponent(VectorConfigurationSettingsComponent);
+    fixture.detectChanges();
+
+    expect(on).toHaveBeenCalledOnce();
+    expect(removeProgressListener).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.selectedLocalModelTier()).toBe('medium');
+    expect(
+      modelCard(target.modelName).querySelector('.local-model-progress')?.textContent,
+    ).toContain('42%');
+
+    finishDownload?.({ ...target, installed: true, cachedBytes: 1024 });
+    await downloadPromise;
+  });
+
+  it('renders cloud providers and keeps separate API key drafts', () => {
+    selectProvider('openai');
+    updateVisibleKey('sk-openai-draft');
+    selectProvider('voyage');
+    updateVisibleKey('pa-voyage-draft');
+    selectProvider('openrouter');
+    updateVisibleKey('sk-or-vector-draft');
+
+    expect(fixture.componentInstance.apiKeyDrafts()).toEqual({
+      openai: 'sk-openai-draft',
+      voyage: 'pa-voyage-draft',
+      openrouter: 'sk-or-vector-draft',
+    });
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('OpenRouter');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Testing validates the saved API key without generating an embedding.',
+    );
+  });
+
+  it('loads, saves, and tests the configured OpenRouter vector credential', async () => {
+    selectProvider('openrouter');
+    const input = credentialInput();
+
+    expect(input.value).toContain('5678');
+    input.dispatchEvent(new FocusEvent('focus'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(invoke).toHaveBeenCalledWith('vectors:config:load-api-key', {
+      providerId: 'openrouter',
+    });
+
+    updateVisibleKey('sk-or-vector-abcd');
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.connection-test-button')
+      ?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:save-api-key', {
+      providerId: 'openrouter',
+      apiKey: 'sk-or-vector-abcd',
+    });
+    expect(invoke).toHaveBeenCalledWith('vectors:config:test-connection', {
+      providerId: 'openrouter',
+    });
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Connection to OpenRouter succeeded.',
+    );
+  });
+
+  it('loads and masks configured vector credentials, then loads the full key on focus', async () => {
+    selectProvider('openai');
+    const input = credentialInput();
+
+    expect(input.value).toContain('1234');
+    input.dispatchEvent(new FocusEvent('focus'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:load-api-key', { providerId: 'openai' });
+    expect(input.value).toBe('sk-saved-1234');
+  });
+
+  it('saves a dirty vector credential on blur', async () => {
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-secret-abcd');
+    input.dispatchEvent(new FocusEvent('blur'));
+    await fixture.whenStable();
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:save-api-key', {
+      providerId: 'voyage',
+      apiKey: 'voyage-secret-abcd',
+    });
+  });
+
+  it('flushes a dirty vector credential before the component is destroyed', async () => {
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-flush-abcd');
+
+    await expect(fixture.componentInstance.flushPendingChanges()).resolves.toBe(true);
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:save-api-key', {
+      providerId: 'voyage',
+      apiKey: 'voyage-flush-abcd',
+    });
+  });
+
+  it('awaits an in-flight vector blur save without saving twice', async () => {
+    let resolveSave!: (value: { configured: true; suffix: string }) => void;
+    const pendingSave = new Promise<{ configured: true; suffix: string }>((resolve) => {
+      resolveSave = resolve;
+    });
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'vectors:config:save-api-key') return pendingSave;
+      return Promise.resolve(vectorConfiguration);
+    });
+
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-pending-abcd');
+    input.dispatchEvent(new FocusEvent('blur'));
+
+    const flush = fixture.componentInstance.flushPendingChanges();
+    const saves = () => invoke.mock.calls.filter(
+      ([channel]) => channel === 'vectors:config:save-api-key',
+    );
+    expect(saves()).toHaveLength(1);
+
+    resolveSave({ configured: true, suffix: 'abcd' });
+    await expect(flush).resolves.toBe(true);
+    expect(saves()).toHaveLength(1);
+  });
+
+  it('saves pending edits before testing the provider connection', async () => {
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-secret-abcd');
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.connection-test-button')
+      ?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const saveIndex = invoke.mock.calls.findIndex(([channel]) => channel === 'vectors:config:save-api-key');
+    const testIndex = invoke.mock.calls.findIndex(([channel]) => channel === 'vectors:config:test-connection');
+    expect(saveIndex).toBeGreaterThan(-1);
+    expect(testIndex).toBeGreaterThan(saveIndex);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Connection to Voyage AI succeeded.',
+    );
+  });
+
+  function modelCard(modelName: LocalEmbeddingModelName): HTMLElement {
+    const card = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      `[data-model="${modelName}"]`,
+    );
+    if (!card) throw new Error(`Expected card for ${modelName}`);
+    return card;
+  }
+
+  function selectProvider(providerId: 'openai' | 'voyage' | 'openrouter'): void {
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>(`[data-provider="${providerId}"]`)
+      ?.click();
+    fixture.detectChanges();
+  }
+
+  function selectTier(label: 'Large' | 'Medium' | 'Small'): void {
+    const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      '.local-model-tier-switch button',
+    );
+    [...buttons].find((button) => button.textContent?.trim() === label)?.click();
+    fixture.detectChanges();
+  }
+
+  function updateVisibleKey(value: string): void {
+    const input = credentialInput();
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  function credentialInput(): HTMLInputElement {
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '.credential-input input',
+    );
+    if (!input) throw new Error('Expected an API key input for the selected provider.');
+    return input;
+  }
+
+  function model(
+    modelName: LocalEmbeddingModelName,
+    displayName: string,
+    providerName: string,
+    providerInitials: string,
+    tier: LocalEmbeddingModelTier,
+    dimensions: number,
+    language: string,
+  ): LocalEmbeddingModelStatus {
+    return {
+      modelName,
+      displayName,
+      providerName,
+      providerInitials,
+      tier,
+      dimensions,
+      language,
+      installed: false,
+      cachedBytes: 0,
+      selectedBookCount: 0,
+    };
+  }
+});

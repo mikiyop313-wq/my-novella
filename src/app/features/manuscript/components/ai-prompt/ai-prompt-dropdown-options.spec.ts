@@ -1,4 +1,5 @@
 import type { CodexEntryDto, CodexEntryType } from '../../../../../../shared/models/codex.model';
+import type { AiModelProviderGroup } from '../../../../../../shared/models/ai.model';
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
 
 import {
@@ -184,22 +185,88 @@ describe('AI prompt dropdown options', () => {
   });
 
   it('builds direct and OpenRouter submenus with independent main and section titles', () => {
-    const models: AiPromptModel[] = [
-      createModel('openai/gpt-5', 'GPT-5', 'openai', 'OpenAI', 'direct'),
-      createModel('anthropic/claude', 'Claude', 'openrouter', 'OpenRouter: Anthropic', 'openrouter'),
-      createModel('google/gemini', 'Gemini', 'openrouter', 'OpenRouter: Google', 'openrouter'),
+    const modelProviders: AiModelProviderGroup[] = [
+      {
+        id: 'openrouter',
+        name: 'OpenRouter',
+        state: 'ready',
+        models: [
+          createModel('anthropic/claude', 'Claude', 'anthropic', 'OpenRouter: Anthropic', 'openrouter'),
+          createModel('google/gemini', 'Gemini', 'google', 'OpenRouter: Google', 'openrouter'),
+        ],
+      },
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        state: 'ready',
+        models: [createModel('openai/gpt-5', 'GPT-5', 'openai', 'OpenAI', 'direct')],
+      },
     ];
 
-    const providers = buildModelDropdownSections(models)[0].options;
-    const direct = providers[0];
-    const openRouter = providers[1];
+    const providers = buildModelDropdownSections({
+      providers: modelProviders,
+      loading: false,
+      error: null,
+    })[0].options;
+    const openRouter = providers[0];
+    const direct = providers[1];
 
-    expect(direct.label).toBe('OpenAI (Direct)');
-    expect(direct.submenu?.title).toBe('OpenAI (Direct)');
+    expect(direct.label).toBe('OpenAI');
+    expect(direct.submenu?.title).toBe('OpenAI');
     expect(openRouter.submenu?.title).toBe('OpenRouter Models');
     expect(openRouter.submenu?.sections.map(section => section.title)).toEqual(['Anthropic', 'Google']);
     expect(openRouter.submenu?.sections[1].dividerBefore).toBe(true);
     expect(openRouter.submenu?.sections[0].options[0].searchTerms).toContain('Anthropic');
+  });
+
+  it('keeps unavailable and empty providers visible but disabled', () => {
+    const sections = buildModelDropdownSections({
+      providers: [
+        { id: 'google', name: 'Google Gemini', state: 'unconfigured', models: [] },
+        { id: 'anthropic', name: 'Anthropic', state: 'error', models: [] },
+        { id: 'ollama', name: 'Ollama', state: 'ready', models: [] },
+        {
+          id: 'lm-studio',
+          name: 'LM Studio',
+          state: 'ready',
+          models: [createModel('lm-studio/team/model', 'team/model', 'lm-studio', 'LM Studio', 'local')],
+        },
+      ],
+      loading: false,
+      error: null,
+    });
+    const cloudProviders = sections[0].options;
+    const localProviders = sections[1].options;
+
+    expect(sections.map((section) => section.title)).toEqual([
+      'Cloud providers',
+      'Local providers',
+    ]);
+    expect(sections[1].dividerBefore).toBe(true);
+    expect(cloudProviders.map((provider) => ({
+      label: provider.label,
+      hint: provider.hint,
+      disabled: provider.disabled,
+    }))).toEqual([
+      { label: 'Google Gemini', hint: 'Not configured', disabled: true },
+      { label: 'Anthropic', hint: 'Models unavailable', disabled: true },
+    ]);
+    expect(localProviders.map((provider) => ({
+      label: provider.label,
+      hint: provider.hint,
+      disabled: provider.disabled,
+    }))).toEqual([
+      { label: 'Ollama', hint: 'No models available', disabled: true },
+      { label: 'LM Studio', hint: undefined, disabled: undefined },
+    ]);
+    expect(localProviders[1].submenu?.sections[0].options[0].value).toBe('lm-studio/team/model');
+  });
+
+  it('shows loading and global model-list errors as section messages', () => {
+    expect(buildModelDropdownSections({ providers: [], loading: true, error: null })[0].message)
+      .toEqual({ text: 'Loading models...' });
+    expect(buildModelDropdownSections({ providers: [], loading: false, error: 'IPC failed' })[0].message)
+      .toEqual({ text: 'Unable to load model providers.', tone: 'error' });
   });
 });
 

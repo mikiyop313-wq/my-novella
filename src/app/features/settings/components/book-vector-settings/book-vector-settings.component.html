@@ -1,0 +1,297 @@
+<div class="book-vector-panel">
+  <header class="content-header">
+    <h1 class="content-title">Vector Search</h1>
+    <p class="content-subtitle">
+      Choose how this book creates embeddings for semantic manuscript context.
+    </p>
+  </header>
+
+  @if (loading()) {
+    <div class="vector-state" role="status" aria-live="polite">
+      Loading book vector settings&hellip;
+    </div>
+  } @else if (loadError()) {
+    <div class="vector-state is-error" role="alert">
+      <span>{{ loadError() }}</span>
+      <button type="button" (click)="load()">Retry</button>
+    </div>
+  } @else {
+    <div class="vector-sections">
+      <section class="vector-card" aria-labelledby="book-indexing-heading">
+        <div class="vector-card-copy">
+          <h2 id="book-indexing-heading">Book indexing</h2>
+          <p>Keep paragraph embeddings current and allow semantic manuscript search.</p>
+          @if (selectedProviderUnavailable()) {
+            <p id="indexing-unavailable-reason" class="unavailable-message" role="note">
+              {{ unavailableMessage() }}
+            </p>
+          }
+        </div>
+
+        <button
+          class="indexing-switch"
+          type="button"
+          role="switch"
+          [class.is-active]="effectiveIndexingEnabled()"
+          [attr.aria-checked]="effectiveIndexingEnabled()"
+          [attr.aria-describedby]="selectedProviderUnavailable() ? 'indexing-unavailable-reason' : null"
+          [disabled]="operation() !== null || selectedProviderUnavailable()"
+          (click)="toggleIndexing()"
+        >
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>{{ effectiveIndexingEnabled() ? 'On' : 'Off' }}</span>
+        </button>
+      </section>
+
+      <section class="vector-card" aria-labelledby="automatic-indexing-heading">
+        <div class="vector-card-copy">
+          <h2 id="automatic-indexing-heading">Automatic indexing</h2>
+          <p>Update paragraph embeddings after 10 seconds without manuscript edits.</p>
+        </div>
+
+        <button
+          class="indexing-switch automatic-indexing-switch"
+          type="button"
+          role="switch"
+          [class.is-active]="automaticIndexingEnabled()"
+          [attr.aria-checked]="automaticIndexingEnabled()"
+          [disabled]="operation() !== null || !effectiveIndexingEnabled()"
+          (click)="toggleAutomaticIndexing()"
+        >
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>{{ automaticIndexingEnabled() ? 'On' : 'Off' }}</span>
+        </button>
+      </section>
+
+      <section class="vector-card model-section" aria-labelledby="embedding-model-heading">
+        <div class="vector-card-copy">
+          <h2 id="embedding-model-heading">Embedding provider</h2>
+          <p>Select where this book creates embeddings and, when available, its model.</p>
+        </div>
+
+        <div class="provider-tabs" role="tablist" aria-label="Embedding providers">
+          @for (provider of providers; track provider.id) {
+            <button
+              class="provider-tab"
+              type="button"
+              role="tab"
+              [class.is-active]="viewedProviderId() === provider.id"
+              [class.is-selected]="isProviderSelected(provider.id)"
+              [class.is-unavailable]="provider.id !== 'local' && !isProviderConfigured(provider.id)"
+              [attr.aria-selected]="viewedProviderId() === provider.id"
+              [attr.data-provider]="provider.id"
+              [disabled]="operation() !== null"
+              (click)="selectProvider(provider.id)"
+            >
+              <span class="provider-tab-heading">
+                <strong>{{ provider.name }}</strong>
+                @if (isProviderSelected(provider.id)) {
+                  <span class="model-badge is-selected">Selected</span>
+                } @else if (provider.id !== 'local' && !isProviderConfigured(provider.id)) {
+                  <span class="model-badge">Needs API key</span>
+                }
+              </span>
+              <span>{{ provider.description }}</span>
+            </button>
+          }
+        </div>
+        <p class="provider-help" role="note">
+          Cloud providers marked <strong>Needs API key</strong> can be configured in General
+          Settings &rarr; Vector Search.
+        </p>
+
+        @if (viewedProviderId() === 'local') {
+          <div class="model-list" role="radiogroup" aria-label="Installed local embedding models">
+            @for (status of visibleLocalModels(); track status.modelName) {
+              <div
+                class="model-option"
+                animate.leave="model-option-leaving"
+                [class.is-selected]="isLocalModelSelected(status)"
+                [class.is-unavailable]="!status.installed"
+              >
+                <button
+                  class="model-select-button"
+                  type="button"
+                  role="radio"
+                  [attr.aria-checked]="isLocalModelSelected(status)"
+                  [disabled]="!status.installed || operation() !== null"
+                  [attr.data-model]="status.modelName"
+                  (click)="selectLocalModel(status)"
+                >
+                  <span class="model-mark" aria-hidden="true">{{ status.providerInitials }}</span>
+                  <span class="model-copy">
+                    <span class="model-heading">
+                      <strong>{{ status.displayName }}</strong>
+                      @if (!status.installed) {
+                        <span class="model-badge">Unavailable</span>
+                      } @else if (isLocalModelSelected(status)) {
+                        <span class="model-badge is-selected">Selected</span>
+                      }
+                    </span>
+                    <code>{{ status.modelName }}</code>
+                    <span class="model-meta">
+                      {{ status.providerName }} &middot; {{ status.dimensions }} dimensions &middot;
+                      {{ status.language }} &middot; Index ~{{ formatIndexSize('local', status.modelName) }}
+                    </span>
+                  </span>
+                  <span class="radio-indicator" aria-hidden="true"><span></span></span>
+                </button>
+                <button
+                  class="clear-index-button"
+                  type="button"
+                  [disabled]="operation() !== null || !hasIndex('local', status.modelName)"
+                  [attr.aria-label]="'Clear index for ' + status.displayName"
+                  [attr.title]="hasIndex('local', status.modelName) ? 'Clear index' : 'No index to clear'"
+                  data-clear-index-button
+                  (click)="requestClearIndex('local', status.modelName, status.displayName)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            } @empty {
+              <div class="no-models" role="note">
+                No local embedding models are installed. Install one from General Settings &rarr;
+                Vector Search.
+              </div>
+            }
+          </div>
+        } @else if (viewedProviderId() === 'openrouter') {
+          <div class="model-list" role="radiogroup" aria-label="OpenRouter embedding models">
+            @for (model of openRouterModels(); track model.modelName) {
+              <div
+                class="model-option"
+                [class.is-selected]="isOpenRouterModelSelected(model)"
+              >
+                <button
+                  class="model-select-button"
+                  type="button"
+                  role="radio"
+                  [attr.aria-checked]="isOpenRouterModelSelected(model)"
+                  [disabled]="operation() !== null || !isProviderConfigured('openrouter')"
+                  [attr.data-model]="model.modelName"
+                  (click)="selectOpenRouterModel(model)"
+                >
+                  <span class="model-mark" aria-hidden="true">OR</span>
+                  <span class="model-copy">
+                    <span class="model-heading">
+                      <strong>{{ model.displayName }}</strong>
+                      @if (isOpenRouterModelSelected(model)) {
+                        <span class="model-badge is-selected">Selected</span>
+                      }
+                    </span>
+                    <code>{{ model.modelName }}</code>
+                    <span class="model-meta">
+                      {{ model.providerName }} &middot; {{ model.dimensions }} dimensions &middot;
+                      Index ~{{ formatIndexSize('openRouter', model.modelName) }}
+                    </span>
+                  </span>
+                  <span class="radio-indicator" aria-hidden="true"><span></span></span>
+                </button>
+                <button
+                  class="clear-index-button"
+                  type="button"
+                  [disabled]="operation() !== null || !hasIndex('openRouter', model.modelName)"
+                  [attr.aria-label]="'Clear index for ' + model.displayName"
+                  [attr.title]="hasIndex('openRouter', model.modelName) ? 'Clear index' : 'No index to clear'"
+                  data-clear-index-button
+                  (click)="requestClearIndex('openRouter', model.modelName, model.displayName)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            }
+          </div>
+        } @else if (viewedProviderId() === 'openai') {
+          <div class="cloud-model-summary" role="status">
+            <span class="model-mark" aria-hidden="true">OA</span>
+            <span class="model-copy">
+              <strong>Text Embedding 3 Large</strong>
+              <code>text-embedding-3-large</code>
+              <span class="model-meta">
+                OpenAI &middot; 3072 dimensions &middot;
+                Index ~{{ formatIndexSize('openAI', 'text-embedding-3-large') }}
+              </span>
+            </span>
+            <button
+              class="clear-index-button"
+              type="button"
+              [disabled]="operation() !== null || !hasIndex('openAI', 'text-embedding-3-large')"
+              aria-label="Clear index for Text Embedding 3 Large"
+              [attr.title]="hasIndex('openAI', 'text-embedding-3-large') ? 'Clear index' : 'No index to clear'"
+              data-clear-index-button
+              (click)="requestClearIndex('openAI', 'text-embedding-3-large', 'Text Embedding 3 Large')"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
+        } @else {
+          <div class="cloud-model-summary" role="status">
+            <span class="model-mark" aria-hidden="true">VA</span>
+            <span class="model-copy">
+              <strong>Voyage 3</strong>
+              <code>voyage-3</code>
+              <span class="model-meta">
+                Voyage AI &middot; 1024 dimensions &middot;
+                Index ~{{ formatIndexSize('voyage', 'voyage-3') }}
+              </span>
+            </span>
+            <button
+              class="clear-index-button"
+              type="button"
+              [disabled]="operation() !== null || !hasIndex('voyage', 'voyage-3')"
+              aria-label="Clear index for Voyage 3"
+              [attr.title]="hasIndex('voyage', 'voyage-3') ? 'Clear index' : 'No index to clear'"
+              data-clear-index-button
+              (click)="requestClearIndex('voyage', 'voyage-3', 'Voyage 3')"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
+        }
+
+        @if (operation() && reindexProgress(); as progress) {
+          <div class="reindex-progress" role="status" aria-live="polite">
+            <div>
+              <span>Indexing paragraphs&hellip;</span>
+              <span>{{ progress.processedParagraphs }} / {{ progress.totalParagraphs }}</span>
+            </div>
+            <div
+              class="progress-track"
+              role="progressbar"
+              aria-label="Book embedding reindex progress"
+              [attr.aria-valuenow]="reindexPercentage()"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <span [style.width.%]="reindexPercentage()"></span>
+            </div>
+          </div>
+        }
+
+        @if (operationError()) {
+          <p class="operation-error" role="alert">{{ operationError() }}</p>
+        }
+      </section>
+    </div>
+  }
+</div>

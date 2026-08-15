@@ -7,8 +7,12 @@ import { ConfirmModalService } from './confirm-modal.service';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './confirm-modal.component.html',
-  styleUrl: './confirm-modal.component.scss'
+  styleUrl: './confirm-modal.component.scss',
 })
 export class ConfirmModalComponent {
   confirmService = inject(ConfirmModalService);
+
+  updateCheckbox(event: Event): void {
+    this.confirmService.setCheckboxChecked((event.target as HTMLInputElement).checked);
+  }
 }

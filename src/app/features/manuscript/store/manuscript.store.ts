@@ -4,6 +4,7 @@ import { Editor } from '@tiptap/core';
 
 import { ElectronService } from '../../../core/services/electron.service';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
+import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
 import {
   ActDto,
   ChapterDto,
@@ -299,6 +300,7 @@ export const ManuscriptStore = signalStore(
     store,
     electronService = inject(ElectronService),
     workspaceBookStore = inject(WorkspaceBookStore),
+    manuscriptStructureService = inject(ManuscriptStructureService),
   ) => ({
 
     // -------------------------------------------------------------------------
@@ -428,18 +430,15 @@ export const ManuscriptStore = signalStore(
     // -------------------------------------------------------------------------
 
     async createAct(bookId: string): Promise<ActDto> {
-      const result = await electronService.invoke('manuscript:createAct', { bookId });
-      return result as ActDto;
+      return manuscriptStructureService.createAct(bookId);
     },
 
     async createChapter(actId: string): Promise<ChapterDto> {
-      const result = await electronService.invoke('manuscript:createChapter', { actId });
-      return result as ChapterDto;
+      return manuscriptStructureService.createChapter(actId);
     },
 
     async createScene(chapterId: string): Promise<SceneDto> {
-      const result = await electronService.invoke('manuscript:createScene', { chapterId });
-      return result as SceneDto;
+      return manuscriptStructureService.createScene(chapterId);
     },
 
 
@@ -449,7 +448,7 @@ export const ManuscriptStore = signalStore(
 
     async updateAct(payload: UpdateActPayload): Promise<void> {
       try {
-        await electronService.invoke('manuscript:updateAct', payload);
+        await manuscriptStructureService.updateAct(payload);
 
         if (payload.title !== undefined) {
           workspaceBookStore.updateActTitle(payload.id, payload.title);
@@ -461,7 +460,7 @@ export const ManuscriptStore = signalStore(
 
     async updateChapter(payload: UpdateChapterPayload): Promise<void> {
       try {
-        await electronService.invoke('manuscript:updateChapter', payload);
+        await manuscriptStructureService.updateChapter(payload);
 
         if (payload.title !== undefined) {
           workspaceBookStore.updateChapterTitle(payload.id, payload.title);
@@ -473,7 +472,7 @@ export const ManuscriptStore = signalStore(
 
     async updateScene(payload: UpdateScenePayload): Promise<void> {
       try {
-        await electronService.invoke('manuscript:updateScene', payload);
+        await manuscriptStructureService.updateScene(payload);
 
         if (payload.title !== undefined) {
           workspaceBookStore.updateSceneTitle(payload.id, payload.title);
@@ -506,9 +505,9 @@ export const ManuscriptStore = signalStore(
         return;
       }
 
-      const act = await electronService.invoke('manuscript:createAct', { bookId }) as ActDto;
-      const chapter = await electronService.invoke('manuscript:createChapter', { actId: act.id }) as ChapterDto;
-      const scene = await electronService.invoke('manuscript:createScene', { chapterId: chapter.id }) as SceneDto;
+      const act = await manuscriptStructureService.createAct(bookId);
+      const chapter = await manuscriptStructureService.createChapter(act.id);
+      const scene = await manuscriptStructureService.createScene(chapter.id);
 
       const endPosition = editor.state.doc.content.size;
 
@@ -535,8 +534,8 @@ export const ManuscriptStore = signalStore(
         return;
       }
 
-      const chapter = await electronService.invoke('manuscript:createChapter', { actId }) as ChapterDto;
-      const scene = await electronService.invoke('manuscript:createScene', { chapterId: chapter.id }) as SceneDto;
+      const chapter = await manuscriptStructureService.createChapter(actId);
+      const scene = await manuscriptStructureService.createScene(chapter.id);
 
       const endPosition = editor.state.doc.content.size;
 
@@ -562,7 +561,7 @@ export const ManuscriptStore = signalStore(
         return;
       }
 
-      const scene = await electronService.invoke('manuscript:createScene', { chapterId }) as SceneDto;
+      const scene = await manuscriptStructureService.createScene(chapterId);
       const endPosition = editor.state.doc.content.size;
 
       editor.chain().focus().insertContentAt(endPosition, [

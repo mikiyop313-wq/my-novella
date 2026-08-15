@@ -336,24 +336,10 @@
 
                     <div class="form-group">
                         <label class="section-label">POV CHARACTER</label>
-                        @if (characters().length > 0) {
-                        <app-autocomplete-dropdown [options]="characters()" [selectedValue]="selectedPovCharacter()"
+                        <app-autocomplete-dropdown [options]="povCharacterOptions()" [selectedValue]="selectedPovCharacter()"
+                            placeholder="Select a character..."
                             (selectionChange)="onSelectionChange('povCharacter', $event)">
                         </app-autocomplete-dropdown>
-                        } @else {
-                        <span class="no-options-text">No characters available.</span>
-                        }
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="section-label">AI MANUSCRIPT CONTEXT</label>
-                    <div class="ai-toggle-container" (click)="toggleVectorSearch()">
-                        <span class="toggle-label">Semantic paragraph search</span>
-                        <app-info-icon [infoText]="INFO.AI_PROMPT.VECTOR_SEARCH"></app-info-icon>
-                        <div class="premium-switch" [class.active]="vectorSearchEnabled()">
-                            <div class="switch-handle"></div>
-                        </div>
                     </div>
                 </div>
 
@@ -362,21 +348,21 @@
             <div class="danger-zone">
                 <div class="danger-header">
                     <span class="section-label danger-label">DANGER ZONE</span>
-                    <p class="danger-description">These actions are destructive and cannot be undone.</p>
+                    <p class="danger-description">Archiving is reversible. Permanent deletion cannot be undone.</p>
                 </div>
                 <div class="danger-actions">
                     @if (book().status === 'archived') {
-                    <button class="btn-neutral-outline" (click)="onRestore()">
+                    <button class="btn-neutral-outline" [disabled]="isLifecycleActionPending()" (click)="onRestore()">
                         <i class="icon-archive"></i>
                         Restore Book
                     </button>
                     } @else {
-                    <button class="btn-neutral-outline" (click)="onArchive()">
+                    <button class="btn-neutral-outline" [disabled]="isLifecycleActionPending()" (click)="onArchive()">
                         <i class="icon-archive"></i>
                         Archive Book
                     </button>
                     }
-                    <button class="btn-danger" (click)="onDelete()">
+                    <button class="btn-danger" [disabled]="isLifecycleActionPending()" (click)="onDelete()">
                         <i class="icon-trash"></i>
                         Delete Permanently
                     </button>

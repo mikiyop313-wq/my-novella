@@ -5,6 +5,8 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { WorkspaceStore } from '../../../workspace/workspace.store';
 
 // ---------------------------------------------------------------------------
 //  Local Types
@@ -24,6 +26,8 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   // ---------------------------------------------------------------------------
 
   private readonly aiStreamEditor = inject(AiStreamEditorService);
+  private readonly toastService = inject(ToastService);
+  private readonly workspaceStore = inject(WorkspaceStore);
 
 
   // ---------------------------------------------------------------------------
@@ -229,8 +233,13 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
 
   private async generateNewText(prompt: string): Promise<void> {
     const pos = this.currentNodePosition();
+    const bookId = this.workspaceStore.bookId();
 
     if (pos === null) return;
+    if (!bookId) {
+      this.toastService.error('No active book is available.', 'AI Generation');
+      return;
+    }
 
     await this.aiStreamEditor.regenerateExistingBlock(
       this.editor(),
@@ -239,7 +248,8 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
       prompt,
       this.provider(),
       this.modelId(),
-      this.reasoningMode()
+      this.reasoningMode(),
+      bookId,
     );
   }
 }

@@ -1,11 +1,16 @@
 import { Injectable, WritableSignal, inject, signal } from '@angular/core';
 
+import type { SystemPromptCategory } from '../../../../shared/models/system-prompt.model';
+import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
+import { ToastService } from '../../shared/services/toast.service';
 import { AIStateService, type AiChatMessage } from './ai-state.service';
 
 export type LoadingStatus = 'idle' | 'loading' | 'thinking' | 'generating';
 
 export interface AiStreamRequest {
   streamId: string;
+  bookId: string;
+  systemPromptCategory: SystemPromptCategory;
   prompt: string;
   messages?: AiChatMessage[];
   provider?: string;
@@ -21,6 +26,8 @@ const REASONING_UPDATE_INTERVAL_MS = 200;
 @Injectable({ providedIn: 'root' })
 export class AiStreamService {
   private readonly aiStateService = inject(AIStateService);
+  private readonly systemPromptSelectionService = inject(SystemPromptSelectionService);
+  private readonly toastService = inject(ToastService);
 
   public readonly loadingState = new Map<string, WritableSignal<LoadingStatus>>();
 
@@ -41,7 +48,6 @@ export class AiStreamService {
   }
 
   async streamText(request: AiStreamRequest): Promise<string> {
-    let isNewlineSequence = false;
     let reasoningBuffer = '';
     let lastReasoningUpdate = -Infinity;
     let lastEmittedReasoning = '';
@@ -61,47 +67,53 @@ export class AiStreamService {
 
     this.setLoadingStatus(request.streamId, 'loading', request.onStatusChange);
 
-    if (request.onToken && window.electronAPI?.onMessage) {
-      cleanupToken = window.electronAPI.onMessage('ai:generate-stream', (token: string) => {
-        if (!token) return;
-
-        this.setLoadingStatus(request.streamId, 'generating', request.onStatusChange);
-
-        for (const char of token) {
-          if (char === '\r') continue;
-
-          if (char === '\n') {
-            if (!isNewlineSequence) {
-              request.onToken?.('\n');
-              isNewlineSequence = true;
-            }
-
-            continue;
-          }
-
-          isNewlineSequence = false;
-          request.onToken?.(char);
-        }
-      });
-    }
-
-    if (request.reasoningMode && window.electronAPI?.onMessage) {
-      cleanupReasoning = window.electronAPI.onMessage('ai:generate-reasoning-stream', (token: string) => {
-        if (!token) return;
-
-        this.setLoadingStatus(request.streamId, 'thinking', request.onStatusChange);
-        reasoningBuffer += token;
-        emitReasoningUpdate();
-      });
-    }
-
     try {
+      let presetId: string;
+      try {
+        presetId = await this.systemPromptSelectionService.getActivePresetId(
+          request.bookId,
+          request.systemPromptCategory,
+        );
+      } catch (error) {
+        this.toastService.error(
+          'Unable to load the active system prompt preset.',
+          'AI Generation',
+        );
+        throw error;
+      }
+
+      if (request.onToken && window.electronAPI?.onMessage) {
+        cleanupToken = window.electronAPI.onMessage('ai:generate-stream', (token: string) => {
+          if (!token) return;
+
+          this.setLoadingStatus(request.streamId, 'generating', request.onStatusChange);
+
+          for (const char of token) {
+            if (char !== '\r') request.onToken?.(char);
+          }
+        });
+      }
+
+      if (request.reasoningMode && window.electronAPI?.onMessage) {
+        cleanupReasoning = window.electronAPI.onMessage(
+          'ai:generate-reasoning-stream',
+          (token: string) => {
+            if (!token) return;
+
+            this.setLoadingStatus(request.streamId, 'thinking', request.onStatusChange);
+            reasoningBuffer += token;
+            emitReasoningUpdate();
+          },
+        );
+      }
+
       return await this.aiStateService.generate(
         request.prompt,
         request.provider,
         request.modelId,
         request.reasoningMode,
         request.messages,
+        { category: request.systemPromptCategory, presetId },
       );
     } finally {
       cleanupToken?.();

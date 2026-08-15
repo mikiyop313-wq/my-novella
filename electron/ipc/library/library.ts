@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { bookRepository } from '../../../db/repositories/book.repository';
+import { manuscriptVectorIndexService } from '../../../vectors/services/manuscript-vector-index.service';
 
 export function setupLibraryHandlers() {
     ipcMain.handle('library:get-all-books', async () => {
@@ -31,7 +32,7 @@ export function setupLibraryHandlers() {
 
     ipcMain.handle('library:delete-book', async (event, id) => {
         try {
-            return await bookRepository.delete(id);
+            return await manuscriptVectorIndexService.deleteBook(id);
         } catch (error) {
             console.error('Error deleting book:', error);
             throw error;

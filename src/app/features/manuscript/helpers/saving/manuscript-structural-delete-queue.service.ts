@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { ElectronService } from '../../../../core/services/electron.service';
+import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import {
   ACT_HEADER_NODE_TYPE,
   CHAPTER_HEADER_NODE_TYPE,
@@ -8,12 +8,6 @@ import {
 } from '../content/manuscript-node-types';
 import type { ManuscriptHeaderNodeType } from '../content/manuscript-node-types';
 
-const DELETE_CHANNEL_BY_NODE_TYPE: Record<ManuscriptHeaderNodeType, string> = {
-  [SCENE_HEADER_NODE_TYPE]: 'manuscript:deleteScene',
-  [CHAPTER_HEADER_NODE_TYPE]: 'manuscript:deleteChapter',
-  [ACT_HEADER_NODE_TYPE]: 'manuscript:deleteAct',
-};
-
 @Injectable({ providedIn: 'root' })
 export class ManuscriptStructuralDeleteQueueService {
 
@@ -21,7 +15,7 @@ export class ManuscriptStructuralDeleteQueueService {
   // Dependencies / Queue
   // ---------------------------------------------------------------------------
 
-  private readonly electronService = inject(ElectronService);
+  private readonly manuscriptStructureService = inject(ManuscriptStructureService);
 
   private pendingDeletes = new Map<string, ManuscriptHeaderNodeType>();
 
@@ -74,7 +68,13 @@ export class ManuscriptStructuralDeleteQueueService {
 
     const promises: Promise<void>[] = [];
     this.pendingDeletes.forEach((type, id) => {
-      promises.push(this.electronService.invoke(DELETE_CHANNEL_BY_NODE_TYPE[type], { id }));
+      if (type === ACT_HEADER_NODE_TYPE) {
+        promises.push(this.manuscriptStructureService.deleteAct(id));
+      } else if (type === CHAPTER_HEADER_NODE_TYPE) {
+        promises.push(this.manuscriptStructureService.deleteChapter(id));
+      } else if (type === SCENE_HEADER_NODE_TYPE) {
+        promises.push(this.manuscriptStructureService.deleteScene(id));
+      }
     });
 
     this.pendingDeletes.clear();

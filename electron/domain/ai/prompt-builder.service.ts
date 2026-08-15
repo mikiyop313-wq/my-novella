@@ -4,26 +4,53 @@ import {
     AiChatMessageRole,
     AiPromptRequest,
 } from './models';
-import { AI_SYSTEM_PROMPTS } from '../../../shared/constants/ai-system-prompts';
+import {
+    findBuiltInSystemPromptPreset,
+    type BuiltInSystemPromptPreset,
+} from '../../../shared/constants/ai-system-prompts';
+import type {
+    SystemPromptGenerationSettings,
+    SystemPromptPresetDto,
+} from '../../../shared/models/system-prompt.model';
+import type { SystemPromptRepository } from '../../../db/repositories/system-prompt.repository';
+import { systemPromptRepository } from '../../../db/repositories/system-prompt.repository';
 
 const CHAT_MESSAGE_ROLES = new Set<AiChatMessageRole>(['system', 'user', 'assistant']);
 
 export class PromptBuilderService {
-    buildChatCompletionPayload(
+    constructor(
+        private readonly presetRepository: Pick<SystemPromptRepository, 'getById'> =
+            systemPromptRepository,
+    ) {}
+
+    async buildChatCompletionPayload(
         request: AiPromptRequest,
         defaultModelId: string,
-    ): AiChatCompletionPayload {
-        const messages = this.resolveMessages(request);
+    ): Promise<AiChatCompletionPayload> {
+        const selectedPreset = await this.resolveSelectedPreset(request);
+        const messages = this.resolveMessages(request, selectedPreset?.systemPrompt);
 
         if (!messages.some((message) => message.role !== 'system')) {
             throw new Error('AI prompt requires at least one non-empty message.');
         }
 
+        const generationSettings = selectedPreset ?? {
+            temperature: request.temperature ?? 0.5,
+            maxOutputTokens: request.maxTokens ?? null,
+        };
+
         return {
             model: request.modelId || defaultModelId,
             messages,
-            temperature: request.temperature ?? 0.5,
-            ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
+            temperature: generationSettings.temperature,
+            ...(selectedPreset ? {
+                top_p: selectedPreset.topP,
+                presence_penalty: selectedPreset.presencePenalty,
+                frequency_penalty: selectedPreset.frequencyPenalty,
+            } : {}),
+            ...(generationSettings.maxOutputTokens !== null
+                ? { max_tokens: generationSettings.maxOutputTokens }
+                : {}),
             stream: true,
             ...(request.reasoningMode
                 ? { reasoning: { enabled: true as const, effort: 'medium' as const } }
@@ -31,12 +58,41 @@ export class PromptBuilderService {
         };
     }
 
-    private resolveMessages(request: AiPromptRequest): AiChatMessage[] {
-        const hasStructuredSystemMessage = request.messages?.some(
-            (message) => message.role === 'system' && message.content?.trim().length > 0,
-        ) ?? false;
-        const resolvedSystemMessage = request.systemMessage?.trim()
-            || (!hasStructuredSystemMessage ? AI_SYSTEM_PROMPTS.chat.gemma_test : '');
+    private async resolveSelectedPreset(
+        request: AiPromptRequest,
+    ): Promise<ResolvedSystemPromptPreset | undefined> {
+        const selection = request.systemPromptPreset;
+        if (!selection) return undefined;
+
+        const hasCallerSystemMessage = request.systemMessage?.trim().length
+            || request.messages?.some(
+                (message) => message.role === 'system' && message.content?.trim().length > 0,
+        );
+        if (hasCallerSystemMessage) {
+            throw new Error(
+                'AI prompt cannot combine a preset with a caller-provided system message.',
+            );
+        }
+
+        const builtInPreset = findBuiltInSystemPromptPreset(selection.presetId);
+        const preset = builtInPreset ?? await this.presetRepository.getById(selection.presetId);
+        if (!preset) {
+            throw new Error(`System prompt preset '${selection.presetId}' does not exist.`);
+        }
+        if (preset.category !== selection.category) {
+            throw new Error(
+                `System prompt preset '${selection.presetId}' does not belong to category '${selection.category}'.`,
+            );
+        }
+
+        return preset;
+    }
+
+    private resolveMessages(
+        request: AiPromptRequest,
+        selectedSystemPrompt?: string,
+    ): AiChatMessage[] {
+        const resolvedSystemMessage = selectedSystemPrompt?.trim() || request.systemMessage?.trim();
         const systemMessage: AiChatMessage[] = resolvedSystemMessage
             ? [{ role: 'system' as const, content: resolvedSystemMessage }]
             : [];
@@ -68,5 +124,10 @@ export class PromptBuilderService {
         return { role, content };
     }
 }
+
+type ResolvedSystemPromptPreset = Pick<
+    BuiltInSystemPromptPreset | SystemPromptPresetDto,
+    'systemPrompt' | keyof SystemPromptGenerationSettings
+>;
 
 export const promptBuilderService = new PromptBuilderService();

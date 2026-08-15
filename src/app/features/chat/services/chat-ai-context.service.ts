@@ -18,6 +18,7 @@ import {
   serializeTiptapDocument,
 } from '../../../shared/utils/story-context-builder';
 import { CodexService } from '../../codex/services/codex.service';
+import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
 
 export interface ChatAiContextRequest {
   userMessage: ChatMessageDetailDto;
@@ -30,6 +31,7 @@ export interface ChatAiContextRequest {
 export class ChatAiContextService {
   private readonly electronService = inject(ElectronService);
   private readonly codexService = inject(CodexService);
+  private readonly manuscriptStructureService = inject(ManuscriptStructureService);
 
   async buildContextMessage(request: ChatAiContextRequest): Promise<AiChatMessage | null> {
     const sceneIds = uniqueStrings(request.userMessage.sceneRefs.map((ref) => ref.sceneId));
@@ -47,9 +49,7 @@ export class ChatAiContextService {
 
     const [outlineHierarchy, sceneProse, codexDetails] = await Promise.all([
       request.userMessage.includeFullOutline
-        ? this.electronService.invoke('manuscript:getOutline', {
-            bookId: request.bookId,
-          }) as Promise<ActDto[]>
+        ? this.manuscriptStructureService.getOutline(request.bookId)
         : Promise.resolve(null),
       sceneIds.length > 0
         ? this.electronService.invoke('manuscript:getScenesProse', {

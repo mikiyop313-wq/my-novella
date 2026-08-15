@@ -40,7 +40,6 @@ import {
 } from '../manuscript/components/ai-prompt/ai-prompt-codex-context';
 import {
   type AiContextSelection,
-  type AiPromptModel,
   buildContextDropdownSections,
   buildModelDropdownSections,
   contextSelectionToValues,
@@ -164,7 +163,11 @@ export class Chat implements OnInit, OnDestroy {
   ));
 
   readonly modelDropdownSections = computed(() => (
-    buildModelDropdownSections(this.aiStore.models() as AiPromptModel[])
+    buildModelDropdownSections({
+      providers: this.aiStore.modelProviders(),
+      loading: this.aiStore.isLoading(),
+      error: this.aiStore.error(),
+    })
   ));
 
   readonly supportsReasoning = computed(() => {
@@ -228,6 +231,18 @@ export class Chat implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
+      if (this.aiStore.isLoading() || !this.aiStore.hasLoaded()) return;
+
+      const selectedModelId = this.selectedModelId();
+      if (
+        selectedModelId
+        && !this.aiStore.models().some((model) => model.id === selectedModelId)
+      ) {
+        this.selectedModelId.set(null);
+      }
+    });
+
+    effect(() => {
       this.composerValue();
       this.contextCodexEntries();
       this.contextCodexTrie();
@@ -244,7 +259,7 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
-    this.aiStore.loadModels();
+    void this.aiStore.refreshModels();
 
     const sessionId = this.route.snapshot.paramMap.get('sessionId');
     if (sessionId) {
@@ -491,7 +506,10 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   isSendButtonDisabled(): boolean {
-    return !this.selectedModelId() || this.isPromptSubmitDisabled();
+    const selectedModelId = this.selectedModelId();
+    return !selectedModelId
+      || !this.aiStore.models().some((model) => model.id === selectedModelId)
+      || this.isPromptSubmitDisabled();
   }
 
   isSendOrStopDisabled(): boolean {
@@ -647,11 +665,12 @@ export class Chat implements OnInit, OnDestroy {
     const trimmedContent = content.trim();
     if (!message || message.role !== 'user' || !trimmedContent) return;
 
+    const responseSettings = this.getResponseSettings();
     this.editingMessageId = null;
 
     if (trimmedContent === message.content.trim()) {
       this.prepareForResponse();
-      await this.response.retryResponseForUser(message, this.getResponseSettings());
+      await this.response.retryResponseForUser(message, responseSettings);
       return;
     }
 
@@ -662,7 +681,7 @@ export class Chat implements OnInit, OnDestroy {
     if (!selected) return;
 
     this.prepareForResponse();
-    await this.response.generateResponse(editedMessage, trimmedContent, this.getResponseSettings());
+    await this.response.generateResponse(editedMessage, trimmedContent, responseSettings);
   }
 
   async deleteMessage(messageId: string): Promise<void> {

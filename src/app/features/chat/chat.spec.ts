@@ -111,7 +111,11 @@ describe('Chat', () => {
   };
   let aiStore: {
     models: ReturnType<typeof vi.fn>;
-    loadModels: ReturnType<typeof vi.fn>;
+    modelProviders: ReturnType<typeof vi.fn>;
+    isLoading: ReturnType<typeof vi.fn>;
+    hasLoaded: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+    refreshModels: ReturnType<typeof vi.fn>;
   };
   let aiStreamService: {
     streamText: ReturnType<typeof vi.fn>;
@@ -352,7 +356,22 @@ describe('Chat', () => {
           supportsReasoning: true,
         },
       ]),
-      loadModels: vi.fn(),
+      modelProviders: vi.fn(() => [{
+        id: 'openrouter',
+        name: 'OpenRouter',
+        state: 'ready',
+        models: [{
+          id: 'openrouter/test-model',
+          name: 'Test Model',
+          provider: 'test',
+          source: 'openrouter',
+          supportsReasoning: true,
+        }],
+      }]),
+      isLoading: vi.fn(() => false),
+      hasLoaded: vi.fn(() => true),
+      error: vi.fn(() => null),
+      refreshModels: vi.fn(() => Promise.resolve()),
     };
     aiStreamService = {
       streamText: vi.fn(async (request: { onToken?: (token: string) => void }) => {
@@ -578,7 +597,7 @@ describe('Chat', () => {
   });
 
   it('uses the provider-grouped model menu and updates nested model selection', async () => {
-    aiStore.models.mockReturnValue([
+    const models = [
       {
         id: 'openai/gpt-5',
         name: 'GPT-5',
@@ -593,6 +612,11 @@ describe('Chat', () => {
         providerName: 'OpenRouter: Anthropic',
         source: 'openrouter',
       },
+    ];
+    aiStore.models.mockReturnValue(models);
+    aiStore.modelProviders.mockReturnValue([
+      { id: 'openrouter', name: 'OpenRouter', state: 'ready', models: [models[1]] },
+      { id: 'openai', name: 'OpenAI', state: 'ready', models: [models[0]] },
     ]);
 
     await createComponent({
@@ -615,14 +639,31 @@ describe('Chat', () => {
     const dropdown = dropdownDebug.componentInstance as AutocompleteDropdownComponent;
     const providers = dropdown.sections()[0].options;
 
-    expect(providers.map((provider) => provider.label)).toEqual(['OpenAI (Direct)', 'OpenRouter']);
-    expect(providers[0].submenu?.sections[0].options[0].value).toBe('openai/gpt-5');
-    expect(providers[1].submenu?.sections[0].title).toBe('Anthropic');
-    expect(providers[1].submenu?.sections[0].options[0].value).toBe('anthropic/claude');
+    expect(providers.map((provider) => provider.label)).toEqual(['OpenRouter', 'OpenAI']);
+    expect(providers[0].submenu?.sections[0].title).toBe('Anthropic');
+    expect(providers[0].submenu?.sections[0].options[0].value).toBe('anthropic/claude');
+    expect(providers[1].submenu?.sections[0].options[0].value).toBe('openai/gpt-5');
 
     dropdown.selectionChange.emit('anthropic/claude');
 
     expect(component.selectedModelId()).toBe('anthropic/claude');
+  });
+
+  it('clears a stale saved model and blocks sending until another model is selected', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'new-chat' }) },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    component.selectedModelId.set('ollama/removed-model');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.selectedModelId()).toBeNull();
+    expect(component.isSendButtonDisabled()).toBe(true);
   });
 
   it('starts an unsaved new chat without creating a thread', async () => {
@@ -1271,6 +1312,8 @@ describe('Chat', () => {
       paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
       parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
     });
+    await fixture.whenStable();
+    component.selectedModelId.set('openrouter/test-model');
     const original = makeMessage({ id: 'user-1', content: 'Original prompt' });
     const edited = makeMessage({
       id: 'user-2',
@@ -1296,6 +1339,7 @@ describe('Chat', () => {
       paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
       parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
     });
+    component.selectedModelId.set('openrouter/test-model');
     const user = makeMessage({ id: 'user-1', content: 'Keep this prompt' });
     const assistant = makeMessage({
       id: 'assistant-1',
@@ -1314,7 +1358,7 @@ describe('Chat', () => {
     expect(chatStore.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
       parentMessageId: 'user-1',
       provider: 'openrouter',
-      modelId: null,
+      modelId: 'openrouter/test-model',
       branchGroupId: 'assistant-group',
       threadId: 'thread-1',
     }));
@@ -1330,6 +1374,7 @@ describe('Chat', () => {
       paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
       parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
     });
+    component.selectedModelId.set('openrouter/test-model');
     const user = makeMessage({ id: 'user-1', content: 'Prompt' });
     const assistant = makeMessage({
       id: 'assistant-1',
@@ -1359,6 +1404,7 @@ describe('Chat', () => {
       paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
       parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
     });
+    component.selectedModelId.set('openrouter/test-model');
     const user = makeMessage({ id: 'user-1', content: 'Prompt' });
     const assistant = makeMessage({
       id: 'assistant-1',
