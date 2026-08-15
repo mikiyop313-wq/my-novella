@@ -3,7 +3,10 @@ import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 
 import {
   ActDto,
+  CreatedActStructureDto,
+  CreatedChapterStructureDto,
   ManuscriptMode,
+  SceneDto,
   UpdateActPayload,
   UpdateChapterPayload,
   UpdateScenePayload,
@@ -66,6 +69,65 @@ export const WorkspaceBookStore = signalStore(
         });
         throw error;
       }
+    },
+
+    addActStructure({ act, chapter, scene }: CreatedActStructureDto): void {
+      patchState(store, {
+        bookHierarchy: withEffectiveContextInclusion([
+          ...store.bookHierarchy(),
+          {
+            ...act,
+            chapters: [{
+              ...chapter,
+              scenes: [scene],
+            }],
+          },
+        ]),
+      });
+    },
+
+    addChapterStructure({ chapter, scene }: CreatedChapterStructureDto): void {
+      const hierarchy = store.bookHierarchy();
+      if (!hierarchy.some(act => act.id === chapter.actId)) return;
+
+      patchState(store, {
+        bookHierarchy: withEffectiveContextInclusion(hierarchy.map(act =>
+          act.id === chapter.actId
+            ? {
+                ...act,
+                chapters: [
+                  ...(act.chapters ?? []),
+                  {
+                    ...chapter,
+                    scenes: [scene],
+                  },
+                ],
+              }
+            : act
+        )),
+      });
+    },
+
+    addScene(scene: SceneDto): void {
+      const hierarchy = store.bookHierarchy();
+      const hasParentChapter = hierarchy.some(act =>
+        (act.chapters ?? []).some(chapter => chapter.id === scene.chapterId)
+      );
+      if (!hasParentChapter) return;
+
+      patchState(store, {
+        bookHierarchy: withEffectiveContextInclusion(hierarchy.map(act => ({
+          ...act,
+          chapters: (act.chapters ?? []).map(chapter =>
+            chapter.id === scene.chapterId
+              ? {
+                  ...chapter,
+                  scenes: [...(chapter.scenes ?? []), scene],
+                }
+              : chapter
+          ),
+        }))),
+      });
     },
 
     updateActMetadata(payload: UpdateActPayload): void {

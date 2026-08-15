@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Editor } from '@tiptap/core';
 import { vi } from 'vitest';
@@ -16,6 +16,12 @@ describe('ManuscriptStore structural insertion', () => {
     createChapterStructure: ReturnType<typeof vi.fn>;
     createScene: ReturnType<typeof vi.fn>;
   };
+  let workspaceBookStore: {
+    bookHierarchy: WritableSignal<ActDto[]>;
+    addActStructure: ReturnType<typeof vi.fn>;
+    addChapterStructure: ReturnType<typeof vi.fn>;
+    addScene: ReturnType<typeof vi.fn>;
+  };
   let runInsertion: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -24,6 +30,12 @@ describe('ManuscriptStore structural insertion', () => {
       createChapterStructure: vi.fn(),
       createScene: vi.fn(),
     };
+    workspaceBookStore = {
+      bookHierarchy: signal<ActDto[]>([]),
+      addActStructure: vi.fn(),
+      addChapterStructure: vi.fn(),
+      addScene: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -31,9 +43,7 @@ describe('ManuscriptStore structural insertion', () => {
         { provide: ElectronService, useValue: { invoke: vi.fn() } },
         {
           provide: WorkspaceBookStore,
-          useValue: {
-            bookHierarchy: signal([]),
-          },
+          useValue: workspaceBookStore,
         },
         { provide: ManuscriptStructureService, useValue: manuscriptStructureService },
       ],
@@ -64,14 +74,16 @@ describe('ManuscriptStore structural insertion', () => {
 
     expect(manuscriptStructureService.createScene).toHaveBeenCalledWith('chapter-a');
     expect(runInsertion).not.toHaveBeenCalled();
+    expect(workspaceBookStore.addScene).not.toHaveBeenCalled();
   });
 
   it('creates and inserts an act structure with one service operation', async () => {
-    manuscriptStructureService.createActStructure.mockResolvedValue({
+    const created = {
       act: createAct(),
-      chapter: createChapter(),
-      scene: createScene(),
-    });
+      chapter: createChapter('act-new'),
+      scene: createScene('chapter-new'),
+    };
+    manuscriptStructureService.createActStructure.mockResolvedValue(created);
     store.setRouteParams('book', 'book-1');
     store.setEditor(createEditor({ chapterId: 'chapter-a', runInsertion }));
 
@@ -79,13 +91,15 @@ describe('ManuscriptStore structural insertion', () => {
 
     expect(manuscriptStructureService.createActStructure).toHaveBeenCalledWith('book-1');
     expect(runInsertion).toHaveBeenCalledOnce();
+    expect(workspaceBookStore.addActStructure).toHaveBeenCalledWith(created);
   });
 
   it('creates and inserts a chapter structure with one service operation', async () => {
-    manuscriptStructureService.createChapterStructure.mockResolvedValue({
-      chapter: createChapter(),
-      scene: createScene(),
-    });
+    const created = {
+      chapter: createChapter('act-a'),
+      scene: createScene('chapter-new'),
+    };
+    manuscriptStructureService.createChapterStructure.mockResolvedValue(created);
     store.setRouteParams('act', 'act-a');
     store.setEditor(createEditor({ actId: 'act-a', chapterId: 'chapter-a', runInsertion }));
 
@@ -93,10 +107,12 @@ describe('ManuscriptStore structural insertion', () => {
 
     expect(manuscriptStructureService.createChapterStructure).toHaveBeenCalledWith('act-a');
     expect(runInsertion).toHaveBeenCalledOnce();
+    expect(workspaceBookStore.addChapterStructure).toHaveBeenCalledWith(created);
   });
 
   it('inserts a created scene when the active entity has not changed', async () => {
-    manuscriptStructureService.createScene.mockResolvedValue(createScene());
+    const created = createScene('chapter-a');
+    manuscriptStructureService.createScene.mockResolvedValue(created);
 
     store.setRouteParams('chapter', 'chapter-a');
     store.setEditor(createEditor({ chapterId: 'chapter-a', runInsertion }));
@@ -104,6 +120,7 @@ describe('ManuscriptStore structural insertion', () => {
     await store.insertScene();
 
     expect(runInsertion).toHaveBeenCalledOnce();
+    expect(workspaceBookStore.addScene).toHaveBeenCalledWith(created);
   });
 });
 
@@ -144,18 +161,19 @@ function createAct(): ActDto {
   } as ActDto;
 }
 
-function createChapter(): ChapterDto {
+function createChapter(actId: string): ChapterDto {
   return {
     id: 'chapter-new',
-    actId: 'act-new',
+    actId,
     title: '',
     position: 0,
   } as ChapterDto;
 }
 
-function createScene(): SceneDto {
+function createScene(chapterId = 'chapter-a'): SceneDto {
   return {
     id: 'scene-new',
+    chapterId,
     title: 'New Scene',
     summary: '',
     position: 1,

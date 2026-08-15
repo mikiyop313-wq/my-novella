@@ -514,7 +514,8 @@ export const ManuscriptStore = signalStore(
         return;
       }
 
-      const { act, chapter, scene } = await manuscriptStructureService.createActStructure(bookId);
+      const created = await manuscriptStructureService.createActStructure(bookId);
+      const { act, chapter, scene } = created;
 
       if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
 
@@ -529,6 +530,7 @@ export const ManuscriptStore = signalStore(
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();
+      workspaceBookStore.addActStructure(created);
     },
 
     async insertChapter(): Promise<void> {
@@ -548,7 +550,8 @@ export const ManuscriptStore = signalStore(
         return;
       }
 
-      const { chapter, scene } = await manuscriptStructureService.createChapterStructure(actId);
+      const created = await manuscriptStructureService.createChapterStructure(actId);
+      const { chapter, scene } = created;
 
       if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
 
@@ -562,6 +565,7 @@ export const ManuscriptStore = signalStore(
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();
+      workspaceBookStore.addChapterStructure(created);
     },
 
     async insertScene(): Promise<void> {
@@ -594,6 +598,7 @@ export const ManuscriptStore = signalStore(
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();
+      workspaceBookStore.addScene(scene);
     },
 
 
