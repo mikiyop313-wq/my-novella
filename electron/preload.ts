@@ -9,7 +9,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Receive data from Main process
     onMessage: (channel: string, callback: (...args: any[]) => void) => {
-        ipcRenderer.on(channel, (event, ...args) => callback(...args));
+        const subscription = (event: any, ...args: any[]) => callback(...args);
+        ipcRenderer.on(channel, subscription);
+        return () => {
+            ipcRenderer.removeListener(channel, subscription);
+        };
     },
 
     // Example: Get app version

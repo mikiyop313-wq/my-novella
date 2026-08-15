@@ -9,7 +9,7 @@ export class AiService {
 
     constructor() {
         this.providers = new Map();
-        
+
         // Register providers
         this.registerProvider(new OpenAiProvider());
         this.registerProvider(new GeminiProvider());
