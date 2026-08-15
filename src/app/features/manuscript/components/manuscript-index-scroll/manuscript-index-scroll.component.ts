@@ -108,7 +108,7 @@ export class ManuscriptIndexScrollComponent implements OnDestroy {
   }
 
   isActive(item: ManuscriptIndexItem): boolean {
-    const activeId = this.store.activeEntityId();
+    const activeId = this.store.activeSectionId();
     if (activeId === item.id) return true;
 
     // Also highlight ancestor chapter and act when a deeper item is active

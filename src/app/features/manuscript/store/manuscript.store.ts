@@ -42,8 +42,10 @@ export interface FormattingSettings {
 }
 
 export interface ManuscriptState {
-  /** Currently active book, act, chapter, or scene ID. */
+  /** Book, act, chapter, or scene ID selected by the current route. */
   activeEntityId: string | null;
+  /** Section currently visible in the editor viewport. */
+  activeSectionId: string | null;
   mode: ManuscriptMode | null;
 
   settings: FormattingSettings;
@@ -79,6 +81,7 @@ const defaultSettings: FormattingSettings = {
 
 const initialState: ManuscriptState = {
   activeEntityId: null,
+  activeSectionId: null,
   mode: null,
 
   settings: defaultSettings,
@@ -238,7 +241,7 @@ export const ManuscriptStore = signalStore(
 
   withState(initialState),
 
-  withComputed(({ currentWordCount, activeEntityId, mode }, workspaceBookStore = inject(WorkspaceBookStore)) => ({
+  withComputed(({ currentWordCount, activeEntityId, activeSectionId, mode }, workspaceBookStore = inject(WorkspaceBookStore)) => ({
     bookHierarchy: computed(() => workspaceBookStore.bookHierarchy()),
 
     bookId: computed(() => mode() === 'book' ? activeEntityId() : null),
@@ -275,7 +278,7 @@ export const ManuscriptStore = signalStore(
      * can highlight all relevant levels at once.
      */
     activeAncestors: computed((): { actId: string | null; chapterId: string | null } => {
-      const id = activeEntityId();
+      const id = activeSectionId();
       if (!id) return { actId: null, chapterId: null };
 
       for (const act of workspaceBookStore.bookHierarchy()) {
@@ -313,12 +316,13 @@ export const ManuscriptStore = signalStore(
       patchState(store, {
         mode,
         activeEntityId: id,
+        activeSectionId: id,
         settings: loadStoredSettings(),
       });
     },
 
     setActiveSection(_type: 'act' | 'chapter' | 'scene', id: string): void {
-      patchState(store, { activeEntityId: id });
+      patchState(store, { activeSectionId: id });
     },
 
     setEditor(editor: Editor | null): void {

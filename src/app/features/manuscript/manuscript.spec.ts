@@ -300,6 +300,9 @@ describe('Manuscript', () => {
     component.store.setRouteParams('act', 'act-1');
     expect(component.currentScopeLabel()).toBe('Act 1: The Beginning');
 
+    component.store.setActiveSection('scene', 'scene-1');
+    expect(component.currentScopeLabel()).toBe('Act 1: The Beginning');
+
     component.store.setRouteParams('chapter', 'chapter-1');
     expect(component.currentScopeLabel()).toBe('Chapter 3: First Steps');
 
