@@ -62,6 +62,20 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     return loadingSig ? loadingSig() !== 'idle' : false;
   });
 
+  isSceneGenerationBlocked = computed(() => {
+    const blockPos = this.currentNodePosition();
+    if (blockPos === null) return false;
+
+    const sceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, blockPos);
+    if (!sceneId) return false;
+
+    return this.aiStreamEditor.hasActiveSceneGeneration(sceneId)
+      && !this.aiStreamEditor.isSceneGenerationOwner({
+        sceneId,
+        ownerId: this.blockId(),
+      });
+  });
+
   modelId = computed(() => this.node().attrs['modelId'] || '');
   reasoningText = computed(() => this.node().attrs['reasoningText'] || '');
 
@@ -93,6 +107,8 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   }
 
   toggleModify(): void {
+    if (!this.isModifying() && this.isSceneGenerationBlocked()) return;
+
     this.isModifying.update(isModifying => !isModifying);
 
     if (!this.isModifying()) {
@@ -144,31 +160,20 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   }
 
   tryAgain(): void {
-    if (this.isLoading() || this.aiStreamEditor.hasActiveGeneration()) return;
+    if (this.isLoading() || this.isSceneGenerationBlocked()) return;
 
-    const loadingSig = this.loadingSignal(this.blockId());
-    loadingSig?.set('loading');
-
-    this.regenerateResponse(null).finally(() => {
-      loadingSig?.set('idle');
-    });
+    void this.regenerateResponse(null);
   }
 
   async submitModify(): Promise<void> {
     const requestedChange = this.modifyPrompt().trim();
-    const loadingSig = this.loadingSignal(this.blockId());
-
     if (
       !requestedChange
       || this.isLoading()
-      || this.aiStreamEditor.hasActiveGeneration()
+      || this.isSceneGenerationBlocked()
     ) return;
 
-    loadingSig?.set('loading');
-
-    await this.regenerateResponse(requestedChange).finally(() => {
-      loadingSig?.set('idle');
-    });
+    await this.regenerateResponse(requestedChange);
   }
 
 
@@ -227,57 +232,75 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
 
   private async regenerateResponse(requestedChange: string | null): Promise<void> {
     const editor = this.editor();
-    const source = this.manuscriptAiRequest.findPromptSource(editor, this.sourcePromptId());
-    if (!source) {
-      this.toastService.error('The original AI prompt could not be found.', 'AI Generation');
-      return;
-    }
-
-    const promptText = typeof source.node.attrs['promptText'] === 'string'
-      ? source.node.attrs['promptText'].trim()
-      : '';
-    const modificationText = requestedChange
-      ? buildManuscriptAiModificationText({
-        promptText,
-        generatedText: extractGeneratedProse(this.node()),
-        requestedChange,
-      })
-      : null;
-    const requestMessages = modificationText?.requestMessages ?? [{
-      role: 'user' as const,
-      parts: [{ type: 'text' as const, content: promptText }],
-    }];
-    const contextPromptText = modificationText?.contextPromptText ?? promptText;
-    const prepared = await this.manuscriptAiRequest.prepare({
-      editor,
-      promptPos: source.pos,
-      promptAttrs: source.node.attrs,
-      requestMessages,
-      contextPromptText,
-    });
-    if (!prepared) return;
-
+    const blockId = this.blockId();
     const blockPos = this.currentNodePosition();
     if (blockPos === null) return;
+
     const sceneId = findCurrentSceneIdBeforePosition(editor.state.doc, blockPos);
-    if (!sceneId) return;
-
-    if (requestedChange) {
-      this.isModifying.set(false);
-      this.modifyPrompt.set('');
-    }
-
-    await this.aiStreamEditor.regenerateExistingBlock({
-      editor,
-      blockPos,
-      currentAttrs: { ...this.node().attrs },
-      aiPrompt: prepared.aiPrompt,
-      provider: prepared.provider,
-      modelId: prepared.modelId,
-      reasoningMode: prepared.reasoningMode,
-      bookId: prepared.bookId,
-      promptText: prepared.promptText,
+    if (!sceneId || !this.aiStreamEditor.acquireSceneGeneration({
       sceneId,
-    });
+      ownerId: blockId,
+    })) return;
+
+    const loadingSig = this.loadingSignal(blockId);
+    loadingSig?.set('loading');
+
+    try {
+      const source = this.manuscriptAiRequest.findPromptSource(editor, this.sourcePromptId());
+      if (!source) {
+        this.toastService.error('The original AI prompt could not be found.', 'AI Generation');
+        return;
+      }
+
+      const promptText = typeof source.node.attrs['promptText'] === 'string'
+        ? source.node.attrs['promptText'].trim()
+        : '';
+      const modificationText = requestedChange
+        ? buildManuscriptAiModificationText({
+          promptText,
+          generatedText: extractGeneratedProse(this.node()),
+          requestedChange,
+        })
+        : null;
+      const requestMessages = modificationText?.requestMessages ?? [{
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, content: promptText }],
+      }];
+      const contextPromptText = modificationText?.contextPromptText ?? promptText;
+      const prepared = await this.manuscriptAiRequest.prepare({
+        editor,
+        promptPos: source.pos,
+        promptAttrs: source.node.attrs,
+        requestMessages,
+        contextPromptText,
+      });
+      if (!prepared) return;
+
+      const latestBlockPos = this.currentNodePosition();
+      if (latestBlockPos === null) return;
+      const latestSceneId = findCurrentSceneIdBeforePosition(editor.state.doc, latestBlockPos);
+      if (latestSceneId !== sceneId) return;
+
+      if (requestedChange) {
+        this.isModifying.set(false);
+        this.modifyPrompt.set('');
+      }
+
+      await this.aiStreamEditor.regenerateExistingBlock({
+        editor,
+        blockPos: latestBlockPos,
+        currentAttrs: { ...this.node().attrs },
+        aiPrompt: prepared.aiPrompt,
+        provider: prepared.provider,
+        modelId: prepared.modelId,
+        reasoningMode: prepared.reasoningMode,
+        bookId: prepared.bookId,
+        promptText: prepared.promptText,
+        sceneId,
+      });
+    } finally {
+      loadingSig?.set('idle');
+      this.aiStreamEditor.releaseSceneGeneration({ sceneId, ownerId: blockId });
+    }
   }
 }

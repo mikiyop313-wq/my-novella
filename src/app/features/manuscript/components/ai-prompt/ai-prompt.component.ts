@@ -151,6 +151,20 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   isLoading = computed(() => this.loadingStatus() !== 'idle');
 
+  isSceneGenerationBlocked = computed(() => {
+    const pos = this.currentNodePosition();
+    if (pos === null) return false;
+
+    const sceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, pos);
+    if (!sceneId) return false;
+
+    return this.aiStreamEditor.hasActiveSceneGeneration(sceneId)
+      && !this.aiStreamEditor.isSceneGenerationOwner({
+        sceneId,
+        ownerId: this.blockId(),
+      });
+  });
+
   selectedModelName = computed(() => {
     const id = this.selectedModel();
 
@@ -166,6 +180,12 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const selectedModel = this.selectedModel();
     return !!selectedModel && this.allModels().some((model) => model.id === selectedModel);
   });
+
+  isSendDisabled = computed(() => (
+    !this.promptText().trim()
+    || !this.isSelectedModelAvailable()
+    || this.isSceneGenerationBlocked()
+  ));
 
   modelDropdownSections = computed(() => buildModelDropdownSections({
     providers: this.aiStore.modelProviders(),
@@ -395,12 +415,18 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   async onSubmit(): Promise<void> {
     const blockId = this.blockId();
 
-    if (this.isLoading() || this.aiStreamEditor.hasActiveGeneration()) return;
+    if (this.isLoading() || this.isSceneGenerationBlocked()) return;
 
     const text = this.promptText().trim();
     const pos = this.currentNodePosition();
 
     if (!text || pos === null || !this.isSelectedModelAvailable()) return;
+
+    const sceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, pos);
+    if (!sceneId || !this.aiStreamEditor.acquireSceneGeneration({
+      sceneId,
+      ownerId: blockId,
+    })) return;
 
     this.refreshContextAvailability();
     const loadingSig = this.loadingSignal(blockId);
@@ -421,10 +447,11 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
       const latestPos = this.currentNodePosition();
       if (latestPos === null) return;
+      if (!this.aiStreamEditor.isSceneGenerationOwner({ sceneId, ownerId: blockId })) return;
 
       const responseId = crypto.randomUUID();
-      const sceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, latestPos);
-      if (!sceneId) return;
+      const latestSceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, latestPos);
+      if (latestSceneId !== sceneId) return;
 
       await this.aiStreamEditor.generateNewBlock({
         editor: this.editor(),
@@ -440,6 +467,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       });
     } finally {
       loadingSig?.set('idle');
+      this.aiStreamEditor.releaseSceneGeneration({ sceneId, ownerId: blockId });
     }
   }
 

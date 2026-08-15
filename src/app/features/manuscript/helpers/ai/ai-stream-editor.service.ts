@@ -80,6 +80,8 @@ export class AiStreamEditorService {
 
   public readonly loadingState = new Map<string, WritableSignal<LoadingStatus>>();
   private readonly activeGenerations = new Map<string, ActiveManuscriptGeneration>();
+  private readonly activeSceneGenerationOwners = new Map<string, string>();
+  private readonly sceneGenerationVersion = signal(0);
   private currentEditor: Editor | null = null;
   private viewChangeInProgress = false;
 
@@ -101,16 +103,64 @@ export class AiStreamEditorService {
       activeGeneration.blockAttrs['sourcePromptId'] === promptId
       && this.isSessionActive(activeGeneration.session)
     ));
-    if (!generation) return;
+    if (!generation) {
+      this.releaseSceneGenerationByOwner(promptId);
+      return;
+    }
 
     await this.stopGeneration(generation.blockId);
   }
 
+  acquireSceneGeneration({
+    sceneId,
+    ownerId,
+  }: {
+    sceneId: string;
+    ownerId: string;
+  }): boolean {
+    if (this.activeSceneGenerationOwners.has(sceneId)) return false;
+
+    this.activeSceneGenerationOwners.set(sceneId, ownerId);
+    this.notifySceneGenerationChanged();
+    return true;
+  }
+
+  releaseSceneGeneration({
+    sceneId,
+    ownerId,
+  }: {
+    sceneId: string;
+    ownerId: string;
+  }): void {
+    if (this.activeSceneGenerationOwners.get(sceneId) !== ownerId) return;
+
+    this.activeSceneGenerationOwners.delete(sceneId);
+    this.notifySceneGenerationChanged();
+  }
+
+  hasActiveSceneGeneration(sceneId: string): boolean {
+    this.sceneGenerationVersion();
+    return this.activeSceneGenerationOwners.has(sceneId);
+  }
+
+  isSceneGenerationOwner({
+    sceneId,
+    ownerId,
+  }: {
+    sceneId: string;
+    ownerId: string;
+  }): boolean {
+    this.sceneGenerationVersion();
+    return this.activeSceneGenerationOwners.get(sceneId) === ownerId;
+  }
+
   hasActivePromptGeneration(promptId: string): boolean {
-    return [...this.activeGenerations.values()].some(activeGeneration => (
+    const hasActiveStream = [...this.activeGenerations.values()].some(activeGeneration => (
       activeGeneration.blockAttrs['sourcePromptId'] === promptId
       && this.isSessionActive(activeGeneration.session)
     ));
+    return hasActiveStream
+      || [...this.activeSceneGenerationOwners.values()].some(ownerId => ownerId === promptId);
   }
 
   ensurePromptLoadingState(promptId: string): WritableSignal<LoadingStatus> {
@@ -120,14 +170,13 @@ export class AiStreamEditorService {
       && this.isSessionActive(activeGeneration.session)
     ));
 
-    if (generation) loadingSignal.set(this.toLoadingStatus(generation.session.status()));
+    if (generation) {
+      loadingSignal.set(this.toLoadingStatus(generation.session.status()));
+    } else if ([...this.activeSceneGenerationOwners.values()].some(ownerId => ownerId === promptId)) {
+      loadingSignal.set('loading');
+    }
     this.loadingState.set(promptId, loadingSignal);
     return loadingSignal;
-  }
-
-  /** Manuscript prose supports one active generation while other AI purposes may run. */
-  hasActiveGeneration(): boolean {
-    return this.generationSessions.hasActiveSession('manuscript-prose');
   }
 
   attachEditor(editor: Editor): void {
@@ -374,6 +423,7 @@ export class AiStreamEditorService {
     const session = this.generationSessions.start({
       streamId: blockId,
       source: 'manuscript-prose',
+      scopeId: sceneId,
       bookId,
       aiPrompt,
       provider,
@@ -434,6 +484,20 @@ export class AiStreamEditorService {
   private isSessionActive(session: AiGenerationSession): boolean {
     const status = session.status();
     return status !== 'complete' && status !== 'stopped' && status !== 'failed';
+  }
+
+  private releaseSceneGenerationByOwner(ownerId: string): void {
+    const ownedScene = [...this.activeSceneGenerationOwners.entries()].find(
+      ([, activeOwnerId]) => activeOwnerId === ownerId,
+    );
+    if (!ownedScene) return;
+
+    this.activeSceneGenerationOwners.delete(ownedScene[0]);
+    this.notifySceneGenerationChanged();
+  }
+
+  private notifySceneGenerationChanged(): void {
+    this.sceneGenerationVersion.update(version => version + 1);
   }
 
   private toLoadingStatus(status: string): LoadingStatus {

@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
+import { findCurrentSceneIdBeforePosition } from '../../../../shared/utils/story-context-builder';
+import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 import {
   AiSelectionEffectComponent,
   type AiSelectionEditRequest,
@@ -21,6 +23,7 @@ export class EditorBubbleMenuComponent {
 
   readonly store = inject(ManuscriptStore);
   readonly generationSessions = inject(AiGenerationSessionService);
+  readonly aiStreamEditor = inject(AiStreamEditorService);
   private zone = inject(NgZone);
 
   // Responsive signals for UI
@@ -196,8 +199,21 @@ export class EditorBubbleMenuComponent {
     });
   }
 
+  isAskAiDisabled(): boolean {
+    if (this.generationSessions.hasActiveSession('manuscript-selection')) return true;
+
+    const currentEditor = this.store.editor();
+    if (!currentEditor) return false;
+
+    const sceneId = findCurrentSceneIdBeforePosition(
+      currentEditor.state.doc,
+      currentEditor.state.selection.from,
+    );
+    return sceneId ? this.aiStreamEditor.hasActiveSceneGeneration(sceneId) : false;
+  }
+
   private startAiEdit(request: AiSelectionEditRequest): boolean {
-    if (this.generationSessions.hasActiveSession('manuscript-selection')) return false;
+    if (this.isAskAiDisabled()) return false;
 
     const started = this.aiSelectionEffect.startEdit(request);
     if (started) this.isVisible.set(false);

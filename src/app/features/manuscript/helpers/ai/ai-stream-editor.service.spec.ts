@@ -30,19 +30,38 @@ const AiGeneratedBlock = Node.create({
 });
 
 describe('AiStreamEditorService', () => {
-  it('checks only the manuscript-prose purpose for active generation', () => {
-    const hasActiveSession = vi.fn().mockReturnValue(true);
+  it('locks each scene to one generation owner while allowing other scenes', () => {
     TestBed.configureTestingModule({
-      providers: [
-        AiStreamEditorService,
-        { provide: AiGenerationSessionService, useValue: { hasActiveSession } },
-      ],
+      providers: [AiStreamEditorService],
     });
 
     const service = TestBed.inject(AiStreamEditorService);
 
-    expect(service.hasActiveGeneration()).toBe(true);
-    expect(hasActiveSession).toHaveBeenCalledWith('manuscript-prose');
+    expect(service.acquireSceneGeneration({ sceneId: 'scene-1', ownerId: 'prompt-1' })).toBe(true);
+    expect(service.acquireSceneGeneration({ sceneId: 'scene-1', ownerId: 'prompt-2' })).toBe(false);
+    expect(service.acquireSceneGeneration({ sceneId: 'scene-2', ownerId: 'prompt-2' })).toBe(true);
+    expect(service.hasActiveSceneGeneration('scene-1')).toBe(true);
+    expect(service.isSceneGenerationOwner({ sceneId: 'scene-1', ownerId: 'prompt-1' })).toBe(true);
+
+    service.releaseSceneGeneration({ sceneId: 'scene-1', ownerId: 'prompt-2' });
+    expect(service.hasActiveSceneGeneration('scene-1')).toBe(true);
+
+    service.releaseSceneGeneration({ sceneId: 'scene-1', ownerId: 'prompt-1' });
+    expect(service.hasActiveSceneGeneration('scene-1')).toBe(false);
+    TestBed.resetTestingModule();
+  });
+
+  it('releases a pending prompt scene lock when stopped before streaming', async () => {
+    TestBed.configureTestingModule({ providers: [AiStreamEditorService] });
+    const service = TestBed.inject(AiStreamEditorService);
+    service.acquireSceneGeneration({ sceneId: 'scene-1', ownerId: 'prompt-1' });
+
+    expect(service.hasActivePromptGeneration('prompt-1')).toBe(true);
+    expect(service.ensurePromptLoadingState('prompt-1')()).toBe('loading');
+
+    await service.stopPromptGeneration('prompt-1');
+
+    expect(service.hasActiveSceneGeneration('scene-1')).toBe(false);
     TestBed.resetTestingModule();
   });
 
@@ -92,6 +111,8 @@ describe('AiStreamEditorService', () => {
       ],
     });
     const service = TestBed.inject(AiStreamEditorService);
+    const generationSessions = TestBed.inject(AiGenerationSessionService);
+    const startSession = vi.spyOn(generationSessions, 'start');
     vi.spyOn(service as any, 'persistCompletedGeneration').mockResolvedValue(undefined);
     const aiPrompt = textPrompt('Continue.');
 
@@ -109,6 +130,10 @@ describe('AiStreamEditorService', () => {
       streamId: 'block-1',
       bookId: 'book-1',
       aiPrompt,
+    }));
+    expect(startSession).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'manuscript-prose',
+      scopeId: 'scene-1',
     }));
 
     TestBed.resetTestingModule();

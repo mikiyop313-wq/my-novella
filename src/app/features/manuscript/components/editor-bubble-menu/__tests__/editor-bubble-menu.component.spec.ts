@@ -5,11 +5,13 @@ import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ManuscriptStore } from '../../../store/manuscript.store';
+import { AiStreamEditorService } from '../../../helpers/ai/ai-stream-editor.service';
 import { EditorBubbleMenuComponent } from '../editor-bubble-menu.component';
 
 describe('EditorBubbleMenuComponent AI actions', () => {
   let component: EditorBubbleMenuComponent;
   let fixture: ComponentFixture<EditorBubbleMenuComponent>;
+  const hasActiveSceneGeneration = vi.fn((_sceneId: string) => false);
 
   beforeEach(async () => {
     const editor = {
@@ -18,6 +20,7 @@ describe('EditorBubbleMenuComponent AI actions', () => {
         doc: {
           textBetween: vi.fn(() => 'Selected text'),
           nodesBetween: vi.fn(),
+          forEach: vi.fn(),
         },
       },
       on: vi.fn(),
@@ -29,6 +32,7 @@ describe('EditorBubbleMenuComponent AI actions', () => {
       imports: [EditorBubbleMenuComponent],
       providers: [
         { provide: ManuscriptStore, useValue: { editor: signal(editor) } },
+        { provide: AiStreamEditorService, useValue: { hasActiveSceneGeneration } },
         { provide: Overlay, useValue: {} },
       ],
     }).compileComponents();
@@ -39,6 +43,8 @@ describe('EditorBubbleMenuComponent AI actions', () => {
   });
 
   afterEach(() => {
+    hasActiveSceneGeneration.mockReset();
+    hasActiveSceneGeneration.mockReturnValue(false);
     fixture.destroy();
     TestBed.resetTestingModule();
   });
@@ -93,4 +99,18 @@ describe('EditorBubbleMenuComponent AI actions', () => {
     expect(startSpy).not.toHaveBeenCalled();
     expect(component.isVisible()).toBe(true);
   });
+
+  it('mutes Ask AI and rejects selection edits while the same scene is generating', () => {
+    const editor = component.store.editor()!;
+    vi.spyOn(editor.state.doc, 'forEach').mockImplementation((callback: any) => {
+      callback({ type: { name: 'sceneSummary' }, attrs: { id: 'scene-1' } }, 0);
+    });
+    hasActiveSceneGeneration.mockImplementation(sceneId => sceneId === 'scene-1');
+    const startSpy = vi.spyOn(component.aiSelectionEffect, 'startEdit');
+
+    expect(component.isAskAiDisabled()).toBe(true);
+    expect(component.rephrase()).toBe(false);
+    expect(startSpy).not.toHaveBeenCalled();
+  });
+
 });

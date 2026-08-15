@@ -53,7 +53,8 @@
     <div class="card-footer">
       <!-- Left side: Send button with dropdown menu -->
       <div class="footer-left">
-        <div class="split-btn-group" [class.has-content]="promptText().trim().length > 0 || isLoading()" [class.is-stop-mode]="isLoading()">
+        <div class="split-btn-group" [class.has-content]="promptText().trim().length > 0 || isLoading()"
+          [class.is-send-disabled]="!isLoading() && isSendDisabled()" [class.is-stop-mode]="isLoading()">
           @if (isLoading()) {
           <button class="submit-btn" (click)="stopGeneration()" title="Stop Generation">
             <span class="model-name">Stop</span>
@@ -63,7 +64,7 @@
             </svg>
           </button>
           } @else {
-          <button class="submit-btn" [disabled]="!promptText().trim() || !isSelectedModelAvailable()" (click)="onSubmit()"
+          <button class="submit-btn" [disabled]="isSendDisabled()" (click)="onSubmit()"
             title="Send Prompt">
             <span class="model-name">{{ selectedModelName() }}</span>
             <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
