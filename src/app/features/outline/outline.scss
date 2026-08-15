@@ -358,6 +358,38 @@
   }
 }
 
+.act-header-left,
+.chapter-row-left,
+.scene-card-top .scene-title-group,
+.scene-summary,
+.scene-card-footer {
+  transition:
+    opacity 180ms ease,
+    filter 180ms ease;
+}
+
+.act-header.is-context-excluded .act-header-left,
+.chapter-row.is-context-excluded .chapter-row-left,
+.scene-card-row.is-context-excluded .scene-title-group,
+.scene-card-row.is-context-excluded .scene-summary,
+.scene-card-row.is-context-excluded .scene-card-footer {
+  filter: grayscale(0.75) saturate(0.45);
+  opacity: 0.42;
+}
+
+.act-header.is-context-empty .act-header-left,
+.chapter-row.is-context-empty .chapter-row-left,
+.scene-card-row.is-context-empty .scene-title-group,
+.scene-card-row.is-context-empty .scene-summary,
+.scene-card-row.is-context-empty .scene-card-footer {
+  opacity: 0.7;
+}
+
+.scene-card-row.is-context-excluded .scene-card,
+.scene-card-row.is-context-empty .scene-card {
+  border-style: dashed;
+}
+
 // Acts
 
 .acts-list {

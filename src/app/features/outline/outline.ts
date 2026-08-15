@@ -54,6 +54,7 @@ import { buildCodexDetectionPrompt } from '../codex/utils/codex-detection-prompt
 import { OutlineStore } from './store/outline.store';
 
 type SceneCardMode = 'compact' | 'fit' | 'list';
+type OutlineContextState = 'included' | 'excluded' | 'empty';
 
 const SCENE_CARD_MODE_STORAGE_KEY = 'outline-scene-card-mode';
 
@@ -179,6 +180,25 @@ export class Outline implements OnInit {
 
     const scene = this.findScene(itemId);
     return scene ? isSceneIncludedInContext(scene) : false;
+  }
+
+  getSceneContextState(scene: SceneDto): OutlineContextState {
+    if (!hasSceneContextContent(scene)) return 'empty';
+    return isSceneIncludedInContext(scene) ? 'included' : 'excluded';
+  }
+
+  getChapterContextState(chapter: ChapterDto): OutlineContextState {
+    const hasContextContent = chapter.scenes?.some(hasSceneContextContent) === true;
+    if (!hasContextContent) return 'empty';
+    return isChapterIncludedInContext(chapter) ? 'included' : 'excluded';
+  }
+
+  getActContextState(act: ActDto): OutlineContextState {
+    const hasContextContent = act.chapters?.some((chapter) =>
+      chapter.scenes?.some(hasSceneContextContent),
+    ) === true;
+    if (!hasContextContent) return 'empty';
+    return isActIncludedInContext(act) ? 'included' : 'excluded';
   }
 
   hasOutlineItemContextContent(

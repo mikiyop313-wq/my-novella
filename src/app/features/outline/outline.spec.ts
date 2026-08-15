@@ -307,6 +307,101 @@ describe('Outline', () => {
     expect(component.isOutlineItemIncluded('act-1')).toBe(true);
   });
 
+  it('distinguishes excluded and empty scenes and their parent branches', () => {
+    store.bookHierarchy.set(withEffectiveContextInclusion([
+      {
+        id: 'act-1',
+        title: 'Act 1',
+        chapters: [
+          {
+            id: 'chapter-1',
+            title: 'Chapter 1',
+            scenes: [
+              {
+                id: 'scene-1',
+                title: 'Excluded Scene',
+                summary: 'Excluded summary',
+                wordCount: 12,
+                includeInContext: false,
+              },
+            ],
+          },
+          {
+            id: 'chapter-2',
+            title: 'Chapter 2',
+            scenes: [
+              {
+                id: 'scene-2',
+                title: 'Included Scene',
+                summary: 'Included summary',
+                wordCount: 12,
+                includeInContext: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'act-2',
+        title: 'Act 2',
+        chapters: [
+          {
+            id: 'chapter-3',
+            title: 'Chapter 3',
+            scenes: [
+              {
+                id: 'scene-3',
+                title: 'Excluded Scene',
+                summary: 'Excluded summary',
+                wordCount: 12,
+                includeInContext: false,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'act-3',
+        title: 'Act 3',
+        chapters: [
+          {
+            id: 'chapter-4',
+            title: 'Chapter 4',
+            scenes: [
+              {
+                id: 'scene-4',
+                title: 'Empty Scene',
+                summary: '',
+                wordCount: 0,
+                includeInContext: true,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any));
+    fixture.detectChanges();
+
+    const actHeaders = fixture.nativeElement.querySelectorAll('.act-header');
+    const chapterRows = fixture.nativeElement.querySelectorAll('.chapter-row');
+    const sceneRows = fixture.nativeElement.querySelectorAll(
+      '.scene-wrapper[data-outline-item-id] > .scene-card-row',
+    );
+
+    expect(actHeaders[0].classList).not.toContain('is-context-excluded');
+    expect(actHeaders[1].classList).toContain('is-context-excluded');
+    expect(actHeaders[2].classList).toContain('is-context-empty');
+    expect(chapterRows[0].classList).toContain('is-context-excluded');
+    expect(chapterRows[1].classList).not.toContain('is-context-excluded');
+    expect(chapterRows[2].classList).toContain('is-context-excluded');
+    expect(chapterRows[3].classList).toContain('is-context-empty');
+    expect(sceneRows[0].classList).toContain('is-context-excluded');
+    expect(sceneRows[1].classList).not.toContain('is-context-excluded');
+    expect(sceneRows[2].classList).toContain('is-context-excluded');
+    expect(sceneRows[3].classList).toContain('is-context-empty');
+    expect(fixture.nativeElement.querySelector('.outline-context-state-badge')).toBeNull();
+  });
+
   it('toggles scene inclusion from the keyboard and resets it with the component', async () => {
     showScene('', 12);
     (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();

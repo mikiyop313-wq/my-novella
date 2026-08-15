@@ -55,7 +55,8 @@
     <div class="act-wrapper" [attr.data-outline-item-id]="act.id" [style.view-transition-name]="'outline-act-' + act.id" cdkDrag>
       <div class="act-block">
         <!-- Act controls and metadata -->
-        <div class="act-header">
+        <div class="act-header" [class.is-context-excluded]="getActContextState(act) === 'excluded'"
+          [class.is-context-empty]="getActContextState(act) === 'empty'">
           <div class="act-header-left">
             <button type="button" class="btn-icon btn-collapse" (click)="toggleCollapse(act.id)">
               @if (collapsed()[act.id]) {
@@ -118,7 +119,9 @@
               <div class="chapter-wrapper" [attr.data-outline-item-id]="chapter.id" [style.view-transition-name]="'outline-chapter-' + chapter.id" cdkDrag>
                 <div class="chapter-block">
                   <!-- Chapter controls and metadata -->
-                  <div class="chapter-row">
+                  <div class="chapter-row"
+                    [class.is-context-excluded]="getChapterContextState(chapter) === 'excluded'"
+                    [class.is-context-empty]="getChapterContextState(chapter) === 'empty'">
                     <div class="chapter-row-left">
                       <button type="button" class="btn-icon btn-collapse" (click)="toggleCollapse(chapter.id)">
                         @if (collapsed()[chapter.id]) {
@@ -187,7 +190,9 @@
                         let scIdx = $index
                         ) {
                         <div class="scene-wrapper" [attr.data-outline-item-id]="scene.id" [style.view-transition-name]="'outline-scene-' + scene.id" cdkDrag>
-                          <div class="scene-card-row">
+                          <div class="scene-card-row"
+                            [class.is-context-excluded]="getSceneContextState(scene) === 'excluded'"
+                            [class.is-context-empty]="getSceneContextState(scene) === 'empty'">
                             <div class="drag-handle scene-drag" cdkDragHandle (click)="$event.stopPropagation()">
                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
