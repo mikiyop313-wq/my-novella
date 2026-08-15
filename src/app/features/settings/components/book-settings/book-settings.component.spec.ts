@@ -919,6 +919,22 @@ describe('BookSettingsComponent', () => {
     });
   });
 
+  it('selects None by default when no POV character is configured', () => {
+    const component = fixture.componentInstance;
+    component.book.set({
+      ...book,
+      settings: {
+        ...book.settings!,
+        povCharacterId: null,
+      },
+    });
+
+    component.startEditing('povCharacterId');
+
+    expect(component.editValue()).toBe('');
+    expect(component.povCharacterOptions()[0]).toEqual({ value: '', label: 'None' });
+  });
+
   it('can clear genres without removing tropes or demographic categories', async () => {
     const component = fixture.componentInstance;
     component.startEditing('genres');

@@ -336,13 +336,10 @@
 
                     <div class="form-group">
                         <label class="section-label">POV CHARACTER</label>
-                        @if (characters().length > 0) {
-                        <app-autocomplete-dropdown [options]="characters()" [selectedValue]="selectedPovCharacter()"
+                        <app-autocomplete-dropdown [options]="povCharacterOptions()" [selectedValue]="selectedPovCharacter()"
+                            placeholder="Select a character..."
                             (selectionChange)="onSelectionChange('povCharacter', $event)">
                         </app-autocomplete-dropdown>
-                        } @else {
-                        <span class="no-options-text">No characters available.</span>
-                        }
                     </div>
                 </div>
 

@@ -14,6 +14,7 @@ import { ConfigStore } from '../../../../core/store/config.store';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { CodexService } from '../../../codex/services/codex.service';
 
 
 
@@ -36,6 +37,7 @@ export class BookModalComponent {
   private toastService = inject(ToastService);
   readonly store = inject(LibraryStore);
   readonly config = inject(ConfigStore);
+  private readonly codexService = inject(CodexService);
   private router = inject(Router);
 
   constructor() {
@@ -72,8 +74,12 @@ export class BookModalComponent {
   selectedTense = signal<'past' | 'present'>('past');
   selectedLanguage = signal<string>('english');
   selectedPOV = signal<'first' | 'third_limited' | 'third_omni' | 'second'>('third_limited');
-  selectedPovCharacter = signal<string | null>(null);
+  selectedPovCharacter = signal('');
   characters = signal<DropdownOption[]>([]);
+  povCharacterOptions = computed<DropdownOption[]>(() => [
+    { value: '', label: 'None' },
+    ...this.characters(),
+  ]);
   useSynopsisInAiContext = signal<boolean>(false);
 
   // Edit Mode State
@@ -135,13 +141,14 @@ export class BookModalComponent {
     this.config.loadGenres();
     // Initialize settings from book data if available
     const book = this.book();
+    void this.loadCharacters(book.id);
     if (book.language) this.selectedLanguage.set(book.language);
 
     if (book.settings) {
       this.selectedTense.set(book.settings.proseTense);
       this.selectedPOV.set(book.settings.pointOfView);
       this.useSynopsisInAiContext.set(book.settings.synopsisAiContext);
-      this.selectedPovCharacter.set(book.settings.povCharacterId || null);
+      this.selectedPovCharacter.set(book.settings.povCharacterId ?? '');
     } else {
       this.useSynopsisInAiContext.set(book.synopsis !== '' ? true : false);
     }
@@ -237,8 +244,9 @@ export class BookModalComponent {
       this.selectedPOV.set(value);
       this.saveSettings({ pointOfView: value });
     } else if (type === 'povCharacter') {
-      this.selectedPovCharacter.set(value);
-      this.saveSettings({ povCharacterId: value });
+      const povCharacterId = typeof value === 'string' ? value : '';
+      this.selectedPovCharacter.set(povCharacterId);
+      this.saveSettings({ povCharacterId: povCharacterId || null });
     }
   }
 
@@ -261,16 +269,26 @@ export class BookModalComponent {
   }
 
   onArchive() {
-    const book = this.book();
     if (this.isLifecycleActionPending()) return;
 
-    this.confirmService.open(
-      'Archive book?',
-      `Archive “${book.title}”? You can restore it later from the archived books view.`,
-      () => void this.updateBookStatus('archived'),
-      undefined,
-      { confirmLabel: 'Archive' },
-    );
+    void this.updateBookStatus('archived');
+  }
+
+  private async loadCharacters(bookId: string): Promise<void> {
+    try {
+      const characters = await this.codexService.getEntries(bookId, {
+        type: 'character',
+        status: 'active',
+      });
+      this.characters.set(
+        characters.map((character) => ({
+          value: character.id,
+          label: character.name,
+        })),
+      );
+    } catch {
+      this.characters.set([]);
+    }
   }
 
   onRestore() {
@@ -290,13 +308,8 @@ export class BookModalComponent {
     const book = this.book();
     if (this.isLifecycleActionPending()) return;
 
-    this.confirmService.open(
-      'Delete book permanently?',
-      `Delete “${book.title}” and all of its manuscript content, notes, chats, and search data? This cannot be undone.`,
-      () => this.bookDeleted.emit(book.id),
-      undefined,
-      { confirmLabel: 'Delete permanently' },
-    );
+    this.bookDeleted.emit(book.id);
+    this.close.emit();
   }
 
   private async updateBookStatus(status: BookDto['status']): Promise<void> {
@@ -309,6 +322,7 @@ export class BookModalComponent {
       this.toastService.success(
         status === 'archived' ? 'The book was archived.' : 'The book was restored.',
       );
+      this.close.emit();
     } catch (error) {
       this.toastService.error(
         error instanceof Error ? error.message : `Unable to ${status === 'archived' ? 'archive' : 'restore'} this book.`,
