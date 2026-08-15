@@ -56,15 +56,14 @@
     </div>
 
     <div class="summary-content-wrapper">
-      <div 
-        class="summary-editable-content" 
-        #editableDiv 
-        contenteditable="true" 
-        [attr.data-placeholder]="'Add a summary...'"
-        (input)="onInput($event)"
-        (paste)="onPaste($event)"
+      <app-markdown-editor
+        class="summary-markdown-editor"
+        [value]="summary()"
+        placeholder="Add a summary..."
+        ariaLabel="Scene summary"
+        (valueChange)="onSummaryChange($event)"
         (keydown.enter)="$event.stopPropagation()"
-      ></div>
+      ></app-markdown-editor>
     </div>
   </div>
 </div>

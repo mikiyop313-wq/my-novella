@@ -3,12 +3,13 @@ import { CommonModule } from '@angular/common';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
+import { MarkdownEditorComponent } from '../../../../../shared/components/markdown-editor/markdown-editor.component';
 import { ManuscriptStore } from '../../../store/manuscript.store';
 
 @Component({
   selector: 'app-scene-summary',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MarkdownEditorComponent],
   templateUrl: './scene-summary.component.html',
   styleUrl: './scene-summary.component.scss'
 })
@@ -22,7 +23,6 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
   entityId = signal<string>('');
   showDivisor = signal<boolean>(false);
 
-  @ViewChild('editableDiv') editableDiv!: ElementRef<HTMLDivElement>;
   @ViewChild('titleEditableDiv') titleEditableDiv!: ElementRef<HTMLDivElement>;
 
   private scrollContainer: HTMLElement | null = null;
@@ -55,12 +55,6 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
   }
 
   ngAfterViewInit(): void {
-    if (this.editableDiv) {
-      this.editableDiv.nativeElement.innerText = this.summary();
-      if (!this.summary().trim()) {
-        this.editableDiv.nativeElement.innerHTML = '';
-      }
-    }
     if (this.titleEditableDiv) {
       this.titleEditableDiv.nativeElement.innerText = this.title();
       if (!this.title().trim()) {
@@ -211,15 +205,8 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
     gutterNode.style.transform = `translateY(${translateY}px)`;
   }
 
-  onInput(event: Event): void {
-    const target = event.target as HTMLDivElement;
-    let newSummary = target.innerText;
-
-    if (!newSummary.trim()) {
-      target.innerHTML = '';
-      newSummary = '';
-    }
-
+  onSummaryChange(value: string): void {
+    const newSummary = value.trim() ? value : '';
     this.summary.set(newSummary);
     this.updateAttributes()({ summary: newSummary });
     this.summaryUpdateSubject.next(newSummary);

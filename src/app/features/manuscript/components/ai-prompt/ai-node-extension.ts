@@ -4,6 +4,20 @@ import { AngularNodeViewRenderer } from 'ngx-tiptap';
 
 import { AiPromptComponent } from './ai-prompt.component';
 
+const parseStringArrayAttribute = (element: HTMLElement, attribute: string): string[] => {
+  const rawValue = element.getAttribute(attribute);
+  if (!rawValue) return [];
+
+  try {
+    const value: unknown = JSON.parse(rawValue);
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+};
+
 export const AiPromptExtension = (injector: Injector) => {
   return Node.create({
     name: 'aiPrompt',
@@ -53,6 +67,21 @@ export const AiPromptExtension = (injector: Injector) => {
           default: false,
           parseHTML: element => element.getAttribute('data-reasoning-mode') === 'true',
           renderHTML: attributes => ({ 'data-reasoning-mode': String(attributes['reasoningMode'] === true) }),
+        },
+        includeFullOutline: {
+          default: false,
+          parseHTML: element => element.getAttribute('data-include-full-outline') === 'true',
+          renderHTML: attributes => ({ 'data-include-full-outline': String(attributes['includeFullOutline'] === true) }),
+        },
+        contextSceneIds: {
+          default: [],
+          parseHTML: element => parseStringArrayAttribute(element, 'data-context-scene-ids'),
+          renderHTML: attributes => ({ 'data-context-scene-ids': JSON.stringify(attributes['contextSceneIds'] ?? []) }),
+        },
+        contextCodexEntryIds: {
+          default: [],
+          parseHTML: element => parseStringArrayAttribute(element, 'data-context-codex-entry-ids'),
+          renderHTML: attributes => ({ 'data-context-codex-entry-ids': JSON.stringify(attributes['contextCodexEntryIds'] ?? []) }),
         },
       };
     },

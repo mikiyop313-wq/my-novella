@@ -1,0 +1,332 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
+.context-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.context-trigger,
+.chip {
+  box-sizing: border-box;
+  min-height: 28px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+
+.context-trigger {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  padding: 4px 10px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+
+  &:hover,
+  &.active {
+    background: var(--color-hover-bg);
+    color: var(--color-text-primary);
+    border-color: var(--color-border-secondary);
+  }
+}
+
+.selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--color-btn-primary-bg) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-btn-primary-bg) 30%, transparent);
+  color: var(--color-btn-primary-bg);
+  padding: 4px 8px 4px 10px;
+  font-weight: 500;
+
+  button {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: currentColor;
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+    opacity: 0.7;
+
+    svg {
+      width: 12px;
+      height: 12px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+    &:hover {
+      opacity: 1;
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }
+  }
+}
+
+.context-menu {
+  width: max-content;
+  min-width: min(220px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: min(560px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  color: var(--color-text-primary);
+  animation: menuExpand 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: top left;
+}
+
+.search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+
+  svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: var(--color-text-secondary);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+  }
+
+  input {
+    width: 100%;
+    padding: 3px 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 0.8rem;
+
+    &::-webkit-search-cancel-button {
+      appearance: none;
+    }
+
+    &::placeholder {
+      color: var(--color-text-secondary);
+    }
+  }
+
+  .search-clear {
+    position: relative;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-btn-primary-bg);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 1px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    &::before {
+      transform: translate(-50%, -50%) rotate(45deg);
+    }
+
+    &::after {
+      transform: translate(-50%, -50%) rotate(-45deg);
+    }
+
+    &:hover {
+      opacity: 1;
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }
+  }
+}
+
+.menu-scroll {
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.context-section h3 {
+  margin: 0;
+  padding: 8px 10px 5px;
+  color: var(--color-text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section-divider {
+  height: 1px;
+  margin: 7px 6px;
+  background: var(--color-border);
+}
+
+.menu-row {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: var(--color-hover-bg);
+    outline: none;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+.selection-mark {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--color-btn-primary-bg);
+}
+
+.selection-mark::before {
+  content: '';
+  display: block;
+  background: currentColor;
+}
+
+.selection-mark.checked::before {
+  width: 5px;
+  height: 9px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  background: transparent;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.selection-mark.partial::before {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.context-submenu {
+  width: max-content;
+  min-width: min(180px, calc(100vw - 28px));
+  max-width: min(280px, calc(100vw - 28px));
+  max-height: min(460px, calc(100vh - 48px));
+  margin-inline: 6px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.context-submenu .menu-row,
+.context-submenu .row-label {
+  text-align: left;
+}
+
+.context-submenu .menu-row {
+  justify-content: flex-start;
+}
+
+.context-submenu .submenu-row .chevron-right {
+  margin-left: auto;
+}
+
+.submenu-row .chevron-right {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.row-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.row-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
+.row-hint,
+.row-count,
+.row-path {
+  color: var(--color-text-secondary);
+  font-size: 0.67rem;
+}
+
+.row-count {
+  min-width: 22px;
+  text-align: right;
+}
+
+.search-row {
+  min-height: 42px;
+}
+
+.state-message {
+  padding: 10px 12px;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+
+  &.error {
+    color: var(--color-danger);
+  }
+}

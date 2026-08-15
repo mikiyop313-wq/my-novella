@@ -683,9 +683,9 @@
     line-height: 1.6;
     margin: 0;
     flex: 1;
-    display: -webkit-box;
-    -webkit-line-clamp: 4;
-    -webkit-box-orient: vertical;
+    min-height: 0;
+    display: block;
+    max-height: 6.4em;
     overflow: auto;
     opacity: 0.75;
   }
@@ -721,9 +721,13 @@
   }
 
   .scene-summary-body {
-    display: block;
-    -webkit-line-clamp: unset;
+    max-height: none;
     overflow-y: auto;
+  }
+
+  .scene-summary-markdown {
+    display: block;
+    overflow: visible;
   }
 
   .scene-summary-input {
@@ -819,7 +823,7 @@
       }
 
       .scene-summary-body {
-        -webkit-line-clamp: unset;
+        max-height: none;
         font-size: 0.88rem;
         line-height: 1.6;
         text-align: justify;
@@ -844,6 +848,11 @@
         &:hover::-webkit-scrollbar-thumb {
           background: var(--color-text-secondary);
         }
+      }
+
+      .scene-summary-markdown {
+        display: block;
+        overflow: visible;
       }
 
       .scene-summary-input {

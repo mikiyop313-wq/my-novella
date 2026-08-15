@@ -6,8 +6,12 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+import { ManuscriptStore } from '../../store/manuscript.store';
+import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
+import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { AiStore } from '../../../../core/store/ai.store';
+import { AiContextDropdownComponent, type AiContextSelection } from './ai-context-dropdown.component';
 
 // ---------------------------------------------------------------------------
 //  Local Types
@@ -63,7 +67,7 @@ const DIRECT_PROVIDER_NAMES: Record<string, string> = {
 @Component({
   selector: 'app-ai-prompt',
   standalone: true,
-  imports: [CommonModule, FormsModule, CdkMenuModule, AiPromptSettingsComponent],
+  imports: [CommonModule, FormsModule, CdkMenuModule, AiPromptSettingsComponent, AiContextDropdownComponent],
   templateUrl: './ai-prompt.component.html',
   styleUrl: './ai-prompt.component.scss'
 })
@@ -76,6 +80,16 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   private readonly aiStore = inject(AiStore);
   private readonly aiStreamEditor = inject(AiStreamEditorService);
   private readonly document = inject(DOCUMENT);
+  private readonly manuscriptStore = inject(ManuscriptStore);
+  private readonly workspaceBookStore = inject(WorkspaceBookStore);
+  private readonly codexContext = inject(CodexContextTrieService);
+
+  readonly contextHierarchy = this.manuscriptStore.bookHierarchy;
+  readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
+  readonly contextHierarchyError = this.workspaceBookStore.bookHierarchyError;
+  readonly contextCodexEntries = this.codexContext.entries;
+  readonly contextCodexLoading = this.codexContext.isLoading;
+  readonly contextCodexError = this.codexContext.error;
 
 
   // ---------------------------------------------------------------------------
@@ -104,6 +118,14 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   povCharacter = signal<string | null>(DEFAULT_PROMPT_SETTINGS.povCharacter);
   vectorSearch = signal(DEFAULT_PROMPT_SETTINGS.vectorSearch);
   reasoningMode = signal(DEFAULT_PROMPT_SETTINGS.reasoningMode);
+
+  // ---------------------------------------------------------------------------
+  //  Context Selection State
+  // ---------------------------------------------------------------------------
+
+  includeFullOutline = signal(false);
+  contextSceneIds = signal<string[]>([]);
+  contextCodexEntryIds = signal<string[]>([]);
 
 
   // ---------------------------------------------------------------------------
@@ -306,6 +328,19 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.updateAttributes()(DEFAULT_PROMPT_SETTINGS);
   }
 
+  onContextChange(selection: AiContextSelection): void {
+    const sceneIds = [...new Set(selection.sceneIds)];
+    const codexEntryIds = [...new Set(selection.codexEntryIds)];
+
+    this.includeFullOutline.set(selection.includeFullOutline);
+    this.contextSceneIds.set(sceneIds);
+    this.contextCodexEntryIds.set(codexEntryIds);
+    this.updateAttributes()({
+      includeFullOutline: selection.includeFullOutline,
+      contextSceneIds: sceneIds,
+      contextCodexEntryIds: codexEntryIds,
+    });
+  }
 
   // ---------------------------------------------------------------------------
   //  Actions
@@ -388,6 +423,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
     this.promptText.set(attrs['promptText'] || '');
     this.selectedModel.set(attrs['selectedModel'] || null);
+    this.includeFullOutline.set(attrs['includeFullOutline'] === true);
+    this.contextSceneIds.set(this.restoreStringArray(attrs['contextSceneIds']));
+    this.contextCodexEntryIds.set(this.restoreStringArray(attrs['contextCodexEntryIds']));
     this.applySettings({
       wordCount: attrs['wordCount'] || DEFAULT_PROMPT_SETTINGS.wordCount,
       pov: attrs['pov'] || DEFAULT_PROMPT_SETTINGS.pov,
@@ -444,6 +482,11 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   private setAttribute<T>(state: WritableSignal<T>, attrName: string, value: T): void {
     state.set(value);
     this.updateAttributes()({ [attrName]: value });
+  }
+
+  private restoreStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))];
   }
 
   /** Safely read the current node position from the Tiptap NodeView API. */

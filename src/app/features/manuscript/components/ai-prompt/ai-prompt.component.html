@@ -209,5 +209,23 @@
         </app-ai-prompt-settings>
       </div>
     </div>
+
+    <!-- Separator -->
+    <div class="footer-separator"></div>
+
+    <!-- Context Footer -->
+    <div class="context-footer">
+      <app-ai-context-dropdown
+        [hierarchy]="contextHierarchy()"
+        [codexEntries]="contextCodexEntries()"
+        [includeFullOutline]="includeFullOutline()"
+        [sceneIds]="contextSceneIds()"
+        [codexEntryIds]="contextCodexEntryIds()"
+        [hierarchyLoading]="contextHierarchyLoading()"
+        [codexLoading]="contextCodexLoading()"
+        [hierarchyError]="contextHierarchyError()"
+        [codexError]="contextCodexError()"
+        (selectionChange)="onContextChange($event)" />
+    </div>
   </div>
 </div>
