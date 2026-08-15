@@ -9,16 +9,8 @@ import { ThemeService } from '../../core/services/theme.service';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
 import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
-
-export interface FormattingSettings {
-  fontFamily: string;
-  fontSize: number;
-  lineHeight: number;
-  paragraphSpacing: number;
-  textAlign: 'left' | 'center' | 'right' | 'justify';
-  textIndent: number;
-  pageWidth: 'narrow' | 'medium' | 'wide';
-}
+import { ManuscriptStore } from './store/manuscript.store';
+import { AiStore } from './store/ai.store';
 
 @Component({
   selector: 'app-manuscript',
@@ -30,14 +22,12 @@ export interface FormattingSettings {
 export class Manuscript implements OnInit, OnDestroy {
   editor: Editor | undefined;
   themeService = inject(ThemeService);
+  readonly store = inject(ManuscriptStore);
+  readonly aiStore = inject(AiStore);
   private route = inject(ActivatedRoute);
   private injector = inject(Injector);
 
-  // Active book ID from route
-  bookId = signal<string | null>(null);
-
   fontOptions: DropdownOption[] = [
-
     // Serif Group
     { value: "'Merriweather', serif", label: 'Merriweather', fontFamily: "'Merriweather', serif", group: 'Serif' },
     { value: "'EB Garamond', serif", label: 'EB Garamond', fontFamily: "'EB Garamond', serif", group: 'Serif' },
@@ -50,7 +40,6 @@ export class Manuscript implements OnInit, OnDestroy {
     { value: "'Inter', sans-serif", label: 'Inter', fontFamily: "'Inter', sans-serif", group: 'Sans Serif' },
     { value: "'Open Sans', sans-serif", label: 'Open Sans', fontFamily: "'Open Sans', sans-serif", group: 'Sans Serif' },
 
-
     // Monospace Group
     { value: "'Courier Prime', monospace", label: 'Courier Prime', fontFamily: "'Courier Prime', monospace", group: 'Monospace' },
     { value: "'Fira Code', monospace", label: 'Fira Code', fontFamily: "'Fira Code', monospace", group: 'Monospace' },
@@ -58,26 +47,11 @@ export class Manuscript implements OnInit, OnDestroy {
     { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono', fontFamily: "'JetBrains Mono', monospace", group: 'Monospace' }
   ];
 
-  // Formatting state
-  settings = signal<FormattingSettings>({
-    fontFamily: "'Merriweather', serif",
-    fontSize: 18,
-    lineHeight: 1.8,
-    paragraphSpacing: 24,
-    textAlign: 'left',
-    textIndent: 0,
-    pageWidth: 'medium',
-  });
-
-  // Sidebar visibility
-  showFormatMenu = signal(true);
-
   ngOnInit(): void {
     // Get book ID from query params
     this.route.queryParams.subscribe(params => {
       const id = params['bookId'];
-      this.bookId.set(id || null);
-      this.loadSettings(id);
+      this.store.setBookId(id || null);
     });
 
     this.editor = new Editor({
@@ -90,36 +64,13 @@ export class Manuscript implements OnInit, OnDestroy {
         AiPromptExtension(this.injector),
       ],
     });
-  }
 
-  private loadSettings(id?: string) {
-    const key = id ? `manuscript_format_${id}` : 'manuscript_format_global';
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        this.settings.set({ ...this.settings(), ...parsed });
-      } catch (e) {
-        console.error('Failed to parse saved formatting settings', e);
-      }
-    }
-  }
-
-  updateSetting<K extends keyof FormattingSettings>(key: K, value: FormattingSettings[K]) {
-    this.settings.update(s => {
-      const newSettings = { ...s, [key]: value };
-      const id = this.bookId();
-      const storageKey = id ? `manuscript_format_${id}` : 'manuscript_format_global';
-      localStorage.setItem(storageKey, JSON.stringify(newSettings));
-      return newSettings;
-    });
-  }
-
-  toggleFormatMenu() {
-    this.showFormatMenu.update(v => !v);
+    this.store.setEditor(this.editor);
+    this.aiStore.loadModels();
   }
 
   ngOnDestroy(): void {
     this.editor?.destroy();
+    this.store.setEditor(null);
   }
 }

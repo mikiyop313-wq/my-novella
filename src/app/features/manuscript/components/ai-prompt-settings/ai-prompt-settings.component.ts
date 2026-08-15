@@ -1,9 +1,9 @@
-import { Component, signal, computed, inject, OnInit, input, output } from '@angular/core';
+import { Component, signal, computed, inject, input, output, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
 import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { LibraryStore } from '../../../library/store/book.store';
+import { ManuscriptStore } from '../../store/manuscript.store';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
 
@@ -14,7 +14,7 @@ import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
   templateUrl: './ai-prompt-settings.component.html',
   styleUrl: './ai-prompt-settings.component.scss'
 })
-export class AiPromptSettingsComponent implements OnInit {
+export class AiPromptSettingsComponent {
   wordCount = input<number>(500);
   pov = input<string>('global');
   povCharacter = input<string | null>(null);
@@ -26,27 +26,26 @@ export class AiPromptSettingsComponent implements OnInit {
   vectorSearchChange = output<string>();
   reset = output<void>();
 
-  private route = inject(ActivatedRoute);
+  private store = inject(ManuscriptStore);
   private libraryStore = inject(LibraryStore);
 
-  bookId = signal<string | null>(null);
+  bookId = computed(() => this.store.bookId());
   characters = signal<DropdownOption[]>([]); // Empty state by default
-
-  ngOnInit() {
-    this.route.queryParams.subscribe(params => {
-      const id = params['bookId'];
-      this.bookId.set(id || null);
-      if (id) {
-        this.libraryStore.loadBooks();
-      }
-    });
-  }
 
   activeBook = computed(() => {
     const id = this.bookId();
     if (!id) return null;
     return this.libraryStore.books().find(b => b.id === id) || null;
   });
+
+  constructor() {
+    effect(() => {
+      const id = this.store.bookId();
+      if (id) {
+        this.libraryStore.loadBooks();
+      }
+    });
+  }
 
   globalPOVLabel = computed(() => {
     const book = this.activeBook();

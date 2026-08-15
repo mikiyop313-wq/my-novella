@@ -24,7 +24,7 @@
         </svg>
         <span>Ask AI</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6; margin-left: 2px;">
+          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6; margin-left: 2px;">
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
       </button>
@@ -37,8 +37,8 @@
   <div class="bubble-menu-toolbar">
     <!-- Format Group: Bold, Italic, Strike -->
     <div class="toolbar-group">
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleBold().run()"
-        [class.active]="editor().isActive('bold')" title="Bold">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleBold()?.run()"
+        [class.active]="store.editor()?.isActive('bold')" title="Bold">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path>
@@ -46,8 +46,8 @@
         </svg>
       </button>
 
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleItalic().run()"
-        [class.active]="editor().isActive('italic')" title="Italic">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleItalic()?.run()"
+        [class.active]="store.editor()?.isActive('italic')" title="Italic">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="19" y1="4" x2="10" y2="4"></line>
@@ -56,8 +56,8 @@
         </svg>
       </button>
 
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleStrike().run()"
-        [class.active]="editor().isActive('strike')" title="Strikethrough">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleStrike()?.run()"
+        [class.active]="store.editor()?.isActive('strike')" title="Strikethrough">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M16 4H9a4 4 0 0 0-4 4v3a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4v3a4 4 0 0 1-4 4H7"></path>
@@ -70,13 +70,13 @@
 
     <!-- Heading Group: H1, H2 -->
     <div class="toolbar-group">
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleHeading({ level: 1 }).run()"
-        [class.active]="editor().isActive('heading', { level: 1 })" title="Heading 1">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 1 })?.run()"
+        [class.active]="store.editor()?.isActive('heading', { level: 1 })" title="Heading 1">
         <span class="heading-tag">H1</span>
       </button>
 
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleHeading({ level: 2 }).run()"
-        [class.active]="editor().isActive('heading', { level: 2 })" title="Heading 2">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 2 })?.run()"
+        [class.active]="store.editor()?.isActive('heading', { level: 2 })" title="Heading 2">
         <span class="heading-tag">H2</span>
       </button>
     </div>
@@ -85,10 +85,10 @@
 
     <!-- Block Layouts Group: Bullet List, Ordered List, Blockquote -->
     <div class="toolbar-group">
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleBulletList().run()"
-        [class.active]="editor().isActive('bulletList')" title="Bullet List">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleBulletList()?.run()"
+        [class.active]="store.editor()?.isActive('bulletList')" title="Bullet List">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="8" y1="6" x2="21" y2="6"></line>
           <line x1="8" y1="12" x2="21" y2="12"></line>
           <line x1="8" y1="18" x2="21" y2="18"></line>
@@ -98,10 +98,10 @@
         </svg>
       </button>
 
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleOrderedList().run()"
-        [class.active]="editor().isActive('orderedList')" title="Numbered List">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleOrderedList()?.run()"
+        [class.active]="store.editor()?.isActive('orderedList')" title="Numbered List">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="10" y1="6" x2="21" y2="6"></line>
           <line x1="10" y1="12" x2="21" y2="12"></line>
           <line x1="10" y1="18" x2="21" y2="18"></line>
@@ -111,10 +111,10 @@
         </svg>
       </button>
 
-      <button (mousedown)="$event.preventDefault()" (click)="editor().chain().focus().toggleBlockquote().run()"
-        [class.active]="editor().isActive('blockquote')" title="Quote Block">
+      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleBlockquote()?.run()"
+        [class.active]="store.editor()?.isActive('blockquote')" title="Quote Block">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
       </button>

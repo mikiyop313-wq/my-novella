@@ -1,8 +1,7 @@
-import { Component, Input, OnInit, OnDestroy, ElementRef, ViewChild, signal, inject, NgZone, input } from '@angular/core';
+import { Component, ElementRef, ViewChild, signal, inject, NgZone, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Editor } from '@tiptap/core';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
-
+import { ManuscriptStore } from '../../store/manuscript.store';
 
 @Component({
   selector: 'app-editor-bubble-menu',
@@ -11,10 +10,10 @@ import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu
   templateUrl: './editor-bubble-menu.component.html',
   styleUrl: './editor-bubble-menu.component.scss'
 })
-export class EditorBubbleMenuComponent implements OnInit, OnDestroy {
-  editor = input.required<Editor>();
+export class EditorBubbleMenuComponent {
   @ViewChild('menuRef') menuRef!: ElementRef<HTMLDivElement>;
 
+  readonly store = inject(ManuscriptStore);
   private zone = inject(NgZone);
 
   // Responsive signals for UI
@@ -24,28 +23,29 @@ export class EditorBubbleMenuComponent implements OnInit, OnDestroy {
   left = signal(0);
   wordCount = signal(0);
 
-  ngOnInit(): void {
-    if (!this.editor()) return;
+  constructor() {
+    effect((onCleanup) => {
+      const currentEditor = this.store.editor();
+      if (currentEditor) {
+        // Register Tiptap event listeners
+        currentEditor.on('selectionUpdate', this.onSelectionUpdate);
+        currentEditor.on('focus', this.onSelectionUpdate);
+        currentEditor.on('blur', this.onBlur);
 
-    // Register Tiptap event listeners
-    this.editor().on('selectionUpdate', this.onSelectionUpdate);
-    this.editor().on('focus', this.onSelectionUpdate);
-    this.editor().on('blur', this.onBlur);
+        // Listen to window resize and scroll events (capturing to detect scrolling in containers)
+        window.addEventListener('resize', this.onSelectionUpdate);
+        window.addEventListener('scroll', this.onSelectionUpdate, true);
 
-    // Listen to window resize and scroll events (capturing to detect scrolling in containers)
-    window.addEventListener('resize', this.onSelectionUpdate);
-    window.addEventListener('scroll', this.onSelectionUpdate, true);
-  }
+        onCleanup(() => {
+          currentEditor.off('selectionUpdate', this.onSelectionUpdate);
+          currentEditor.off('focus', this.onSelectionUpdate);
+          currentEditor.off('blur', this.onBlur);
 
-  ngOnDestroy(): void {
-    if (this.editor) {
-      this.editor().off('selectionUpdate', this.onSelectionUpdate);
-      this.editor().off('focus', this.onSelectionUpdate);
-      this.editor().off('blur', this.onBlur);
-    }
-
-    window.removeEventListener('resize', this.onSelectionUpdate);
-    window.removeEventListener('scroll', this.onSelectionUpdate, true);
+          window.removeEventListener('resize', this.onSelectionUpdate);
+          window.removeEventListener('scroll', this.onSelectionUpdate, true);
+        });
+      }
+    });
   }
 
   private onSelectionUpdate = () => {
@@ -68,12 +68,13 @@ export class EditorBubbleMenuComponent implements OnInit, OnDestroy {
   };
 
   private updateMenuPosition(): void {
-    if (!this.editor) {
+    const currentEditor = this.store.editor();
+    if (!currentEditor) {
       this.isVisible.set(false);
       return;
     }
 
-    const { state } = this.editor();
+    const { state } = currentEditor;
     const { selection } = state;
 
     // Check if there is a text selection
@@ -147,8 +148,9 @@ export class EditorBubbleMenuComponent implements OnInit, OnDestroy {
   }
 
   private getSelectedText(): string {
-    if (!this.editor) return '';
-    const { state } = this.editor();
+    const currentEditor = this.store.editor();
+    if (!currentEditor) return '';
+    const { state } = currentEditor;
     return state.doc.textBetween(state.selection.from, state.selection.to, ' ');
   }
 }

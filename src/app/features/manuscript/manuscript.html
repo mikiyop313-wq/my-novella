@@ -1,10 +1,10 @@
 @if (editor) {
-<div class="manuscript-container" [class.menu-open]="showFormatMenu()"
-  [style.--editor-font-family]="settings().fontFamily" [style.--editor-font-size]="settings().fontSize + 'px'"
-  [style.--editor-line-height]="settings().lineHeight"
-  [style.--editor-paragraph-spacing]="settings().paragraphSpacing + 'px'"
-  [style.--editor-text-align]="settings().textAlign" [style.--editor-text-indent]="settings().textIndent + 'em'"
-  [style.--editor-page-width]="settings().pageWidth === 'narrow' ? '650px' : settings().pageWidth === 'wide' ? '1000px' : '800px'">
+<div class="manuscript-container" [class.menu-open]="store.showFormatMenu()"
+  [style.--editor-font-family]="store.settings().fontFamily" [style.--editor-font-size]="store.settings().fontSize + 'px'"
+  [style.--editor-line-height]="store.settings().lineHeight"
+  [style.--editor-paragraph-spacing]="store.settings().paragraphSpacing + 'px'"
+  [style.--editor-text-align]="store.settings().textAlign" [style.--editor-text-indent]="store.settings().textIndent + 'em'"
+  [style.--editor-page-width]="store.settings().pageWidth === 'narrow' ? '650px' : store.settings().pageWidth === 'wide' ? '1000px' : '800px'">
   <div class="editor-toolbar">
     <div class="toolbar-group">
       <button (click)="editor.chain().focus().toggleBold().run()" [class.is-active]="editor.isActive('bold')"
@@ -69,7 +69,7 @@
     <div class="toolbar-separator"></div>
 
     <div class="toolbar-group format-toggle">
-      <button (click)="toggleFormatMenu()" [class.is-active]="showFormatMenu()" title="Formatting Options">
+      <button (click)="store.toggleFormatMenu()" [class.is-active]="store.showFormatMenu()" title="Formatting Options">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 7h16"></path>
@@ -86,10 +86,10 @@
       <tiptap-editor [editor]="editor"></tiptap-editor>
     </div>
 
-    <aside class="format-sidebar" [class.is-open]="showFormatMenu()">
+    <aside class="format-sidebar" [class.is-open]="store.showFormatMenu()">
       <div class="sidebar-header">
         <h3>Manuscript Format</h3>
-        <button class="close-btn" (click)="toggleFormatMenu()">×</button>
+        <button class="close-btn" (click)="store.toggleFormatMenu()">×</button>
       </div>
 
       <div class="sidebar-content">
@@ -97,7 +97,7 @@
         <div class="format-section">
           <label>Font Family</label>
           <app-autocomplete-dropdown [showSearchBar]="false" [options]="fontOptions" [grouped]="true"
-            [selectedValue]="settings().fontFamily" (selectionChange)="updateSetting('fontFamily', $event)">
+            [selectedValue]="store.settings().fontFamily" (selectionChange)="store.updateSetting('fontFamily', $event)">
           </app-autocomplete-dropdown>
         </div>
 
@@ -105,27 +105,27 @@
         <div class="format-section">
           <div class="section-header">
             <label>Text Size</label>
-            <span class="value">{{settings().fontSize}}px</span>
+            <span class="value">{{store.settings().fontSize}}px</span>
           </div>
-          <input type="range" min="12" max="32" [value]="settings().fontSize"
-            (input)="updateSetting('fontSize', +$any($event.target).value)">
+          <input type="range" min="12" max="32" [value]="store.settings().fontSize"
+            (input)="store.updateSetting('fontSize', +$any($event.target).value)">
         </div>
 
         <!-- Line Height -->
         <div class="format-section">
           <div class="section-header">
             <label>Line Height</label>
-            <span class="value">{{settings().lineHeight}}</span>
+            <span class="value">{{store.settings().lineHeight}}</span>
           </div>
           <div class="segmented-control">
-            <button [class.active]="settings().lineHeight === 1.2"
-              (click)="updateSetting('lineHeight', 1.2)">1.2</button>
-            <button [class.active]="settings().lineHeight === 1.5"
-              (click)="updateSetting('lineHeight', 1.5)">1.5</button>
-            <button [class.active]="settings().lineHeight === 1.8"
-              (click)="updateSetting('lineHeight', 1.8)">1.8</button>
-            <button [class.active]="settings().lineHeight === 2.0"
-              (click)="updateSetting('lineHeight', 2.0)">2.0</button>
+            <button [class.active]="store.settings().lineHeight === 1.2"
+              (click)="store.updateSetting('lineHeight', 1.2)">1.2</button>
+            <button [class.active]="store.settings().lineHeight === 1.5"
+              (click)="store.updateSetting('lineHeight', 1.5)">1.5</button>
+            <button [class.active]="store.settings().lineHeight === 1.8"
+              (click)="store.updateSetting('lineHeight', 1.8)">1.8</button>
+            <button [class.active]="store.settings().lineHeight === 2.0"
+              (click)="store.updateSetting('lineHeight', 2.0)">2.0</button>
           </div>
         </div>
 
@@ -133,17 +133,17 @@
         <div class="format-section">
           <div class="section-header">
             <label>Paragraph Spacing</label>
-            <span class="value">{{settings().paragraphSpacing}}px</span>
+            <span class="value">{{store.settings().paragraphSpacing}}px</span>
           </div>
-          <input type="range" min="0" max="60" step="4" [value]="settings().paragraphSpacing"
-            (input)="updateSetting('paragraphSpacing', +$any($event.target).value)">
+          <input type="range" min="0" max="60" step="4" [value]="store.settings().paragraphSpacing"
+            (input)="store.updateSetting('paragraphSpacing', +$any($event.target).value)">
         </div>
 
         <!-- Text Alignment -->
         <div class="format-section">
           <label>Text Alignment</label>
           <div class="align-grid">
-            <button [class.active]="settings().textAlign === 'left'" (click)="updateSetting('textAlign', 'left')"
+            <button [class.active]="store.settings().textAlign === 'left'" (click)="store.updateSetting('textAlign', 'left')"
               title="Left">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -153,7 +153,7 @@
                 <line x1="17" y1="18" x2="3" y2="18"></line>
               </svg>
             </button>
-            <button [class.active]="settings().textAlign === 'center'" (click)="updateSetting('textAlign', 'center')"
+            <button [class.active]="store.settings().textAlign === 'center'" (click)="store.updateSetting('textAlign', 'center')"
               title="Center">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -163,7 +163,7 @@
                 <line x1="18" y1="18" x2="6" y2="18"></line>
               </svg>
             </button>
-            <button [class.active]="settings().textAlign === 'right'" (click)="updateSetting('textAlign', 'right')"
+            <button [class.active]="store.settings().textAlign === 'right'" (click)="store.updateSetting('textAlign', 'right')"
               title="Right">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -173,7 +173,7 @@
                 <line x1="21" y1="18" x2="7" y2="18"></line>
               </svg>
             </button>
-            <button [class.active]="settings().textAlign === 'justify'" (click)="updateSetting('textAlign', 'justify')"
+            <button [class.active]="store.settings().textAlign === 'justify'" (click)="store.updateSetting('textAlign', 'justify')"
               title="Justify">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -190,14 +190,14 @@
         <div class="format-section">
           <div class="section-header">
             <label>First Line Indent</label>
-            <span class="value">{{settings().textIndent}}em</span>
+            <span class="value">{{store.settings().textIndent}}em</span>
           </div>
           <div class="segmented-control">
-            <button [class.active]="settings().textIndent === 0" (click)="updateSetting('textIndent', 0)">None</button>
-            <button [class.active]="settings().textIndent === 1.5"
-              (click)="updateSetting('textIndent', 1.5)">1.5</button>
-            <button [class.active]="settings().textIndent === 3.0"
-              (click)="updateSetting('textIndent', 3.0)">3.0</button>
+            <button [class.active]="store.settings().textIndent === 0" (click)="store.updateSetting('textIndent', 0)">None</button>
+            <button [class.active]="store.settings().textIndent === 1.5"
+              (click)="store.updateSetting('textIndent', 1.5)">1.5</button>
+            <button [class.active]="store.settings().textIndent === 3.0"
+              (click)="store.updateSetting('textIndent', 3.0)">3.0</button>
           </div>
         </div>
 
@@ -205,21 +205,21 @@
         <div class="format-section">
           <div class="section-header">
             <label>Page Width</label>
-            <span class="value">{{settings().pageWidth === 'narrow' ? 'Narrow' : settings().pageWidth === 'wide' ?
+            <span class="value">{{store.settings().pageWidth === 'narrow' ? 'Narrow' : store.settings().pageWidth === 'wide' ?
               'Wide' : 'Medium'}}</span>
           </div>
           <div class="segmented-control">
-            <button [class.active]="settings().pageWidth === 'narrow'"
-              (click)="updateSetting('pageWidth', 'narrow')">Narrow</button>
-            <button [class.active]="settings().pageWidth === 'medium'"
-              (click)="updateSetting('pageWidth', 'medium')">Medium</button>
-            <button [class.active]="settings().pageWidth === 'wide'"
-              (click)="updateSetting('pageWidth', 'wide')">Wide</button>
+            <button [class.active]="store.settings().pageWidth === 'narrow'"
+              (click)="store.updateSetting('pageWidth', 'narrow')">Narrow</button>
+            <button [class.active]="store.settings().pageWidth === 'medium'"
+              (click)="store.updateSetting('pageWidth', 'medium')">Medium</button>
+            <button [class.active]="store.settings().pageWidth === 'wide'"
+              (click)="store.updateSetting('pageWidth', 'wide')">Wide</button>
           </div>
         </div>
       </div>
     </aside>
   </div>
-  <app-editor-bubble-menu [editor]="editor"></app-editor-bubble-menu>
+  <app-editor-bubble-menu></app-editor-bubble-menu>
 </div>
 }
