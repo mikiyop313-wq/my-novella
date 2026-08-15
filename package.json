@@ -15,7 +15,8 @@
     "test": "ng test",
     "electron": "npm run build:electron && electron .",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "npm rebuild better-sqlite3 && drizzle-kit push && npm run rebuild",
+    "db:studio": "electron ./node_modules/drizzle-kit/bin.cjs studio"
   },
   "private": true,
   "packageManager": "npm@11.11.0",
