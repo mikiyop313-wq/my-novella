@@ -69,6 +69,11 @@ export interface DeleteSystemPromptPresetPayload {
 
 export type ActiveSystemPromptPresetIds = Record<SystemPromptCategory, string>;
 
+export interface AiSystemPromptPresetSelection {
+  category: SystemPromptCategory;
+  presetId: string;
+}
+
 export interface ListActiveSystemPromptPresetsPayload {
   bookId: string;
 }

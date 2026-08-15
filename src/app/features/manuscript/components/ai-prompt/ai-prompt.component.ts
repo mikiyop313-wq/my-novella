@@ -381,11 +381,15 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const loadingSig = this.loadingSignal(blockId);
     loadingSig?.set('loading');
 
+    const bookId = this.workspaceStore.bookId();
+    if (!bookId) {
+      this.toastService.error('No active book is available.', 'AI Generation');
+      loadingSig?.set('idle');
+      return;
+    }
+
     let messages: AiChatMessage[];
     try {
-      const bookId = this.workspaceStore.bookId();
-      if (!bookId) throw new Error('No active book is available.');
-
       messages = await this.manuscriptAiContext.buildMessages({
         editor: this.editor(),
         promptPos: pos,
@@ -425,6 +429,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         provider,
         modelId,
         this.reasoningMode(),
+        bookId,
         blockId,
         messages,
       );

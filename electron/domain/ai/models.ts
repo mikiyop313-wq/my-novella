@@ -1,4 +1,4 @@
-import type { SystemPromptCategory } from '../../../shared/models/system-prompt.model';
+import type { AiSystemPromptPresetSelection } from '../../../shared/models/system-prompt.model';
 
 export type AiChatMessageRole = 'system' | 'user' | 'assistant';
 
@@ -20,11 +20,6 @@ export interface AiChatCompletionPayload {
         enabled: true;
         effort: 'medium';
     };
-}
-
-export interface AiSystemPromptPresetSelection {
-    category: SystemPromptCategory;
-    presetId: string;
 }
 
 export interface AiPromptRequest {

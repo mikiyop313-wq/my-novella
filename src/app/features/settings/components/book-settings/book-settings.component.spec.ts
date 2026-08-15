@@ -8,6 +8,7 @@ import type { BookDto, UpdateBookDto } from '../../../../../../shared/models/boo
 import { ThemeService, type Theme } from '../../../../core/services/theme.service';
 import { ConfigStore } from '../../../../core/store/config.store';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
@@ -216,6 +217,20 @@ describe('BookSettingsComponent', () => {
           },
         },
         {
+          provide: SystemPromptSelectionService,
+          useValue: {
+            getActivePresetIds: vi.fn().mockResolvedValue({
+              chat: 'default-assistant',
+              sceneBeat: 'default-scene-beat',
+              rephrase: 'default-rephrase',
+              summary: 'default-summary',
+              expand: 'default-expand',
+              shorten: 'default-shorten',
+              title: 'default-title',
+            }),
+          },
+        },
+        {
           provide: Router,
           useValue: { navigateByUrl },
         },
@@ -309,12 +324,14 @@ describe('BookSettingsComponent', () => {
 
     sections[1].click();
     fixture.detectChanges();
-    await Promise.resolve();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(fixture.componentInstance.activeSection()).toBe('system-prompts');
     const promptSettings = fixture.debugElement.query(By.directive(SystemPromptSettingsComponent))
       .componentInstance as SystemPromptSettingsComponent;
+    await promptSettings.loadPresets();
+    fixture.detectChanges();
     expect(promptSettings.bookId()).toBe('book-1');
     expect(element.querySelector('.content-title')?.textContent).toContain('System Prompts');
     expect(element.querySelectorAll('[role="option"]')).toHaveLength(1);

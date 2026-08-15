@@ -15,12 +15,6 @@ import { ChatAiContextService } from './chat-ai-context.service';
 import { ChatStore } from '../store/chat.store';
 
 const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
-const CHAT_THREAD_TITLE_SYSTEM_PROMPT = [
-  'Create a concise title for this chat thread based only on the user message.',
-  'Return only the title.',
-  'Use 3 to 7 words.',
-  'Do not use quotation marks, markdown, labels, or terminal punctuation.',
-].join(' ');
 
 export interface ChatResponseSettings {
   selectedModelId: string | null;
@@ -77,6 +71,12 @@ export class ChatResponseService {
   ): Promise<void> {
     if (this.generatingResponse()) return;
 
+    const bookId = this.chatStore.bookId();
+    if (!bookId) {
+      this.toastService.error('No active book is available.', 'AI Generation');
+      return;
+    }
+
     const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
     let messages: AiChatMessage[];
     try {
@@ -91,10 +91,9 @@ export class ChatResponseService {
     }
     const streamId = `pending-${userMessage.id}`;
     const threadId = userMessage.threadId;
-    const shouldGenerateTitle = this.shouldGenerateThreadTitle(
-      this.chatStore.selectedThread(),
-      userMessage,
-    );
+    const selectedThread = this.chatStore.selectedThread();
+    const shouldGenerateTitle = this.shouldGenerateThreadTitle(selectedThread, userMessage);
+    const titleBookId = shouldGenerateTitle ? selectedThread.bookId : null;
 
     let assistantMessage: ChatMessageDetailDto | null = null;
     let assistantMessagePromise: Promise<ChatMessageDetailDto | null> | null = null;
@@ -156,6 +155,8 @@ export class ChatResponseService {
     try {
       const generatedText = await this.aiStreamService.streamText({
         streamId,
+        bookId,
+        systemPromptCategory: 'chat',
         prompt,
         messages,
         provider,
@@ -208,8 +209,8 @@ export class ChatResponseService {
       // The local patch keeps the UI responsive; the update persists the final
       // status and metadata once streaming has settled.
       await this.chatStore.updateMessage(assistantMessage.id, data);
-      if (shouldGenerateTitle) {
-        await this.generateThreadTitle(userMessage, provider, modelId);
+      if (shouldGenerateTitle && titleBookId) {
+        await this.generateThreadTitle(userMessage, titleBookId, provider, modelId);
       }
     } catch (error) {
       await lastStreamingPatch;
@@ -364,20 +365,19 @@ export class ChatResponseService {
 
   private async generateThreadTitle(
     userMessage: ChatMessageDetailDto,
+    bookId: string,
     provider: string,
     modelId: string | null,
   ): Promise<void> {
     try {
       const rawTitle = await this.aiStreamService.streamText({
         streamId: `title-${userMessage.id}`,
+        bookId,
+        systemPromptCategory: 'title',
         prompt: userMessage.content,
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: false,
-        messages: [
-          { role: 'system', content: CHAT_THREAD_TITLE_SYSTEM_PROMPT },
-          { role: 'user', content: userMessage.content },
-        ],
       });
       const title = this.normalizeThreadTitle(rawTitle);
 

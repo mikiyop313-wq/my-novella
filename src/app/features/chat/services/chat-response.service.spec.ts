@@ -178,6 +178,8 @@ describe('ChatResponseService', () => {
 
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'pending-user-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'chat',
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
       reasoningMode: true,
@@ -235,8 +237,21 @@ describe('ChatResponseService', () => {
     );
   });
 
+  it('does not prepare context or stream without an active chat book', async () => {
+    chatStore.bookId.mockReturnValue(null);
+
+    await service.generateResponse(messages[0], 'Write a scene', settings);
+
+    expect(chatAiContext.buildContextMessage).not.toHaveBeenCalled();
+    expect(aiStreamService.streamText).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith(
+      'No active book is available.',
+      'AI Generation',
+    );
+  });
+
   it('generates a concise thread title from the first user message', async () => {
-    selectedThread = makeThreadDetail({ title: 'New chat', messages });
+    selectedThread = makeThreadDetail({ bookId: 'thread-book', title: 'New chat', messages });
     aiStreamService.streamText.mockImplementation(async (request: {
       streamId: string;
       onToken?: (token: string) => void;
@@ -251,16 +266,19 @@ describe('ChatResponseService', () => {
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
 
-    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+    const titleRequest = aiStreamService.streamText.mock.calls
+      .map(([request]) => request)
+      .find((request) => request.streamId === 'title-user-1');
+    expect(titleRequest).toEqual(expect.objectContaining({
       streamId: 'title-user-1',
+      bookId: 'thread-book',
+      systemPromptCategory: 'title',
+      prompt: 'Write a scene',
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
       reasoningMode: false,
-      messages: [
-        expect.objectContaining({ role: 'system' }),
-        { role: 'user', content: 'Write a scene' },
-      ],
     }));
+    expect(titleRequest).not.toHaveProperty('messages');
     expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', {
       title: 'Moonlit Escape',
     });

@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import type { AiSystemPromptPresetSelection } from '../../../../shared/models/system-prompt.model';
 import { ToastService } from '../../shared/services/toast.service';
 
 export type AiChatMessageRole = 'system' | 'user' | 'assistant';
@@ -27,6 +28,7 @@ export class AIStateService {
         modelId?: string,
         reasoningMode?: boolean,
         messages?: AiChatMessage[],
+        systemPromptPreset?: AiSystemPromptPresetSelection,
     ) {
         // Default to openai if the user hasn't selected one yet
         const providerToUse = model || this.model || 'openrouter';
@@ -38,6 +40,7 @@ export class AIStateService {
                 prompt: promptText,
                 reasoningMode: reasoningMode ?? false,
                 ...(messages !== undefined ? { messages } : {}),
+                ...(systemPromptPreset !== undefined ? { systemPromptPreset } : {}),
             });
 
             return response.text;

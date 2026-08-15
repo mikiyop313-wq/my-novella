@@ -53,6 +53,7 @@ export class AiStreamEditorService {
     provider: string,
     modelId: string,
     reasoningMode: boolean,
+    bookId: string,
     blockId?: string,
     messages?: AiChatMessage[],
   ): Promise<void> {
@@ -74,6 +75,7 @@ export class AiStreamEditorService {
       provider,
       modelId,
       reasoningMode,
+      bookId,
       messages,
     );
   }
@@ -89,7 +91,8 @@ export class AiStreamEditorService {
     newPrompt: string,
     provider: string,
     modelId: string,
-    reasoningMode: boolean
+    reasoningMode: boolean,
+    bookId: string,
   ): Promise<void> {
     const blockAttrs = this.createGeneratingBlockAttrs({
       id: currentAttrs['id'],
@@ -112,7 +115,8 @@ export class AiStreamEditorService {
       newPrompt,
       provider,
       modelId,
-      reasoningMode
+      reasoningMode,
+      bookId,
     );
   }
 
@@ -211,6 +215,7 @@ export class AiStreamEditorService {
     provider: string,
     modelId: string | undefined,
     reasoningMode: boolean,
+    bookId: string,
     messages?: AiChatMessage[],
   ): Promise<void> {
     let currentInsertPos = startInsertPos;
@@ -255,6 +260,8 @@ export class AiStreamEditorService {
     try {
       await this.aiStreamService.streamText({
         streamId: blockAttrs['id'],
+        bookId,
+        systemPromptCategory: 'sceneBeat',
         prompt: promptText,
         provider,
         modelId,

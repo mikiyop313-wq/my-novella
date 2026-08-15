@@ -26,6 +26,9 @@ export class OpenRouterProvider implements AiProvider {
             );
 
             console.log('[OpenRouter] Sending payload:', JSON.stringify(payload, null, 2));
+            payload.messages.forEach((message, index) => {
+                console.log(`[OpenRouter] Message ${index} (${message.role}) content:\n${message.content}`);
+            });
 
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',

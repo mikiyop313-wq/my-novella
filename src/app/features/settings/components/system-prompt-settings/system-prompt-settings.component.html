@@ -49,7 +49,9 @@
           <button
             class="add-preset-button"
             type="button"
-            [disabled]="isCreating() || deletingPresetId() !== null"
+            [disabled]="
+              isCreating() || deletingPresetId() !== null || activatingPresetId() !== null
+            "
             (click)="addPreset()"
           >
             <svg
@@ -143,11 +145,19 @@
                 class="use-preset-button"
                 type="button"
                 [class.is-active]="isPresetInUse(preset.id, preset.category)"
-                [disabled]="isPresetInUse(preset.id, preset.category)"
+                [disabled]="
+                  isPresetInUse(preset.id, preset.category) ||
+                  activatingPresetId() !== null ||
+                  isPresetPendingOrSaving(preset.id) ||
+                  isCreating() ||
+                  deletingPresetId() !== null
+                "
                 [attr.aria-pressed]="isPresetInUse(preset.id, preset.category)"
                 (click)="useSelectedPreset()"
               >
-                @if (isPresetInUse(preset.id, preset.category)) {
+                @if (activatingPresetId() === preset.id) {
+                  Activating…
+                } @else if (isPresetInUse(preset.id, preset.category)) {
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -170,7 +180,10 @@
                 aria-label="Clone selected preset"
                 title="Clone preset"
                 [disabled]="
-                  isCreating() || deletingPresetId() !== null || isPresetPendingOrSaving(preset.id)
+                  isCreating() ||
+                  deletingPresetId() !== null ||
+                  activatingPresetId() !== null ||
+                  isPresetPendingOrSaving(preset.id)
                 "
                 (click)="cloneSelectedPreset()"
               >
@@ -193,7 +206,9 @@
                 aria-label="Delete selected preset"
                 [disabled]="
                   preset.isBuiltIn ||
+                  isCreating() ||
                   deletingPresetId() !== null ||
+                  activatingPresetId() !== null ||
                   isPresetPendingOrSaving(preset.id)
                 "
                 [title]="

@@ -3,9 +3,14 @@ import { By } from '@angular/platform-browser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AI_SYSTEM_PROMPTS } from '../../../../../../shared/constants/ai-system-prompts';
-import type { SystemPromptPresetDto } from '../../../../../../shared/models/system-prompt.model';
+import type {
+  ActiveSystemPromptPresetIds,
+  SystemPromptCategory,
+  SystemPromptPresetDto,
+} from '../../../../../../shared/models/system-prompt.model';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
 import { SystemPromptService } from '../../services/system-prompt.service';
 import { SystemPromptSettingsComponent } from './system-prompt-settings.component';
 
@@ -16,6 +21,10 @@ describe('SystemPromptSettingsComponent', () => {
   let create: ReturnType<typeof vi.fn>;
   let update: ReturnType<typeof vi.fn>;
   let deletePreset: ReturnType<typeof vi.fn>;
+  let getActivePresetIds: ReturnType<typeof vi.fn>;
+  let setActivePreset: ReturnType<typeof vi.fn>;
+  let resetActivePreset: ReturnType<typeof vi.fn>;
+  let invalidate: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
 
   const savedScenePreset = presetDto({
@@ -37,6 +46,15 @@ describe('SystemPromptSettingsComponent', () => {
     create = vi.fn();
     update = vi.fn();
     deletePreset = vi.fn();
+    getActivePresetIds = vi.fn().mockResolvedValue(activeIds());
+    setActivePreset = vi.fn().mockImplementation(
+      (_bookId: string, category: SystemPromptCategory, presetId: string) =>
+        Promise.resolve(activeIds({ [category]: presetId })),
+    );
+    resetActivePreset = vi.fn().mockImplementation(
+      () => Promise.resolve(activeIds()),
+    );
+    invalidate = vi.fn();
     toastError = vi.fn();
 
     await TestBed.configureTestingModule({
@@ -45,6 +63,15 @@ describe('SystemPromptSettingsComponent', () => {
         {
           provide: SystemPromptService,
           useValue: { listAvailable, create, update, delete: deletePreset },
+        },
+        {
+          provide: SystemPromptSelectionService,
+          useValue: {
+            getActivePresetIds,
+            setActivePreset,
+            resetActivePreset,
+            invalidate,
+          },
         },
         { provide: ToastService, useValue: { error: toastError } },
       ],
@@ -64,7 +91,7 @@ describe('SystemPromptSettingsComponent', () => {
 
   it('loads built-ins plus current-book presets and excludes global presets', () => {
     expect(listAvailable).toHaveBeenCalledWith('book-1');
-    expect(component.presets()).toHaveLength(7);
+    expect(component.presets()).toHaveLength(8);
     expect(component.presets().map((preset) => preset.id)).not.toContain('global-chat');
 
     changeCategory('sceneBeat');
@@ -76,7 +103,8 @@ describe('SystemPromptSettingsComponent', () => {
     expect(component.selectedPresetId()).toBe('default-scene-beat');
   });
 
-  it('starts every category with its built-in default in use', () => {
+  it('loads authoritative active IDs and hides the Chat Title category', () => {
+    expect(getActivePresetIds).toHaveBeenCalledWith('book-1');
     expect(component.activePresetIds()).toEqual({
       chat: 'default-assistant',
       sceneBeat: 'default-scene-beat',
@@ -84,7 +112,10 @@ describe('SystemPromptSettingsComponent', () => {
       summary: 'default-summary',
       expand: 'default-expand',
       shorten: 'default-shorten',
+      title: 'default-title',
     });
+
+    expect(component.categoryOptions.map((option) => option.label)).not.toContain('Chat Title');
 
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.preset-option.is-in-use .preset-name')?.textContent).toContain(
@@ -94,11 +125,11 @@ describe('SystemPromptSettingsComponent', () => {
     expect(element.querySelector('.use-preset-button')?.textContent).toContain('In use');
   });
 
-  it('keeps editor selection separate from the visual preset in use', () => {
+  it('keeps editor selection separate and activates a custom preset authoritatively', async () => {
     selectSavedScenePreset();
 
     expect(component.selectedPresetId()).toBe('scene-custom');
-    expect(component.activePresetIds().sceneBeat).toBe('default-scene-beat');
+    expect(component.activePresetIds()?.sceneBeat).toBe('default-scene-beat');
 
     const element = fixture.nativeElement as HTMLElement;
     const useButton = element.querySelector<HTMLButtonElement>('.use-preset-button');
@@ -106,9 +137,11 @@ describe('SystemPromptSettingsComponent', () => {
     expect(useButton?.textContent).toContain('Use preset');
 
     useButton?.click();
+    await settle();
     fixture.detectChanges();
 
-    expect(component.activePresetIds().sceneBeat).toBe('scene-custom');
+    expect(setActivePreset).toHaveBeenCalledWith('book-1', 'sceneBeat', 'scene-custom');
+    expect(component.activePresetIds()?.sceneBeat).toBe('scene-custom');
     expect(element.querySelector('.preset-option.is-in-use .preset-name')?.textContent).toContain(
       'Scene Architect',
     );
@@ -119,15 +152,54 @@ describe('SystemPromptSettingsComponent', () => {
     expect(deletePreset).not.toHaveBeenCalled();
   });
 
-  it('keeps a separate visual preset in use for each category', () => {
+  it('keeps a separate visual preset in use for each category', async () => {
     selectSavedScenePreset();
-    component.useSelectedPreset();
+    await component.useSelectedPreset();
 
     changeCategory('chat');
-    expect(component.activePresetIds().chat).toBe('default-assistant');
+    expect(component.activePresetIds()?.chat).toBe('default-assistant');
 
     changeCategory('sceneBeat');
-    expect(component.activePresetIds().sceneBeat).toBe('scene-custom');
+    expect(component.activePresetIds()?.sceneBeat).toBe('scene-custom');
+  });
+
+  it('resets built-in activation and retains state when activation fails', async () => {
+    selectSavedScenePreset();
+    await component.useSelectedPreset();
+
+    component.selectPreset('default-scene-beat');
+    await component.useSelectedPreset();
+
+    expect(resetActivePreset).toHaveBeenCalledWith('book-1', 'sceneBeat');
+    expect(component.activePresetIds()?.sceneBeat).toBe('default-scene-beat');
+
+    component.selectPreset('scene-custom');
+    setActivePreset.mockRejectedValueOnce(new Error('Activation unavailable'));
+    await component.useSelectedPreset();
+
+    expect(component.activePresetIds()?.sceneBeat).toBe('default-scene-beat');
+    expect(toastError).toHaveBeenCalledWith(
+      'Activation unavailable',
+      'Preset activation failed',
+    );
+  });
+
+  it('disables activation while the selected preset has pending autosave changes', async () => {
+    vi.useFakeTimers();
+    selectSavedScenePreset();
+    update.mockResolvedValue(savedScenePreset);
+
+    updateInput('#preset-name', 'Pending name');
+    fixture.detectChanges();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.use-preset-button')
+        ?.disabled,
+    ).toBe(true);
+    await component.useSelectedPreset();
+    expect(setActivePreset).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(500);
   });
 
   it('protects every editable built-in field and requires cloning', () => {
@@ -174,7 +246,7 @@ describe('SystemPromptSettingsComponent', () => {
       }),
     );
     expect(component.selectedPresetId()).toBe('created-preset');
-    expect(component.activePresetIds().chat).toBe('default-assistant');
+    expect(component.activePresetIds()?.chat).toBe('default-assistant');
 
     changeCategory('rephrase');
     const clone = presetDto({
@@ -198,7 +270,7 @@ describe('SystemPromptSettingsComponent', () => {
       }),
     );
     expect(component.selectedPresetId()).toBe('rephrase-copy');
-    expect(component.activePresetIds().rephrase).toBe('default-rephrase');
+    expect(component.activePresetIds()?.rephrase).toBe('default-rephrase');
   });
 
   it('combines edits into one autosave after 500 ms', async () => {
@@ -307,7 +379,7 @@ describe('SystemPromptSettingsComponent', () => {
     create.mockRejectedValueOnce(new Error('Create failed'));
     await component.addPreset();
 
-    expect(component.presets()).toHaveLength(7);
+    expect(component.presets()).toHaveLength(8);
     expect(toastError).toHaveBeenCalledWith('Create failed', 'Preset creation failed');
 
     selectSavedScenePreset();
@@ -317,15 +389,36 @@ describe('SystemPromptSettingsComponent', () => {
     expect(component.presets().map((preset) => preset.id)).toContain('scene-custom');
     expect(toastError).toHaveBeenCalledWith('Delete failed', 'Preset deletion failed');
 
-    component.useSelectedPreset();
-    expect(component.activePresetIds().sceneBeat).toBe('scene-custom');
+    await component.useSelectedPreset();
+    expect(component.activePresetIds()?.sceneBeat).toBe('scene-custom');
 
     deletePreset.mockResolvedValueOnce({ success: true });
     await component.deleteSelectedPreset();
 
     expect(component.presets().map((preset) => preset.id)).not.toContain('scene-custom');
     expect(component.selectedPresetId()).toBe('default-scene-beat');
-    expect(component.activePresetIds().sceneBeat).toBe('default-scene-beat');
+    expect(invalidate).toHaveBeenCalledWith('book-1');
+    expect(getActivePresetIds).toHaveBeenLastCalledWith('book-1', true);
+    expect(component.activePresetIds()?.sceneBeat).toBe('default-scene-beat');
+  });
+
+  it('shows a retryable error if active selections cannot refresh after deletion', async () => {
+    selectSavedScenePreset();
+    deletePreset.mockResolvedValueOnce({ success: true });
+    getActivePresetIds.mockRejectedValueOnce(new Error('Selection reload failed'));
+
+    await component.deleteSelectedPreset();
+    fixture.detectChanges();
+
+    expect(invalidate).toHaveBeenCalledWith('book-1');
+    expect(component.presets().map((preset) => preset.id)).not.toContain('scene-custom');
+    expect(component.loadError()).toBe('Selection reload failed');
+    expect((fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent)
+      .toContain('Selection reload failed');
+    expect(toastError).toHaveBeenCalledWith(
+      'Selection reload failed',
+      'Preset selection refresh failed',
+    );
   });
 
   it('shows a retryable error instead of temporary presets when loading fails', async () => {
@@ -389,6 +482,21 @@ function presetDto(overrides: Partial<SystemPromptPresetDto> = {}): SystemPrompt
     frequencyPenalty: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-02T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function activeIds(
+  overrides: Partial<ActiveSystemPromptPresetIds> = {},
+): ActiveSystemPromptPresetIds {
+  return {
+    chat: 'default-assistant',
+    sceneBeat: 'default-scene-beat',
+    rephrase: 'default-rephrase',
+    summary: 'default-summary',
+    expand: 'default-expand',
+    shorten: 'default-shorten',
+    title: 'default-title',
     ...overrides,
   };
 }
