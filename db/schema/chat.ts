@@ -57,6 +57,9 @@ export const chatMessages = sqliteTable(
     outputTokens: integer('output_tokens'),
     reasoningSummary: text('reasoning_summary'),
     error: text('error'),
+    includeFullOutline: integer('include_full_outline', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
     lastEditedAt: integer('last_edited_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   },

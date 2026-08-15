@@ -8,6 +8,10 @@ import {
 import { AiStore } from '../../../core/store/ai.store';
 import { type AiChatMessage } from '../../../core/services/ai-state.service';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
+import { ToastService } from '../../../shared/services/toast.service';
+import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
+import { WorkspaceStore } from '../../workspace/workspace.store';
+import { ChatAiContextService } from './chat-ai-context.service';
 import { ChatStore } from '../store/chat.store';
 
 const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
@@ -42,7 +46,11 @@ export class ChatResponseService {
 
   private readonly aiStore = inject(AiStore);
   private readonly aiStreamService = inject(AiStreamService);
+  private readonly chatAiContext = inject(ChatAiContextService);
   private readonly chatStore = inject(ChatStore);
+  private readonly toastService = inject(ToastService);
+  private readonly workspaceBookStore = inject(WorkspaceBookStore);
+  private readonly workspaceStore = inject(WorkspaceStore);
 
   // ---------------------------------------------------------------------------
   // Response State
@@ -70,7 +78,17 @@ export class ChatResponseService {
     if (this.generatingResponse()) return;
 
     const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
-    const messages = this.buildAiMessages(userMessage);
+    let messages: AiChatMessage[];
+    try {
+      messages = await this.buildAiMessages(userMessage);
+    } catch (error) {
+      console.error('[ChatResponseService] AI context preparation failed:', error);
+      this.toastService.error(
+        'Could not prepare the selected story context.',
+        'AI Context',
+      );
+      return;
+    }
     const streamId = `pending-${userMessage.id}`;
     const threadId = userMessage.threadId;
     const shouldGenerateTitle = this.shouldGenerateThreadTitle(
@@ -308,7 +326,7 @@ export class ChatResponseService {
   // Private Helpers
   // ---------------------------------------------------------------------------
 
-  private buildAiMessages(userMessage: ChatMessageDetailDto): AiChatMessage[] {
+  private async buildAiMessages(userMessage: ChatMessageDetailDto): Promise<AiChatMessage[]> {
     const threadMessages = this.chatStore.visibleMessages();
     const userMessageIndex = threadMessages.findIndex((message) => message.id === userMessage.id);
     const messages =
@@ -318,13 +336,30 @@ export class ChatResponseService {
 
     // Send only the active branch up to the requested user message. Draft,
     // failed, and empty messages are excluded from provider context.
-    return messages
+    const includedMessages = messages
       .filter(
         (message) =>
           (message.status === 'complete' || message.id === userMessage.id) &&
           message.content.trim().length > 0,
-      )
-      .map((message) => ({ role: message.role, content: message.content }));
+      );
+    const bookId = this.chatStore.bookId();
+    const contextMessage = bookId
+      ? await this.chatAiContext.buildContextMessage({
+          userMessage,
+          bookId,
+          bookTitle: this.workspaceStore.bookId() === bookId
+            ? this.workspaceStore.bookTitle()
+            : undefined,
+          hierarchy: this.workspaceBookStore.bookHierarchy(),
+        })
+      : null;
+
+    return includedMessages.flatMap((message) => {
+      const aiMessage = { role: message.role, content: message.content };
+      return contextMessage && message.id === userMessage.id
+        ? [contextMessage, aiMessage]
+        : [aiMessage];
+    });
   }
 
   private async generateThreadTitle(

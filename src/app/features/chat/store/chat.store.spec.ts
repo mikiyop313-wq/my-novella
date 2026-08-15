@@ -39,6 +39,7 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
+    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     sceneRefs: [],
@@ -305,6 +306,7 @@ describe('ChatStore', () => {
     const source = makeMessage({
       id: 'user-1',
       content: 'Original prompt',
+      includeFullOutline: true,
       sceneRefs: [{ messageId: 'user-1', sceneId: 'scene-1' }],
       codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
     });
@@ -328,6 +330,7 @@ describe('ChatStore', () => {
       role: 'user',
       content: 'Edited prompt',
       status: 'complete',
+      includeFullOutline: true,
       sceneIds: ['scene-1'],
       codexEntryIds: ['codex-1'],
     });

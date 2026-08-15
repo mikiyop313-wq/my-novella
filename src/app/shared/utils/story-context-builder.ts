@@ -3,16 +3,16 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type {
   CodexEntryDetailDto,
   CodexEntryProgressionDto,
-} from '../../../../../../shared/models/codex.model';
-import type { BookSettingsDto } from '../../../../../../shared/models/book.model';
+} from '../../../../shared/models/codex.model';
+import type { BookSettingsDto } from '../../../../shared/models/book.model';
 import type {
   ActDto,
   ChapterDto,
   SceneDto,
   TiptapJsonDoc,
   TiptapNode,
-} from '../../../../../../shared/models/manuscript.model';
-import type { AiManuscriptContextRef } from '../../components/ai-prompt/ai-prompt-dropdown-options';
+} from '../../../../shared/models/manuscript.model';
+import type { AiManuscriptContextRef } from '../models/ai-context.model';
 
 const EXCLUDED_PROSE_NODES = new Set([
   'aiPrompt',

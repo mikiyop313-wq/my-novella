@@ -12,9 +12,7 @@ import type {
   SceneDto,
   TiptapJsonDoc,
 } from '../../../../../../shared/models/manuscript.model';
-import type { AiManuscriptContextRef } from '../../components/ai-prompt/ai-prompt-dropdown-options';
-import { extractManuscriptHierarchyById } from '../content/manuscript-content.utils';
-import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
+import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 import {
   type AutomaticSceneContent,
   expandManuscriptRefs,
@@ -26,7 +24,9 @@ import {
   serializeNarrativeGuidance,
   serializeSelectedManuscript,
   serializeTiptapDocument,
-} from './ai-prompt-context-builder';
+} from '../../../../shared/utils/story-context-builder';
+import { extractManuscriptHierarchyById } from '../content/manuscript-content.utils';
+import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 
 export type ManuscriptAiPointOfViewSetting = BookSettingsDto['pointOfView'] | 'global';
 

@@ -1,11 +1,11 @@
 import { Schema, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 
-import type { CodexEntryDetailDto } from '../../../../../../shared/models/codex.model';
+import type { CodexEntryDetailDto } from '../../../../shared/models/codex.model';
 import type {
   ActDto,
   ChapterDto,
   SceneDto,
-} from '../../../../../../shared/models/manuscript.model';
+} from '../../../../shared/models/manuscript.model';
 import {
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
@@ -16,9 +16,9 @@ import {
   serializeNarrativeGuidance,
   serializeSelectedManuscript,
   serializeTiptapDocument,
-} from './ai-prompt-context-builder';
+} from './story-context-builder';
 
-describe('AI prompt context builder', () => {
+describe('Story context builder', () => {
   it('expands structural references without duplicating scenes', () => {
     const hierarchy = createHierarchy();
 

@@ -19,7 +19,10 @@ import { CodexContextHighlightRegistryService } from '../codex/highlighting/code
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.service';
+import { WorkspaceBookStore } from '../workspace/workspace-book.store';
+import { WorkspaceStore } from '../workspace/workspace.store';
 import { Chat } from './chat';
+import { ChatAiContextService } from './services/chat-ai-context.service';
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
 
@@ -66,6 +69,7 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
+    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     sceneRefs: [],
@@ -126,10 +130,33 @@ describe('Chat', () => {
   let detachedWindowClosedCallback: ((event: { bookId: string; sessionId: string }) => void) | null;
   let detachedBookIds: Set<string>;
   const trieState = signal<object | null>({});
+  const contextEntries = signal<any[]>([]);
+  const contextLoading = signal(false);
+  const contextError = signal<string | null>(null);
   const contextTrie = {
     trie: trieState.asReadonly(),
+    entries: contextEntries.asReadonly(),
+    isLoading: contextLoading.asReadonly(),
+    error: contextError.asReadonly(),
     findMatches: vi.fn((text: string) => findCodexMatches(text)),
     loadForContext: vi.fn(),
+  };
+  const contextHierarchy = signal<any[]>([]);
+  const contextHierarchyLoading = signal(false);
+  const contextHierarchyError = signal<string | null>(null);
+  const workspaceBookStore = {
+    bookHierarchy: contextHierarchy.asReadonly(),
+    isLoadingBookHierarchy: contextHierarchyLoading.asReadonly(),
+    bookHierarchyError: contextHierarchyError.asReadonly(),
+    loadBookHierarchy: vi.fn(async () => contextHierarchy()),
+  };
+  const workspaceStore = {
+    bookId: signal<string | null>('book-1').asReadonly(),
+    bookTitle: signal('Draft Book').asReadonly(),
+    enterBook: vi.fn(async () => undefined),
+  };
+  const chatAiContext = {
+    buildContextMessage: vi.fn(async () => null),
   };
   const highlightRegistry = {
     setRanges: vi.fn(),
@@ -152,6 +179,9 @@ describe('Chat', () => {
         { provide: CodexContextHighlightRegistryService, useValue: highlightRegistry },
         { provide: CodexMatchChooserService, useValue: matchChooser },
         { provide: CodexEntryOpenerService, useValue: { open: vi.fn() } },
+        { provide: WorkspaceBookStore, useValue: workspaceBookStore },
+        { provide: WorkspaceStore, useValue: workspaceStore },
+        { provide: ChatAiContextService, useValue: chatAiContext },
         ...provideMarkdown(),
       ],
     }).compileComponents();
@@ -196,8 +226,17 @@ describe('Chat', () => {
     detachedWindowClosedCallback = null;
     detachedBookIds = new Set();
     trieState.set({});
+    contextEntries.set([]);
+    contextLoading.set(false);
+    contextError.set(null);
+    contextHierarchy.set([]);
+    contextHierarchyLoading.set(false);
+    contextHierarchyError.set(null);
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
     contextTrie.loadForContext.mockClear();
+    workspaceBookStore.loadBookHierarchy.mockClear();
+    workspaceStore.enterBook.mockClear();
+    chatAiContext.buildContextMessage.mockClear();
     highlightRegistry.setRanges.mockClear();
     highlightRegistry.clearRanges.mockClear();
     chatStore = {
@@ -616,8 +655,151 @@ describe('Chat', () => {
 
     await component.sendPrompt();
 
-    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here');
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here', {
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+    });
     expect(router.navigate).toHaveBeenCalledWith(['/workspace', 'book-1', 'thread', 'thread-1'], { replaceUrl: true });
+  });
+
+  it('keeps explicit context after sending and snapshots composer-only Codex detection', async () => {
+    contextHierarchy.set([{
+      id: 'act-1',
+      bookId: 'book-1',
+      title: 'Act One',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        actId: 'act-1',
+        title: 'Chapter One',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          chapterId: 'chapter-1',
+          title: 'Opening',
+          position: 0,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }]);
+    contextEntries.set([
+      {
+        id: 'codex-1',
+        bookId: 'book-1',
+        type: 'character',
+        name: 'Mara Vale',
+        alias: null,
+        description: null,
+        image: null,
+        status: 'active',
+        trackingSetting: 'include_when_detected',
+        createdAt: '',
+        lastEditedAt: '',
+      },
+      {
+        id: 'codex-manual',
+        bookId: 'book-1',
+        type: 'lore',
+        name: 'Moon Rite',
+        alias: null,
+        description: null,
+        image: null,
+        status: 'active',
+        trackingSetting: 'manual',
+        createdAt: '',
+        lastEditedAt: '',
+      },
+      {
+        id: 'codex-always',
+        bookId: 'book-1',
+        type: 'location',
+        name: 'Observatory',
+        alias: null,
+        description: null,
+        image: null,
+        status: 'active',
+        trackingSetting: 'always_include',
+        createdAt: '',
+        lastEditedAt: '',
+      },
+    ]);
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    component.onContextChange(['outline', 'scene:scene-1', 'codex:codex-manual']);
+    setComposerValue('Ask Mara Vale about the opening.');
+
+    await component.sendPrompt();
+
+    expect(chatStore.sendMessage).toHaveBeenCalledWith(
+      'Ask Mara Vale about the opening.',
+      {
+        includeFullOutline: true,
+        sceneIds: ['scene-1'],
+        codexEntryIds: ['codex-manual', 'codex-1', 'codex-always'],
+      },
+    );
+    expect(component.includeFullOutline()).toBe(true);
+    expect(component.contextManuscriptRefs()).toEqual(['scene:scene-1']);
+    expect(component.contextCodexEntryIds()).toEqual(['codex-manual']);
+  });
+
+  it('uses replacement selection state and does not detect Codex from message history', async () => {
+    contextEntries.set([{
+      id: 'codex-1',
+      bookId: 'book-1',
+      type: 'character',
+      name: 'Mara Vale',
+      alias: null,
+      description: null,
+      image: null,
+      status: 'active',
+      trackingSetting: 'include_when_detected',
+      createdAt: '',
+      lastEditedAt: '',
+    }]);
+    selectedThread = makeThreadDetail({
+      messages: [makeMessage({ content: 'Mara Vale appeared earlier.' })],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    component.onContextChange(['outline', 'codex:codex-1']);
+    component.onContextChange([]);
+    setComposerValue('Continue without that context.');
+
+    await component.sendPrompt();
+
+    expect(chatStore.sendMessage).toHaveBeenCalledWith(
+      'Continue without that context.',
+      {
+        includeFullOutline: false,
+        sceneIds: [],
+        codexEntryIds: [],
+      },
+    );
+    expect(component.automaticallyIncludedCodexEntryIds()).toEqual(new Set());
   });
 
   it('streams an AI response after saving the user message', async () => {
@@ -1006,7 +1188,11 @@ describe('Chat', () => {
 
     expect(editor.editorView()?.state.doc.toString()).toBe('');
     expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
-    expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**');
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**', {
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+    });
   });
 
   it('keeps the Markdown draft when the user message is not saved', async () => {

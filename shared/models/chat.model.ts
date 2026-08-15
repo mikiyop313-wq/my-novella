@@ -29,6 +29,7 @@ export interface ChatMessageDto {
   outputTokens: number | null;
   reasoningSummary: string | null;
   error: string | null;
+  includeFullOutline: boolean;
   createdAt: string;
   lastEditedAt: string;
 }
@@ -82,6 +83,7 @@ export interface CreateChatMessageDto {
   outputTokens?: number | null;
   reasoningSummary?: string | null;
   error?: string | null;
+  includeFullOutline?: boolean;
   sceneIds?: string[];
   codexEntryIds?: string[];
 }

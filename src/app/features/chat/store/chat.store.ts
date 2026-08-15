@@ -458,7 +458,10 @@ export const ChatStore = signalStore(
 
       async sendMessage(
         content: string,
-        refs: Pick<CreateChatMessageDto, 'sceneIds' | 'codexEntryIds'> = {},
+        refs: Pick<
+          CreateChatMessageDto,
+          'includeFullOutline' | 'sceneIds' | 'codexEntryIds'
+        > = {},
       ): Promise<ChatMessageDetailDto | null> {
         const trimmedContent = content.trim();
         if (!trimmedContent || store.isSaving()) return null;
@@ -583,6 +586,7 @@ export const ChatStore = signalStore(
             role: sourceMessage.role,
             content: trimmedContent,
             status: 'complete',
+            includeFullOutline: sourceMessage.includeFullOutline,
             sceneIds: sourceMessage.sceneRefs.map((ref) => ref.sceneId),
             codexEntryIds: sourceMessage.codexRefs.map((ref) => ref.codexEntryId),
           });

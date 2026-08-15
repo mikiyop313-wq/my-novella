@@ -9,6 +9,7 @@ import {
   afterNextRender,
   afterRenderEffect,
   computed,
+  effect,
   inject,
   signal,
   untracked,
@@ -26,14 +27,28 @@ import {
   type DropdownOption,
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import type { AiManuscriptContextRef } from '../../shared/models/ai-context.model';
 import {
   type MarkdownKeywordClick,
   type MarkdownKeywordHighlight,
 } from '../../shared/components/markdown-editor/markdown-editor.extensions';
 import { ToastService } from '../../shared/services/toast.service';
+import { expandManuscriptRefs } from '../../shared/utils/story-context-builder';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
+import {
+  getAutomaticallyIncludedCodexEntryIds,
+  removeAutomaticallyIncludedCodexEntryIds,
+} from '../manuscript/components/ai-prompt/ai-prompt-codex-context';
+import {
+  type AiContextSelection,
+  buildContextDropdownSections,
+  contextSelectionToValues,
+  dropdownValuesToContextSelection,
+} from '../manuscript/components/ai-prompt/ai-prompt-dropdown-options';
+import { WorkspaceBookStore } from '../workspace/workspace-book.store';
+import { WorkspaceStore } from '../workspace/workspace.store';
 import { ChatThreads } from './components/chat-threads/chat-threads';
 import { ChatResponseService } from './services/chat-response.service';
 import { ChatWindowService } from './services/chat-window.service';
@@ -73,6 +88,8 @@ export class Chat implements OnInit, OnDestroy {
   private readonly toastService = inject(ToastService);
   private readonly codexContextTrie = inject(CodexContextTrieService);
   private readonly codexMatchChooser = inject(CodexMatchChooserService);
+  private readonly workspaceBookStore = inject(WorkspaceBookStore);
+  private readonly workspaceStore = inject(WorkspaceStore);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
 
@@ -105,6 +122,18 @@ export class Chat implements OnInit, OnDestroy {
   readonly expandedReasoningMessageIds = signal<ReadonlySet<string>>(new Set());
   readonly isAutoScrollEnabled = signal(true);
   readonly isChatAtBottom = signal(true);
+  readonly includeFullOutline = signal(false);
+  readonly contextManuscriptRefs = signal<AiManuscriptContextRef[]>([]);
+  readonly contextCodexEntryIds = signal<string[]>([]);
+  readonly automaticallyIncludedCodexEntryIds = signal<ReadonlySet<string>>(new Set());
+
+  readonly contextHierarchy = this.workspaceBookStore.bookHierarchy;
+  readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
+  readonly contextHierarchyError = this.workspaceBookStore.bookHierarchyError;
+  readonly contextCodexEntries = this.codexContextTrie.entries;
+  readonly contextCodexTrie = this.codexContextTrie.trie;
+  readonly contextCodexLoading = this.codexContextTrie.isLoading;
+  readonly contextCodexError = this.codexContextTrie.error;
 
   private cleanupDetachedWindowClosedListener: (() => void) | null = null;
   private copyConfirmationTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -113,6 +142,8 @@ export class Chat implements OnInit, OnDestroy {
   private pendingStreamingScrollFrames = 0;
   private hasUserScrollIntent = false;
   private lastChatScrollTop = 0;
+  private contextAvailabilityRefreshQueued = false;
+  private contextTrackingDestroyed = false;
 
 
   // ---------------------------------------------------------------------------
@@ -163,6 +194,22 @@ export class Chat implements OnInit, OnDestroy {
       }));
   });
 
+  readonly contextDropdownSections = computed(() => buildContextDropdownSections({
+    hierarchy: this.contextHierarchy(),
+    codexEntries: this.contextCodexEntries(),
+    automaticallyIncludedCodexEntryIds: this.automaticallyIncludedCodexEntryIds(),
+    hierarchyLoading: this.contextHierarchyLoading(),
+    codexLoading: this.contextCodexLoading(),
+    hierarchyError: this.contextHierarchyError(),
+    codexError: this.contextCodexError(),
+  }));
+
+  readonly selectedContextValues = computed(() => contextSelectionToValues({
+    includeFullOutline: this.includeFullOutline(),
+    manuscriptRefs: this.contextManuscriptRefs(),
+    codexEntryIds: this.contextCodexEntryIds(),
+  }, this.contextHierarchy()));
+
   get showDetachedSidebar(): boolean {
     return this.isDetachedMode;
   }
@@ -184,6 +231,13 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   constructor() {
+    effect(() => {
+      this.composerValue();
+      this.contextCodexEntries();
+      this.contextCodexTrie();
+      this.scheduleContextAvailabilityRefresh();
+    });
+
     afterRenderEffect(() => {
       this.response.renderVersion();
 
@@ -213,6 +267,7 @@ export class Chat implements OnInit, OnDestroy {
     const isNewChatRoute = this.isNewChatRoute();
     this.initializeConversationState(initialThreadId, isNewChatRoute);
 
+    void this.loadContextHierarchy(bookId);
     await this.enterWorkspaceChat(bookId, initialThreadId, isNewChatRoute);
     this.route.paramMap?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       void this.syncThreadFromRoute(params.get('threadId'));
@@ -227,6 +282,7 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.contextTrackingDestroyed = true;
     this.cleanupDetachedWindowClosedListener?.();
     this.cancelFluidScroll();
     this.cancelStreamingAutoScroll();
@@ -458,11 +514,82 @@ export class Chat implements OnInit, OnDestroy {
     this.codexMatchChooser.open(event.entryIds, event.clientX, event.clientY);
   }
 
+  refreshContextAvailability(): void {
+    const detectedEntryIds = new Set<string>();
+    for (const line of this.composerValue().split(/\r?\n/)) {
+      for (const match of this.codexContextTrie.findMatches(line)) {
+        if (match.value.entryId) detectedEntryIds.add(match.value.entryId);
+      }
+    }
+
+    const automaticallyIncludedEntryIds = getAutomaticallyIncludedCodexEntryIds(
+      this.contextCodexEntries(),
+      detectedEntryIds,
+    );
+    if (!this.setsEqual(
+      this.automaticallyIncludedCodexEntryIds(),
+      automaticallyIncludedEntryIds,
+    )) {
+      this.automaticallyIncludedCodexEntryIds.set(automaticallyIncludedEntryIds);
+    }
+
+    const selectedEntryIds = this.contextCodexEntryIds();
+    const reconciledEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+      selectedEntryIds,
+      automaticallyIncludedEntryIds,
+    );
+    if (reconciledEntryIds.length !== selectedEntryIds.length) {
+      this.contextCodexEntryIds.set(reconciledEntryIds);
+    }
+  }
+
+  onContextChange(values: readonly string[]): void {
+    const selection: AiContextSelection = dropdownValuesToContextSelection(
+      values,
+      this.contextHierarchy(),
+    );
+    const manuscriptRefs = [...new Set(selection.manuscriptRefs)];
+    const codexEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+      [...new Set(selection.codexEntryIds)],
+      this.automaticallyIncludedCodexEntryIds(),
+    );
+
+    this.includeFullOutline.set(selection.includeFullOutline);
+    this.contextManuscriptRefs.set(manuscriptRefs);
+    this.contextCodexEntryIds.set(codexEntryIds);
+  }
+
   async sendPrompt(): Promise<void> {
     const content = this.composerValue().trim();
     if (!content || this.isSendButtonDisabled()) return;
 
-    const userMessage = await this.chatStore.sendMessage(content);
+    this.refreshContextAvailability();
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) {
+      this.toastService.error('Codex context is not available yet.', 'AI Context');
+      return;
+    }
+    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
+      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
+      return;
+    }
+
+    const sceneIds = [...expandManuscriptRefs(
+      this.contextHierarchy(),
+      this.contextManuscriptRefs(),
+    )];
+    const codexEntryIds = [...new Set([
+      ...this.contextCodexEntryIds(),
+      ...this.automaticallyIncludedCodexEntryIds(),
+    ])];
+    const userMessage = await this.chatStore.sendMessage(content, {
+      includeFullOutline: this.includeFullOutline(),
+      sceneIds,
+      codexEntryIds,
+    });
     if (!userMessage || this.chatStore.error()) return;
 
     this.composerValue.set('');
@@ -762,6 +889,8 @@ export class Chat implements OnInit, OnDestroy {
       }
 
       void this.codexContextTrie.loadForContext(session.bookId);
+      void this.workspaceStore.enterBook(session.bookId);
+      void this.loadContextHierarchy(session.bookId);
       await this.chatStore.enterBook(session.bookId);
       if (session.selectedThreadId) {
         await this.selectThread(session.selectedThreadId);
@@ -787,6 +916,28 @@ export class Chat implements OnInit, OnDestroy {
       selectedModelId: this.selectedModelId(),
       reasoningMode: this.reasoningMode(),
     };
+  }
+
+  private async loadContextHierarchy(bookId: string): Promise<void> {
+    try {
+      await this.workspaceBookStore.loadBookHierarchy('book', bookId);
+    } catch {
+      // The store exposes the error to the context dropdown and send guard.
+    }
+  }
+
+  private scheduleContextAvailabilityRefresh(): void {
+    if (this.contextAvailabilityRefreshQueued || this.contextTrackingDestroyed) return;
+
+    this.contextAvailabilityRefreshQueued = true;
+    queueMicrotask(() => {
+      this.contextAvailabilityRefreshQueued = false;
+      if (!this.contextTrackingDestroyed) this.refreshContextAvailability();
+    });
+  }
+
+  private setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+    return left.size === right.size && [...left].every((value) => right.has(value));
   }
 
   private isScrollAtBottom(element: HTMLElement): boolean {

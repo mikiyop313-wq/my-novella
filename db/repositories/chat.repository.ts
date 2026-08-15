@@ -76,6 +76,7 @@ export class ChatRepository {
       outputTokens: message.outputTokens,
       reasoningSummary: message.reasoningSummary,
       error: message.error,
+      includeFullOutline: message.includeFullOutline,
       createdAt: this.dateToIso(message.createdAt),
       lastEditedAt: this.dateToIso(message.lastEditedAt),
     };
@@ -155,6 +156,7 @@ export class ChatRepository {
       outputTokens: data.outputTokens ?? null,
       reasoningSummary: data.reasoningSummary ?? null,
       error: data.error ?? null,
+      includeFullOutline: data.includeFullOutline ?? false,
     };
   }
 
@@ -181,6 +183,9 @@ export class ChatRepository {
     if (data.reasoningSummary !== undefined)
       updatePayload.reasoningSummary = data.reasoningSummary;
     if (data.error !== undefined) updatePayload.error = data.error;
+    if (data.includeFullOutline !== undefined) {
+      updatePayload.includeFullOutline = data.includeFullOutline;
+    }
 
     return updatePayload;
   }

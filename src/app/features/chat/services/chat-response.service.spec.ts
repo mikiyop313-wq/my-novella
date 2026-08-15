@@ -4,7 +4,11 @@ import { vi } from 'vitest';
 import { type ChatMessageDetailDto, type ChatThreadDetailDto } from '../../../../../shared/models/chat.model';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
 import { AiStore } from '../../../core/store/ai.store';
+import { ToastService } from '../../../shared/services/toast.service';
+import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
+import { WorkspaceStore } from '../../workspace/workspace.store';
 import { ChatStore } from '../store/chat.store';
+import { ChatAiContextService } from './chat-ai-context.service';
 import { ChatResponseService } from './chat-response.service';
 
 function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessageDetailDto {
@@ -24,6 +28,7 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
+    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     sceneRefs: [],
@@ -57,6 +62,7 @@ type ChatStoreMock = {
   patchStreamingMessage: ReturnType<typeof vi.fn>;
   updateMessage: ReturnType<typeof vi.fn>;
   deleteMessage: ReturnType<typeof vi.fn>;
+  bookId: ReturnType<typeof vi.fn>;
 };
 
 describe('ChatResponseService', () => {
@@ -72,6 +78,10 @@ describe('ChatResponseService', () => {
     streamText: ReturnType<typeof vi.fn>;
     stopStream: ReturnType<typeof vi.fn>;
   };
+  let chatAiContext: {
+    buildContextMessage: ReturnType<typeof vi.fn>;
+  };
+  let toastService: Pick<ToastService, 'error'>;
 
   const settings = {
     selectedModelId: 'openrouter/test-model',
@@ -102,6 +112,7 @@ describe('ChatResponseService', () => {
       patchStreamingMessage: vi.fn(),
       updateMessage: vi.fn(async () => makeMessage({ id: 'assistant-1', role: 'assistant' })),
       deleteMessage: vi.fn(async () => undefined),
+      bookId: vi.fn(() => 'book-1'),
     };
     aiStore = {
       models: vi.fn(() => [
@@ -129,6 +140,10 @@ describe('ChatResponseService', () => {
       }),
       stopStream: vi.fn(async () => undefined),
     };
+    chatAiContext = {
+      buildContextMessage: vi.fn(async () => null),
+    };
+    toastService = { error: vi.fn() };
 
     TestBed.configureTestingModule({
       providers: [
@@ -136,6 +151,19 @@ describe('ChatResponseService', () => {
         { provide: ChatStore, useValue: chatStore },
         { provide: AiStore, useValue: aiStore },
         { provide: AiStreamService, useValue: aiStreamService },
+        { provide: ChatAiContextService, useValue: chatAiContext },
+        { provide: ToastService, useValue: toastService },
+        {
+          provide: WorkspaceBookStore,
+          useValue: { bookHierarchy: vi.fn(() => []) },
+        },
+        {
+          provide: WorkspaceStore,
+          useValue: {
+            bookId: vi.fn(() => 'book-1'),
+            bookTitle: vi.fn(() => 'Draft Book'),
+          },
+        },
       ],
     });
     service = TestBed.inject(ChatResponseService);
@@ -165,6 +193,46 @@ describe('ChatResponseService', () => {
       reasoningSummary: 'Checking context',
     }));
     expect(service.isGeneratingResponse()).toBe(false);
+  });
+
+  it('places only the current user message context immediately before its prompt', async () => {
+    visibleMessages = [
+      makeMessage({ id: 'user-previous', content: 'Previous Mara mention' }),
+      makeMessage({ id: 'assistant-previous', role: 'assistant', content: 'Previous reply' }),
+      messages[0],
+    ];
+    chatAiContext.buildContextMessage.mockResolvedValueOnce({
+      role: 'user',
+      content: '--- BEGIN STORY CONTEXT ---\nCodex context\n--- END STORY CONTEXT ---',
+    });
+
+    await service.generateResponse(messages[0], 'Write a scene', settings);
+
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        { role: 'user', content: 'Previous Mara mention' },
+        { role: 'assistant', content: 'Previous reply' },
+        {
+          role: 'user',
+          content: '--- BEGIN STORY CONTEXT ---\nCodex context\n--- END STORY CONTEXT ---',
+        },
+        { role: 'user', content: 'Write a scene' },
+      ],
+    }));
+    expect(chatAiContext.buildContextMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a stream when the saved message context cannot be prepared', async () => {
+    chatAiContext.buildContextMessage.mockRejectedValueOnce(new Error('Context read failed'));
+
+    await service.generateResponse(messages[0], 'Write a scene', settings);
+
+    expect(aiStreamService.streamText).not.toHaveBeenCalled();
+    expect(chatStore.createAssistantMessage).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith(
+      'Could not prepare the selected story context.',
+      'AI Context',
+    );
   });
 
   it('generates a concise thread title from the first user message', async () => {

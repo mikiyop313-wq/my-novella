@@ -318,6 +318,17 @@
             </button>
           </div>
 
+          <div class="footer-separator"></div>
+
+          <div class="context-footer">
+            <app-autocomplete-dropdown class="context-dropdown" [sections]="contextDropdownSections()"
+              [selectedValue]="selectedContextValues()" [multi]="true" placeholder="+ Add Context"
+              triggerVariant="add" triggerAriaLabel="Add context" chipsPosition="before"
+              [compactSelectionChips]="true" [clearSearchOnSelect]="false" searchPlaceholder="Search context..."
+              emptyText="No context found." (menuOpened)="refreshContextAvailability()"
+              (selectionChange)="onContextChange($any($event))" />
+          </div>
+
           <button class="send-btn" [class.is-stop]="isGeneratingResponse()" type="button"
             [attr.aria-label]="isGeneratingResponse() ? 'Stop generating' : 'Send message'"
             [title]="isGeneratingResponse() ? 'Stop generating' : 'Send message'" [disabled]="isSendOrStopDisabled()"

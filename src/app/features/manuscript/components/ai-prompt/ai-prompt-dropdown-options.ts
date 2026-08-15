@@ -1,16 +1,13 @@
 import type { CodexEntryDto, CodexEntryType } from '../../../../../../shared/models/codex.model';
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
+import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 import type {
   DropdownMenu,
   DropdownOption,
   DropdownSection,
 } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 
-export type AiManuscriptContextRef =
-  | 'novel'
-  | `act:${string}`
-  | `chapter:${string}`
-  | `scene:${string}`;
+export type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 
 export interface AiContextSelection {
   includeFullOutline: boolean;

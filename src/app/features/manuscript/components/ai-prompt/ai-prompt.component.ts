@@ -19,6 +19,7 @@ import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import {
   findDetectedCodexEntryIdsForPrompt,
@@ -27,7 +28,6 @@ import {
 } from './ai-prompt-codex-context';
 import {
   type AiContextSelection,
-  type AiManuscriptContextRef,
   type AiPromptModel,
   buildContextDropdownSections,
   buildModelDropdownSections,
