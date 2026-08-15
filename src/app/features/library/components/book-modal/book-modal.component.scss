@@ -184,10 +184,19 @@
 }
 
 .chips {
+    --chips-collapsed-height: 96px;
+    interpolate-size: allow-keywords;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    max-height: 96px;
+    max-height: var(--chips-collapsed-height);
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    will-change: max-height;
+
+    &.expanded {
+        max-height: fit-content;
+    }
 
 
     .chip {
@@ -197,6 +206,65 @@
         border-radius: 20px;
         font-size: 0.65rem;
         color: var(--color-text-secondary);
+    }
+}
+
+.accordion-divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 8px 0;
+    margin: 8px 0;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    transition: all 0.3s ease;
+
+    &:hover {
+        .line {
+            background-color: var(--color-text-primary);
+            opacity: 0.5;
+        }
+
+        .dots span {
+            background-color: var(--color-text-primary);
+            transform: scale(1.3);
+        }
+    }
+
+    &:active {
+        transform: scale(0.99);
+    }
+
+    .line {
+        height: 1px;
+        flex: 1;
+        background-color: var(--color-border);
+        opacity: 0.4;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .dots {
+        display: flex;
+        gap: 6px;
+
+        span {
+            width: 4px;
+            height: 4px;
+            background-color: var(--color-border);
+            border-radius: 50%;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+            &:nth-child(2) {
+                transition-delay: 0.05s;
+            }
+
+            &:nth-child(3) {
+                transition-delay: 0.1s;
+            }
+        }
     }
 }
 

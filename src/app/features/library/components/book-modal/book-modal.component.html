@@ -26,11 +26,11 @@
         <div class="stats-grid">
             <div class="stat-box">
                 <span class="label">WORDS</span>
-                <span class="value">84,201</span>
+                <span class="value">{{formatNumber(currentWords())}}</span>
             </div>
             <div class="stat-box">
                 <span class="label">CHAPTERS</span>
-                <span class="value">24</span>
+                <span class="value">{{formatNumber(currentCount())}}</span>
             </div>
             <div class="stat-box">
                 <span class="label">EST. READ</span>
@@ -40,21 +40,43 @@
 
         <div class="genres">
             <span class="section-label">GENRES</span>
-            <div class="chips">
-                <span class="chip">SCI-FI</span>
-                <span class="chip">CYBERPUNK</span>
-                <span class="chip">SPACE OPERA</span>
-                <span class="chip">NOIR</span>
-                <span class="chip">SCI-FI</span>
-                <span class="chip">CYBERPUNK</span>
-                <span class="chip">SPACE OPERA</span>
-                <span class="chip">NOIR</span>
-                <span class="chip">SCI-FI</span>
-                <span class="chip">CYBERPUNK</span>
-                <span class="chip">SPACE OPERA</span>
-                <span class="chip">NOIR</span>
-
-            </div>
+            <cdk-accordion>
+                <cdk-accordion-item #accordionItem="cdkAccordionItem">
+                    <div class="chips" [class.expanded]="accordionItem.expanded" #genresContent>
+                        <span class="chip">SCI-FI</span>
+                        <span class="chip">CYBERPUNK</span>
+                        <span class="chip">SPACE OPERA</span>
+                        <span class="chip">NOIR</span>
+                        <span class="chip">SCI-FI</span>
+                        <span class="chip">CYBERPUNK</span>
+                        <span class="chip">SPACE OPERA</span>
+                        <span class="chip">NOIR</span>
+                        <span class="chip">SCI-FI</span>
+                        <span class="chip">CYBERPUNK</span>
+                        <span class="chip">SPACE OPERA</span>
+                        <span class="chip">NOIR</span>
+                        <span class="chip">CYBERPUNK</span>
+                        <span class="chip">SPACE OPERA</span>
+                        <span class="chip">NOIR</span>
+                        <span class="chip">SCI-FI</span>
+                        <span class="chip">CYBERPUNK</span>
+                        <span class="chip">SPACE OPERA</span>
+                        <span class="chip">NOIR</span>
+                    </div>
+                    @if(isGenresOverflow()){
+                    <button class="accordion-divider" (click)="onToggleGenres(accordionItem)"
+                        [attr.aria-expanded]="accordionItem.expanded" aria-label="Toggle genres">
+                        <span class="line"></span>
+                        <div class="dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <span class="line"></span>
+                    </button>
+                    }
+                </cdk-accordion-item>
+            </cdk-accordion>
         </div>
 
         <div class="synopsis">
