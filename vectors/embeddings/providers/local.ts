@@ -1,16 +1,20 @@
 import { pipeline, FeatureExtractionPipeline, env } from '@xenova/transformers';
 import { EmbeddingProvider, LocalEmbeddingConfig } from '../types';
+import { formatLocalEmbeddingText } from '../text-format';
 
 export class LocalEmbeddingProvider implements EmbeddingProvider {
     private embedder: FeatureExtractionPipeline | null = null;
     private initPromise: Promise<void> | null = null;
 
-    public name: string;
-    public dimensions: number;
+    public readonly space;
 
     constructor(private config: LocalEmbeddingConfig) {
-        this.name = config.modelName;
-        this.dimensions = config.dimensions;
+        this.space = {
+            provider: 'local' as const,
+            model: config.modelName,
+            dimensions: config.dimensions,
+            revision: '1',
+        };
     }
 
     private async initialize() {
@@ -41,38 +45,27 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
         await this.initPromise;
     }
 
-    private formatText(text: string): string {
-        // mxbai-embed-large-v1 uses a specific instruction prefix for search queries
-        if (this.config.modelName.includes('mxbai')) {
-            if (this.config.inputType === 'query') {
-                return `Represent this sentence for searching relevant passages: ${text}`;
-            }
-            // For 'document' (storing in DB), mxbai does not require a prefix
-        }
-        return text;
+    private formatText(text: string, inputType: 'document' | 'query'): string {
+        return formatLocalEmbeddingText(this.config.modelName, text, inputType);
     }
 
-    public async embed(text: string): Promise<number[]> {
+    public async embedQuery(text: string): Promise<number[]> {
+        const [vector] = await this.embedTexts([text], 'query');
+        return vector;
+    }
+
+    public async embedDocuments(texts: string[]): Promise<number[][]> {
+        return this.embedTexts(texts, 'document');
+    }
+
+    private async embedTexts(
+        texts: string[],
+        inputType: 'document' | 'query',
+    ): Promise<number[][]> {
         await this.initialize();
         if (!this.embedder) throw new Error('Embedder not initialized');
 
-        const formattedText = this.formatText(text);
-
-        // Run the pipeline
-        const output = await this.embedder(formattedText, {
-            pooling: 'mean',
-            normalize: true,
-        });
-
-        // The output tensor data is a Float32Array. Convert to a standard number array.
-        return Array.from(output.data);
-    }
-
-    public async embedBatch(texts: string[]): Promise<number[][]> {
-        await this.initialize();
-        if (!this.embedder) throw new Error('Embedder not initialized');
-
-        const formattedTexts = texts.map(t => this.formatText(t));
+        const formattedTexts = texts.map(t => this.formatText(t, inputType));
 
         // Run the pipeline on the batch
         const output = await this.embedder(formattedTexts, {
@@ -84,8 +77,8 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
         // The .data property is a flattened Float32Array of length (batch_size * dimensions)
         const result: number[][] = [];
         for (let i = 0; i < texts.length; i++) {
-            const start = i * this.dimensions;
-            const end = start + this.dimensions;
+            const start = i * this.space.dimensions;
+            const end = start + this.space.dimensions;
             result.push(Array.from(output.data.slice(start, end)));
         }
 

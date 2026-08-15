@@ -50,6 +50,7 @@ export const bookSettings = sqliteTable('book_settings', {
   synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
   povCharacterId: text('pov_character_id'),
   embeddingModel: text('embedding_model').$type<EmbeddingModel>().notNull().default('local'),
+  vectorSearchEnabled: integer('vector_search_enabled', { mode: 'boolean' }).notNull().default(true),
 });
 
 // ---------------------------------------------------------------------------

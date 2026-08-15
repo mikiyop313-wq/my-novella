@@ -1,30 +1,40 @@
 import * as lancedb from '@lancedb/lancedb';
-import * as path from 'path';
 import { app } from 'electron';
 import * as fs from 'fs';
-import { ManuscriptVectorRecord } from '../shared/models/vector.model';
+import * as path from 'path';
+
+import type {
+    EmbeddingSpaceDescriptor,
+    ManuscriptVectorRecord,
+} from '../shared/models/vector.model';
+import {
+    tableNameForEmbeddingSpace,
+} from './embedding-space';
 
 const isDev = process.env.NODE_ENV === 'development';
-
-// Define the path for the vector database
 const vectorDbPath = (isDev || !app)
     ? '.data/vectors'
     : path.join(app.getPath('userData'), 'vectors');
+const MANUSCRIPT_TABLE_PREFIX = 'manuscript_';
+const LEGACY_MANUSCRIPT_TABLE = 'manuscript';
 
-// Ensure the directory exists
 if (!fs.existsSync(vectorDbPath)) {
     fs.mkdirSync(vectorDbPath, { recursive: true });
 }
 
-// ManuscriptVectorRecord and EmbeddingModel live in shared/models/vector.model.ts
 export type { ManuscriptVectorRecord } from '../shared/models/vector.model';
 
+export { embeddingSpaceId } from './embedding-space';
+
+export function escapeLanceSql(value: string): string {
+    return value.replace(/'/g, "''");
+}
 
 export class VectorDatabase {
     private static instance: VectorDatabase;
     private db: lancedb.Connection | null = null;
 
-    private constructor() { }
+    private constructor() {}
 
     public static getInstance(): VectorDatabase {
         if (!VectorDatabase.instance) {
@@ -33,56 +43,74 @@ export class VectorDatabase {
         return VectorDatabase.instance;
     }
 
-    /**
-     * Connects to the LanceDB instance
-     */
     public async connect(): Promise<lancedb.Connection> {
         if (this.db) return this.db;
 
-        try {
-            this.db = await lancedb.connect(vectorDbPath);
-            console.log('Successfully connected to LanceDB at:', vectorDbPath);
-            return this.db;
-        } catch (error) {
-            console.error('Failed to connect to LanceDB:', error);
-            throw error;
+        this.db = await lancedb.connect(vectorDbPath);
+        console.log('Successfully connected to LanceDB at:', vectorDbPath);
+        return this.db;
+    }
+
+    public tableNameForSpace(space: EmbeddingSpaceDescriptor): string {
+        return tableNameForEmbeddingSpace(space);
+    }
+
+    public async getManuscriptTable(space: EmbeddingSpaceDescriptor) {
+        const conn = await this.connect();
+        const tableName = this.tableNameForSpace(space);
+        const tableNames = await conn.tableNames();
+
+        if (tableNames.includes(tableName)) {
+            return conn.openTable(tableName);
+        }
+
+        const now = Date.now();
+        const schemaRecord: ManuscriptVectorRecord = {
+            id: '__schema__',
+            bookId: '__schema__',
+            actId: '__schema__',
+            chapterId: '__schema__',
+            sceneId: '__schema__',
+            text: '',
+            vector: new Array(space.dimensions).fill(0),
+            provider: space.provider,
+            model: space.model,
+            revision: space.revision,
+            hash: '',
+            position: 0,
+            charCount: 0,
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        return conn.createTable(
+            tableName,
+            [schemaRecord as unknown as Record<string, unknown>],
+        );
+    }
+
+    public async deleteBookFromOtherSpaces(
+        bookId: string,
+        activeSpace: EmbeddingSpaceDescriptor,
+    ): Promise<void> {
+        const conn = await this.connect();
+        const activeTable = this.tableNameForSpace(activeSpace);
+        const predicate = `bookId = '${escapeLanceSql(bookId)}'`;
+
+        for (const tableName of await conn.tableNames()) {
+            if (!tableName.startsWith(MANUSCRIPT_TABLE_PREFIX) || tableName === activeTable) {
+                continue;
+            }
+            const table = await conn.openTable(tableName);
+            await table.delete(predicate);
         }
     }
 
-    /**
-     * Helper to get or create the manuscript table
-     */
-    public async getManuscriptTable() {
+    public async retireLegacyManuscriptTable(): Promise<void> {
         const conn = await this.connect();
-        const tableNames = await conn.tableNames();
-
-        if (tableNames.includes('manuscript')) {
-            return await conn.openTable('manuscript');
+        if ((await conn.tableNames()).includes(LEGACY_MANUSCRIPT_TABLE)) {
+            await conn.dropTable(LEGACY_MANUSCRIPT_TABLE);
         }
-
-        // Create the table with a dummy record to define the schema.
-        // Flattened fields are used instead of a single 'metadata' JSON string
-        // to allow efficient SQL-like filtering in LanceDB (e.g., `.where("model = 'openAI'")`)
-        // dimensions should match your embedding model (e.g., 1024-1536 for Voyage/OpenAI)
-        const schema: ManuscriptVectorRecord[] = [
-            {
-                id: 'init',
-                bookId: 'init',
-                actId: 'init',
-                chapterId: 'init',
-                sceneId: 'init',
-                text: 'initialization',
-                vector: new Array(1536).fill(0),
-                model: 'local',
-                hash: 'init',
-                position: 0,
-                charCount: 0,
-                createdAt: Date.now(),
-                updatedAt: Date.now()
-            }
-        ];
-
-        return await conn.createTable('manuscript', schema as Record<string, any>[]);
     }
 }
 

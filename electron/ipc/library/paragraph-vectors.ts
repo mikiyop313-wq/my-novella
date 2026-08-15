@@ -5,10 +5,13 @@ import {
     UpsertParagraphsPayload,
     DeleteParagraphsPayload,
     ManuscriptVectorRecord,
+    SearchSimilarParagraphsPayload,
 } from '../../../shared/models/vector.model';
 import { db } from '../../../db';
 import { inArray } from 'drizzle-orm';
 import { scene } from '../../../db/schema';
+import { manuscriptVectorIndexService } from '../../../vectors/services/manuscript-vector-index.service';
+import { assertEmbeddingDimensions } from '../../../vectors/embeddings/types';
 
 // ---------------------------------------------------------------------------
 // Helper — build the scene-hierarchy lookup map for a set of sceneIds
@@ -41,7 +44,11 @@ async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPaylo
 
     // Skip paragraphs whose hash has not changed.
     const paragraphIds = upserts.map(u => u.paragraphId);
-    const existingMap  = await paragraphVectorRepository.getExistingParagraphHashes(paragraphIds);
+    const provider = await getEmbeddingProvider(bookId);
+    const existingMap = await paragraphVectorRepository.getExistingParagraphHashes(
+        provider.space,
+        paragraphIds,
+    );
 
     const toProcess = upserts.filter(u => existingMap.get(u.paragraphId) !== u.hash);
 
@@ -53,10 +60,10 @@ async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPaylo
     console.log(`[VectorDB] Embedding ${toProcess.length} new/changed paragraph(s):`, toProcess.map(u => u.paragraphId));
 
     // Resolve the embedding provider for this book.
-    const provider   = await getEmbeddingProvider(bookId);
     const embedStart = Date.now();
-    const vectors    = await provider.embedBatch(toProcess.map(u => u.text));
-    console.log(`[VectorDB] Embedding done in ${Date.now() - embedStart}ms (provider: ${provider.name})`);
+    const vectors = await provider.embedDocuments(toProcess.map(u => u.text));
+    assertEmbeddingDimensions(provider, vectors);
+    console.log(`[VectorDB] Embedding done in ${Date.now() - embedStart}ms (provider: ${provider.space.model})`);
 
     // Enrich each paragraph with its act/chapter hierarchy from SQLite.
     const sceneMap = await buildSceneMap(toProcess.map(u => u.sceneId));
@@ -72,9 +79,9 @@ async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPaylo
             sceneId:   u.sceneId,
             text:      u.text,
             vector:    vectors[i],
-            model:     provider.name.includes('openai') ? 'openAI'
-                     : provider.name.includes('voyage') ? 'voyage'
-                     : 'local',
+            provider:  provider.space.provider,
+            model:     provider.space.model,
+            revision:  provider.space.revision,
             hash:      u.hash,
             position:  u.position,
             charCount: u.text.length,
@@ -83,7 +90,7 @@ async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPaylo
         };
     });
 
-    await paragraphVectorRepository.upsertParagraphs(records);
+    await paragraphVectorRepository.upsertParagraphs(provider.space, records);
     console.log(`[VectorDB] ✓ Upserted ${records.length} paragraph(s) in ${Date.now() - now}ms`);
 }
 
@@ -93,13 +100,14 @@ async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPaylo
 // Receives a list of paragraphIds and removes them from LanceDB.
 // ---------------------------------------------------------------------------
 
-async function handleDeleteParagraphs({ deletes }: DeleteParagraphsPayload): Promise<void> {
+async function handleDeleteParagraphs({ bookId, deletes }: DeleteParagraphsPayload): Promise<void> {
     if (deletes.length === 0) return;
 
     const ids = deletes.map(d => d.paragraphId);
     console.log(`[VectorDB] deleteParagraphs — ${ids.length} paragraph(s):`, ids);
 
-    await paragraphVectorRepository.deleteParagraphs(ids);
+    const provider = await getEmbeddingProvider(bookId);
+    await paragraphVectorRepository.deleteParagraphs(provider.space, ids);
     console.log(`[VectorDB] ✓ Deleted ${ids.length} paragraph(s)`);
 }
 
@@ -126,4 +134,15 @@ export function setupVectorHandlers() {
     ipcMain.handle('vectors:deleteParagraphs', async (_, payload: DeleteParagraphsPayload) => {
         await handleDeleteParagraphs(payload);
     });
+
+    ipcMain.handle(
+        'vectors:searchSimilar',
+        async (_, payload: SearchSimilarParagraphsPayload) => {
+            const query = payload.query?.trim();
+            if (!payload.bookId || !query) return [];
+
+            const limit = Math.min(Math.max(payload.limit ?? 3, 1), 10);
+            return manuscriptVectorIndexService.searchSimilar(payload.bookId, query, limit);
+        },
+    );
 }

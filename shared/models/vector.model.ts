@@ -5,6 +5,14 @@
 /** The embedding model/provider used to generate a vector. */
 export type EmbeddingModel = 'local' | 'openAI' | 'voyage';
 
+/** Identifies one mutually compatible vector space. */
+export interface EmbeddingSpaceDescriptor {
+    provider: EmbeddingModel;
+    model: string;
+    dimensions: number;
+    revision: string;
+}
+
 // ---------------------------------------------------------------------------
 // LanceDB record shape
 // ---------------------------------------------------------------------------
@@ -20,7 +28,9 @@ export interface ManuscriptVectorRecord {
     vector:    number[]; // The embedding vector
 
     // Metadata fields (flattened for efficient LanceDB filtering):
-    model:     EmbeddingModel; // Model used for embedding
+    provider:  EmbeddingModel; // Provider used for embedding
+    model:     string;         // Exact embedding model name
+    revision:  string;         // Embedding/prompt-format revision
     hash:      string;         // Hash of the paragraph text — detect modifications
     position:  number;         // Zero-based order in the scene prose
     charCount: number;         // Character count, useful for context-limit management
@@ -58,16 +68,22 @@ export interface UpsertParagraphsPayload {
 
 /** Payload for `vectors:deleteParagraphs` IPC handler. */
 export interface DeleteParagraphsPayload {
+    bookId: string;
     deletes: ParagraphDelete[];
 }
 
-/** Payload exchanged over the `vectors:syncParagraphs` IPC channel (backward-compat). */
-export interface ParagraphVectorFlush {
-    /** Book that owns these paragraphs — used to resolve the embedding provider. */
-    bookId:  string;
-    /** Paragraphs to upsert into the vector DB (embed + store). */
-    upserts: ParagraphUpsert[];
-    /** Paragraphs to remove from the vector DB. */
-    deletes: ParagraphDelete[];
+export interface SearchSimilarParagraphsPayload {
+    bookId: string;
+    query: string;
+    limit?: number;
+}
+
+export interface SimilarParagraphResult {
+    paragraphId: string;
+    actId: string;
+    chapterId: string;
+    sceneId: string;
+    text: string;
+    distance: number;
 }
 

@@ -14,8 +14,8 @@ export function runDatabaseStartupTasks(): void {
     runStartupTask('Seeding tropes', seedTropes);
 
     runStartupTask('LanceDB initialization', async () => {
-      await vectorDb.getManuscriptTable();
-      console.log('LanceDB manuscript table ready.');
+      await vectorDb.connect();
+      console.log('LanceDB connection ready.');
     });
   } catch (error) {
     console.error('Database startup failed:', error);

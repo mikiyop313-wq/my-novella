@@ -17,7 +17,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "npm rebuild better-sqlite3 && drizzle-kit push && npm run rebuild",
     "db:studio": "electron ./node_modules/drizzle-kit/bin.cjs studio",
-    "db:vectors:reset": "node db/reset-vectors.mjs"
+    "db:vectors:reset": "node vectors/reset-vectors.mjs"
   },
   "private": true,
   "packageManager": "npm@11.11.0",

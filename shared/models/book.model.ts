@@ -18,6 +18,8 @@ export interface BookSettingsDto {
   povCharacterId?: string | null;
   /** Embedding model/provider used to generate paragraph vectors for this book. */
   embeddingModel?: 'local' | 'openAI' | 'voyage';
+  /** Global default inherited by inline manuscript prompts. */
+  vectorSearchEnabled?: boolean;
 }
 
 export interface BookDto {

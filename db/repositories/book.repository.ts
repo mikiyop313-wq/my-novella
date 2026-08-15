@@ -63,6 +63,7 @@ export class BookRepository {
       synopsisAiContext: settings.synopsisAiContext,
       povCharacterId: settings.povCharacterId,
       embeddingModel: settings.embeddingModel,
+      vectorSearchEnabled: settings.vectorSearchEnabled,
     };
   }
 
@@ -104,6 +105,7 @@ export class BookRepository {
       synopsisAiContext: data.settings?.synopsisAiContext ?? true,
       povCharacterId: data.settings?.povCharacterId || null,
       embeddingModel: data.settings?.embeddingModel || 'local',
+      vectorSearchEnabled: data.settings?.vectorSearchEnabled ?? true,
     };
   }
 
@@ -119,6 +121,8 @@ export class BookRepository {
       updatePayload.povCharacterId = settings.povCharacterId;
     if (settings.embeddingModel !== undefined)
       updatePayload.embeddingModel = settings.embeddingModel;
+    if (settings.vectorSearchEnabled !== undefined)
+      updatePayload.vectorSearchEnabled = settings.vectorSearchEnabled;
 
     return updatePayload;
   }

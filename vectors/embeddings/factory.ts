@@ -6,6 +6,10 @@ import { EmbeddingModel } from '../../shared/models/vector.model';
 import { LocalEmbeddingProvider } from './providers/local';
 import { OpenAIEmbeddingProvider } from './providers/openai';
 import { VoyageEmbeddingProvider } from './providers/voyage';
+import {
+    EmbeddingProviderUnavailableError,
+    requireEmbeddingApiKey,
+} from './provider-selection';
 
 // ---------------------------------------------------------------------------
 // API key stub
@@ -21,6 +25,8 @@ import { VoyageEmbeddingProvider } from './providers/voyage';
 export function getApiKeyForModel(_model: EmbeddingModel): string | undefined {
     return undefined;
 }
+
+export { EmbeddingProviderUnavailableError } from './provider-selection';
 
 // ---------------------------------------------------------------------------
 // Provider cache — one instance per model type to avoid re-initialising the
@@ -43,11 +49,7 @@ function buildProvider(model: EmbeddingModel): EmbeddingProvider {
             });
 
         case 'openAI': {
-            const apiKey = getApiKeyForModel('openAI');
-            if (!apiKey) {
-                console.warn('[EmbeddingFactory] No API key for OpenAI — falling back to local provider.');
-                return buildProvider('local');
-            }
+            const apiKey = requireEmbeddingApiKey('openAI', getApiKeyForModel('openAI'));
             return new OpenAIEmbeddingProvider({
                 type: 'openai',
                 modelName: 'text-embedding-3-small',
@@ -57,11 +59,7 @@ function buildProvider(model: EmbeddingModel): EmbeddingProvider {
         }
 
         case 'voyage': {
-            const apiKey = getApiKeyForModel('voyage');
-            if (!apiKey) {
-                console.warn('[EmbeddingFactory] No API key for Voyage — falling back to local provider.');
-                return buildProvider('local');
-            }
+            const apiKey = requireEmbeddingApiKey('voyage', getApiKeyForModel('voyage'));
             return new VoyageEmbeddingProvider({
                 type: 'voyage',
                 modelName: 'voyage-3',
@@ -70,8 +68,7 @@ function buildProvider(model: EmbeddingModel): EmbeddingProvider {
         }
 
         default:
-            console.warn(`[EmbeddingFactory] Unknown model "${model}" — falling back to local provider.`);
-            return buildProvider('local');
+            throw new EmbeddingProviderUnavailableError(model);
     }
 }
 
@@ -83,7 +80,8 @@ function buildProvider(model: EmbeddingModel): EmbeddingProvider {
  * Returns the cached `EmbeddingProvider` for the given book.
  *
  * Reads `embeddingModel` from `book_settings` to determine which provider
- * to use. Falls back to `'local'` if the book has no settings row.
+ * to use. Books without a settings row explicitly default to `local` in the
+ * repository; configured API providers never fall back to local.
  *
  * The provider instance is cached for the lifetime of the main process so
  * the local ONNX pipeline is only initialised once.

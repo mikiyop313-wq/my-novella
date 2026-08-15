@@ -1,13 +1,15 @@
 import { EmbeddingProvider, OpenAIEmbeddingConfig } from '../types';
 
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
-    public name: string;
-    public dimensions: number;
+    public readonly space;
 
     constructor(private config: OpenAIEmbeddingConfig) {
-        this.name = config.modelName;
-        // Default to 1536 if not specified, which is common for text-embedding-ada-002 and text-embedding-3-small
-        this.dimensions = config.dimensions || 1536;
+        this.space = {
+            provider: 'openAI' as const,
+            model: config.modelName,
+            dimensions: config.dimensions || 1536,
+            revision: '1',
+        };
     }
 
     private getHeaders(): Record<string, string> {
@@ -25,20 +27,24 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         return this.config.baseUrl || 'https://api.openai.com/v1/embeddings';
     }
 
-    public async embed(text: string): Promise<number[]> {
-        const results = await this.embedBatch([text]);
+    public async embedQuery(text: string): Promise<number[]> {
+        const results = await this.embedTexts([text]);
         return results[0];
     }
 
-    public async embedBatch(texts: string[]): Promise<number[][]> {
+    public async embedDocuments(texts: string[]): Promise<number[][]> {
+        return this.embedTexts(texts);
+    }
+
+    private async embedTexts(texts: string[]): Promise<number[][]> {
         const url = this.getUrl();
         const payload: any = {
             model: this.config.modelName,
             input: texts,
         };
 
-        if (this.config.dimensions) {
-            payload.dimensions = this.config.dimensions;
+        if (this.space.dimensions) {
+            payload.dimensions = this.space.dimensions;
         }
 
         const response = await fetch(url, {

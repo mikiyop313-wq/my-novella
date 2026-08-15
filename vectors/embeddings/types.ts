@@ -1,8 +1,22 @@
+import type { EmbeddingSpaceDescriptor } from '../../shared/models/vector.model';
+
 export interface EmbeddingProvider {
-  name: string;
-  dimensions: number;
-  embed(text: string): Promise<number[]>;
-  embedBatch(texts: string[]): Promise<number[][]>;
+  readonly space: EmbeddingSpaceDescriptor;
+  embedDocuments(texts: string[]): Promise<number[][]>;
+  embedQuery(text: string): Promise<number[]>;
+}
+
+export function assertEmbeddingDimensions(
+  provider: EmbeddingProvider,
+  vectors: readonly number[][],
+): void {
+  const invalid = vectors.find(vector => vector.length !== provider.space.dimensions);
+  if (invalid) {
+    throw new Error(
+      `Embedding dimension mismatch for ${provider.space.model}: `
+      + `expected ${provider.space.dimensions}, received ${invalid.length}.`,
+    );
+  }
 }
 
 export type EmbeddingProviderType = 'local' | 'openai' | 'voyage';
