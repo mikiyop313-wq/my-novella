@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
 import { ToastService } from '../../shared/services/toast.service';
 import type { BuiltAiPrompt } from '../../shared/utils/ai-prompt-builder';
+import type { AiStreamEvent } from '../../../../shared/models/ai.model';
 import { AIStateService } from './ai-state.service';
 import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 
@@ -29,8 +30,8 @@ export class AiStreamService {
   private readonly toastService = inject(ToastService);
   private readonly systemPromptModelService = inject(SystemPromptModelService);
 
-  async stopStream(_streamId: string): Promise<void> {
-    await this.aiStateService.abort();
+  async stopStream(streamId: string): Promise<void> {
+    await this.aiStateService.abort(streamId);
   }
 
   async streamText(request: AiStreamRequest): Promise<string> {
@@ -69,12 +70,12 @@ export class AiStreamService {
       }
 
       if (request.onToken && window.electronAPI?.onMessage) {
-        cleanupToken = window.electronAPI.onMessage('ai:generate-stream', (token: string) => {
-          if (!token) return;
+        cleanupToken = window.electronAPI.onMessage('ai:generate-stream', (event: AiStreamEvent) => {
+          if (event.streamId !== request.streamId || !event.token) return;
 
           this.setLoadingStatus('generating', request.onStatusChange);
 
-          for (const char of token) {
+          for (const char of event.token) {
             if (char !== '\r') request.onToken?.(char);
           }
         });
@@ -83,11 +84,11 @@ export class AiStreamService {
       if (request.reasoningMode && window.electronAPI?.onMessage) {
         cleanupReasoning = window.electronAPI.onMessage(
           'ai:generate-reasoning-stream',
-          (token: string) => {
-            if (!token) return;
+          (event: AiStreamEvent) => {
+            if (event.streamId !== request.streamId || !event.token) return;
 
             this.setLoadingStatus('thinking', request.onStatusChange);
-            reasoningBuffer += token;
+            reasoningBuffer += event.token;
             emitReasoningUpdate();
           },
         );
@@ -114,6 +115,7 @@ export class AiStreamService {
       }
 
       return await this.aiStateService.generate({
+        streamId: request.streamId,
         aiPrompt: request.aiPrompt,
         model: provider,
         modelId,

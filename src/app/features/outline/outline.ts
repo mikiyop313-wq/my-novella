@@ -735,9 +735,8 @@ export class Outline implements OnInit {
     return !this.hasSceneProse(sceneId)
       || this.resolvingSummaryModel()
       || this.summaryModelResolution()?.status !== 'ready'
-      || this.generationSessions.hasActiveSession()
-      || this.generatingSummarySceneId() !== null
-      || this.generatingCodexDetectionSceneId() !== null;
+      || this.generationSessions.hasActiveSession('outline-summary')
+      || this.generatingSummarySceneId() !== null;
   }
 
   summaryModelGuidance(): string {
@@ -769,9 +768,8 @@ export class Outline implements OnInit {
     return !this.hasSceneProse(sceneId)
       || this.resolvingSummaryModel()
       || this.codexDetectionModelResolution()?.status !== 'ready'
-      || this.generationSessions.hasActiveSession()
-      || this.generatingCodexDetectionSceneId() !== null
-      || this.generatingSummarySceneId() !== null;
+      || this.generationSessions.hasActiveSession('codex-detection')
+      || this.generatingCodexDetectionSceneId() !== null;
   }
 
   codexDetectionModelGuidance(): string {

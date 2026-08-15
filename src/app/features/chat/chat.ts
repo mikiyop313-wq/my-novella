@@ -534,7 +534,7 @@ export class Chat implements OnInit, OnDestroy {
     return !this.hasSelectedModel()
       || this.chatStore.isSaving()
       || this.isAiResponseActive()
-      || this.generationSessions.hasActiveSession();
+      || this.generationSessions.hasActiveSession('chat-response');
   }
 
   isSendButtonDisabled(): boolean {

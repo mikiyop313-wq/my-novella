@@ -67,7 +67,28 @@ describe('AiGenerationSessionService', () => {
     });
   });
 
-  it('rejects a second active session without replacing the first', () => {
+  it('allows different purposes to run concurrently', async () => {
+    const completions = new Map<string, (value: string) => void>();
+    streamText.mockImplementation(request => new Promise(resolve => {
+      completions.set(request.streamId, resolve);
+    }));
+
+    const chat = service.start(request('chat-1', 'chat-response'))!;
+    const summary = service.start(request('summary-1', 'outline-summary'))!;
+
+    expect(service.hasActiveSession()).toBe(true);
+    expect(service.hasActiveSession('chat-response')).toBe(true);
+    expect(service.hasActiveSession('outline-summary')).toBe(true);
+    expect(service.sessions()).toEqual([chat, summary]);
+
+    completions.get('summary-1')?.('Summary');
+    completions.get('chat-1')?.('Reply');
+
+    await expect(summary.completion).resolves.toMatchObject({ content: 'Summary' });
+    await expect(chat.completion).resolves.toMatchObject({ content: 'Reply' });
+  });
+
+  it('rejects a second active session for the same purpose', () => {
     streamText.mockReturnValue(new Promise(() => undefined));
 
     const first = service.start(request('session-1'));
@@ -76,7 +97,22 @@ describe('AiGenerationSessionService', () => {
     expect(first).not.toBeNull();
     expect(second).toBeNull();
     expect(warning).toHaveBeenCalledWith(
-      'Another AI generation is already in progress.',
+      'Another AI generation for this purpose is already in progress.',
+      'AI Generation',
+    );
+  });
+
+  it('rejects a reused session ID even for a different purpose', async () => {
+    streamText.mockResolvedValue('Done');
+    const first = service.start(request('session-1'))!;
+    await first.completion;
+
+    const duplicate = service.start(request('session-1', 'outline-summary'));
+
+    expect(duplicate).toBeNull();
+    expect(service.getSession('session-1')).toBe(first);
+    expect(warning).toHaveBeenCalledWith(
+      'This AI generation session is already being managed.',
       'AI Generation',
     );
   });
@@ -101,6 +137,38 @@ describe('AiGenerationSessionService', () => {
     expect(stopStream).toHaveBeenCalledWith('session-1');
   });
 
+  it('stops one purpose without interrupting another', async () => {
+    let rejectChat!: (error: unknown) => void;
+    let resolveSummary!: (content: string) => void;
+    streamText.mockImplementation(request => {
+      if (request.streamId === 'chat-1') {
+        request.onToken?.('Partial reply');
+        return new Promise((_, reject) => rejectChat = reject);
+      }
+
+      return new Promise(resolve => resolveSummary = resolve);
+    });
+    stopStream.mockImplementation(async streamId => {
+      if (streamId === 'chat-1') rejectChat(new Error('aborted'));
+    });
+
+    const chat = service.start(request('chat-1', 'chat-response'))!;
+    const summary = service.start(request('summary-1', 'outline-summary'))!;
+    await service.stop('chat-1');
+
+    await expect(chat.completion).resolves.toMatchObject({
+      status: 'stopped',
+      content: 'Partial reply',
+    });
+    expect(service.hasActiveSession('outline-summary')).toBe(true);
+
+    resolveSummary('Finished summary');
+    await expect(summary.completion).resolves.toMatchObject({
+      status: 'complete',
+      content: 'Finished summary',
+    });
+  });
+
   it('retains failures until the owner releases the session', async () => {
     const error = new Error('failed');
     streamText.mockRejectedValue(error);
@@ -118,10 +186,13 @@ describe('AiGenerationSessionService', () => {
   });
 });
 
-function request(streamId: string) {
+function request(
+  streamId: string,
+  source: 'chat-response' | 'outline-summary' = 'chat-response',
+) {
   return {
     streamId,
-    source: 'chat-response' as const,
+    source,
     bookId: 'book-1',
     aiPrompt: buildAiPrompt({
       requestType: 'chat',

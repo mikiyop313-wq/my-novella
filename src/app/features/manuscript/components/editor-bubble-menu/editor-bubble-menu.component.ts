@@ -197,7 +197,7 @@ export class EditorBubbleMenuComponent {
   }
 
   private startAiEdit(request: AiSelectionEditRequest): boolean {
-    if (this.generationSessions.hasActiveSession()) return false;
+    if (this.generationSessions.hasActiveSession('manuscript-selection')) return false;
 
     const started = this.aiSelectionEffect.startEdit(request);
     if (started) this.isVisible.set(false);

@@ -28,11 +28,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAppVersion: () => process.versions.chrome,
 
     // Abort an in-flight AI generation
-    abortAiGeneration: () => ipcRenderer.invoke('ai:abort'),
+    abortAiGeneration: (streamId: string) => ipcRenderer.invoke('ai:abort', { streamId }),
 
     // Receive notification that generation was aborted cleanly
-    onGenerationAborted: (callback: () => void) => {
-        const subscription = () => callback();
+    onGenerationAborted: (callback: (event: { streamId: string }) => void) => {
+        const subscription = (_event: unknown, payload: { streamId: string }) => callback(payload);
         ipcRenderer.on('ai:generate-aborted', subscription);
         return () => ipcRenderer.removeListener('ai:generate-aborted', subscription);
     }

@@ -15,7 +15,7 @@
 
     <div class="ai-group">
       <button class="ai-btn ask-ai-btn" [appOverlayMenu]="aiMenuTemplate" #aiMenuTrigger="appOverlayMenu"
-        [disabled]="generationSessions.hasActiveSession()"
+        [disabled]="generationSessions.hasActiveSession('manuscript-selection')"
         (mousedown)="$event.preventDefault()" title="Ask AI">
         <svg class="sparkle-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
           fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

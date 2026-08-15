@@ -1,3 +1,5 @@
+import type { AiGenerationAbortedEvent } from '../shared/models/ai.model';
+
 export { }; // Make this file a module to augment global scope
 
 // This tells TypeScript that the global 'window' object 
@@ -9,8 +11,8 @@ interface IElectronAPI {
     onMessage: (channel: string, callback: (...args: any[]) => void) => () => void;
     invoke: (channel: string, data?: any) => Promise<any>;
     getAppVersion: () => string;
-    abortAiGeneration: () => Promise<void>;
-    onGenerationAborted: (callback: () => void) => () => void;
+    abortAiGeneration: (streamId: string) => Promise<void>;
+    onGenerationAborted: (callback: (event: AiGenerationAbortedEvent) => void) => () => void;
 }
 
 declare global {

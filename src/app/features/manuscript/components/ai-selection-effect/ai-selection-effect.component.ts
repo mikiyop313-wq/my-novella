@@ -118,7 +118,7 @@ export class AiSelectionEffectComponent {
     if (
       !currentEditor
       || this.state() !== 'idle'
-      || this.generationSessions.hasActiveSession()
+      || this.generationSessions.hasActiveSession('manuscript-selection')
     ) return false;
     const instruction = request.instruction.trim();
     if (!instruction) return false;

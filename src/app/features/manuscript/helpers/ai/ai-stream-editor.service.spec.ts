@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { vi } from 'vitest';
 
 import { AiStreamService } from '../../../../core/services/ai-stream.service';
+import { AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
@@ -29,6 +30,22 @@ const AiGeneratedBlock = Node.create({
 });
 
 describe('AiStreamEditorService', () => {
+  it('checks only the manuscript-prose purpose for active generation', () => {
+    const hasActiveSession = vi.fn().mockReturnValue(true);
+    TestBed.configureTestingModule({
+      providers: [
+        AiStreamEditorService,
+        { provide: AiGenerationSessionService, useValue: { hasActiveSession } },
+      ],
+    });
+
+    const service = TestBed.inject(AiStreamEditorService);
+
+    expect(service.hasActiveGeneration()).toBe(true);
+    expect(hasActiveSession).toHaveBeenCalledWith('manuscript-prose');
+    TestBed.resetTestingModule();
+  });
+
   it('keeps an active prompt stoppable after its view is recreated', async () => {
     let rejectStream!: (error: Error) => void;
     const streamText = vi.fn(() => new Promise<string>((_, reject) => {

@@ -68,15 +68,26 @@ export class AiGenerationSessionService {
     return this.managedSessions.get(sessionId) ?? null;
   }
 
-  hasActiveSession(): boolean {
+  hasActiveSession(source?: AiGenerationSessionSource): boolean {
     this.sessionsVersion();
-    return [...this.managedSessions.values()].some(session => !this.isTerminal(session.status()));
+    return [...this.managedSessions.values()].some(session => (
+      (source === undefined || session.source === source)
+      && !this.isTerminal(session.status())
+    ));
   }
 
   start(request: StartAiGenerationSessionRequest): AiGenerationSession | null {
-    if (this.hasActiveSession()) {
+    if (this.managedSessions.has(request.streamId)) {
       this.toastService.warning(
-        'Another AI generation is already in progress.',
+        'This AI generation session is already being managed.',
+        'AI Generation',
+      );
+      return null;
+    }
+
+    if (this.hasActiveSession(request.source)) {
+      this.toastService.warning(
+        'Another AI generation for this purpose is already in progress.',
         'AI Generation',
       );
       return null;

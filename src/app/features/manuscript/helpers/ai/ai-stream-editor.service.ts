@@ -125,9 +125,9 @@ export class AiStreamEditorService {
     return loadingSignal;
   }
 
-  /** The shared AI transport currently supports one active generation at a time. */
+  /** Manuscript prose supports one active generation while other AI purposes may run. */
   hasActiveGeneration(): boolean {
-    return this.generationSessions.hasActiveSession();
+    return this.generationSessions.hasActiveSession('manuscript-prose');
   }
 
   attachEditor(editor: Editor): void {

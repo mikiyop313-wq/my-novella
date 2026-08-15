@@ -1,5 +1,8 @@
 import { ipcMain } from 'electron';
 import type {
+    AbortAiGenerationRequest,
+    AiGenerationAbortedEvent,
+    AiStreamEvent,
     LoadAiApiKeyRequest,
     SaveAiApiKeyRequest,
     SaveAiServerUrlRequest,
@@ -9,7 +12,20 @@ import { aiConfigurationService } from '../../domain/ai/ai-configuration.service
 import { aiService } from '../../domain/ai/ai.service';
 import type { AiPromptRequest } from '../../domain/ai/models';
 
-let currentAbortController: AbortController | null = null;
+interface AiGenerateIpcRequest extends Omit<
+    AiPromptRequest,
+    'abortSignal' | 'onToken' | 'onReasoningToken'
+> {
+    streamId: string;
+}
+
+interface AiGenerateIpcResponse {
+    text: string;
+    modelUsed: string;
+    aborted?: true;
+}
+
+const abortControllersBySender = new Map<number, Map<string, AbortController>>();
 
 export function setupAiHandlers() {
     ipcMain.handle('ai:config:load', async () => {
@@ -60,43 +76,74 @@ export function setupAiHandlers() {
         },
     );
 
-    ipcMain.handle('ai:generate', async (event, request: AiPromptRequest) => {
-        // Create a fresh controller for this generation session
-        currentAbortController = new AbortController();
+    ipcMain.handle('ai:generate', async (event, request: AiGenerateIpcRequest) => {
+        if (!request || typeof request.streamId !== 'string' || !request.streamId) {
+            throw new Error('Invalid AI generation stream ID.');
+        }
+
+        const senderId = event.sender.id;
+        const senderControllers = getSenderAbortControllers(senderId);
+        if (senderControllers.has(request.streamId)) {
+            throw new Error(`AI generation stream "${request.streamId}" is already active.`);
+        }
+
+        const abortController = new AbortController();
+        senderControllers.set(request.streamId, abortController);
+        const { streamId, ...providerRequest } = request;
 
         try {
-            // Attach a callback to send tokens back to the renderer
             const requestWithCallback: AiPromptRequest = {
-                ...request,
-                abortSignal: currentAbortController.signal,
+                ...providerRequest,
+                abortSignal: abortController.signal,
                 onToken: (token: string) => {
-                    event.sender.send('ai:generate-stream', token);
+                    const payload: AiStreamEvent = { streamId, token };
+                    event.sender.send('ai:generate-stream', payload);
                 },
                 onReasoningToken: (token: string) => {
-                    event.sender.send('ai:generate-reasoning-stream', token);
+                    const payload: AiStreamEvent = { streamId, token };
+                    event.sender.send('ai:generate-reasoning-stream', payload);
                 }
             };
             return await aiService.generatePrompt(requestWithCallback);
         } catch (error: any) {
             // Distinguish a user-requested abort from an actual error
             if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
-                // Signal the renderer that we stopped cleanly
-                event.sender.send('ai:generate-aborted');
-                return { text: '', modelUsed: request.modelId || '' };
+                const payload: AiGenerationAbortedEvent = { streamId };
+                event.sender.send('ai:generate-aborted', payload);
+                const response: AiGenerateIpcResponse = {
+                    text: '',
+                    modelUsed: request.modelId || '',
+                    aborted: true,
+                };
+                return response;
             }
             console.error('Error in ai:generate IPC handler:', error);
             // Throw error so it gets rejected in the renderer process
             throw error;
         } finally {
-            currentAbortController = null;
+            if (senderControllers.get(streamId) === abortController) {
+                senderControllers.delete(streamId);
+            }
+            if (senderControllers.size === 0) abortControllersBySender.delete(senderId);
         }
     });
 
-    ipcMain.handle('ai:abort', async () => {
-        if (currentAbortController) {
-            currentAbortController.abort();
+    ipcMain.handle('ai:abort', async (event, request: AbortAiGenerationRequest) => {
+        if (!request || typeof request.streamId !== 'string' || !request.streamId) {
+            throw new Error('Invalid AI generation abort request.');
         }
+
+        abortControllersBySender.get(event.sender.id)?.get(request.streamId)?.abort();
     });
 
     ipcMain.handle('ai:list-models', () => aiService.listModels());
+}
+
+function getSenderAbortControllers(senderId: number): Map<string, AbortController> {
+    const existingControllers = abortControllersBySender.get(senderId);
+    if (existingControllers) return existingControllers;
+
+    const controllers = new Map<string, AbortController>();
+    abortControllersBySender.set(senderId, controllers);
+    return controllers;
 }

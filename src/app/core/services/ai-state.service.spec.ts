@@ -7,9 +7,13 @@ import { AIStateService, type AiChatMessage } from './ai-state.service';
 describe('AIStateService', () => {
   let service: AIStateService;
   let invoke: ReturnType<typeof vi.fn>;
+  let toastError: ReturnType<typeof vi.fn>;
+  let toastWarning: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     invoke = vi.fn().mockResolvedValue({ text: 'Done' });
+    toastError = vi.fn();
+    toastWarning = vi.fn();
 
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
@@ -24,8 +28,8 @@ describe('AIStateService', () => {
         {
           provide: ToastService,
           useValue: {
-            error: vi.fn(),
-            warning: vi.fn(),
+            error: toastError,
+            warning: toastWarning,
           },
         },
       ],
@@ -47,6 +51,7 @@ describe('AIStateService', () => {
 
     await expect(
       service.generate({
+        streamId: 'stream-1',
         aiPrompt: {
           systemPromptCategory: 'chat',
           prompt: 'Continue',
@@ -60,6 +65,7 @@ describe('AIStateService', () => {
     ).resolves.toBe('Done');
 
     expect(invoke).toHaveBeenCalledWith('ai:generate', {
+      streamId: 'stream-1',
       model: 'openrouter',
       modelId: 'model-1',
       prompt: 'Continue',
@@ -68,5 +74,34 @@ describe('AIStateService', () => {
       systemPromptPreset: { category: 'chat', presetId: 'custom-chat' },
     });
     expect(invoke.mock.calls[0][1]).not.toHaveProperty('bookId');
+  });
+
+  it('aborts only the requested stream', async () => {
+    const abortAiGeneration = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: { invoke, abortAiGeneration },
+    });
+
+    await service.abort('stream-2');
+
+    expect(abortAiGeneration).toHaveBeenCalledWith('stream-2');
+  });
+
+  it('reports an aborted IPC result without showing a failure toast', async () => {
+    invoke.mockResolvedValue({ text: '', modelUsed: 'model-1', aborted: true });
+
+    await expect(service.generate({
+      streamId: 'stream-1',
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Continue',
+        messages: [{ role: 'user', content: 'Continue' }],
+      },
+      model: 'openrouter',
+    })).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastWarning).not.toHaveBeenCalled();
   });
 });

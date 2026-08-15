@@ -6,6 +6,7 @@ import { ToastService } from '../../shared/services/toast.service';
 export type { AiChatMessage } from '../../../../shared/models/ai.model';
 
 export interface AiGenerationRequest {
+    streamId: string;
     aiPrompt: BuiltAiPrompt;
     model?: string;
     modelId?: string;
@@ -19,11 +20,11 @@ export class AIStateService {
     toastService = inject(ToastService);
 
     /**
-     * Signals the main process to abort the current AI generation.
+     * Signals the main process to abort one AI generation stream.
      * The in-flight fetch will be cancelled and `ai:generate-aborted` will be sent back.
      */
-    abort(): Promise<void> {
-        return window.electronAPI.abortAiGeneration?.() ?? Promise.resolve();
+    abort(streamId: string): Promise<void> {
+        return window.electronAPI.abortAiGeneration?.(streamId) ?? Promise.resolve();
     }
 
     async generate(request: AiGenerationRequest) {
@@ -32,6 +33,7 @@ export class AIStateService {
 
         try {
             const response = await window.electronAPI.invoke('ai:generate', {
+                streamId: request.streamId,
                 model: providerToUse,
                 modelId: request.modelId,
                 prompt: request.aiPrompt.prompt,
@@ -42,8 +44,16 @@ export class AIStateService {
                     : {}),
             });
 
+            if (response.aborted === true) {
+                const abortError = new Error('AI generation was stopped.');
+                abortError.name = 'AbortError';
+                throw abortError;
+            }
+
             return response.text;
         } catch (e) {
+            if (e instanceof Error && e.name === 'AbortError') throw e;
+
             console.error("Failed to generate text:", e);
             if (e instanceof Error) {
                 if (e.message.includes('429')) {

@@ -15,12 +15,16 @@ describe('AiStreamService', () => {
   let getActivePresetId: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
   let onMessage: ReturnType<typeof vi.fn>;
-  let listeners: Map<string, (...args: any[]) => void>;
+  let listeners: Map<string, Set<(...args: any[]) => void>>;
+  let emitMessage: (channel: string, payload: unknown) => void;
   let cleanupFns: ReturnType<typeof vi.fn>[];
   let resolveActiveModel: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     listeners = new Map();
+    emitMessage = (channel, payload) => {
+      for (const listener of listeners.get(channel) ?? []) listener(payload);
+    };
     cleanupFns = [];
     generate = vi.fn().mockResolvedValue('');
     abort = vi.fn().mockResolvedValue(undefined);
@@ -33,9 +37,14 @@ describe('AiStreamService', () => {
       modelId: 'gpt-5',
     });
     onMessage = vi.fn((channel: string, callback: (...args: any[]) => void) => {
-      listeners.set(channel, callback);
+      const channelListeners = listeners.get(channel) ?? new Set();
+      channelListeners.add(callback);
+      listeners.set(channel, channelListeners);
 
-      const cleanup = vi.fn(() => listeners.delete(channel));
+      const cleanup = vi.fn(() => {
+        channelListeners.delete(callback);
+        if (channelListeners.size === 0) listeners.delete(channel);
+      });
       cleanupFns.push(cleanup);
 
       return cleanup;
@@ -71,8 +80,8 @@ describe('AiStreamService', () => {
 
   it('streams content tokens in order while normalizing CRLF', async () => {
     generate.mockImplementation(async () => {
-      listeners.get('ai:generate-stream')?.('Hel');
-      listeners.get('ai:generate-stream')?.('lo\r\n\nthere');
+      emitMessage('ai:generate-stream', { streamId: 'stream-1', token: 'Hel' });
+      emitMessage('ai:generate-stream', { streamId: 'stream-1', token: 'lo\r\n\nthere' });
       return 'Hello there';
     });
 
@@ -89,6 +98,7 @@ describe('AiStreamService', () => {
 
     expect(tokens.join('')).toBe('Hello\n\nthere');
     expect(generate).toHaveBeenCalledWith({
+      streamId: 'stream-1',
       aiPrompt: textPrompt('chat', 'Write'),
       model: 'openrouter',
       modelId: 'model-1',
@@ -106,6 +116,7 @@ describe('AiStreamService', () => {
 
     expect(resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
     expect(generate).toHaveBeenCalledWith({
+      streamId: 'stream-1',
       aiPrompt: textPrompt('summary', 'Summarize'),
       model: 'openai',
       modelId: 'gpt-5',
@@ -137,6 +148,7 @@ describe('AiStreamService', () => {
     });
 
     expect(generate).toHaveBeenCalledWith({
+      streamId: 'stream-1',
       aiPrompt,
       model: 'openrouter',
       modelId: undefined,
@@ -147,7 +159,7 @@ describe('AiStreamService', () => {
 
   it('switches status to generating when content tokens arrive', async () => {
     generate.mockImplementation(async () => {
-      listeners.get('ai:generate-stream')?.('A');
+      emitMessage('ai:generate-stream', { streamId: 'stream-1', token: 'A' });
       return 'A';
     });
 
@@ -166,7 +178,10 @@ describe('AiStreamService', () => {
 
   it('switches status to thinking when reasoning tokens arrive', async () => {
     generate.mockImplementation(async () => {
-      listeners.get('ai:generate-reasoning-stream')?.('Considering');
+      emitMessage('ai:generate-reasoning-stream', {
+        streamId: 'stream-1',
+        token: 'Considering',
+      });
       return '';
     });
 
@@ -189,11 +204,11 @@ describe('AiStreamService', () => {
     vi.setSystemTime(0);
 
     generate.mockImplementation(async () => {
-      listeners.get('ai:generate-reasoning-stream')?.('a');
+      emitMessage('ai:generate-reasoning-stream', { streamId: 'stream-1', token: 'a' });
       vi.setSystemTime(201);
-      listeners.get('ai:generate-reasoning-stream')?.('b');
+      emitMessage('ai:generate-reasoning-stream', { streamId: 'stream-1', token: 'b' });
       vi.setSystemTime(402);
-      listeners.get('ai:generate-reasoning-stream')?.('c');
+      emitMessage('ai:generate-reasoning-stream', { streamId: 'stream-1', token: 'c' });
       return '';
     });
 
@@ -213,7 +228,50 @@ describe('AiStreamService', () => {
   it('calls AIStateService.abort when stopped', async () => {
     await service.stopStream('stream-1');
 
-    expect(abort).toHaveBeenCalledOnce();
+    expect(abort).toHaveBeenCalledWith('stream-1');
+  });
+
+  it('isolates interleaved content and reasoning events by stream ID', async () => {
+    const completions = new Map<string, (content: string) => void>();
+    generate.mockImplementation(request => new Promise(resolve => {
+      completions.set(request.streamId, resolve);
+    }));
+    const firstContent: string[] = [];
+    const secondContent: string[] = [];
+    const firstReasoning: string[] = [];
+    const secondReasoning: string[] = [];
+
+    const first = service.streamText({
+      streamId: 'stream-1',
+      bookId: 'book-1',
+      aiPrompt: textPrompt('chat', 'First'),
+      reasoningMode: true,
+      onToken: token => firstContent.push(token),
+      onReasoningUpdate: reasoning => firstReasoning.push(reasoning),
+    });
+    const second = service.streamText({
+      streamId: 'stream-2',
+      bookId: 'book-1',
+      aiPrompt: textPrompt('summary', 'Second'),
+      reasoningMode: true,
+      onToken: token => secondContent.push(token),
+      onReasoningUpdate: reasoning => secondReasoning.push(reasoning),
+    });
+
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(2));
+    emitMessage('ai:generate-stream', { streamId: 'stream-2', token: 'B' });
+    emitMessage('ai:generate-reasoning-stream', { streamId: 'stream-1', token: 'Think A' });
+    emitMessage('ai:generate-stream', { streamId: 'stream-1', token: 'A' });
+    emitMessage('ai:generate-reasoning-stream', { streamId: 'stream-2', token: 'Think B' });
+    completions.get('stream-1')?.('A');
+    completions.get('stream-2')?.('B');
+
+    await Promise.all([first, second]);
+
+    expect(firstContent.join('')).toBe('A');
+    expect(secondContent.join('')).toBe('B');
+    expect(firstReasoning.at(-1)).toBe('Think A');
+    expect(secondReasoning.at(-1)).toBe('Think B');
   });
 
   it('cleans up listeners after success', async () => {
