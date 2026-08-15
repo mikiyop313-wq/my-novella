@@ -1,0 +1,22 @@
+diff --git a/node_modules/drizzle-kit/bin.cjs b/node_modules/drizzle-kit/bin.cjs
+index 07274ea..56b4d22 100644
+--- a/node_modules/drizzle-kit/bin.cjs
++++ b/node_modules/drizzle-kit/bin.cjs
+@@ -27372,7 +27372,7 @@ var init_statementCombiner = __esm({
+           checkConstraints: Object.values(checkConstraints)
+         }
+       ];
+-      if (Object.keys(indexes).length) {
++      if (action !== "push" && Object.keys(indexes).length) {
+         statements.push(...prepareCreateIndexesJson(name, "", indexes));
+       }
+       return statements;
+@@ -27397,7 +27397,7 @@ var init_statementCombiner = __esm({
+           checkConstraints: Object.values(checkConstraints)
+         }
+       ];
+-      if (Object.keys(indexes).length) {
++      if (action !== "push" && Object.keys(indexes).length) {
+         statements.push(...prepareCreateIndexesJson(name, "", indexes));
+       }
+       return statements;
