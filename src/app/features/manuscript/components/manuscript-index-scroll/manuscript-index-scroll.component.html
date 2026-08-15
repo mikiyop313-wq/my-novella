@@ -1,0 +1,25 @@
+<div class="scrollbar-track">
+  <!-- The draggable/scroll indicative thumb -->
+  <div class="scrollbar-thumb" 
+       [style.top.%]="thumbTop()" 
+       [style.height.%]="thumbHeight()">
+  </div>
+
+  <!-- The proportional markers -->
+  @for (posItem of positionedItems(); track posItem.item.id) {
+    <div class="scrollbar-marker" 
+         [style.top.%]="posItem.topPercent"
+         [class.active]="isActive(posItem.item)" 
+         [class.type-act]="posItem.item.type === 'act'"
+         [class.type-chapter]="posItem.item.type === 'chapter'"
+         [class.type-scene]="posItem.item.type === 'scene'"
+         (click)="onItemClick(posItem.item)">
+      
+      <div class="marker-line"></div>
+      
+      <div class="marker-tooltip">
+        {{ posItem.item.label }}
+      </div>
+    </div>
+  }
+</div>

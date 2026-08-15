@@ -254,6 +254,11 @@
 
   <div class="editor-main-layout">
     <div class="editor-content-wrapper">
+      @if (store.mode() === 'scene') {
+        <div class="scene-title-header">
+          <input type="text" class="scene-title-input" [value]="sceneTitle()" (input)="onSceneChange($event)" placeholder="Scene Title" />
+        </div>
+      }
       <tiptap-editor [editor]="editor"></tiptap-editor>
       
       @if (store.mode() !== 'scene') {
@@ -276,6 +281,20 @@
       </div>
 
       <div class="sidebar-content">
+        <!-- View Options -->
+        <div class="format-section">
+          <label>View Options</label>
+          <div class="segmented-control" style="margin-top: 4px;">
+            <button [class.active]="store.showSummaries()" (click)="store.toggleSummaries()" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              Show Summaries
+            </button>
+          </div>
+        </div>
+
         <!-- Font Family -->
         <div class="format-section">
           <label>Font Family</label>
@@ -404,5 +423,8 @@
     </aside>
   </div>
   <app-editor-bubble-menu></app-editor-bubble-menu>
+  @if (indexItems().length > 0) {
+    <app-manuscript-index-scroll [items]="indexItems()" (select)="scrollToSection($event)"></app-manuscript-index-scroll>
+  }
 </div>
 }

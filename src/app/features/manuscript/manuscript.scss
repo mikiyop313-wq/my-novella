@@ -12,6 +12,7 @@
       padding-right: 20px;
     }
   }
+
 }
 
 .editor-toolbar {
@@ -203,18 +204,22 @@
       &.text-paragraph {
         font-size: 0.85rem;
       }
+
       &.text-h1 {
         font-size: 1.15rem;
         font-weight: 700;
       }
+
       &.text-h2 {
         font-size: 1.05rem;
         font-weight: 600;
       }
+
       &.text-h3 {
         font-size: 0.95rem;
         font-weight: 600;
       }
+
       &.text-h4 {
         font-size: 0.88rem;
         font-weight: 600;
@@ -245,6 +250,30 @@
   align-items: center;
   transition: padding 0.3s ease;
 
+  .scene-title-header {
+    width: 100%;
+    max-width: var(--editor-page-width, 800px);
+    margin-bottom: 1.5rem;
+    
+    .scene-title-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: 2.5rem;
+      font-family: var(--editor-font-family, 'Inter', sans-serif);
+      font-weight: 700;
+      color: var(--color-text-primary);
+      text-align: left;
+      padding: 0;
+
+      &::placeholder {
+        color: var(--color-text-secondary);
+        opacity: 0.5;
+      }
+    }
+  }
+
   tiptap-editor {
     display: block;
     width: 100%;
@@ -258,7 +287,7 @@
     display: flex;
     justify-content: center;
     padding: 2rem 0 4rem;
-    
+
     button {
       display: flex;
       align-items: center;
@@ -272,7 +301,7 @@
       font-family: inherit;
       cursor: pointer;
       transition: all 0.2s ease;
-      
+
       &:hover {
         background: var(--color-hover-bg);
         color: var(--color-text-primary);
@@ -285,6 +314,7 @@
     .tiptap {
       width: 100%;
       outline: none;
+      position: relative;
 
       // Dynamic styles from CSS variables
       font-family: var(--editor-font-family);
@@ -362,6 +392,19 @@
         text-align: left;
       }
     }
+  }
+
+  &.menu-open {
+    .editor-content-wrapper {
+      padding-right: 20px;
+    }
+  }
+
+  /* Hide native scrollbar since we use custom index scrollbar */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 

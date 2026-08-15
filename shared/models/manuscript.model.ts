@@ -39,3 +39,18 @@ export type ManuscriptModeDto<T extends ManuscriptMode> =
   T extends 'scene' ? SceneDto : never;
 
 export type ManuscriptDataDto = ActDto[] | ActDto | ChapterDto | SceneDto;
+
+// Payloads for the manuscript:create* IPC channels
+export interface CreateActPayload     { bookId: string; }
+export interface CreateChapterPayload { actId: string; }
+export interface CreateScenePayload   { chapterId: string; }
+
+// Payloads for the manuscript:delete* IPC channels
+export interface DeleteActPayload     { id: string; }
+export interface DeleteChapterPayload { id: string; }
+export interface DeleteScenePayload   { id: string; }
+
+// Payloads for the manuscript:update* IPC channels
+export interface UpdateActPayload     { id: string; title?: string; summary?: string; prose?: string; }
+export interface UpdateChapterPayload { id: string; title?: string; summary?: string; prose?: string; }
+export interface UpdateScenePayload   { id: string; title?: string; summary?: string; prose?: string; wordCount?: number; }
