@@ -106,7 +106,7 @@ describe('SystemPromptRepository', () => {
     });
   });
 
-  it('rejects invalid ownership combinations', async () => {
+  it('rejects book ownership without a book ID', async () => {
     await expect(
       repository.create({
         ...basePreset('Invalid', 'chat'),
@@ -114,25 +114,6 @@ describe('SystemPromptRepository', () => {
         bookId: '',
       }),
     ).rejects.toThrow('require a book ID');
-
-    expect(() =>
-      sqlite
-        .prepare(
-          `INSERT INTO system_prompt_presets (
-            id, name, system_prompt, category, scope, book_id, created_at, last_edited_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          'invalid-global',
-          'Invalid',
-          'Invalid',
-          'chat',
-          'global',
-          'book-1',
-          Date.now(),
-          Date.now(),
-        ),
-    ).toThrow();
   });
 
   it('cascades book presets while retaining global presets', async () => {

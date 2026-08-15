@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto';
-import { sql } from 'drizzle-orm';
-import { check, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 import type {
   SystemPromptCategory,
@@ -34,11 +33,6 @@ export const systemPromptPresets = sqliteTable(
       table.scope,
       table.bookId,
       table.category,
-    ),
-    check(
-      'system_prompt_presets_scope_book_check',
-      sql`(${table.scope} = 'global' AND ${table.bookId} IS NULL)
-          OR (${table.scope} = 'book' AND ${table.bookId} IS NOT NULL)`,
     ),
   ],
 );

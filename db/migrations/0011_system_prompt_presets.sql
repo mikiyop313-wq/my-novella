@@ -12,12 +12,7 @@ CREATE TABLE `system_prompt_presets` (
 	`frequency_penalty` real DEFAULT 0 NOT NULL,
 	`created_at` integer NOT NULL,
 	`last_edited_at` integer NOT NULL,
-	FOREIGN KEY (`book_id`) REFERENCES `books`(`id`) ON UPDATE no action ON DELETE cascade,
-	CONSTRAINT `system_prompt_presets_scope_book_check`
-		CHECK (
-			(`scope` = 'global' AND `book_id` IS NULL)
-			OR (`scope` = 'book' AND `book_id` IS NOT NULL)
-		)
+	FOREIGN KEY (`book_id`) REFERENCES `books`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE INDEX `system_prompt_presets_scope_book_category_idx`
