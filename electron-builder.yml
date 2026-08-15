@@ -1,0 +1,38 @@
+appId: com.mynovella.desktop
+productName: My Novella
+
+directories:
+  output: release
+
+files:
+  - dist/my-novella/browser/**/*
+  - dist-electron/main.js
+  - dist-electron/preload.js
+  - public/app-icon.ico
+  - package.json
+
+asar: true
+npmRebuild: false
+electronDist: node_modules/electron/dist
+
+win:
+  icon: public/app-icon.ico
+  executableName: MyNovella
+  signExecutable: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  artifactName: "${productName}-Setup-${version}.${ext}"
+
+publish:
+  provider: github
+  owner: mikiyop313-wq
+  repo: my-novella
+  releaseType: release
