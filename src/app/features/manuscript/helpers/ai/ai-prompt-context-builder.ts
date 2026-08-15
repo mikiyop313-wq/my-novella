@@ -27,7 +27,9 @@ export interface AutomaticSceneContent {
 }
 
 export function flattenScenes(hierarchy: readonly ActDto[]): SceneDto[] {
-  return hierarchy.flatMap(act => (act.chapters ?? []).flatMap(chapter => chapter.scenes ?? []));
+  return hierarchy.flatMap((act) =>
+    (act.chapters ?? []).flatMap((chapter) => chapter.scenes ?? []),
+  );
 }
 
 export function expandManuscriptRefs(
@@ -38,19 +40,19 @@ export function expandManuscriptRefs(
   const sceneIds = new Set<string>();
 
   if (selected.has('novel')) {
-    flattenScenes(hierarchy).forEach(scene => sceneIds.add(scene.id));
+    flattenScenes(hierarchy).forEach((scene) => sceneIds.add(scene.id));
     return sceneIds;
   }
 
   for (const act of hierarchy) {
     if (selected.has(`act:${act.id}`)) {
-      scenesForAct(act).forEach(scene => sceneIds.add(scene.id));
+      scenesForAct(act).forEach((scene) => sceneIds.add(scene.id));
       continue;
     }
 
     for (const chapter of act.chapters ?? []) {
       if (selected.has(`chapter:${chapter.id}`)) {
-        (chapter.scenes ?? []).forEach(scene => sceneIds.add(scene.id));
+        (chapter.scenes ?? []).forEach((scene) => sceneIds.add(scene.id));
         continue;
       }
 
@@ -68,7 +70,7 @@ export function findPreviousSceneId(
   currentSceneId: string,
 ): string | null {
   const scenes = flattenScenes(hierarchy);
-  const currentIndex = scenes.findIndex(scene => scene.id === currentSceneId);
+  const currentIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
   return currentIndex > 0 ? scenes[currentIndex - 1].id : null;
 }
 
@@ -99,11 +101,7 @@ export function serializeTiptapDocument(doc: TiptapJsonDoc | null | undefined): 
 }
 
 export function serializeTiptapNodes(nodes: readonly TiptapNode[]): string {
-  return nodes
-    .map(serializeBlockNode)
-    .filter(Boolean)
-    .join('\n\n')
-    .trim();
+  return nodes.map(serializeBlockNode).filter(Boolean).join('\n\n').trim();
 }
 
 export function serializeFullOutline(
@@ -170,10 +168,11 @@ export function serializeCodexContext(
   currentSceneId: string | null,
 ): string {
   const sceneRanks = new Map(flattenScenes(hierarchy).map((scene, index) => [scene.id, index]));
+  const sceneLocations = progressionLocations(hierarchy);
   const currentRank = currentSceneId ? sceneRanks.get(currentSceneId) : undefined;
   const serializedEntries = entries
-    .filter(entry => entry.status === 'active' && entry.trackingSetting !== 'never_include')
-    .map(entry => {
+    .filter((entry) => entry.status === 'active' && entry.trackingSetting !== 'never_include')
+    .map((entry) => {
       const fields = [
         '--- BEGIN CODEX ENTRY ---',
         `Type: ${displayCodexType(entry.type)}`,
@@ -181,7 +180,7 @@ export function serializeCodexContext(
       ];
       const aliases = entry.alias
         ?.split(',')
-        .map(alias => alias.trim())
+        .map((alias) => alias.trim())
         .filter(Boolean)
         .join(', ');
       if (aliases) fields.push(`Aliases: ${aliases}`);
@@ -189,7 +188,11 @@ export function serializeCodexContext(
 
       const progression = applicableProgression(entry.entryProgression, sceneRanks, currentRank);
       if (progression.length > 0) {
-        fields.push(`Progression:\n${progression.map(item => progressionLine(item)).join('\n')}`);
+        fields.push(
+          `Progression:\n${progression
+            .map((item) => progressionLine(item, sceneLocations.get(item.sceneId ?? '')))
+            .join('\n')}`,
+        );
       }
 
       fields.push('--- END CODEX ENTRY ---');
@@ -212,9 +215,7 @@ interface HierarchySerializationRequest {
 }
 
 function serializeHierarchy(request: HierarchySerializationRequest): string {
-  const acts = request.hierarchy
-    .map(act => serializeAct(act, request))
-    .filter(Boolean);
+  const acts = request.hierarchy.map((act) => serializeAct(act, request)).filter(Boolean);
   if (acts.length === 0 && !request.includeNovel) return '';
 
   const body = acts.join('\n\n');
@@ -226,7 +227,7 @@ function serializeHierarchy(request: HierarchySerializationRequest): string {
 
 function serializeAct(act: ActDto, request: HierarchySerializationRequest): string {
   const chapters = (act.chapters ?? [])
-    .map(chapter => serializeChapter(chapter, request))
+    .map((chapter) => serializeChapter(chapter, request))
     .filter(Boolean);
   if (!request.includeAll && chapters.length === 0) return '';
 
@@ -236,12 +237,14 @@ function serializeAct(act: ActDto, request: HierarchySerializationRequest): stri
     request.includeSummaries ? summaryBlock(act.summary) : '',
     chapters.join('\n\n'),
     delimiter.end,
-  ].filter(Boolean).join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function serializeChapter(chapter: ChapterDto, request: HierarchySerializationRequest): string {
   const scenes = (chapter.scenes ?? [])
-    .map(scene => serializeScene(scene, request))
+    .map((scene) => serializeScene(scene, request))
     .filter(Boolean);
   if (!request.includeAll && scenes.length === 0) return '';
 
@@ -251,7 +254,9 @@ function serializeChapter(chapter: ChapterDto, request: HierarchySerializationRe
     request.includeSummaries ? summaryBlock(chapter.summary) : '',
     scenes.join('\n\n'),
     delimiter.end,
-  ].filter(Boolean).join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function serializeScene(scene: SceneDto, request: HierarchySerializationRequest): string {
@@ -264,7 +269,9 @@ function serializeScene(scene: SceneDto, request: HierarchySerializationRequest)
     request.includeSummaries ? summaryBlock(scene.summary) : '',
     content?.text.trim() ? `${content.label}:\n${content.text.trim()}` : '',
     delimiter.end,
-  ].filter(Boolean).join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function entityDelimiter(
@@ -307,18 +314,48 @@ function applicableProgression(
   currentRank: number | undefined,
 ): CodexEntryProgressionDto[] {
   if (currentRank === undefined) return [];
-  return progression.filter(item => {
+  return progression.filter((item) => {
     if (!item.sceneId) return false;
     const rank = sceneRanks.get(item.sceneId);
     return rank !== undefined && rank <= currentRank;
   });
 }
 
-function progressionLine(item: CodexEntryProgressionDto): string {
+function progressionLocations(hierarchy: readonly ActDto[]): ReadonlyMap<string, string> {
+  const locations = new Map<string, string>();
+
+  for (const act of hierarchy) {
+    for (const chapter of act.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) {
+        locations.set(
+          scene.id,
+          [
+            progressionLocationPart('Act', act.position, act.title),
+            progressionLocationPart('Chapter', chapter.position, chapter.title),
+            progressionLocationPart('Scene', scene.position, scene.title),
+          ].join(' > '),
+        );
+      }
+    }
+  }
+
+  return locations;
+}
+
+function progressionLocationPart(
+  type: 'Act' | 'Chapter' | 'Scene',
+  position: number,
+  title: string,
+): string {
+  const cleanTitle = title.trim();
+  return `${type} ${position + 1}${cleanTitle ? ` — ${cleanTitle}` : ''}`;
+}
+
+function progressionLine(item: CodexEntryProgressionDto, location: string | undefined): string {
   const title = item.title.trim();
   const description = item.description.trim();
-  if (title && description) return `- ${title}: ${description}`;
-  return `- ${title || description}`;
+  const content = title && description ? `${title}: ${description}` : title || description;
+  return `- ${location ? `[${location}] ` : ''}${content}`;
 }
 
 function displayCodexType(type: string): string {
@@ -326,7 +363,7 @@ function displayCodexType(type: string): string {
 }
 
 function scenesForAct(act: ActDto): SceneDto[] {
-  return (act.chapters ?? []).flatMap(chapter => chapter.scenes ?? []);
+  return (act.chapters ?? []).flatMap((chapter) => chapter.scenes ?? []);
 }
 
 function stringAttribute(value: unknown): string | null {

@@ -1,7 +1,11 @@
 import { Schema, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import type { CodexEntryDetailDto } from '../../../../../../shared/models/codex.model';
-import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
+import type {
+  ActDto,
+  ChapterDto,
+  SceneDto,
+} from '../../../../../../shared/models/manuscript.model';
 import {
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
@@ -17,11 +21,9 @@ describe('AI prompt context builder', () => {
   it('expands structural references without duplicating scenes', () => {
     const hierarchy = createHierarchy();
 
-    expect([...expandManuscriptRefs(hierarchy, [
-      'act:act-1',
-      'chapter:chapter-1',
-      'scene:scene-1',
-    ])]).toEqual(['scene-1', 'scene-2']);
+    expect([
+      ...expandManuscriptRefs(hierarchy, ['act:act-1', 'chapter:chapter-1', 'scene:scene-1']),
+    ]).toEqual(['scene-1', 'scene-2']);
     expect(findPreviousSceneId(hierarchy, 'scene-3')).toBe('scene-2');
   });
 
@@ -36,7 +38,9 @@ describe('AI prompt context builder', () => {
     expect(result).toContain('--- BEGIN NOVEL — Silver Key ---');
     expect(result).toContain('--- BEGIN ACT 1 — Act One ---');
     expect(result).toContain('Summary:\nAct summary.');
-    expect(result).toContain('--- BEGIN SCENE 2 ---\n\nSummary:\nSecond summary.\n\nProse:\nSelected prose.');
+    expect(result).toContain(
+      '--- BEGIN SCENE 2 ---\n\nSummary:\nSecond summary.\n\nProse:\nSelected prose.',
+    );
     expect(result.match(/Selected prose\./g)).toHaveLength(1);
   });
 
@@ -61,10 +65,13 @@ describe('AI prompt context builder', () => {
   });
 
   it('renders automatic scenes in hierarchy order with their distinct labels', () => {
-    const result = serializeAutomaticManuscript(createHierarchy(), new Map([
-      ['scene-3', { label: 'Prose before AI prompt', text: 'Current.' }],
-      ['scene-2', { label: 'Full prose', text: 'Previous.' }],
-    ]));
+    const result = serializeAutomaticManuscript(
+      createHierarchy(),
+      new Map([
+        ['scene-3', { label: 'Prose before AI prompt', text: 'Current.' }],
+        ['scene-2', { label: 'Full prose', text: 'Previous.' }],
+      ]),
+    );
 
     expect(result.indexOf('Previous.')).toBeLessThan(result.indexOf('Current.'));
     expect(result).toContain('Full prose:\nPrevious.');
@@ -80,21 +87,26 @@ describe('AI prompt context builder', () => {
   });
 
   it('excludes context-only nodes from JSON prose', () => {
-    expect(serializeTiptapDocument({
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [{ type: 'text', text: 'Keep.' }] },
-        {
-          type: 'aiGeneratedBlock',
-          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Exclude.' }] }],
-        },
-        { type: 'paragraph', content: [
-          { type: 'text', text: 'Line one' },
-          { type: 'hardBreak' },
-          { type: 'text', text: 'Line two' },
-        ] },
-      ],
-    })).toBe('Keep.\n\nLine one\nLine two');
+    expect(
+      serializeTiptapDocument({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Keep.' }] },
+          {
+            type: 'aiGeneratedBlock',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Exclude.' }] }],
+          },
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Line one' },
+              { type: 'hardBreak' },
+              { type: 'text', text: 'Line two' },
+            ],
+          },
+        ],
+      }),
+    ).toBe('Keep.\n\nLine one\nLine two');
   });
 
   it('serializes only progression at or before the current active scene', () => {
@@ -103,7 +115,13 @@ describe('AI prompt context builder', () => {
 
     expect(result).toContain('Type: Character');
     expect(result).toContain('Aliases: Mara, The Courier');
-    expect(result).toContain('Known: She has the key.');
+    expect(result).toContain(
+      '- [Act 1 — Act One > Chapter 1 — Chapter One > Scene 1 — Opening] Introduced: She finds the key.',
+    );
+    expect(result).toContain(
+      '- [Act 1 — Act One > Chapter 1 — Chapter One > Scene 2] Known: She has the key.',
+    );
+    expect(result.indexOf('Introduced:')).toBeLessThan(result.indexOf('Known:'));
     expect(result).not.toContain('Future');
     expect(result).not.toContain('Unlinked');
     expect(result).not.toContain('Private note');
@@ -223,14 +241,17 @@ function createCodexEntry(): CodexEntryDetailDto {
     trackingSetting: 'manual',
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
-    entryNotes: [{
-      id: 'note-1',
-      codexEntryId: 'codex-1',
-      content: 'Private note',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      lastEditedAt: '2026-01-01T00:00:00.000Z',
-    }],
+    entryNotes: [
+      {
+        id: 'note-1',
+        codexEntryId: 'codex-1',
+        content: 'Private note',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        lastEditedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ],
     entryProgression: [
+      progression('Introduced', 'She finds the key.', 'scene-1'),
       progression('Known', 'She has the key.', 'scene-2'),
       progression('Future', 'She loses it.', 'scene-3'),
       progression('Unlinked', 'Unknown timing.', null),
