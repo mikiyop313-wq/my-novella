@@ -21,7 +21,6 @@ const isDev = process.env['NODE_ENV'] === 'development';
 const vectorDbPath = (isDev || !app)
     ? '.data/vectors'
     : path.join(app.getPath('userData'), 'vectors');
-const MANUSCRIPT_TABLE_PREFIX = 'manuscript_';
 const LEGACY_MANUSCRIPT_TABLE = 'manuscript';
 
 if (!fs.existsSync(vectorDbPath)) {
@@ -103,24 +102,6 @@ export class VectorDatabase {
             tableName,
             [schemaRecord as unknown as Record<string, unknown>],
         );
-    }
-
-    /** Removes one book's records from every manuscript space except its active space. */
-    public async deleteBookFromOtherSpaces(
-        bookId: string,
-        activeSpace: EmbeddingSpaceDescriptor,
-    ): Promise<void> {
-        const conn = await this.connect();
-        const activeTable = this.tableNameForSpace(activeSpace);
-        const predicate = `bookId = '${escapeLanceSql(bookId)}'`;
-
-        for (const tableName of await conn.tableNames()) {
-            if (!tableName.startsWith(MANUSCRIPT_TABLE_PREFIX) || tableName === activeTable) {
-                continue;
-            }
-            const table = await conn.openTable(tableName);
-            await table.delete(predicate);
-        }
     }
 
     /**

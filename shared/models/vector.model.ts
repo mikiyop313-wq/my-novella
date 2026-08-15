@@ -127,6 +127,8 @@ export interface LocalEmbeddingModelDescriptor {
 export interface LocalEmbeddingModelStatus extends LocalEmbeddingModelDescriptor {
     installed: boolean;
     cachedBytes: number;
+    /** Number of books that currently select this exact local model. */
+    selectedBookCount: number;
 }
 
 /** Lifecycle events emitted by Transformers.js while preparing a model. */
@@ -155,4 +157,30 @@ export interface DownloadLocalEmbeddingModelPayload {
 /** Options accepted by the local-model uninstall IPC operation. */
 export interface UninstallLocalEmbeddingModelPayload extends DownloadLocalEmbeddingModelPayload {
     clearVectors: boolean;
+}
+
+/** Selects one installed local model for a book and reconciles its vector index. */
+export interface SelectBookLocalEmbeddingModelPayload extends DownloadLocalEmbeddingModelPayload {
+    bookId: string;
+}
+
+/** Identifies the exact local model currently selected by a book. */
+export interface BookLocalEmbeddingModelSelection {
+    bookId: string;
+    modelName: LocalEmbeddingModelName;
+}
+
+/** Progress emitted while a book is reconciled into a newly selected local embedding space. */
+export interface BookEmbeddingReindexProgress extends BookLocalEmbeddingModelSelection {
+    processedParagraphs: number;
+    totalParagraphs: number;
+}
+
+/** Summary of one complete book reconciliation. */
+export interface BookEmbeddingReindexResult extends BookLocalEmbeddingModelSelection {
+    totalParagraphs: number;
+    reusedParagraphs: number;
+    embeddedParagraphs: number;
+    metadataUpdatedParagraphs: number;
+    deletedParagraphs: number;
 }

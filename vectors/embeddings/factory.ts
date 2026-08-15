@@ -18,7 +18,7 @@ import {
 } from './provider-selection';
 import {
     getLocalEmbeddingModelPaths,
-    LOCAL_EMBEDDING_MODEL_DIMENSIONS,
+    getLocalEmbeddingModelDefinition,
     LOCAL_EMBEDDING_MODEL_NAME,
 } from './local-model-definition';
 
@@ -40,27 +40,33 @@ export function getApiKeyForModel(_model: EmbeddingModel): string | undefined {
 export { EmbeddingProviderUnavailableError } from './provider-selection';
 
 // ---------------------------------------------------------------------------
-// Provider cache — one instance per model type to avoid re-initialising the
-// heavy local ONNX pipeline on every IPC call.
+// Provider cache — one instance per exact model to avoid re-initialising the
+// heavy local ONNX pipeline for an exact model on every IPC call.
 // ---------------------------------------------------------------------------
 
-const providerCache = new Map<EmbeddingModel, EmbeddingProvider>();
-let localProviderUnavailable = false;
-
-const localModelPaths = getLocalEmbeddingModelPaths();
+const providerCache = new Map<string, EmbeddingProvider>();
+const unavailableLocalModels = new Set<LocalEmbeddingModelName>();
 
 /** Creates the configured provider for an embedding-provider selection. */
-function buildProvider(model: EmbeddingModel): EmbeddingProvider {
+function buildProvider(
+    model: EmbeddingModel,
+    localModelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
+): EmbeddingProvider {
     switch (model) {
-        case 'local':
+        case 'local': {
+            const definition = getLocalEmbeddingModelDefinition(localModelName);
+            const paths = getLocalEmbeddingModelPaths(localModelName);
             return new LocalEmbeddingProvider({
                 type: 'local',
-                modelName: LOCAL_EMBEDDING_MODEL_NAME,
-                dimensions: LOCAL_EMBEDDING_MODEL_DIMENSIONS,
+                modelName: definition.modelName,
+                sourceModelName: definition.sourceModelName,
+                dimensions: definition.dimensions,
                 inputType: 'document',
-                cacheDir: localModelPaths.cacheDir,
-                installationMarkerPath: localModelPaths.installationMarkerPath,
+                quantized: definition.quantized,
+                cacheDir: paths.cacheDir,
+                installationMarkerPath: paths.installationMarkerPath,
             });
+        }
 
         case 'openAI': {
             const apiKey = requireEmbeddingApiKey('openAI', getApiKeyForModel('openAI'));
@@ -101,12 +107,14 @@ function buildProvider(model: EmbeddingModel): EmbeddingProvider {
  * the local ONNX pipeline is only initialised once.
  */
 export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingProvider> {
-    // Read the book's embedding model preference using the book repository.
     const model = await bookRepository.getEmbeddingModel(bookId);
+    const localModelName = model === 'local'
+        ? await bookRepository.getLocalEmbeddingModel(bookId)
+        : LOCAL_EMBEDDING_MODEL_NAME;
 
-    console.log(`[EmbeddingFactory] book=${bookId} → model=${model}`);
+    console.log(`[EmbeddingFactory] book=${bookId} → model=${model}:${localModelName}`);
 
-    return getOrCreateProvider(model);
+    return getOrCreateProvider(model, localModelName);
 }
 
 /**
@@ -115,8 +123,10 @@ export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingPro
  * @returns The active local embedding provider.
  * @throws Error while local model files are being uninstalled.
  */
-export function getLocalEmbeddingProvider(): LocalEmbeddingProvider {
-    return getOrCreateProvider('local') as LocalEmbeddingProvider;
+export function getLocalEmbeddingProvider(
+    modelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
+): LocalEmbeddingProvider {
+    return getOrCreateProvider('local', modelName) as LocalEmbeddingProvider;
 }
 
 /**
@@ -127,27 +137,37 @@ export function getLocalEmbeddingProvider(): LocalEmbeddingProvider {
 export async function releaseLocalEmbeddingProvider(
     modelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
 ): Promise<void> {
-    if (modelName !== LOCAL_EMBEDDING_MODEL_NAME) return;
-    localProviderUnavailable = true;
-    const cached = providerCache.get('local');
+    unavailableLocalModels.add(modelName);
+    const key = providerCacheKey('local', modelName);
+    const cached = providerCache.get(key);
     if (cached) await (cached as LocalEmbeddingProvider).dispose();
-    providerCache.delete('local');
+    providerCache.delete(key);
 }
 
 /** Allows a fresh local provider to be created after an uninstall operation has finished. */
 export function restoreLocalEmbeddingProviderAccess(
     modelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
 ): void {
-    if (modelName !== LOCAL_EMBEDDING_MODEL_NAME) return;
-    localProviderUnavailable = false;
+    unavailableLocalModels.delete(modelName);
 }
 
 /** Returns a cached provider or constructs it when first requested. */
-function getOrCreateProvider(model: EmbeddingModel): EmbeddingProvider {
-    if (model === 'local' && localProviderUnavailable) {
+function getOrCreateProvider(
+    model: EmbeddingModel,
+    localModelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
+): EmbeddingProvider {
+    if (model === 'local' && unavailableLocalModels.has(localModelName)) {
         throw new Error('The local embedding model is being uninstalled.');
     }
 
-    if (!providerCache.has(model)) providerCache.set(model, buildProvider(model));
-    return providerCache.get(model)!;
+    const key = providerCacheKey(model, localModelName);
+    if (!providerCache.has(key)) providerCache.set(key, buildProvider(model, localModelName));
+    return providerCache.get(key)!;
+}
+
+function providerCacheKey(
+    model: EmbeddingModel,
+    localModelName: LocalEmbeddingModelName,
+): string {
+    return model === 'local' ? `${model}:${localModelName}` : model;
 }

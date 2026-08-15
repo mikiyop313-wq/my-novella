@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { relations } from 'drizzle-orm';
 import { blob, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core';
+import type { LocalEmbeddingModelName } from '../../shared/models/vector.model';
 
 // ---------------------------------------------------------------------------
 // Shared value types
@@ -50,6 +51,10 @@ export const bookSettings = sqliteTable('book_settings', {
   synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
   povCharacterId: text('pov_character_id'),
   embeddingModel: text('embedding_model').$type<EmbeddingModel>().notNull().default('local'),
+  localEmbeddingModel: text('local_embedding_model')
+    .$type<LocalEmbeddingModelName>()
+    .notNull()
+    .default('mixedbread-ai/mxbai-embed-large-v1'),
   vectorSearchEnabled: integer('vector_search_enabled', { mode: 'boolean' }).notNull().default(true),
 });
 

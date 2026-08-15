@@ -7,6 +7,9 @@ import type {
     TiptapNode,
 } from '../../shared/models/manuscript.model';
 import type {
+    BookEmbeddingReindexProgress,
+    BookEmbeddingReindexResult,
+    LocalEmbeddingModelName,
     ManuscriptVectorRecord,
     SimilarParagraphResult,
 } from '../../shared/models/vector.model';
@@ -14,7 +17,8 @@ import {
     hashParagraphVectorText,
     normalizeParagraphVectorText,
 } from '../../shared/utils/paragraph-vector';
-import { getEmbeddingProvider } from '../embeddings/factory';
+import { bookRepository } from '../../db/repositories/book.repository';
+import { getEmbeddingProvider, getLocalEmbeddingProvider } from '../embeddings/factory';
 import { assertEmbeddingDimensions, type EmbeddingProvider } from '../embeddings/types';
 import { vectorDb } from '../lancedb.connection';
 import { paragraphVectorRepository } from '../repositories/paragraph-vector.repository';
@@ -32,9 +36,18 @@ interface IndexedParagraph {
     position: number;
 }
 
+interface ReconciliationSummary {
+    totalParagraphs: number;
+    reusedParagraphs: number;
+    embeddedParagraphs: number;
+    metadataUpdatedParagraphs: number;
+    deletedParagraphs: number;
+}
+
 /** Keeps a book's paragraph embeddings synchronized with its manuscript and searches them. */
 export class ManuscriptVectorIndexService {
-    private readonly inFlightReconciliations = new Map<string, Promise<EmbeddingProvider>>();
+    private readonly bookOperationTails = new Map<string, Promise<void>>();
+    private readonly switchingBooks = new Set<string>();
 
     /** Finds the paragraphs most semantically similar to a query after ensuring the index is current. */
     async searchSimilar(
@@ -42,46 +55,126 @@ export class ManuscriptVectorIndexService {
         query: string,
         limit: number,
     ): Promise<SimilarParagraphResult[]> {
-        const provider = await this.ensureBookIndexed(bookId);
-        const queryVector = await provider.embedQuery(query);
-        assertEmbeddingDimensions(provider, [queryVector]);
-        return paragraphVectorRepository.searchSimilar(
-            provider.space,
-            bookId,
-            queryVector,
-            limit,
-        );
+        if (this.switchingBooks.has(bookId)) {
+            throw new Error('Semantic search is unavailable while the book embedding index is rebuilding.');
+        }
+
+        return this.runBookOperation(bookId, async () => {
+            const provider = await this.ensureBookIndexedNow(bookId);
+            const queryVector = await provider.embedQuery(query);
+            assertEmbeddingDimensions(provider, [queryVector]);
+            return paragraphVectorRepository.searchSimilar(
+                provider.space,
+                bookId,
+                queryVector,
+                limit,
+            );
+        });
     }
 
-    /** Reconciles a book once per embedding configuration and returns the provider used for it. */
+    /** Reconciles the active embedding space and returns its provider. */
     async ensureBookIndexed(bookId: string): Promise<EmbeddingProvider> {
-        const selectedProvider = await getEmbeddingProvider(bookId);
-        const key = `${bookId}:${selectedProvider.space.provider}:${selectedProvider.space.model}:${selectedProvider.space.revision}`;
-        const existing = this.inFlightReconciliations.get(key);
-        if (existing) return existing;
+        return this.runBookOperation(bookId, () => this.ensureBookIndexedNow(bookId));
+    }
 
-        const reconciliation = this.reconcileBook(bookId, selectedProvider)
-            .finally(() => this.inFlightReconciliations.delete(key));
-        this.inFlightReconciliations.set(key, reconciliation);
-        return reconciliation;
+    /** Serializes one vector operation with all other vector work for the same book. */
+    async runBookOperation<T>(bookId: string, operation: () => Promise<T>): Promise<T> {
+        const previous = this.bookOperationTails.get(bookId) ?? Promise.resolve();
+        let release!: () => void;
+        const tail = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        this.bookOperationTails.set(bookId, tail);
+
+        await previous.catch(() => undefined);
+        try {
+            return await operation();
+        } finally {
+            release();
+            if (this.bookOperationTails.get(bookId) === tail) {
+                this.bookOperationTails.delete(bookId);
+            }
+        }
+    }
+
+    /** Activates an installed local model immediately, then reconciles its retained vector space. */
+    async selectLocalModel(
+        bookId: string,
+        modelName: LocalEmbeddingModelName,
+        onProgress?: (progress: BookEmbeddingReindexProgress) => void,
+    ): Promise<BookEmbeddingReindexResult> {
+        if (this.switchingBooks.has(bookId)) {
+            throw new Error('An embedding model switch is already in progress for this book.');
+        }
+
+        this.switchingBooks.add(bookId);
+        try {
+            await bookRepository.selectLocalEmbeddingModel(bookId, modelName);
+            return await this.runBookOperation(bookId, async () => {
+                const provider = getLocalEmbeddingProvider(modelName);
+                const summary = await this.reconcileBook(bookId, provider, (
+                    processedParagraphs,
+                    totalParagraphs,
+                ) => {
+                    onProgress?.({
+                        bookId,
+                        modelName,
+                        processedParagraphs,
+                        totalParagraphs,
+                    });
+                });
+                return { bookId, modelName, ...summary };
+            });
+        } finally {
+            this.switchingBooks.delete(bookId);
+        }
+    }
+
+    private async ensureBookIndexedNow(bookId: string): Promise<EmbeddingProvider> {
+        const provider = await getEmbeddingProvider(bookId);
+        await this.reconcileBook(bookId, provider);
+        return provider;
     }
 
     /** Updates changed vectors, removes stale ones, and retires obsolete embedding spaces. */
     private async reconcileBook(
         bookId: string,
         provider: EmbeddingProvider,
-    ): Promise<EmbeddingProvider> {
+        onProgress?: (processedParagraphs: number, totalParagraphs: number) => void,
+    ): Promise<ReconciliationSummary> {
         const manuscript = await manuscriptRepository.getManuscript('book', bookId) as ActDto[];
         const paragraphs = await this.collectParagraphs(bookId, manuscript);
-        const existingHashes = await paragraphVectorRepository.getBookParagraphHashes(
+        const existingStates = await paragraphVectorRepository.getBookParagraphStates(
             provider.space,
             bookId,
         );
         const currentIds = new Set(paragraphs.map(paragraph => paragraph.paragraphId));
-        const staleIds = [...existingHashes.keys()].filter(id => !currentIds.has(id));
+        const staleIds = [...existingStates.keys()].filter(id => !currentIds.has(id));
         const changed = paragraphs.filter(
-            paragraph => existingHashes.get(paragraph.paragraphId) !== paragraph.hash,
+            paragraph => existingStates.get(paragraph.paragraphId)?.hash !== paragraph.hash,
         );
+        const reused = paragraphs.filter(
+            paragraph => existingStates.get(paragraph.paragraphId)?.hash === paragraph.hash,
+        );
+        const metadataChanged = reused.filter(paragraph => {
+            const state = existingStates.get(paragraph.paragraphId)!;
+            return state.actId !== paragraph.actId
+                || state.chapterId !== paragraph.chapterId
+                || state.sceneId !== paragraph.sceneId
+                || state.position !== paragraph.position;
+        });
+
+        await paragraphVectorRepository.updateParagraphMetadata(
+            provider.space,
+            metadataChanged.map(paragraph => ({
+                paragraphId: paragraph.paragraphId,
+                actId: paragraph.actId,
+                chapterId: paragraph.chapterId,
+                sceneId: paragraph.sceneId,
+                position: paragraph.position,
+            })),
+        );
+        onProgress?.(reused.length, paragraphs.length);
 
         for (let offset = 0; offset < changed.length; offset += EMBEDDING_BATCH_SIZE) {
             const batch = changed.slice(offset, offset + EMBEDDING_BATCH_SIZE);
@@ -106,14 +199,22 @@ export class ManuscriptVectorIndexService {
                 updatedAt: now,
             }));
             await paragraphVectorRepository.upsertParagraphs(provider.space, records);
+            onProgress?.(
+                reused.length + Math.min(offset + batch.length, changed.length),
+                paragraphs.length,
+            );
         }
 
         await paragraphVectorRepository.deleteParagraphs(provider.space, staleIds);
 
-        // Cleanup happens only after the selected provider has indexed successfully.
-        await vectorDb.deleteBookFromOtherSpaces(bookId, provider.space);
         await vectorDb.retireLegacyManuscriptTable();
-        return provider;
+        return {
+            totalParagraphs: paragraphs.length,
+            reusedParagraphs: reused.length,
+            embeddedParagraphs: changed.length,
+            metadataUpdatedParagraphs: metadataChanged.length,
+            deletedParagraphs: staleIds.length,
+        };
     }
 
     /** Extracts indexable paragraphs and persists missing paragraph identifiers in the manuscript. */

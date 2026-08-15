@@ -1,3 +1,5 @@
+import type { LocalEmbeddingModelName } from './vector.model';
+
 export interface CategoryDto {
   id: string;
   name: string;
@@ -18,6 +20,8 @@ export interface BookSettingsDto {
   povCharacterId?: string | null;
   /** Embedding model/provider used to generate paragraph vectors for this book. */
   embeddingModel?: 'local' | 'openAI' | 'voyage';
+  /** Exact on-device embedding model selected when `embeddingModel` is `local`. */
+  localEmbeddingModel?: LocalEmbeddingModelName;
   /** Global default inherited by inline manuscript prompts. */
   vectorSearchEnabled?: boolean;
 }

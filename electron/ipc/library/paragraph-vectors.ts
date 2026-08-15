@@ -37,7 +37,17 @@ async function buildSceneMap(sceneIds: string[]) {
 // provider configured for the given book, and merges them into LanceDB.
 // ---------------------------------------------------------------------------
 
-async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPayload): Promise<void> {
+async function handleUpsertParagraphs(payload: UpsertParagraphsPayload): Promise<void> {
+    if (payload.upserts.length === 0) return;
+    await manuscriptVectorIndexService.runBookOperation(
+        payload.bookId,
+        () => handleUpsertParagraphsNow(payload),
+    );
+}
+
+async function handleUpsertParagraphsNow(
+    { bookId, upserts }: UpsertParagraphsPayload,
+): Promise<void> {
     if (upserts.length === 0) return;
 
     console.log(`[VectorDB] upsertParagraphs — book=${bookId}, ${upserts.length} paragraph(s)`);
@@ -100,7 +110,17 @@ async function handleUpsertParagraphs({ bookId, upserts }: UpsertParagraphsPaylo
 // Receives a list of paragraphIds and removes them from LanceDB.
 // ---------------------------------------------------------------------------
 
-async function handleDeleteParagraphs({ bookId, deletes }: DeleteParagraphsPayload): Promise<void> {
+async function handleDeleteParagraphs(payload: DeleteParagraphsPayload): Promise<void> {
+    if (payload.deletes.length === 0) return;
+    await manuscriptVectorIndexService.runBookOperation(
+        payload.bookId,
+        () => handleDeleteParagraphsNow(payload),
+    );
+}
+
+async function handleDeleteParagraphsNow(
+    { bookId, deletes }: DeleteParagraphsPayload,
+): Promise<void> {
     if (deletes.length === 0) return;
 
     const ids = deletes.map(d => d.paragraphId);

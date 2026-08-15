@@ -14,6 +14,7 @@ import type {
   LocalEmbeddingModelStatus,
   UninstallLocalEmbeddingModelPayload,
 } from '../../shared/models/vector.model';
+import { bookRepository } from '../../db/repositories/book.repository';
 import { vectorDb } from '../lancedb.connection';
 import { releaseLocalEmbeddingProvider, restoreLocalEmbeddingProviderAccess } from './factory';
 import { LocalEmbeddingProvider } from './providers/local';
@@ -49,6 +50,7 @@ export interface LocalEmbeddingModelManagerDependencies {
   releaseProvider: (modelName: LocalEmbeddingModelName) => Promise<void>;
   restoreProviderAccess: (modelName: LocalEmbeddingModelName) => void;
   clearVectors: (model: LocalEmbeddingModelDefinition) => Promise<void>;
+  countSelectedBooks: (modelName: LocalEmbeddingModelName) => Promise<number>;
 }
 
 /** Coordinates mutually exclusive local-model lifecycle operations. */
@@ -74,9 +76,10 @@ export class LocalEmbeddingModelManager {
   async getStatus(modelName: LocalEmbeddingModelName | string): Promise<LocalEmbeddingModelStatus> {
     const model = this.requireModel(modelName);
     const paths = this.dependencies.getPaths(model.modelName);
-    const [installed, cachedBytes] = await Promise.all([
+    const [installed, cachedBytes, selectedBookCount] = await Promise.all([
       pathExists(paths.installationMarkerPath),
       directorySize(paths.modelDir),
+      this.dependencies.countSelectedBooks(model.modelName),
     ]);
     return {
       modelName: model.modelName,
@@ -88,6 +91,7 @@ export class LocalEmbeddingModelManager {
       language: model.language,
       installed,
       cachedBytes,
+      selectedBookCount,
     };
   }
 
@@ -186,6 +190,12 @@ export class LocalEmbeddingModelManager {
     return this.runExclusive('uninstall', async () => {
       const model = this.requireModel(payload.modelName);
       const paths = this.dependencies.getPaths(model.modelName);
+      const selectedBookCount = await this.dependencies.countSelectedBooks(model.modelName);
+      if (selectedBookCount > 0) {
+        throw new Error(
+          `${model.displayName} is selected by ${selectedBookCount} book${selectedBookCount === 1 ? '' : 's'}. Switch those books before uninstalling it.`,
+        );
+      }
       try {
         await this.dependencies.releaseProvider(model.modelName);
 
@@ -290,4 +300,5 @@ export const localEmbeddingModelManager = new LocalEmbeddingModelManager({
   releaseProvider: releaseLocalEmbeddingProvider,
   restoreProviderAccess: restoreLocalEmbeddingProviderAccess,
   clearVectors: (model) => vectorDb.dropEmbeddingSpace(model.space),
+  countSelectedBooks: (modelName) => bookRepository.countBooksUsingLocalEmbeddingModel(modelName),
 });

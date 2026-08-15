@@ -20,6 +20,10 @@ vi.mock('../../lancedb.connection', () => ({
   vectorDb: { dropEmbeddingSpace: vi.fn() },
 }));
 
+vi.mock('../../../db/repositories/book.repository', () => ({
+  bookRepository: { countBooksUsingLocalEmbeddingModel: vi.fn() },
+}));
+
 import {
   LocalEmbeddingModelManager,
   type LocalEmbeddingModelManagerDependencies,
@@ -62,6 +66,7 @@ describe('LocalEmbeddingModelManager', () => {
       releaseProvider: vi.fn().mockResolvedValue(undefined),
       restoreProviderAccess: vi.fn(),
       clearVectors: vi.fn().mockResolvedValue(undefined),
+      countSelectedBooks: vi.fn().mockResolvedValue(0),
     };
     manager = new LocalEmbeddingModelManager(dependencies);
   });
@@ -83,6 +88,7 @@ describe('LocalEmbeddingModelManager', () => {
       modelName: mixedbread.modelName,
       installed: true,
       cachedBytes: 5 + mixedbread.modelName.length,
+      selectedBookCount: 0,
     });
     expect(statuses[1]).toMatchObject({
       modelName: bgeLarge.modelName,
@@ -213,6 +219,16 @@ describe('LocalEmbeddingModelManager', () => {
   it('clears only the selected model vector space when requested', async () => {
     await manager.uninstall({ modelName: bgeLarge.modelName, clearVectors: true });
     expect(dependencies.clearVectors).toHaveBeenCalledWith(bgeLarge);
+  });
+
+  it('blocks uninstall while the selected model is used by a book', async () => {
+    vi.mocked(dependencies.countSelectedBooks).mockResolvedValueOnce(2);
+
+    await expect(manager.uninstall({
+      modelName: bgeLarge.modelName,
+      clearVectors: false,
+    })).rejects.toThrow('selected by 2 books');
+    expect(dependencies.releaseProvider).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported model identifiers', async () => {

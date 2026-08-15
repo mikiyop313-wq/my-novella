@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../../../db/repositories/book.repository', () => ({
-    bookRepository: { getEmbeddingModel: vi.fn() },
+    bookRepository: { getEmbeddingModel: vi.fn(), getLocalEmbeddingModel: vi.fn() },
 }));
 
 vi.mock('../providers/local', () => ({
@@ -49,5 +49,20 @@ describe('embedding provider factory local lifecycle', () => {
         const second = getLocalEmbeddingProvider();
         expect(second).not.toBe(first);
         expect(mocks.localProviderConstructor).toHaveBeenCalledTimes(2);
+    });
+
+    it('creates and releases providers independently for exact local models', async () => {
+        const bge = getLocalEmbeddingProvider('BAAI/bge-m3');
+        const mixedbread = getLocalEmbeddingProvider('mixedbread-ai/mxbai-embed-large-v1');
+
+        expect(bge).not.toBe(mixedbread);
+        expect(mocks.localProviderConstructor).toHaveBeenCalledWith(
+            expect.objectContaining({ modelName: 'BAAI/bge-m3', dimensions: 1024 }),
+        );
+
+        await releaseLocalEmbeddingProvider('BAAI/bge-m3');
+        expect(() => getLocalEmbeddingProvider('BAAI/bge-m3')).toThrow('being uninstalled');
+        expect(getLocalEmbeddingProvider('mixedbread-ai/mxbai-embed-large-v1')).toBe(mixedbread);
+        restoreLocalEmbeddingProviderAccess('BAAI/bge-m3');
     });
 });
