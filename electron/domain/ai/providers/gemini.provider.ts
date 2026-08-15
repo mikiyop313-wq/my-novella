@@ -11,6 +11,7 @@ import {
 import {
     asObject,
     assertSuccessfulResponse,
+    isTextGenerationModel,
     parseJsonResponse,
     requireModelId,
 } from './provider-utils';
@@ -88,11 +89,14 @@ export class GeminiProvider implements AiProvider {
                     throw new Error('Google Gemini returned a malformed model list.');
                 }
 
+                const displayName = typeof model['displayName'] === 'string'
+                    ? model['displayName']
+                    : providerModelId;
+                if (!isTextGenerationModel(providerModelId, displayName)) continue;
+
                 models.push({
                     id: `gemini/${providerModelId}`,
-                    name: typeof model['displayName'] === 'string'
-                        ? model['displayName']
-                        : providerModelId,
+                    name: displayName,
                     provider: 'google',
                     providerName: 'Google Gemini (Direct)',
                     source: 'direct',

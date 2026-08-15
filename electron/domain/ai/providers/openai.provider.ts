@@ -11,6 +11,7 @@ import {
 import {
     asObject,
     assertSuccessfulResponse,
+    isTextGenerationModel,
     parseJsonResponse,
     requireModelId,
 } from './provider-utils';
@@ -62,22 +63,24 @@ export class OpenAiProvider implements AiProvider {
             throw new Error('OpenAI returned a malformed model list.');
         }
 
-        return body['data'].map((rawModel): AiModel => {
-            const model = asObject(rawModel);
-            if (!model || typeof model['id'] !== 'string' || !model['id'].trim()) {
-                throw new Error('OpenAI returned a malformed model list.');
-            }
+        return body['data']
+            .map((rawModel): AiModel => {
+                const model = asObject(rawModel);
+                if (!model || typeof model['id'] !== 'string' || !model['id'].trim()) {
+                    throw new Error('OpenAI returned a malformed model list.');
+                }
 
-            const providerModelId = model['id'];
-            return {
-                id: `openai/${providerModelId}`,
-                name: providerModelId,
-                provider: 'openai',
-                providerName: 'OpenAI (Direct)',
-                source: 'direct',
-                supportsReasoning: false,
-            };
-        });
+                const providerModelId = model['id'];
+                return {
+                    id: `openai/${providerModelId}`,
+                    name: providerModelId,
+                    provider: 'openai',
+                    providerName: 'OpenAI (Direct)',
+                    source: 'direct',
+                    supportsReasoning: false,
+                };
+            })
+            .filter((model) => isTextGenerationModel(model.id, model.name));
     }
 
     async testConnection(): Promise<void> {

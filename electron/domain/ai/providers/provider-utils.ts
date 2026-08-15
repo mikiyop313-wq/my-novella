@@ -36,3 +36,50 @@ export function asObject(value: unknown): Record<string, unknown> | null {
         ? value as Record<string, unknown>
         : null;
 }
+
+const NON_TEXT_MODEL_TOKENS = new Set([
+    'dall',
+    'imagen',
+    'moderation',
+    'rerank',
+    'reranker',
+    'seedance',
+    'seedream',
+    'sora',
+    'speech',
+    'transcribe',
+    'transcription',
+    'tts',
+    'veo',
+    'whisper',
+]);
+
+const NON_TEXT_MODEL_FAMILIES = [
+    'antigravity',
+    'dall-e',
+    'deep research',
+    'deep-research',
+    'gemini-omni',
+    'gpt-image',
+    'lyra',
+    'lyria',
+    'nano-banana',
+    'qwen-image',
+    'robotics',
+    'stable-diffusion',
+    'z-image',
+];
+
+/** Keeps unknown models while excluding model families that do not produce usable text. */
+export function isTextGenerationModel(modelId: string, displayName?: string): boolean {
+    const identifier = `${modelId} ${displayName ?? ''}`.toLowerCase();
+    const tokens = identifier.split(/[^a-z0-9]+/).filter(Boolean);
+
+    if (NON_TEXT_MODEL_FAMILIES.some((family) => identifier.includes(family))) return false;
+    if (tokens.some((token) => token.startsWith('embed') || NON_TEXT_MODEL_TOKENS.has(token))) {
+        return false;
+    }
+
+    // Gemini image models are named like gemini-2.5-flash-image and can also advertise text output.
+    return !(tokens.includes('gemini') && tokens.includes('image'));
+}

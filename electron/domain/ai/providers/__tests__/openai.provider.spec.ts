@@ -73,11 +73,21 @@ describe('OpenAiProvider', () => {
         expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('lists every authenticated model with direct selector metadata', async () => {
+    it('lists text models while filtering known non-text families', async () => {
         const timeoutSignal = new AbortController().signal;
         const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal);
         vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
-            data: [{ id: 'gpt-a' }, { id: 'embedding-a' }],
+            data: [
+                { id: 'gpt-a' },
+                { id: 'ft:gpt-custom:owner:name' },
+                { id: 'gpt-image-1' },
+                { id: 'dall-e-3' },
+                { id: 'sora-2' },
+                { id: 'text-embedding-3-small' },
+                { id: 'omni-moderation-latest' },
+                { id: 'gpt-4o-mini-tts' },
+                { id: 'whisper-1' },
+            ],
         }), { status: 200 }));
         const provider = new OpenAiProvider({ getApiKey } as any);
 
@@ -90,7 +100,7 @@ describe('OpenAiProvider', () => {
                 source: 'direct',
                 supportsReasoning: false,
             },
-            expect.objectContaining({ id: 'openai/embedding-a' }),
+            expect.objectContaining({ id: 'openai/ft:gpt-custom:owner:name' }),
         ]);
         expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toEqual({
             Authorization: 'Bearer openai-secret',

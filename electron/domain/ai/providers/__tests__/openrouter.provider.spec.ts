@@ -116,16 +116,32 @@ describe('OpenRouterProvider', () => {
         expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('lists authenticated text models with timeout and catalog mapping', async () => {
+    it('lists authenticated text models and filters non-text output models', async () => {
         const timeoutSignal = new AbortController().signal;
         const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal);
         vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
-            data: [{
-                id: 'anthropic/claude-a',
-                name: 'Anthropic: Claude A',
-                architecture: { output_modalities: ['text'] },
-                supported_parameters: ['reasoning'],
-            }],
+            data: [
+                {
+                    id: 'anthropic/claude-a',
+                    name: 'Anthropic: Claude A',
+                    architecture: { output_modalities: ['text'] },
+                    supported_parameters: ['reasoning'],
+                },
+                {
+                    id: 'black-forest-labs/flux-a',
+                    name: 'Black Forest Labs: Flux A',
+                    architecture: { output_modalities: ['image'] },
+                },
+                {
+                    id: 'google/gemini-2.5-flash-image',
+                    name: 'Google: Nano Banana',
+                    architecture: { output_modalities: ['text', 'image'] },
+                },
+                {
+                    id: 'unknown/missing-modalities',
+                    name: 'Unknown: Missing Modalities',
+                },
+            ],
         }), { status: 200 }));
         const provider = new OpenRouterProvider({ getApiKey } as any);
 

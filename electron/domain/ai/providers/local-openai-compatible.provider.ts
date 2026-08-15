@@ -7,6 +7,7 @@ import type { AiProvider } from './ai-provider.interface';
 import {
     asObject,
     assertSuccessfulResponse,
+    isTextGenerationModel,
     parseJsonResponse,
     requireModelId,
 } from './provider-utils';
@@ -73,22 +74,24 @@ export class LocalOpenAiCompatibleProvider implements AiProvider {
             throw new Error(`${this.name} returned a malformed model list.`);
         }
 
-        return body['data'].map((rawModel): AiModel => {
-            const model = asObject(rawModel);
-            if (!model || typeof model['id'] !== 'string' || !model['id'].trim()) {
-                throw new Error(`${this.name} returned a malformed model list.`);
-            }
+        return body['data']
+            .map((rawModel): AiModel => {
+                const model = asObject(rawModel);
+                if (!model || typeof model['id'] !== 'string' || !model['id'].trim()) {
+                    throw new Error(`${this.name} returned a malformed model list.`);
+                }
 
-            const modelId = model['id'];
-            return {
-                id: `${this.id}/${modelId}`,
-                name: modelId,
-                provider: this.id,
-                providerName: `${this.name} (Local)`,
-                source: 'local',
-                supportsReasoning: false,
-            };
-        });
+                const modelId = model['id'];
+                return {
+                    id: `${this.id}/${modelId}`,
+                    name: modelId,
+                    provider: this.id,
+                    providerName: `${this.name} (Local)`,
+                    source: 'local',
+                    supportsReasoning: false,
+                };
+            })
+            .filter((model) => isTextGenerationModel(model.id, model.name));
     }
 
     async testConnection(): Promise<void> {

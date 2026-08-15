@@ -87,10 +87,18 @@ describe('local OpenAI-compatible providers', () => {
             : 'http://localhost:1234/v1/');
         vi.mocked(fetch)
             .mockResolvedValueOnce(new Response(JSON.stringify({
-                data: [{ id: 'llama3.2' }, { id: 'owner/model' }],
+                data: [
+                    { id: 'llama3.2' },
+                    { id: 'owner/model' },
+                    { id: 'x/z-image-turbo' },
+                    { id: 'nomic-embed-text' },
+                ],
             }), { status: 200 }))
             .mockResolvedValueOnce(new Response(JSON.stringify({
-                data: [{ id: 'publisher/family/model' }],
+                data: [
+                    { id: 'publisher/family/model' },
+                    { id: 'publisher/seedance-1.5-pro' },
+                ],
             }), { status: 200 }));
 
         const ollama = new OllamaProvider({ getServerUrl } as any);

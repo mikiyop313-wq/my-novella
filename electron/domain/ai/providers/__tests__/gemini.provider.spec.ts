@@ -69,6 +69,36 @@ describe('GeminiProvider', () => {
                         displayName: 'Embed',
                         supportedGenerationMethods: ['embedContent'],
                     },
+                    {
+                        name: 'models/gemini-2.5-flash-image',
+                        displayName: 'Nano Banana',
+                        supportedGenerationMethods: ['generateContent'],
+                    },
+                    {
+                        name: 'models/lyria-3-pro-preview',
+                        displayName: 'Lyria 3 Pro Preview',
+                        supportedGenerationMethods: ['generateContent'],
+                    },
+                    {
+                        name: 'models/deep-research-pro-preview',
+                        displayName: 'Gemini Deep Research Pro Preview',
+                        supportedGenerationMethods: ['generateContent'],
+                    },
+                    {
+                        name: 'models/gemini-omni-flash-preview',
+                        displayName: 'Gemini Omni Flash Preview',
+                        supportedGenerationMethods: ['generateContent'],
+                    },
+                    {
+                        name: 'models/antigravity-agent-preview',
+                        displayName: 'Antigravity Agent Preview',
+                        supportedGenerationMethods: ['generateContent'],
+                    },
+                    {
+                        name: 'models/gemini-robotics-er-1.5-preview',
+                        displayName: 'Gemini Robotics-ER 1.5 Preview',
+                        supportedGenerationMethods: ['generateContent'],
+                    },
                 ],
                 nextPageToken: 'next-page',
             }), { status: 200 }))

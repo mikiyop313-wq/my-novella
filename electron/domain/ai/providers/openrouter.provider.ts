@@ -7,6 +7,7 @@ import type { AiProvider } from './ai-provider.interface';
 import {
     asObject,
     assertSuccessfulResponse,
+    isTextGenerationModel,
     parseJsonResponse,
     requireModelId,
 } from './provider-utils';
@@ -101,7 +102,9 @@ export class OpenRouterProvider implements AiProvider {
 
         return body['data']
             .map((rawModel) => this.parseModel(rawModel))
-            .filter((model) => this.hasTextOutput(model))
+            .filter((model) => (
+                this.hasTextOutput(model) && isTextGenerationModel(model.id, model.name)
+            ))
             .map((model): AiModel => {
                 const [providerSlug] = model.id.split('/');
                 const [, modelName] = model.name.split(':');
@@ -174,7 +177,7 @@ export class OpenRouterProvider implements AiProvider {
     }
 
     private hasTextOutput(model: OpenRouterModel): boolean {
-        return model.outputModalities.length === 0 || model.outputModalities.includes('text');
+        return model.outputModalities.includes('text');
     }
 }
 
