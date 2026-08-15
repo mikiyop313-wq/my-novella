@@ -501,6 +501,8 @@ export const ManuscriptStore = signalStore(
     async insertAct(): Promise<void> {
       const editor = store.editor();
       const bookId = store.mode() === 'book' ? store.activeEntityId() : null;
+      const initialMode = store.mode();
+      const initialEntityId = store.activeEntityId();
 
       if (!editor) {
         console.warn('insertAct: no editor available');
@@ -515,6 +517,8 @@ export const ManuscriptStore = signalStore(
       const act = await manuscriptStructureService.createAct(bookId);
       const chapter = await manuscriptStructureService.createChapter(act.id);
       const scene = await manuscriptStructureService.createScene(chapter.id);
+
+      if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
 
       const endPosition = editor.state.doc.content.size;
 
@@ -531,6 +535,8 @@ export const ManuscriptStore = signalStore(
 
     async insertChapter(): Promise<void> {
       const editor = store.editor();
+      const initialMode = store.mode();
+      const initialEntityId = store.activeEntityId();
 
       if (!editor) {
         console.warn('insertChapter: no editor available');
@@ -547,6 +553,8 @@ export const ManuscriptStore = signalStore(
       const chapter = await manuscriptStructureService.createChapter(actId);
       const scene = await manuscriptStructureService.createScene(chapter.id);
 
+      if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
+
       const endPosition = editor.state.doc.content.size;
 
       editor.chain().focus().command(({ tr }) => {
@@ -561,6 +569,8 @@ export const ManuscriptStore = signalStore(
 
     async insertScene(): Promise<void> {
       const editor = store.editor();
+      const initialMode = store.mode();
+      const initialEntityId = store.activeEntityId();
 
       if (!editor) {
         console.warn('insertScene: no editor available');
@@ -575,6 +585,9 @@ export const ManuscriptStore = signalStore(
       }
 
       const scene = await manuscriptStructureService.createScene(chapterId);
+
+      if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
+
       const endPosition = editor.state.doc.content.size;
 
       editor.chain().focus().command(({ tr }) => {
