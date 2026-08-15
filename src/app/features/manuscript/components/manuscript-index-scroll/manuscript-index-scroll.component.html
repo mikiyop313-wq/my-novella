@@ -1,8 +1,13 @@
-<div class="scrollbar-track">
+<div class="scrollbar-track" (pointerdown)="onTrackPointerDown($event)">
   <!-- The draggable/scroll indicative thumb -->
   <div class="scrollbar-thumb" 
        [style.top.%]="thumbTop()" 
-       [style.height.%]="thumbHeight()">
+       [style.height.%]="thumbHeight()"
+       [class.dragging]="isDragging()"
+       (pointerdown)="onThumbPointerDown($event)"
+       (pointermove)="onThumbPointerMove($event)"
+       (pointerup)="onThumbPointerUp($event)"
+       (pointercancel)="onThumbPointerUp($event)">
   </div>
 
   <!-- The proportional markers -->
