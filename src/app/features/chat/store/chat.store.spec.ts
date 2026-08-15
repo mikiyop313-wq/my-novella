@@ -6,6 +6,7 @@ import {
   ChatThreadDetailDto,
   ChatThreadDto,
 } from '../../../../../shared/models/chat.model';
+import { ToastService } from '../../../shared/services/toast.service';
 import { ChatService } from '../services/chat.service';
 import { ChatStore } from './chat.store';
 
@@ -69,6 +70,7 @@ describe('ChatStore', () => {
     deleteMessage: ReturnType<typeof vi.fn>;
     selectBranch: ReturnType<typeof vi.fn>;
   };
+  let toastService: Pick<ToastService, 'error'>;
 
   beforeEach(() => {
     chatService = {
@@ -83,11 +85,13 @@ describe('ChatStore', () => {
       deleteMessage: vi.fn(),
       selectBranch: vi.fn(),
     };
+    toastService = { error: vi.fn() };
 
     TestBed.configureTestingModule({
       providers: [
         ChatStore,
         { provide: ChatService, useValue: chatService },
+        { provide: ToastService, useValue: toastService },
       ],
     });
 
@@ -374,6 +378,7 @@ describe('ChatStore', () => {
     expect(store.threads()).toEqual([]);
     expect(store.error()).toBe('Load failed');
     expect(store.isLoadingThreads()).toBe(false);
+    expect(toastService.error).toHaveBeenCalledWith('Load failed', 'Chat');
   });
 
   it('stores errors and resets saving flags when sending fails', async () => {
@@ -387,6 +392,7 @@ describe('ChatStore', () => {
     expect(store.messages()).toEqual([]);
     expect(store.error()).toBe('Send failed');
     expect(store.isSaving()).toBe(false);
+    expect(toastService.error).toHaveBeenCalledWith('Send failed', 'Chat');
   });
 
   it('defaults visible messages to the first branch path', async () => {

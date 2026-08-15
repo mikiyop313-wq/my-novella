@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, ElementRef, Injector, ViewChild, afterNextRender, inject, input, output } from '@angular/core';
 import { CdkMenuModule } from '@angular/cdk/menu';
 
 import { type ChatThreadDto } from '../../../../../../shared/models/chat.model';
@@ -11,6 +11,12 @@ import { type ChatThreadDto } from '../../../../../../shared/models/chat.model';
   styleUrl: './chat-threads.scss'
 })
 export class ChatThreads {
+
+  @ViewChild('renameInput') private renameInput?: ElementRef<HTMLInputElement>;
+
+  private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
+
   readonly threads = input<ChatThreadDto[]>([]);
   readonly isDetachedMode = input(false);
   readonly canDetach = input(true);
@@ -60,15 +66,23 @@ export class ChatThreads {
     this.archiveThreadRequested.emit(id);
   }
 
+  /** Returns a thread wrapper from this component's own DOM tree. */
+  getThreadElement(id: string): HTMLElement | undefined {
+    const threadElements = (
+      this.hostElement.nativeElement.querySelectorAll('[data-thread-id]')
+    ) as NodeListOf<HTMLElement>;
+
+    return Array.from(threadElements)
+      .find((element) => element.dataset['threadId'] === id);
+  }
+
   startRename(id: string): void {
     this.editingThreadId = id;
-    setTimeout(() => {
-      const input = document.querySelector('.thread-title-input') as HTMLInputElement;
-      if (input) {
-        input.focus();
-        input.select();
-      }
-    });
+    afterNextRender(() => {
+      const input = this.renameInput?.nativeElement;
+      input?.focus();
+      input?.select();
+    }, { injector: this.injector });
   }
 
   saveRename(id: string, newTitle: string, currentTitle: string): void {

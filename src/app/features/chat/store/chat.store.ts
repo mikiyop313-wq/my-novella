@@ -10,6 +10,7 @@ import {
   UpdateChatMessageDto,
   UpdateChatThreadDto,
 } from '../../../../../shared/models/chat.model';
+import { ToastService } from '../../../shared/services/toast.service';
 import { ChatService } from '../services/chat.service';
 
 type LocalChatMessagePatch = Partial<Pick<
@@ -151,7 +152,24 @@ export const ChatStore = signalStore(
     }),
   })),
 
-  withMethods((store, chatService = inject(ChatService)) => {
+  withMethods((
+    store,
+    chatService = inject(ChatService),
+    toastService = inject(ToastService),
+  ) => {
+    function setError(message: string, state: Partial<ChatState> = {}): void {
+      patchState(store, { ...state, error: message });
+      toastService.error(message, 'Chat');
+    }
+
+    function reportError(
+      error: unknown,
+      fallback: string,
+      state: Partial<ChatState> = {},
+    ): void {
+      setError(getErrorMessage(error, fallback), state);
+    }
+
     function setSelectedThread(thread: ChatThreadDetailDto | null): void {
       patchState(store, { selectedThread: thread });
     }
@@ -265,10 +283,9 @@ export const ChatStore = signalStore(
           isLoadingThreads: false,
         });
       } catch (error) {
-        patchState(store, {
+        reportError(error, 'Failed to load chat threads.', {
           threads: [],
           isLoadingThreads: false,
-          error: getErrorMessage(error, 'Failed to load chat threads.'),
         });
       }
     }
@@ -290,10 +307,9 @@ export const ChatStore = signalStore(
           isLoadingThread: false,
         });
       } catch (error) {
-        patchState(store, {
+        reportError(error, 'Failed to load chat thread.', {
           selectedThread: null,
           isLoadingThread: false,
-          error: getErrorMessage(error, 'Failed to load chat thread.'),
         });
       }
     }
@@ -319,9 +335,8 @@ export const ChatStore = signalStore(
 
         return thread;
       } catch (error) {
-        patchState(store, {
+        reportError(error, 'Failed to create chat thread.', {
           isSaving: false,
-          error: getErrorMessage(error, 'Failed to create chat thread.'),
         });
         return null;
       }
@@ -366,9 +381,8 @@ export const ChatStore = signalStore(
           }
           patchState(store, { isSaving: false });
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to update chat thread.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to update chat thread.'),
           });
         }
       },
@@ -384,9 +398,8 @@ export const ChatStore = signalStore(
           removeThread(id);
           patchState(store, { isSaving: false });
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to archive chat thread.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to archive chat thread.'),
           });
         }
       },
@@ -402,9 +415,8 @@ export const ChatStore = signalStore(
           removeThread(id);
           patchState(store, { isSaving: false });
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to delete chat thread.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to delete chat thread.'),
           });
         }
       },
@@ -421,7 +433,7 @@ export const ChatStore = signalStore(
 
         if (!selectedThread) {
           if (!bookId) {
-            patchState(store, { error: 'Open a book before starting a chat.' });
+            setError('Open a book before starting a chat.');
             return null;
           }
 
@@ -451,9 +463,8 @@ export const ChatStore = signalStore(
           patchState(store, { isSaving: false });
           return message;
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to send chat message.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to send chat message.'),
           });
           return null;
         }
@@ -468,7 +479,7 @@ export const ChatStore = signalStore(
         const selectedThread = store.selectedThread();
 
         if (!selectedThread) {
-          patchState(store, { error: 'Open a chat thread before generating a response.' });
+          setError('Open a chat thread before generating a response.');
           return null;
         }
 
@@ -495,9 +506,8 @@ export const ChatStore = signalStore(
           patchState(store, { isSaving: false });
           return message;
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to create AI response.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to create AI response.'),
           });
           return null;
         }
@@ -535,9 +545,8 @@ export const ChatStore = signalStore(
           patchState(store, { isSaving: false });
           return message;
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to create message branch.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to create message branch.'),
           });
           return null;
         }
@@ -561,9 +570,8 @@ export const ChatStore = signalStore(
           patchState(store, { isSaving: false });
           return message ?? null;
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to update chat message.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to update chat message.'),
           });
           return null;
         }
@@ -580,9 +588,8 @@ export const ChatStore = signalStore(
           removeMessage(id);
           patchState(store, { isSaving: false });
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to delete chat message.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to delete chat message.'),
           });
         }
       },
@@ -623,9 +630,8 @@ export const ChatStore = signalStore(
           patchState(store, { isSaving: false });
           return true;
         } catch (error) {
-          patchState(store, {
+          reportError(error, 'Failed to select chat branch.', {
             isSaving: false,
-            error: getErrorMessage(error, 'Failed to select chat branch.'),
           });
           return false;
         }

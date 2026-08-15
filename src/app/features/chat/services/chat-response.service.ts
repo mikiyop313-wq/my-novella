@@ -1,0 +1,339 @@
+import { Injectable, inject, signal } from '@angular/core';
+
+import { type AiModel } from '../../../../../shared/models/ai.model';
+import { type ChatMessageDetailDto } from '../../../../../shared/models/chat.model';
+import { AiStore } from '../../../core/store/ai.store';
+import { type AiChatMessage } from '../../../core/services/ai-state.service';
+import { AiStreamService } from '../../../core/services/ai-stream.service';
+import { ChatStore } from '../store/chat.store';
+
+export interface ChatResponseSettings {
+  selectedModelId: string | null;
+  reasoningMode: boolean;
+  branchGroupId?: string;
+  selectCreatedBranch?: boolean;
+}
+
+interface ResolvedModel {
+  provider: string;
+  modelId: string | null;
+}
+
+/**
+ * Owns one chat component's AI-response lifecycle. The component-scoped
+ * provider keeps stream state isolated from other chat views or windows.
+ */
+@Injectable()
+export class ChatResponseService {
+
+  // ---------------------------------------------------------------------------
+  // Dependencies
+  // ---------------------------------------------------------------------------
+
+  private readonly aiStore = inject(AiStore);
+  private readonly aiStreamService = inject(AiStreamService);
+  private readonly chatStore = inject(ChatStore);
+
+
+  // ---------------------------------------------------------------------------
+  // Response State
+  // ---------------------------------------------------------------------------
+
+  private readonly generatingResponse = signal(false);
+  private readonly stoppingResponse = signal(false);
+  private readonly responseRenderVersion = signal(0);
+  private activeStreamId: string | null = null;
+
+  readonly isGeneratingResponse = this.generatingResponse.asReadonly();
+  readonly isStoppingResponse = this.stoppingResponse.asReadonly();
+  readonly renderVersion = this.responseRenderVersion.asReadonly();
+
+
+  // ---------------------------------------------------------------------------
+  // Public Generation API
+  // ---------------------------------------------------------------------------
+
+  /** Streams and persists an assistant response for the given user message. */
+  async generateResponse(
+    userMessage: ChatMessageDetailDto,
+    prompt: string,
+    settings: ChatResponseSettings,
+  ): Promise<void> {
+    if (this.generatingResponse()) return;
+
+    const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
+    const messages = this.buildAiMessages(userMessage);
+    const streamId = `pending-${userMessage.id}`;
+
+    let assistantMessage: ChatMessageDetailDto | null = null;
+    let assistantMessagePromise: Promise<ChatMessageDetailDto | null> | null = null;
+    let streamedContent = '';
+    let reasoningSummary = '';
+
+    this.activeStreamId = streamId;
+    this.generatingResponse.set(true);
+    this.requestRender();
+
+    const ensureAssistantMessage = (): Promise<ChatMessageDetailDto | null> => {
+      if (assistantMessage) return Promise.resolve(assistantMessage);
+
+      if (!assistantMessagePromise) {
+        assistantMessagePromise = this.chatStore.createAssistantMessage({
+          parentMessageId: userMessage.id,
+          provider,
+          modelId,
+          ...(settings.branchGroupId ? { branchGroupId: settings.branchGroupId } : {}),
+        }).then(async (message) => {
+          if (message && settings.selectCreatedBranch) {
+            const selected = await this.chatStore.selectMessageBranch(message.id);
+            if (!selected) return null;
+          }
+
+          assistantMessage = message;
+          return message;
+        });
+      }
+
+      return assistantMessagePromise;
+    };
+
+    try {
+      const generatedText = await this.aiStreamService.streamText({
+        streamId,
+        prompt,
+        messages,
+        provider,
+        modelId: modelId ?? undefined,
+        reasoningMode: settings.reasoningMode,
+        onToken: async (token) => {
+          const message = await ensureAssistantMessage();
+          if (!message) return;
+
+          streamedContent += token;
+          this.chatStore.patchStreamingMessage(message.id, { content: streamedContent });
+          this.requestRender();
+        },
+        onReasoningUpdate: async (reasoningText) => {
+          const message = await ensureAssistantMessage();
+          if (!message) return;
+
+          reasoningSummary = reasoningText;
+          this.chatStore.patchStreamingMessage(message.id, { reasoningSummary });
+          this.requestRender();
+        },
+      });
+
+      if (!assistantMessage && assistantMessagePromise) {
+        assistantMessage = await assistantMessagePromise;
+      }
+
+      const finalContent = streamedContent || generatedText;
+
+      if (!finalContent.trim()) {
+        const createdAssistantMessage = assistantMessage as ChatMessageDetailDto | null;
+        if (createdAssistantMessage) {
+          await this.chatStore.deleteMessage(createdAssistantMessage.id);
+        }
+        return;
+      }
+
+      if (!assistantMessage) {
+        assistantMessage = await this.chatStore.createAssistantMessage({
+          parentMessageId: userMessage.id,
+          provider,
+          modelId,
+          ...(settings.branchGroupId ? { branchGroupId: settings.branchGroupId } : {}),
+        });
+
+        if (assistantMessage && settings.selectCreatedBranch) {
+          const selected = await this.chatStore.selectMessageBranch(assistantMessage.id);
+          if (!selected) return;
+        }
+      }
+
+      if (!assistantMessage) return;
+
+      const finalReasoningSummary = this.getReasoningSummary(reasoningSummary);
+      const data = {
+        content: finalContent,
+        status: 'complete' as const,
+        modelId,
+        provider,
+        reasoningSummary: finalReasoningSummary,
+        error: null,
+      };
+
+      this.chatStore.patchStreamingMessage(assistantMessage.id, data);
+      this.requestRender();
+      await this.chatStore.updateMessage(assistantMessage.id, data);
+    } catch (error) {
+      if (!assistantMessage) return;
+
+      const message = error instanceof Error ? error.message : 'Failed to generate AI response.';
+      const data = {
+        content: streamedContent,
+        status: 'failed' as const,
+        modelId,
+        provider,
+        reasoningSummary: this.getReasoningSummary(reasoningSummary),
+        error: message,
+      };
+
+      // AIStateService owns the provider-facing toast; preserve the detail on
+      // the message without raising a duplicate notification here.
+      this.chatStore.patchStreamingMessage(assistantMessage.id, data);
+      this.requestRender();
+      await this.chatStore.updateMessage(assistantMessage.id, data);
+    } finally {
+      this.generatingResponse.set(false);
+      if (this.activeStreamId === streamId) {
+        this.activeStreamId = null;
+      }
+      this.requestRender();
+    }
+  }
+
+  /** Stops the active response and returns a displayable error when aborting fails. */
+  async stopResponse(): Promise<string | null> {
+    if (!this.activeStreamId || this.stoppingResponse()) return null;
+
+    this.stoppingResponse.set(true);
+    try {
+      await this.aiStreamService.stopStream(this.activeStreamId);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Failed to stop the AI response.';
+    } finally {
+      this.stoppingResponse.set(false);
+    }
+  }
+
+  async retryMessage(messageId: string, settings: ChatResponseSettings): Promise<void> {
+    if (this.chatStore.isSaving() || this.generatingResponse()) return;
+
+    const assistantMessage = this.chatStore.visibleMessages().find((message) => message.id === messageId);
+    if (!assistantMessage || assistantMessage.role !== 'assistant') return;
+
+    const userMessage = this.chatStore.messages().find((message) => (
+      message.id === assistantMessage.parentMessageId && message.role === 'user'
+    ));
+    if (!userMessage) return;
+
+    await this.retryResponseForUser(userMessage, settings);
+  }
+
+  async retryResponseForUser(
+    userMessage: ChatMessageDetailDto,
+    settings: Omit<ChatResponseSettings, 'branchGroupId' | 'selectCreatedBranch'>,
+  ): Promise<void> {
+    const previousResponse = this.getVisibleAssistantResponse(userMessage.id);
+
+    await this.generateResponse(userMessage, userMessage.content, {
+      ...settings,
+      ...(previousResponse
+        ? {
+          branchGroupId: previousResponse.branchGroupId ?? previousResponse.id,
+          selectCreatedBranch: true,
+        }
+        : {}),
+    });
+  }
+
+  /** Resolves the matching selector ID for the most recent assistant response. */
+  getLastUsedModelId(messages: ChatMessageDetailDto[]): string | null {
+    const lastAssistantMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && !!message.modelId);
+
+    if (!lastAssistantMessage?.modelId) return null;
+
+    const savedModelId = lastAssistantMessage.modelId;
+    const savedProvider = lastAssistantMessage.provider;
+    const matchingModel = this.aiStore.models().find((model) => {
+      if (model.source !== 'direct') {
+        return savedProvider === 'openrouter' && model.id === savedModelId;
+      }
+
+      return this.resolveDirectProvider(model) === savedProvider
+        && (model.id.split('/')[1] || model.id) === savedModelId;
+    });
+
+    return matchingModel?.id ?? this.getDirectModelSelectorId(savedProvider, savedModelId) ?? savedModelId;
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Private Helpers
+  // ---------------------------------------------------------------------------
+
+  private buildAiMessages(userMessage: ChatMessageDetailDto): AiChatMessage[] {
+    const threadMessages = this.chatStore.visibleMessages();
+    const userMessageIndex = threadMessages.findIndex((message) => message.id === userMessage.id);
+    const messages = userMessageIndex === -1
+      ? [...threadMessages, userMessage]
+      : threadMessages.slice(0, userMessageIndex + 1);
+
+    return messages
+      .filter((message) => (
+        (message.status === 'complete' || message.id === userMessage.id) &&
+        message.content.trim().length > 0
+      ))
+      .map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  private getVisibleAssistantResponse(userMessageId: string): ChatMessageDetailDto | null {
+    const messages = this.chatStore.visibleMessages();
+    const userMessageIndex = messages.findIndex((message) => message.id === userMessageId);
+    const assistantMessage = userMessageIndex === -1 ? null : messages[userMessageIndex + 1];
+
+    return assistantMessage?.role === 'assistant' && assistantMessage.parentMessageId === userMessageId
+      ? assistantMessage
+      : null;
+  }
+
+  private resolveSelectedModel(selectedModelId: string | null): ResolvedModel {
+    if (!selectedModelId) {
+      return { provider: 'openrouter', modelId: null };
+    }
+
+    const selectedModel = this.aiStore.models().find((model) => model.id === selectedModelId);
+    if (!selectedModel) {
+      return { provider: 'openrouter', modelId: selectedModelId };
+    }
+
+    if (selectedModel.source !== 'direct') {
+      return { provider: 'openrouter', modelId: selectedModel.id };
+    }
+
+    return {
+      provider: this.resolveDirectProvider(selectedModel),
+      modelId: selectedModel.id.split('/')[1] || selectedModel.id,
+    };
+  }
+
+  private resolveDirectProvider(model: AiModel): string {
+    if (model.provider === 'google' || model.id.startsWith('gemini/')) {
+      return 'gemini';
+    }
+
+    if (model.provider === 'openai' || model.id.startsWith('openai/')) {
+      return 'openai';
+    }
+
+    return model.provider || 'openrouter';
+  }
+
+  private getDirectModelSelectorId(provider: string | null, modelId: string): string | null {
+    if (provider === 'openai') return `openai/${modelId}`;
+    if (provider === 'gemini' || provider === 'google') return `gemini/${modelId}`;
+    return null;
+  }
+
+  private getReasoningSummary(reasoningSummary: string): string | null {
+    return reasoningSummary.trim().length > 0 ? reasoningSummary : null;
+  }
+
+  private requestRender(): void {
+    this.responseRenderVersion.update((version) => version + 1);
+  }
+}

@@ -1,99 +1,126 @@
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild, afterRenderEffect, computed, inject, signal, untracked } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  afterNextRender,
+  afterRenderEffect,
+  computed,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { CdkMenuModule } from '@angular/cdk/menu';
-import { Subscription } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { AiStore } from '../../core/store/ai.store';
-import { type AiChatMessage } from '../../core/services/ai-state.service';
-import { AiStreamService } from '../../core/services/ai-stream.service';
-import { AutocompleteDropdownComponent, type DropdownOption } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import {
+  AutocompleteDropdownComponent,
+  type DropdownOption,
+} from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
+import { ToastService } from '../../shared/services/toast.service';
 import { ChatThreads } from './components/chat-threads/chat-threads';
+import { ChatResponseService } from './services/chat-response.service';
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
 
 const NEW_CHAT_ROUTE_ID = 'new-chat';
 
-interface ChatAiModel {
-  id: string;
-  name?: string;
-  provider?: string;
-  source?: string;
-  supportsReasoning?: boolean;
-}
-
 @Component({
   selector: 'app-chat',
   standalone: true,
   imports: [ChatThreads, AutocompleteDropdownComponent, CdkMenuModule, ElementAnimationDirective],
+  providers: [ChatResponseService],
   templateUrl: './chat.html',
-  styleUrl: './chat.scss'
+  styleUrl: './chat.scss',
 })
 export class Chat implements OnInit, OnDestroy {
+
+  // ---------------------------------------------------------------------------
+  // Dependencies
+  // ---------------------------------------------------------------------------
+
   readonly chatStore = inject(ChatStore);
   readonly aiStore = inject(AiStore);
-
-  @ViewChild('chatAnimation') private chatAnimation?: ElementAnimationDirective;
-  @ViewChild('chatBody') private chatBody?: ElementRef<HTMLElement>;
+  readonly response = inject(ChatResponseService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly chatWindowService = inject(ChatWindowService);
-  private readonly aiStreamService = inject(AiStreamService);
+  private readonly toastService = inject(ToastService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+
+
+  // ---------------------------------------------------------------------------
+  // View Queries
+  // ---------------------------------------------------------------------------
+
+  @ViewChild('chatAnimation') private chatAnimation?: ElementAnimationDirective;
+  @ViewChild('chatBody') private chatBody?: ElementRef<HTMLElement>;
+  @ViewChild(ChatThreads) private chatThreads?: ChatThreads;
+  @ViewChild('activeRenameInput') private activeRenameInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('messageEditInput') private messageEditInput?: ElementRef<HTMLTextAreaElement>;
+
+
+  // ---------------------------------------------------------------------------
+  // UI State
+  // ---------------------------------------------------------------------------
 
   hasActiveConversation = false;
   isDetachedMode = false;
-  readonly isChatOpenInDetachedWindow = signal(false);
   selectedThreadId: string | null = null;
   editingActiveThreadId: string | null = null;
   editingMessageId: string | null = null;
-  error: string | null = null;
-  private cleanupDetachedWindowClosedListener: (() => void) | null = null;
-  private routeParamSubscription: Subscription | null = null;
 
-  selectedModelId = signal<string | null>(null);
-  reasoningMode = signal<boolean>(false);
-  readonly isGeneratingResponse = signal(false);
-  readonly isStoppingResponse = signal(false);
+  readonly isChatOpenInDetachedWindow = signal(false);
+  readonly selectedModelId = signal<string | null>(null);
+  readonly reasoningMode = signal(false);
   readonly copiedMessageId = signal<string | null>(null);
   readonly expandedReasoningMessageIds = signal<ReadonlySet<string>>(new Set());
   readonly isAutoScrollEnabled = signal(true);
   readonly isChatAtBottom = signal(true);
 
+  private cleanupDetachedWindowClosedListener: (() => void) | null = null;
   private copyConfirmationTimeout: ReturnType<typeof setTimeout> | null = null;
-  private activeStreamId: string | null = null;
-  private readonly streamRenderVersion = signal(0);
+
+
+  // ---------------------------------------------------------------------------
+  // Computed State
+  // ---------------------------------------------------------------------------
 
   readonly isAiResponseActive = computed(() => (
-    this.isGeneratingResponse() ||
+    this.response.isGeneratingResponse() ||
     this.chatStore.messages().some((message) => this.isMessageStreaming(message))
   ));
+
+  // Template aliases keep the response state readable without exposing a
+  // second source of truth in the component.
+  readonly isGeneratingResponse = this.response.isGeneratingResponse;
+  readonly isStoppingResponse = this.response.isStoppingResponse;
 
   readonly showScrollToBottom = computed(() => (
     this.isAiResponseActive() && !this.isChatAtBottom()
   ));
 
-  modelOptions = computed<DropdownOption[]>(() => {
-    return (this.aiStore.models() as ChatAiModel[]).map((m) => ({ value: m.id, label: m.name || m.id }));
-  });
+  readonly modelOptions = computed<DropdownOption[]>(() => (
+    this.aiStore.models().map((model) => ({
+      value: model.id,
+      label: model.name || model.id,
+    }))
+  ));
 
-  supportsReasoning = computed(() => {
+  readonly supportsReasoning = computed(() => {
     const modelId = this.selectedModelId();
-    if (!modelId) return false;
-    const model = (this.aiStore.models() as ChatAiModel[]).find((m) => m.id === modelId);
-    return model?.supportsReasoning === true;
+    return !!modelId && this.aiStore.models()
+      .find((model) => model.id === modelId)?.supportsReasoning === true;
   });
-
-  constructor() {
-    afterRenderEffect(() => {
-      this.streamRenderVersion();
-
-      if (untracked(() => this.isAiResponseActive() && this.isAutoScrollEnabled())) {
-        this.scrollChatToBottom('auto');
-      }
-    });
-  }
 
   get showDetachedSidebar(): boolean {
     return this.isDetachedMode;
@@ -101,6 +128,28 @@ export class Chat implements OnInit, OnDestroy {
 
   get showMainDetachedState(): boolean {
     return this.isChatOpenInDetachedWindow() && !this.isDetachedMode;
+  }
+
+  get isNewChat(): boolean {
+    if (!this.hasActiveConversation) return false;
+
+    const thread = this.chatStore.selectedThread();
+    return !thread || thread.messages.length === 0;
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  constructor() {
+    afterRenderEffect(() => {
+      this.response.renderVersion();
+
+      if (untracked(() => this.isAiResponseActive() && this.isAutoScrollEnabled())) {
+        this.scrollChatToBottom('auto');
+      }
+    });
   }
 
   async ngOnInit(): Promise<void> {
@@ -115,29 +164,21 @@ export class Chat implements OnInit, OnDestroy {
 
     const bookId = this.route.parent?.snapshot.paramMap.get('bookId');
     if (!bookId) {
-      this.error = 'Open a book before starting a chat.';
+      this.reportError('Open a book before starting a chat.');
       return;
     }
 
     const initialThreadId = this.route.snapshot.paramMap.get('threadId');
     const isNewChatRoute = this.isNewChatRoute();
-    if (this.isNewChatThreadId(initialThreadId)) {
-      this.selectedThreadId = null;
-      this.hasActiveConversation = true;
-    } else if (initialThreadId) {
-      this.selectedThreadId = initialThreadId;
-      this.hasActiveConversation = true;
-    } else if (isNewChatRoute) {
-      this.selectedThreadId = null;
-      this.hasActiveConversation = true;
-    }
+    this.initializeConversationState(initialThreadId, isNewChatRoute);
 
     await this.enterWorkspaceChat(bookId, initialThreadId, isNewChatRoute);
-    this.routeParamSubscription = this.route.paramMap?.subscribe(params => {
+    this.route.paramMap?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       void this.syncThreadFromRoute(params.get('threadId'));
-    }) ?? null;
+    });
+
     this.isChatOpenInDetachedWindow.set(this.chatWindowService.isBookDetached(bookId));
-    this.cleanupDetachedWindowClosedListener = this.chatWindowService.onDetachedWindowClosed(event => {
+    this.cleanupDetachedWindowClosedListener = this.chatWindowService.onDetachedWindowClosed((event) => {
       if (event.bookId === this.chatStore.bookId()) {
         this.isChatOpenInDetachedWindow.set(false);
       }
@@ -145,34 +186,29 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.routeParamSubscription?.unsubscribe();
     this.cleanupDetachedWindowClosedListener?.();
+
     if (this.copyConfirmationTimeout) {
       clearTimeout(this.copyConfirmationTimeout);
     }
   }
 
-  get isNewChat(): boolean {
-    if (!this.hasActiveConversation) return false;
-    const thread = this.chatStore.selectedThread();
-    return !thread || thread.messages.length === 0;
-  }
+
+  // ---------------------------------------------------------------------------
+  // Thread Navigation
+  // ---------------------------------------------------------------------------
 
   async startNewConversation(): Promise<void> {
     if (this.isNewChat) return;
 
-    if (!this.isDetachedMode) {
-      const replaceUrl = this.hasActiveConversation;
-      this.chatStore.closeThread();
-      this.hasActiveConversation = true;
-      this.selectedThreadId = null;
-      await this.navigateToNewChat(replaceUrl);
-      return;
-    }
-
+    const replaceUrl = this.hasActiveConversation;
     this.chatStore.closeThread();
     this.hasActiveConversation = true;
     this.selectedThreadId = null;
+
+    if (!this.isDetachedMode) {
+      await this.navigateToNewChat(replaceUrl);
+    }
   }
 
   async selectThread(id: string): Promise<void> {
@@ -193,90 +229,50 @@ export class Chat implements OnInit, OnDestroy {
     await this.navigateToThreads(true);
   }
 
-  private findThreadElement(id: string): HTMLElement | undefined {
-    return Array.from(document.querySelectorAll<HTMLElement>('.thread-wrapper')).find(
-      (el) => el.dataset['threadId'] === id
-    );
-  }
+
+  // ---------------------------------------------------------------------------
+  // Thread Management
+  // ---------------------------------------------------------------------------
 
   async archiveThread(id: string): Promise<void> {
-    const wasSelectedThread = this.selectedThreadId === id;
-
-    const executeArchive = async () => {
-      await this.chatStore.archiveThread(id);
-      if (wasSelectedThread) {
-        this.selectedThreadId = null;
-        this.hasActiveConversation = false;
-        if (!this.isDetachedMode) {
-          await this.navigateToThreads();
-        }
-      }
-    };
-
-    const element = this.findThreadElement(id);
-
-    if (this.chatAnimation && element) {
-      await this.chatAnimation.animateBeforeDelete(element, async () => {
-        await executeArchive();
-      });
-    } else {
-      await executeArchive();
-    }
+    await this.removeThreadWithAnimation(id, () => this.chatStore.archiveThread(id));
   }
 
   async deleteThread(id: string): Promise<void> {
-    const wasSelectedThread = this.selectedThreadId === id;
-
-    const executeDeletion = async () => {
-      await this.chatStore.deleteThread(id);
-      if (wasSelectedThread) {
-        this.selectedThreadId = null;
-        this.hasActiveConversation = false;
-        if (!this.isDetachedMode) {
-          await this.navigateToThreads();
-        }
-      }
-    };
-
-    const element = this.findThreadElement(id);
-
-    if (this.chatAnimation && element) {
-      await this.chatAnimation.animateBeforeDelete(element, async () => {
-        await executeDeletion();
-      });
-    } else {
-      await executeDeletion();
-    }
+    await this.removeThreadWithAnimation(id, () => this.chatStore.deleteThread(id));
   }
 
-  async renameThread(event: { id: string, title: string }): Promise<void> {
+  async renameThread(event: { id: string; title: string }): Promise<void> {
     await this.chatStore.updateThread(event.id, { title: event.title });
   }
 
   startRenameActiveThread(id: string): void {
     this.editingActiveThreadId = id;
-    setTimeout(() => {
-      const input = document.querySelector('.active-thread-title-input') as HTMLInputElement;
-      if (input) {
-        input.focus();
-        input.select();
-      }
-    });
+    afterNextRender(() => {
+      const input = this.activeRenameInput?.nativeElement;
+      input?.focus();
+      input?.select();
+    }, { injector: this.injector });
   }
 
   async saveActiveThreadRename(id: string, newTitle: string, currentTitle: string): Promise<void> {
     if (this.editingActiveThreadId !== id) return;
 
     this.editingActiveThreadId = null;
-    const trimmed = newTitle.trim();
-    if (trimmed !== '' && trimmed !== currentTitle) {
-      await this.chatStore.updateThread(id, { title: trimmed });
+    const trimmedTitle = newTitle.trim();
+    if (trimmedTitle && trimmedTitle !== currentTitle) {
+      await this.chatStore.updateThread(id, { title: trimmedTitle });
     }
   }
 
   cancelActiveThreadRename(): void {
     this.editingActiveThreadId = null;
   }
+
+
+  // ---------------------------------------------------------------------------
+  // Message Presentation
+  // ---------------------------------------------------------------------------
 
   getMessageAuthor(role: ChatMessageRole): string {
     if (role === 'assistant') return 'AI';
@@ -322,40 +318,9 @@ export class Chat implements OnInit, OnDestroy {
     return this.chatStore.getMessageBranchIndex(message);
   }
 
-  isPromptSubmitDisabled(): boolean {
-    return this.chatStore.isSaving() || this.isAiResponseActive();
-  }
-
-  handleChatBodyScroll(event: Event): void {
-    const element = event.target as HTMLElement;
-    const isAtBottom = this.isScrollAtBottom(element);
-
-    this.isChatAtBottom.set(isAtBottom);
-    this.isAutoScrollEnabled.set(isAtBottom);
-  }
-
-  scrollToLatestResponse(): void {
-    this.isAutoScrollEnabled.set(true);
-    this.isChatAtBottom.set(true);
-    this.scrollChatToBottom('smooth');
-  }
-
-  isSendButtonDisabled(): boolean {
-    return !this.selectedModelId() || this.isPromptSubmitDisabled();
-  }
-
-  isSendOrStopDisabled(): boolean {
-    return this.isGeneratingResponse()
-      ? this.isStoppingResponse()
-      : this.isSendButtonDisabled();
-  }
-
   formatMessageTime(value: string): string {
     const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return 'Now';
-    }
+    if (Number.isNaN(date.getTime())) return 'Now';
 
     return new Intl.DateTimeFormat(undefined, {
       hour: 'numeric',
@@ -363,58 +328,28 @@ export class Chat implements OnInit, OnDestroy {
     }).format(date);
   }
 
-  async detachChat(): Promise<void> {
-    if (this.isDetachedMode) return;
 
-    this.isChatOpenInDetachedWindow.set(await this.openOrFocusDetachedChat());
+  // ---------------------------------------------------------------------------
+  // Composer Actions
+  // ---------------------------------------------------------------------------
+
+  isPromptSubmitDisabled(): boolean {
+    return this.chatStore.isSaving() || this.isAiResponseActive();
   }
 
-  async focusDetachedChat(): Promise<void> {
-    await this.openOrFocusDetachedChat();
+  isSendButtonDisabled(): boolean {
+    return !this.selectedModelId() || this.isPromptSubmitDisabled();
   }
 
-  private async openOrFocusDetachedChat(): Promise<boolean> {
-    const bookId = this.chatStore.bookId();
-    if (!bookId) {
-      this.error = 'Open a book before detaching chat.';
-      return false;
-    }
-
-    try {
-      await this.chatWindowService.openDetachedWindow({
-        bookId,
-        selectedThreadId: this.selectedThreadId,
-      });
-      return true;
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : 'Failed to detach chat.';
-      return false;
-    }
-  }
-
-  private async initializeDetachedChat(sessionId: string): Promise<void> {
-    try {
-      const session = await this.chatWindowService.getDetachedSession(sessionId);
-      if (!session) {
-        throw new Error('Detached chat session could not be found.');
-      }
-
-      await this.chatStore.enterBook(session.bookId);
-      if (session.selectedThreadId) {
-        await this.selectThread(session.selectedThreadId);
-      }
-
-      if (!this.hasActiveConversation) {
-        await this.startNewConversation();
-      }
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : 'Failed to open detached chat.';
-    }
+  isSendOrStopDisabled(): boolean {
+    return this.response.isGeneratingResponse()
+      ? this.response.isStoppingResponse()
+      : this.isSendButtonDisabled();
   }
 
   toggleReasoningMode(): void {
     if (this.supportsReasoning()) {
-      this.reasoningMode.update((v) => !v);
+      this.reasoningMode.update((enabled) => !enabled);
     }
   }
 
@@ -435,48 +370,41 @@ export class Chat implements OnInit, OnDestroy {
     if (!content || this.isSendButtonDisabled()) return;
 
     const userMessage = await this.chatStore.sendMessage(content);
+    if (!userMessage || this.chatStore.error()) return;
 
-    if (userMessage && !this.chatStore.error()) {
-      input.value = '';
-      this.resizePromptInput(input);
+    input.value = '';
+    this.resizePromptInput(input);
 
-      const thread = this.chatStore.selectedThread();
-      if (!this.isDetachedMode && thread && (this.isNewChatRoute() || this.selectedThreadId !== thread.id)) {
-        this.selectedThreadId = thread.id;
-        this.hasActiveConversation = true;
-        await this.navigateToThread(thread.id, this.isNewChatRoute());
-      }
-
-      await this.generateAssistantResponse(userMessage, content);
+    const thread = this.chatStore.selectedThread();
+    if (!this.isDetachedMode && thread && (this.isNewChatRoute() || this.selectedThreadId !== thread.id)) {
+      this.selectedThreadId = thread.id;
+      this.hasActiveConversation = true;
+      await this.navigateToThread(thread.id, this.isNewChatRoute());
     }
+
+    this.prepareForResponse();
+    await this.response.generateResponse(userMessage, content, this.getResponseSettings());
   }
 
   async handleSendOrStop(input: HTMLTextAreaElement): Promise<void> {
-    if (this.isGeneratingResponse()) {
-      await this.stopGeneratingResponse();
+    if (this.response.isGeneratingResponse()) {
+      const error = await this.response.stopResponse();
+      if (error) this.reportError(error);
       return;
     }
 
     await this.sendPrompt(input);
   }
 
-  private async stopGeneratingResponse(): Promise<void> {
-    if (!this.activeStreamId || this.isStoppingResponse()) return;
-
-    this.isStoppingResponse.set(true);
-    try {
-      await this.aiStreamService.stopStream(this.activeStreamId);
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : 'Failed to stop the AI response.';
-    } finally {
-      this.isStoppingResponse.set(false);
-    }
-  }
-
   resizePromptInput(input: HTMLTextAreaElement): void {
     input.style.height = 'auto';
     input.style.height = `${input.scrollHeight}px`;
   }
+
+
+  // ---------------------------------------------------------------------------
+  // Message Editing and Branching
+  // ---------------------------------------------------------------------------
 
   editMessage(messageId: string): void {
     if (this.chatStore.isSaving() || this.isAiResponseActive()) return;
@@ -485,14 +413,12 @@ export class Chat implements OnInit, OnDestroy {
     if (!message || message.role !== 'user') return;
 
     this.editingMessageId = message.id;
-    setTimeout(() => {
-      const input = document.getElementById(`chat-message-edit-${message.id}`) as HTMLTextAreaElement | null;
-      if (input) {
-        input.focus();
-        input.select();
-        this.resizePromptInput(input);
-      }
-    });
+    afterNextRender(() => {
+      const input = this.messageEditInput?.nativeElement;
+      input?.focus();
+      input?.select();
+      if (input) this.resizePromptInput(input);
+    }, { injector: this.injector });
   }
 
   cancelMessageEdit(): void {
@@ -509,7 +435,8 @@ export class Chat implements OnInit, OnDestroy {
     this.editingMessageId = null;
 
     if (trimmedContent === message.content.trim()) {
-      await this.retryResponseForUser(message, this.getVisibleAssistantResponse(message.id));
+      this.prepareForResponse();
+      await this.response.retryResponseForUser(message, this.getResponseSettings());
       return;
     }
 
@@ -519,7 +446,8 @@ export class Chat implements OnInit, OnDestroy {
     const selected = await this.chatStore.selectMessageBranch(editedMessage.id);
     if (!selected) return;
 
-    await this.generateAssistantResponse(editedMessage, trimmedContent);
+    this.prepareForResponse();
+    await this.response.generateResponse(editedMessage, trimmedContent, this.getResponseSettings());
   }
 
   async deleteMessage(messageId: string): Promise<void> {
@@ -545,22 +473,13 @@ export class Chat implements OnInit, OnDestroy {
         this.copyConfirmationTimeout = null;
       }, 2000);
     } catch (error) {
-      this.error = error instanceof Error ? error.message : 'Failed to copy message.';
+      this.reportError(error instanceof Error ? error.message : 'Failed to copy message.');
     }
   }
 
   async retryMessage(messageId: string): Promise<void> {
-    if (this.chatStore.isSaving() || this.isAiResponseActive()) return;
-
-    const assistantMessage = this.chatStore.visibleMessages().find((item) => item.id === messageId);
-    if (!assistantMessage || assistantMessage.role !== 'assistant') return;
-
-    const userMessage = this.chatStore.messages().find((message) => (
-      message.id === assistantMessage.parentMessageId && message.role === 'user'
-    ));
-    if (!userMessage) return;
-
-    await this.retryResponseForUser(userMessage, assistantMessage);
+    this.prepareForResponse();
+    await this.response.retryMessage(messageId, this.getResponseSettings());
   }
 
   async previousMessageBranch(messageId: string): Promise<void> {
@@ -569,6 +488,82 @@ export class Chat implements OnInit, OnDestroy {
 
   async nextMessageBranch(messageId: string): Promise<void> {
     await this.chatStore.selectAdjacentMessageBranch(messageId, 1);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Detached Window
+  // ---------------------------------------------------------------------------
+
+  async detachChat(): Promise<void> {
+    if (this.isDetachedMode) return;
+
+    this.isChatOpenInDetachedWindow.set(await this.openOrFocusDetachedChat());
+  }
+
+  async focusDetachedChat(): Promise<void> {
+    await this.openOrFocusDetachedChat();
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Scrolling
+  // ---------------------------------------------------------------------------
+
+  handleChatBodyScroll(event: Event): void {
+    const element = event.target as HTMLElement;
+    const isAtBottom = this.isScrollAtBottom(element);
+
+    this.isChatAtBottom.set(isAtBottom);
+    this.isAutoScrollEnabled.set(isAtBottom);
+  }
+
+  scrollToLatestResponse(): void {
+    this.isAutoScrollEnabled.set(true);
+    this.isChatAtBottom.set(true);
+    this.scrollChatToBottom('smooth');
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Private Helpers
+  // ---------------------------------------------------------------------------
+
+  private initializeConversationState(threadId: string | null, isNewChatRoute: boolean): void {
+    if (this.isNewChatThreadId(threadId) || isNewChatRoute) {
+      this.selectedThreadId = null;
+      this.hasActiveConversation = true;
+      return;
+    }
+
+    if (threadId) {
+      this.selectedThreadId = threadId;
+      this.hasActiveConversation = true;
+    }
+  }
+
+  private async removeThreadWithAnimation(id: string, removeThread: () => Promise<void>): Promise<void> {
+    const wasSelectedThread = this.selectedThreadId === id;
+    const removeAndNavigate = async () => {
+      await removeThread();
+
+      if (wasSelectedThread) {
+        this.selectedThreadId = null;
+        this.hasActiveConversation = false;
+
+        if (!this.isDetachedMode) {
+          await this.navigateToThreads();
+        }
+      }
+    };
+
+    const threadElement = this.chatThreads?.getThreadElement(id);
+    if (this.chatAnimation && threadElement) {
+      await this.chatAnimation.animateBeforeDelete(threadElement, removeAndNavigate);
+      return;
+    }
+
+    await removeAndNavigate();
   }
 
   private async syncThreadFromRoute(threadId: string | null): Promise<void> {
@@ -622,284 +617,64 @@ export class Chat implements OnInit, OnDestroy {
       return;
     }
 
-    this.restoreLastUsedModel();
-  }
-
-  private restoreLastUsedModel(): void {
-    const lastAssistantMessage = [...this.chatStore.visibleMessages()]
-      .reverse()
-      .find((message) => message.role === 'assistant' && !!message.modelId);
-
-    if (!lastAssistantMessage?.modelId) {
-      this.selectedModelId.set(null);
-      this.reasoningMode.set(false);
-      return;
-    }
-
-    const savedModelId = lastAssistantMessage.modelId;
-    const savedProvider = lastAssistantMessage.provider;
-    const matchingModel = (this.aiStore.models() as ChatAiModel[]).find((model) => {
-      if (model.source !== 'direct') {
-        return savedProvider === 'openrouter' && model.id === savedModelId;
-      }
-
-      return this.resolveDirectProvider(model) === savedProvider
-        && (model.id.split('/')[1] || model.id) === savedModelId;
-    });
-
-    this.selectedModelId.set(
-      matchingModel?.id ?? this.getDirectModelSelectorId(savedProvider, savedModelId) ?? savedModelId,
-    );
+    this.selectedModelId.set(this.response.getLastUsedModelId(this.chatStore.visibleMessages()));
     this.reasoningMode.set(false);
   }
 
-  private getDirectModelSelectorId(provider: string | null, modelId: string): string | null {
-    if (provider === 'openai') return `openai/${modelId}`;
-    if (provider === 'gemini' || provider === 'google') return `gemini/${modelId}`;
-    return null;
-  }
-
-  private async generateAssistantResponse(
-    userMessage: ChatMessageDetailDto,
-    prompt: string,
-    options: {
-      branchGroupId?: string;
-      selectCreatedBranch?: boolean;
-    } = {},
-  ): Promise<void> {
-    const { provider, modelId } = this.resolveSelectedModel();
-    const messages = this.buildAiMessages(userMessage);
-
-    let assistantMessage: ChatMessageDetailDto | null = null;
-    let assistantMessagePromise: Promise<ChatMessageDetailDto | null> | null = null;
-    let streamedContent = '';
-    let reasoningSummary = '';
-    const streamId = `pending-${userMessage.id}`;
-    this.activeStreamId = streamId;
-    this.isGeneratingResponse.set(true);
-    this.isAutoScrollEnabled.set(true);
-    this.isChatAtBottom.set(true);
-    this.requestAutoScroll();
-
-    const ensureAssistantMessage = (): Promise<ChatMessageDetailDto | null> => {
-      if (assistantMessage) return Promise.resolve(assistantMessage);
-
-      if (!assistantMessagePromise) {
-        assistantMessagePromise = this.chatStore.createAssistantMessage({
-          parentMessageId: userMessage.id,
-          provider,
-          modelId,
-          ...(options.branchGroupId ? { branchGroupId: options.branchGroupId } : {}),
-        }).then(async (msg) => {
-          if (msg && options.selectCreatedBranch) {
-            const selected = await this.chatStore.selectMessageBranch(msg.id);
-            if (!selected) return null;
-          }
-          assistantMessage = msg;
-          return msg;
-        });
-      }
-
-      return assistantMessagePromise;
-    };
+  private async openOrFocusDetachedChat(): Promise<boolean> {
+    const bookId = this.chatStore.bookId();
+    if (!bookId) {
+      this.reportError('Open a book before detaching chat.');
+      return false;
+    }
 
     try {
-      const generatedText = await this.aiStreamService.streamText({
-        streamId,
-        prompt,
-        messages,
-        provider,
-        modelId: modelId ?? undefined,
-        reasoningMode: this.reasoningMode(),
-        onToken: async (token) => {
-          const msg = await ensureAssistantMessage();
-          if (!msg) return;
-
-          streamedContent += token;
-          this.chatStore.patchStreamingMessage(msg.id, {
-            content: streamedContent,
-          });
-          this.requestAutoScroll();
-        },
-        onReasoningUpdate: async (reasoningText) => {
-          const msg = await ensureAssistantMessage();
-          if (!msg) return;
-
-          reasoningSummary = reasoningText;
-          this.chatStore.patchStreamingMessage(msg.id, {
-            reasoningSummary,
-          });
-          this.requestAutoScroll();
-        },
+      await this.chatWindowService.openDetachedWindow({
+        bookId,
+        selectedThreadId: this.selectedThreadId,
       });
-
-      if (!assistantMessage && assistantMessagePromise) {
-        assistantMessage = await assistantMessagePromise;
-      }
-
-      const finalContent = streamedContent || generatedText;
-
-      // Nothing received — skip saving an empty AI message
-      if (!finalContent.trim()) {
-        if (assistantMessage) {
-          const message = assistantMessage as ChatMessageDetailDto;
-          await this.chatStore.deleteMessage(message.id);
-        }
-        return;
-      }
-
-      // If no tokens arrived during streaming, create message now for the final result
-      if (!assistantMessage) {
-        assistantMessage = await this.chatStore.createAssistantMessage({
-          parentMessageId: userMessage.id,
-          provider,
-          modelId,
-          ...(options.branchGroupId ? { branchGroupId: options.branchGroupId } : {}),
-        });
-
-        if (assistantMessage && options.selectCreatedBranch) {
-          const selected = await this.chatStore.selectMessageBranch(assistantMessage.id);
-          if (!selected) return;
-        }
-      }
-
-      if (!assistantMessage) return;
-      const finalReasoningSummary = reasoningSummary.trim().length > 0 ? reasoningSummary : null;
-
-      this.chatStore.patchStreamingMessage(assistantMessage.id, {
-        content: finalContent,
-        status: 'complete',
-        modelId,
-        provider,
-        reasoningSummary: finalReasoningSummary,
-        error: null,
-      });
-      this.requestAutoScroll();
-      await this.chatStore.updateMessage(assistantMessage.id, {
-        content: finalContent,
-        status: 'complete',
-        modelId,
-        provider,
-        reasoningSummary: finalReasoningSummary,
-        error: null,
-      });
+      return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to generate AI response.';
-      const finalReasoningSummary = reasoningSummary.trim().length > 0 ? reasoningSummary : null;
+      this.reportError(error instanceof Error ? error.message : 'Failed to detach chat.');
+      return false;
+    }
+  }
 
-      if (!assistantMessage) {
-        // Nothing was received and no message was created — just surface the error
-        this.error = message;
-      } else {
-        this.chatStore.patchStreamingMessage(assistantMessage.id, {
-          content: streamedContent,
-          status: 'failed',
-          modelId,
-          provider,
-          reasoningSummary: finalReasoningSummary,
-          error: message,
-        });
-        this.requestAutoScroll();
-        await this.chatStore.updateMessage(assistantMessage.id, {
-          content: streamedContent,
-          status: 'failed',
-          modelId,
-          provider,
-          reasoningSummary: finalReasoningSummary,
-          error: message,
-        });
+  private async initializeDetachedChat(sessionId: string): Promise<void> {
+    try {
+      const session = await this.chatWindowService.getDetachedSession(sessionId);
+      if (!session) {
+        throw new Error('Detached chat session could not be found.');
       }
-    } finally {
-      this.isGeneratingResponse.set(false);
-      if (this.activeStreamId === streamId) {
-        this.activeStreamId = null;
+
+      await this.chatStore.enterBook(session.bookId);
+      if (session.selectedThreadId) {
+        await this.selectThread(session.selectedThreadId);
       }
-    }
-  }
 
-  private buildAiMessages(userMessage: ChatMessageDetailDto): AiChatMessage[] {
-    const threadMessages = this.chatStore.visibleMessages();
-    const userMessageIndex = threadMessages.findIndex((message) => message.id === userMessage.id);
-    const messages = userMessageIndex === -1
-      ? [...threadMessages, userMessage]
-      : threadMessages.slice(0, userMessageIndex + 1);
-
-    return messages
-      .filter((message) => (
-        (message.status === 'complete' || message.id === userMessage.id) &&
-        message.content.trim().length > 0
-      ))
-      .map((message) => ({
-        role: message.role,
-        content: message.content,
-      }));
-  }
-
-  private getVisibleAssistantResponse(userMessageId: string): ChatMessageDetailDto | null {
-    const messages = this.chatStore.visibleMessages();
-    const userMessageIndex = messages.findIndex((message) => message.id === userMessageId);
-    const assistantMessage = userMessageIndex === -1 ? null : messages[userMessageIndex + 1];
-
-    return assistantMessage?.role === 'assistant' && assistantMessage.parentMessageId === userMessageId
-      ? assistantMessage
-      : null;
-  }
-
-  private async retryResponseForUser(
-    userMessage: ChatMessageDetailDto,
-    previousResponse: ChatMessageDetailDto | null,
-  ): Promise<void> {
-    await this.generateAssistantResponse(userMessage, userMessage.content, previousResponse
-      ? {
-        branchGroupId: previousResponse.branchGroupId ?? previousResponse.id,
-        selectCreatedBranch: true,
+      if (!this.hasActiveConversation) {
+        await this.startNewConversation();
       }
-      : {});
+    } catch (error) {
+      this.reportError(error instanceof Error ? error.message : 'Failed to open detached chat.');
+    }
   }
 
-  private resolveSelectedModel(): { provider: string; modelId: string | null } {
-    const selectedModelId = this.selectedModelId();
+  private prepareForResponse(): void {
+    this.isAutoScrollEnabled.set(true);
+    this.isChatAtBottom.set(true);
+  }
 
-    if (!selectedModelId) {
-      return { provider: 'openrouter', modelId: null };
-    }
-
-    const selectedModel = (this.aiStore.models() as ChatAiModel[])
-      .find((model) => model.id === selectedModelId);
-
-    if (!selectedModel) {
-      return { provider: 'openrouter', modelId: selectedModelId };
-    }
-
-    if (selectedModel.source !== 'direct') {
-      return { provider: 'openrouter', modelId: selectedModel.id };
-    }
-
+  private getResponseSettings() {
     return {
-      provider: this.resolveDirectProvider(selectedModel),
-      modelId: selectedModel.id.split('/')[1] || selectedModel.id,
+      selectedModelId: this.selectedModelId(),
+      reasoningMode: this.reasoningMode(),
     };
-  }
-
-  private resolveDirectProvider(model: ChatAiModel): string {
-    if (model.provider === 'google' || model.id.startsWith('gemini/')) {
-      return 'gemini';
-    }
-
-    if (model.provider === 'openai' || model.id.startsWith('openai/')) {
-      return 'openai';
-    }
-
-    return model.provider || 'openrouter';
   }
 
   private isScrollAtBottom(element: HTMLElement): boolean {
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
     return distanceFromBottom <= 32;
-  }
-
-  private requestAutoScroll(): void {
-    this.streamRenderVersion.update((version) => version + 1);
   }
 
   private scrollChatToBottom(behavior: ScrollBehavior): void {
@@ -955,7 +730,7 @@ export class Chat implements OnInit, OnDestroy {
   private async navigateToNewChat(replaceUrl = false): Promise<void> {
     const bookId = this.getWorkspaceBookId();
     if (!bookId) {
-      this.error = 'Open a book before starting a chat.';
+      this.reportError('Open a book before starting a chat.');
       return;
     }
 
@@ -978,5 +753,9 @@ export class Chat implements OnInit, OnDestroy {
 
   private isNewChatThreadId(threadId: string | null): boolean {
     return threadId === NEW_CHAT_ROUTE_ID;
+  }
+
+  private reportError(message: string): void {
+    this.toastService.error(message, 'Chat');
   }
 }

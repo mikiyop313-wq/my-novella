@@ -33,8 +33,7 @@
       min-width: 56px;
       background: color-mix(in srgb, var(--color-surface) 62%, var(--color-background));
 
-      .threads-header-copy,
-      .threads-list {
+      .threads-header-copy {
         display: none;
       }
 

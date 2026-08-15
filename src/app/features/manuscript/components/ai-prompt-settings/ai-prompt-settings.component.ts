@@ -58,7 +58,7 @@ export class AiPromptSettingsComponent {
     const modelId = this.selectedModel();
     if (!modelId) return false;
 
-    const model = this.aiStore.models().find((m: any) => m.id === modelId);
+    const model = this.aiStore.models().find((model) => model.id === modelId);
     return model?.supportsReasoning === true;
   });
 
