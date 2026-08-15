@@ -562,12 +562,14 @@
     }
   }
 
-  /* Hide native scrollbar since we use custom index scrollbar */
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  &:not(.scene-mode) {
+    /* Hide native scrollbar since we use custom index scrollbar */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 
-  &::-webkit-scrollbar {
-    display: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 }
 

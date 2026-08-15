@@ -358,7 +358,7 @@
   </ng-template>
 
   <div class="editor-main-layout">
-    <div class="editor-content-wrapper">
+    <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'">
       @if (store.mode() === 'scene') {
       <app-scene-header></app-scene-header>
       }
