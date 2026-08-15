@@ -100,7 +100,7 @@ export class Outline implements OnInit {
 
     // Keep editing if the click landed on an edit input or textarea inside this component.
     const isEditField = target.closest(
-      '.act-title-input, .chapter-title-input, .scene-title-input, .scene-comments-input',
+      '.act-title-input, .chapter-title-input, .scene-title-input, .scene-summary-input',
     );
     if (isEditField && this.elementRef.nativeElement.contains(target)) return;
 
@@ -232,6 +232,34 @@ export class Outline implements OnInit {
   // ---------------------------------------------------------------------------
 
   // Create actions animate the newly inserted outline item when the view is ready.
+  async createInitialStructure(bookId: string): Promise<void> {
+    const action = async (): Promise<void> => {
+      const previousActIds = new Set(this.store.bookHierarchy().map((act) => act.id));
+      await this.store.createAct(bookId);
+      const actId = this.store.bookHierarchy().find((act) => !previousActIds.has(act.id))?.id;
+      if (!actId) return;
+
+      const previousChapterIds = new Set((this.findAct(actId)?.chapters ?? []).map((chapter) => chapter.id));
+      await this.store.createChapter(actId);
+      const chapterId = (this.findAct(actId)?.chapters ?? []).find(
+        (chapter) => !previousChapterIds.has(chapter.id),
+      )?.id;
+      if (!chapterId) return;
+
+      await this.store.createScene(chapterId);
+      this.cdr.detectChanges();
+    };
+
+    try {
+      await (this.outlineAnimation
+        ? this.outlineAnimation.animateAfterCreate(action)
+        : action());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create initial structure.';
+      this.toastService.error(message, 'Outline');
+    }
+  }
+
   async createAct(bookId: string): Promise<void> {
     const previousIds = new Set(this.store.bookHierarchy().map((act) => act.id));
     let createdId: string | undefined;
@@ -459,7 +487,6 @@ export class Outline implements OnInit {
   }
 
   async updateSceneSummary(sceneId: string, summary: string, event?: FocusEvent): Promise<void> {
-    // The outline card labels this as comments, while the current API persists it as scene summary.
     const keepEditing = this.shouldKeepEditing(event);
     const nextSummary = this.normalizeEditableValue(summary);
     const currentSummary = this.findScene(sceneId)?.summary ?? '';

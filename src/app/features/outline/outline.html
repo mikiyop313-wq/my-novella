@@ -27,6 +27,26 @@
   <div class="error-state">
     <p>{{ store.error() }}</p>
   </div>
+  } @else if (store.bookHierarchy().length === 0) {
+  <div class="empty-state">
+    <div class="empty-state-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 20h9"></path>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+      </svg>
+    </div>
+    <h2>Start Your Story</h2>
+    <p>Every great story begins with a single act. Create your first act, chapter, and scene to start outlining.</p>
+    @if (store.bookId(); as bookId) {
+    <button type="button" class="btn-create-outline" (click)="createInitialStructure(bookId)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14" />
+        <path d="M12 5v14" />
+      </svg>
+      Create Initial Outline
+    </button>
+    }
+  </div>
   } @else {
   <!-- Outline Tree -->
   <div cdkDropList id="outline-acts" class="acts-list" [cdkDropListData]="store.bookHierarchy()"
@@ -220,12 +240,12 @@
                                 </button>
                               </div>
 
-                              <!-- Comments section -->
+                              <!-- Summary section -->
                               @if (editing()[scene.id]) {
-                              <div class="scene-comments">
-                                <span class="scene-comments-label">Comments</span>
-                                <textarea class="scene-comments-input" rows="3" placeholder="Add outline comments..."
-                                  aria-label="Scene comments" (click)="$event.stopPropagation()" (blur)="
+                              <div class="scene-summary">
+                                <span class="scene-summary-label">Summary</span>
+                                <textarea class="scene-summary-input" rows="3" placeholder="Add a summary..."
+                                  aria-label="Scene summary" (click)="$event.stopPropagation()" (blur)="
                                               updateSceneSummary(
                                                 scene.id,
                                                 $any($event.target).value,
@@ -234,10 +254,10 @@
                                             ">{{ scene.summary || '' }}</textarea>
                               </div>
                               } @else {
-                              <div class="scene-comments">
-                                <span class="scene-comments-label">Comments</span>
-                                <p class="scene-comments-body">
-                                  {{ scene.summary || 'No comments yet...' }}
+                              <div class="scene-summary">
+                                <span class="scene-summary-label">Summary</span>
+                                <p class="scene-summary-body">
+                                  {{ scene.summary || 'No summary yet...' }}
                                 </p>
                               </div>
                               }
