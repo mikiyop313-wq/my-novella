@@ -25,6 +25,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sendCloseReady: () => ipcRenderer.send('app:close-ready'),
 
     // Example: Get app version
-    getAppVersion: () => process.versions.chrome
+    getAppVersion: () => process.versions.chrome,
+
+    // Abort an in-flight AI generation
+    abortAiGeneration: () => ipcRenderer.invoke('ai:abort'),
+
+    // Receive notification that generation was aborted cleanly
+    onGenerationAborted: (callback: () => void) => {
+        const subscription = () => callback();
+        ipcRenderer.on('ai:generate-aborted', subscription);
+        return () => ipcRenderer.removeListener('ai:generate-aborted', subscription);
+    }
 });
 

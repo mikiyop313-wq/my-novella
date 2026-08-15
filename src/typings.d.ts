@@ -9,6 +9,8 @@ interface IElectronAPI {
     onMessage: (channel: string, callback: (...args: any[]) => void) => () => void;
     invoke: (channel: string, data?: any) => Promise<any>;
     getAppVersion: () => string;
+    abortAiGeneration: () => Promise<void>;
+    onGenerationAborted: (callback: () => void) => () => void;
 }
 
 declare global {

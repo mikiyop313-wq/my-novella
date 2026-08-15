@@ -6,6 +6,14 @@ export class AIStateService {
     model: string = '';
     toastService = inject(ToastService);
 
+    /**
+     * Signals the main process to abort the current AI generation.
+     * The in-flight fetch will be cancelled and `ai:generate-aborted` will be sent back.
+     */
+    abort(): Promise<void> {
+        return window.electronAPI.abortAiGeneration?.() ?? Promise.resolve();
+    }
+
     async generate(promptText: string, model?: string, modelId?: string, onToken?: (token: string) => void, reasoningMode?: boolean, onReasoningToken?: (token: string) => void) {
         // Default to openai if the user hasn't selected one yet
         const providerToUse = model || this.model || 'openrouter';
@@ -58,4 +66,4 @@ export class AIStateService {
             throw e; // Rethrow so the caller can clean up the UI
         }
     }
-}
+}
