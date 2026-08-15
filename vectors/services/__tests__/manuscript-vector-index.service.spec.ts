@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     getVectorSearchEnabled: vi.fn(),
     getEmbeddingModel: vi.fn(),
     getLocalEmbeddingModel: vi.fn(),
+    getBookById: vi.fn(),
+    deleteBook: vi.fn(),
     isInstalled: vi.fn(),
     getVectorApiKey: vi.fn(),
     getBookParagraphStates: vi.fn(),
@@ -24,6 +26,7 @@ const mocks = vi.hoisted(() => ({
     deleteParagraphs: vi.fn(),
     searchSimilar: vi.fn(),
     retireLegacyManuscriptTable: vi.fn(),
+    deleteBookVectors: vi.fn(),
 }));
 
 vi.mock('../../../db/repositories/manuscript.repository', () => ({
@@ -41,6 +44,8 @@ vi.mock('../../../db/repositories/book.repository', () => ({
         getVectorSearchEnabled: mocks.getVectorSearchEnabled,
         getEmbeddingModel: mocks.getEmbeddingModel,
         getLocalEmbeddingModel: mocks.getLocalEmbeddingModel,
+        getById: mocks.getBookById,
+        delete: mocks.deleteBook,
     },
 }));
 
@@ -70,7 +75,10 @@ vi.mock('../../repositories/paragraph-vector.repository', () => ({
 }));
 
 vi.mock('../../lancedb.connection', () => ({
-    vectorDb: { retireLegacyManuscriptTable: mocks.retireLegacyManuscriptTable },
+    vectorDb: {
+        retireLegacyManuscriptTable: mocks.retireLegacyManuscriptTable,
+        deleteBookVectors: mocks.deleteBookVectors,
+    },
 }));
 
 import { ManuscriptVectorIndexService } from '../manuscript-vector-index.service';
@@ -106,6 +114,9 @@ describe('ManuscriptVectorIndexService', () => {
         mocks.getVectorSearchEnabled.mockResolvedValue(true);
         mocks.getEmbeddingModel.mockResolvedValue('local');
         mocks.getLocalEmbeddingModel.mockResolvedValue('BAAI/bge-m3');
+        mocks.getBookById.mockResolvedValue({ id: 'book-1' });
+        mocks.deleteBook.mockResolvedValue({ success: true });
+        mocks.deleteBookVectors.mockResolvedValue(undefined);
         mocks.isInstalled.mockResolvedValue(true);
         mocks.getVectorApiKey.mockResolvedValue('configured-key');
         mocks.searchSimilar.mockResolvedValue([]);
@@ -367,6 +378,51 @@ describe('ManuscriptVectorIndexService', () => {
 
         mocks.getVectorApiKey.mockResolvedValue('openai-key');
         await expect(service.isBookIndexingAvailable('book-1')).resolves.toBe(true);
+    });
+
+    it('waits for queued vector work before cleaning vectors and deleting the book', async () => {
+        let finishOperation!: () => void;
+        const operation = vi.fn(() => new Promise<void>(resolve => {
+            finishOperation = resolve;
+        }));
+        const queued = service.runBookOperation('book-1', operation);
+        await vi.waitFor(() => expect(operation).toHaveBeenCalledOnce());
+
+        const deletion = service.deleteBook('book-1');
+        await expect(service.runBookOperation('book-1', async () => undefined)).rejects.toThrow(
+            'unavailable while the book is being deleted',
+        );
+        expect(mocks.deleteBookVectors).not.toHaveBeenCalled();
+
+        finishOperation();
+        await queued;
+        await expect(deletion).resolves.toEqual({ success: true });
+
+        expect(mocks.deleteBookVectors).toHaveBeenCalledWith('book-1');
+        expect(mocks.deleteBook).toHaveBeenCalledWith('book-1');
+        expect(mocks.deleteBookVectors.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.deleteBook.mock.invocationCallOrder[0],
+        );
+    });
+
+    it('keeps the book when vector cleanup fails and releases the deletion lock', async () => {
+        mocks.deleteBookVectors.mockRejectedValueOnce(new Error('cleanup failed'));
+
+        await expect(service.deleteBook('book-1')).rejects.toThrow('cleanup failed');
+
+        expect(mocks.deleteBook).not.toHaveBeenCalled();
+        await expect(service.runBookOperation('book-1', async () => 'available')).resolves.toBe(
+            'available',
+        );
+    });
+
+    it('rejects vector work for a missing book', async () => {
+        mocks.getBookById.mockResolvedValue(undefined);
+
+        await expect(service.runBookOperation('missing-book', async () => undefined)).rejects.toThrow(
+            'Book not found: missing-book',
+        );
+        await expect(service.isBookIndexingAvailable('missing-book')).resolves.toBe(false);
     });
 });
 

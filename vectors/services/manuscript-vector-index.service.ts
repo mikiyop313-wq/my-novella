@@ -62,6 +62,7 @@ interface ReconciliationSummary {
 export class ManuscriptVectorIndexService {
     private readonly bookOperationTails = new Map<string, Promise<void>>();
     private readonly switchingBooks = new Set<string>();
+    private readonly deletingBooks = new Set<string>();
 
     /** Finds the paragraphs most semantically similar to a query after ensuring the index is current. */
     async searchSimilar(
@@ -95,6 +96,8 @@ export class ManuscriptVectorIndexService {
 
     /** Returns whether the book preference and selected provider both permit vector work. */
     async isBookIndexingAvailable(bookId: string): Promise<boolean> {
+        if (this.deletingBooks.has(bookId)) return false;
+        if (!await bookRepository.getById(bookId)) return false;
         if (!await bookRepository.getVectorSearchEnabled(bookId)) return false;
         const model = await bookRepository.getEmbeddingModel(bookId);
         if (model === 'local') {
@@ -114,6 +117,7 @@ export class ManuscriptVectorIndexService {
         reindex: boolean,
         onProgress?: (progress: BookCloudEmbeddingReindexProgress) => void,
     ): Promise<BookCloudEmbeddingSelectionResult> {
+        this.assertBookNotDeleting(bookId);
         if (this.switchingBooks.has(bookId)) {
             throw new Error('An embedding model switch is already in progress for this book.');
         }
@@ -147,6 +151,39 @@ export class ManuscriptVectorIndexService {
 
     /** Serializes one vector operation with all other vector work for the same book. */
     async runBookOperation<T>(bookId: string, operation: () => Promise<T>): Promise<T> {
+        this.assertBookNotDeleting(bookId);
+        return this.enqueueBookOperation(bookId, async () => {
+            if (!await bookRepository.getById(bookId)) {
+                throw new Error(`Book not found: ${bookId}`);
+            }
+            return operation();
+        });
+    }
+
+    /** Cleans all vector spaces before permanently deleting a book. */
+    async deleteBook(bookId: string): Promise<{ success: boolean }> {
+        this.assertBookNotDeleting(bookId);
+        this.deletingBooks.add(bookId);
+        try {
+            return await this.enqueueBookOperation(bookId, async () => {
+                await vectorDb.deleteBookVectors(bookId);
+                return bookRepository.delete(bookId);
+            });
+        } finally {
+            this.deletingBooks.delete(bookId);
+        }
+    }
+
+    private assertBookNotDeleting(bookId: string): void {
+        if (this.deletingBooks.has(bookId)) {
+            throw new Error('Vector operations are unavailable while the book is being deleted.');
+        }
+    }
+
+    private async enqueueBookOperation<T>(
+        bookId: string,
+        operation: () => Promise<T>,
+    ): Promise<T> {
         const previous = this.bookOperationTails.get(bookId) ?? Promise.resolve();
         let release!: () => void;
         const tail = new Promise<void>(resolve => {
@@ -172,6 +209,7 @@ export class ManuscriptVectorIndexService {
         reindex: boolean,
         onProgress?: (progress: BookEmbeddingReindexProgress) => void,
     ): Promise<BookEmbeddingSelectionResult> {
+        this.assertBookNotDeleting(bookId);
         if (this.switchingBooks.has(bookId)) {
             throw new Error('An embedding model switch is already in progress for this book.');
         }
@@ -212,6 +250,7 @@ export class ManuscriptVectorIndexService {
         reindex: boolean,
         onProgress?: (progress: BookOpenRouterEmbeddingReindexProgress) => void,
     ): Promise<BookOpenRouterEmbeddingSelectionResult> {
+        this.assertBookNotDeleting(bookId);
         const definition = getOpenRouterEmbeddingModelDefinition(modelName);
         if (this.switchingBooks.has(bookId)) {
             throw new Error('An embedding model switch is already in progress for this book.');

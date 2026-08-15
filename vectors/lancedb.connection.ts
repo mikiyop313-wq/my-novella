@@ -22,6 +22,7 @@ const vectorDbPath = (isDev || !app)
     ? '.data/vectors'
     : path.join(app.getPath('userData'), 'vectors');
 const LEGACY_MANUSCRIPT_TABLE = 'manuscript';
+const MANUSCRIPT_TABLE_PREFIX = 'manuscript_';
 
 if (!fs.existsSync(vectorDbPath)) {
     fs.mkdirSync(vectorDbPath, { recursive: true });
@@ -114,6 +115,21 @@ export class VectorDatabase {
         const tableName = this.tableNameForSpace(space);
         if ((await conn.tableNames()).includes(tableName)) {
             await conn.dropTable(tableName);
+        }
+    }
+
+    /** Removes one book's vectors from every current and legacy manuscript table. */
+    public async deleteBookVectors(bookId: string): Promise<void> {
+        const conn = await this.connect();
+        const tableNames = (await conn.tableNames()).filter(
+            tableName => tableName === LEGACY_MANUSCRIPT_TABLE
+                || tableName.startsWith(MANUSCRIPT_TABLE_PREFIX),
+        );
+        const predicate = `bookId = '${escapeLanceSql(bookId)}'`;
+
+        for (const tableName of tableNames) {
+            const table = await conn.openTable(tableName);
+            await table.delete(predicate);
         }
     }
 
