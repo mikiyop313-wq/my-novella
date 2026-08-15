@@ -148,19 +148,19 @@ export function dropdownValuesToContextSelection(
   const manuscriptRefs: AiManuscriptContextRef[] = [];
 
   const novelValues = manuscriptValuesForNovel(hierarchy);
-  if (novelValues.length > 1 && novelValues.every(value => selected.has(value))) {
+  if (novelValues.length > 0 && novelValues.every(value => selected.has(value))) {
     manuscriptRefs.push('novel');
   } else {
     for (const act of hierarchy) {
       const actValues = manuscriptValuesForAct(act);
-      if (actValues.length > 1 && actValues.every(value => selected.has(value))) {
+      if (actValues.length > 0 && actValues.every(value => selected.has(value))) {
         manuscriptRefs.push(actValue(act.id));
         continue;
       }
 
       for (const chapter of act.chapters ?? []) {
         const chapterValues = manuscriptValuesForChapter(chapter);
-        if (chapterValues.length > 1 && chapterValues.every(value => selected.has(value))) {
+        if (chapterValues.length > 0 && chapterValues.every(value => selected.has(value))) {
           manuscriptRefs.push(chapterValue(chapter.id));
           continue;
         }
@@ -413,15 +413,15 @@ function scenesForChapter(chapter: ChapterDto): SceneDto[] {
 }
 
 function manuscriptValuesForNovel(hierarchy: readonly ActDto[]): string[] {
-  return ['novel', ...hierarchy.flatMap(manuscriptValuesForAct)];
+  return hierarchy.flatMap(manuscriptValuesForAct);
 }
 
 function manuscriptValuesForAct(act: ActDto): string[] {
-  return [actValue(act.id), ...(act.chapters ?? []).flatMap(manuscriptValuesForChapter)];
+  return (act.chapters ?? []).flatMap(manuscriptValuesForChapter);
 }
 
 function manuscriptValuesForChapter(chapter: ChapterDto): string[] {
-  return [chapterValue(chapter.id), ...scenesForChapter(chapter).map(scene => sceneValue(scene.id))];
+  return scenesForChapter(chapter).map(scene => sceneValue(scene.id));
 }
 
 function uniqueStrings(value: unknown): string[] {

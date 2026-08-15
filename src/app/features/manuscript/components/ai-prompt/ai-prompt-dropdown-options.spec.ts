@@ -30,18 +30,11 @@ describe('AI prompt dropdown options', () => {
     expect(sections[0].title).toBe('Outline & Novel');
     expect(novel.count).toBe(3);
     expect(novel.selectionValues).toEqual([
-      'novel',
-      'act:act-1',
-      'chapter:chapter-1',
       'scene:scene-1',
       'scene:scene-2',
-      'act:act-2',
-      'chapter:chapter-2',
       'scene:scene-3',
     ]);
     expect(act.selectionValues).toEqual([
-      'act:act-1',
-      'chapter:chapter-1',
       'scene:scene-1',
       'scene:scene-2',
     ]);
@@ -128,20 +121,31 @@ describe('AI prompt dropdown options', () => {
     });
   });
 
-  it('canonicalizes aggregate markers without promoting manually selected scenes', () => {
+  it('promotes fully selected scenes to their highest complete manuscript branch', () => {
     const hierarchy = createHierarchy();
-    const chapterValues = [
-      'chapter:chapter-1',
-      'scene:scene-1',
-      'scene:scene-2',
+    const chapterValues = ['scene:scene-1', 'scene:scene-2'];
+    const hierarchyWithIncompleteSiblingChapter = [
+      {
+        ...hierarchy[0],
+        chapters: [
+          ...hierarchy[0].chapters!,
+          createChapter('chapter-extra', 'Extra Chapter', [createScene('scene-extra', 'Extra Scene', 0)]),
+        ],
+      },
+      hierarchy[1],
     ];
 
-    expect(dropdownValuesToContextSelection(chapterValues, hierarchy).manuscriptRefs)
-      .toEqual(['chapter:chapter-1']);
     expect(dropdownValuesToContextSelection(
-      ['scene:scene-1', 'scene:scene-2'],
+      chapterValues,
+      hierarchyWithIncompleteSiblingChapter,
+    ).manuscriptRefs)
+      .toEqual(['chapter:chapter-1']);
+    expect(dropdownValuesToContextSelection(chapterValues, hierarchy).manuscriptRefs)
+      .toEqual(['act:act-1']);
+    expect(dropdownValuesToContextSelection(
+      [...chapterValues, 'scene:scene-3'],
       hierarchy,
-    ).manuscriptRefs).toEqual(['scene:scene-1', 'scene:scene-2']);
+    ).manuscriptRefs).toEqual(['novel']);
   });
 
   it('invalidates incomplete ancestors while preserving complete sibling aggregates', () => {
