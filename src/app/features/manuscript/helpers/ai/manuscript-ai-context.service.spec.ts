@@ -163,8 +163,31 @@ describe('ManuscriptAiContextService', () => {
 
     expect(messages[0].content).toContain('## Narrative Guidance');
     expect(messages[0].content).toContain('Point of View: Third Person Omniscient');
+    expect(messages[0].content).toContain('Minimum Length: Write at least 500 words.');
     expect(messages[0].content).not.toContain('POV Character:');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('includes the requested minimum word count in narrative guidance', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+
+    const messages = await service.buildMessages({
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      wordCount: 1250,
+    });
+
+    expect(messages[0].content).toContain('Minimum Length: Write at least 1250 words.');
+  });
+
+  it('lets the model choose the length when word count is automatic', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+
+    const messages = await service.buildMessages({
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      wordCount: 0,
+    });
+
+    expect(messages[0].content).not.toContain('Minimum Length:');
   });
 
   it('uses a prompt POV override and defaults a missing book to third-person limited', async () => {
@@ -270,6 +293,7 @@ function baseRequest(doc: ProseMirrorNode, promptPos: number) {
     manualCodexEntryIds: [],
     automaticCodexEntryIds: new Set<string>(),
     codexEntries: [],
+    wordCount: 500,
     pointOfView: 'global',
     povCharacterId: null,
   } as const;

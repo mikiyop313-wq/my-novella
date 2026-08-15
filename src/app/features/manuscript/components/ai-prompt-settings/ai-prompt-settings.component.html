@@ -27,11 +27,13 @@
         <div class="form-group">
           <div class="field-header">
             <span class="section-label">
-              WORD COUNT LIMIT
+              MINIMUM WORD COUNT
               <app-info-icon [infoText]="INFO.WORD_COUNT"></app-info-icon>
             </span>
           </div>
           <div class="word-presets">
+            <button type="button" class="preset-chip" [class.active]="wordCount() === 0"
+              (click)="onWordCountPresetSelect(0)">Auto</button>
             <button type="button" class="preset-chip" [class.active]="wordCount() === 250"
               (click)="onWordCountPresetSelect(250)">250</button>
             <button type="button" class="preset-chip" [class.active]="wordCount() === 500"
@@ -42,9 +44,12 @@
               (click)="onWordCountPresetSelect(1500)">1500</button>
           </div>
           <div class="custom-words-input-wrapper">
-            <input type="number" min="10" max="10000" [value]="wordCount()" (input)="onCustomWordCountInput($event)"
-              placeholder="Custom words..." class="custom-words-input" />
+            <input type="number" min="10" max="10000" [value]="wordCount() === 0 ? null : wordCount()"
+              (input)="onCustomWordCountInput($event)"
+              [placeholder]="wordCount() === 0 ? 'AI decides' : 'Custom words...'" class="custom-words-input" />
+            @if (wordCount() > 0) {
             <span class="input-suffix">words</span>
+            }
           </div>
         </div>
 

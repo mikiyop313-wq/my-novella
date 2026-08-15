@@ -43,6 +43,7 @@ export interface ManuscriptAiContextRequest {
   manualCodexEntryIds: readonly string[];
   automaticCodexEntryIds: ReadonlySet<string>;
   codexEntries: readonly CodexEntryDto[];
+  wordCount: number;
   pointOfView: ManuscriptAiPointOfViewSetting;
   povCharacterId: string | null;
 }
@@ -130,6 +131,7 @@ export class ManuscriptAiContextService {
     const narrativeGuidance = serializeNarrativeGuidance(
       pointOfView,
       povCharacter?.name,
+      request.wordCount,
     );
 
     const codexEntryIds = this.resolveCodexEntryIds(request, povCharacter?.id);

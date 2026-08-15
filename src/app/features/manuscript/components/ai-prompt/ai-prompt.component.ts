@@ -395,6 +395,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         manualCodexEntryIds: this.contextCodexEntryIds(),
         automaticCodexEntryIds: this.automaticallyIncludedCodexEntryIds(),
         codexEntries: this.contextCodexEntries(),
+        wordCount: this.wordCount(),
         pointOfView: this.pov(),
         povCharacterId: this.povCharacter(),
       });
@@ -455,7 +456,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     ));
     this.contextCodexEntryIds.set(this.restoreStringArray(attrs['contextCodexEntryIds']));
     this.applySettings({
-      wordCount: attrs['wordCount'] || DEFAULT_PROMPT_SETTINGS.wordCount,
+      wordCount: attrs['wordCount'] ?? DEFAULT_PROMPT_SETTINGS.wordCount,
       pov: attrs['pov'] || DEFAULT_PROMPT_SETTINGS.pov,
       povCharacter: attrs['povCharacter'] || DEFAULT_PROMPT_SETTINGS.povCharacter,
       vectorSearch: attrs['vectorSearch'] || DEFAULT_PROMPT_SETTINGS.vectorSearch,

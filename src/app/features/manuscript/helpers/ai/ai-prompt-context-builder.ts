@@ -166,8 +166,12 @@ export function serializeAutomaticManuscript(
 export function serializeNarrativeGuidance(
   pointOfView: BookSettingsDto['pointOfView'],
   povCharacterName: string | null | undefined,
+  wordCount: number,
 ): string {
   const fields = [`Point of View: ${displayPointOfView(pointOfView)}`];
+  if (Number.isFinite(wordCount) && wordCount > 0) {
+    fields.push(`Minimum Length: Write at least ${wordCount} words.`);
+  }
   const cleanCharacterName = povCharacterName?.trim();
   if (cleanCharacterName) fields.push(`POV Character: ${cleanCharacterName}`);
 

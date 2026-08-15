@@ -86,17 +86,29 @@ describe('AI prompt context builder', () => {
     ['third_limited', 'Third Person Limited'],
     ['third_omni', 'Third Person Omniscient'],
   ] as const)('renders the %s point of view as %s', (pointOfView, label) => {
-    expect(serializeNarrativeGuidance(pointOfView, null)).toBe(
-      `## Narrative Guidance\n\nPoint of View: ${label}`,
+    expect(serializeNarrativeGuidance(pointOfView, null, 500)).toBe(
+      `## Narrative Guidance\n\nPoint of View: ${label}\nMinimum Length: Write at least 500 words.`,
     );
   });
 
   it('adds a resolved POV character and omits an empty one', () => {
-    expect(serializeNarrativeGuidance('first', '  Mara  ')).toContain(
+    expect(serializeNarrativeGuidance('first', '  Mara  ', 500)).toContain(
       'POV Character: Mara',
     );
-    expect(serializeNarrativeGuidance('first', null)).not.toContain('POV Character:');
-    expect(serializeNarrativeGuidance('first', '   ')).not.toContain('POV Character:');
+    expect(serializeNarrativeGuidance('first', null, 500)).not.toContain('POV Character:');
+    expect(serializeNarrativeGuidance('first', '   ', 500)).not.toContain('POV Character:');
+  });
+
+  it('renders the requested minimum output length', () => {
+    expect(serializeNarrativeGuidance('third_limited', null, 1250)).toContain(
+      'Minimum Length: Write at least 1250 words.',
+    );
+  });
+
+  it('omits minimum output length when word count is automatic', () => {
+    expect(serializeNarrativeGuidance('third_limited', null, 0)).toBe(
+      '## Narrative Guidance\n\nPoint of View: Third Person Limited',
+    );
   });
 
   it('finds the current scene before the prompt position', () => {

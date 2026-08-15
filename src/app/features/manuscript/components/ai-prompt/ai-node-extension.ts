@@ -53,7 +53,13 @@ export const AiPromptExtension = (injector: Injector) => {
         },
         wordCount: {
           default: 500,
-          parseHTML: element => Number(element.getAttribute('data-word-count')) || 500,
+          parseHTML: element => {
+            const rawValue = element.getAttribute('data-word-count');
+            if (rawValue === null) return 500;
+
+            const value = Number(rawValue);
+            return Number.isFinite(value) && value >= 0 ? value : 500;
+          },
           renderHTML: attributes => ({ 'data-word-count': attributes['wordCount'] }),
         },
         pov: {

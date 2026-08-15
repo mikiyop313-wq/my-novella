@@ -83,6 +83,15 @@ describe('AiPromptSettingsComponent', () => {
     expect(emitted).toHaveBeenCalledWith(null);
   });
 
+  it('emits zero when automatic word count is selected', () => {
+    const emitted = vi.fn();
+    component.wordCountChange.subscribe(emitted);
+
+    component.onWordCountPresetSelect(0);
+
+    expect(emitted).toHaveBeenCalledWith(0);
+  });
+
   it('does not query Codex without a current book', async () => {
     bookId.set(null);
     fixture.detectChanges();
