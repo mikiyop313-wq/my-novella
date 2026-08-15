@@ -145,6 +145,7 @@ export class Outline implements OnInit {
   collapsed = signal<Record<string, boolean>>({});
   editing = signal<Record<string, boolean>>({});
   sceneSummaryDrafts = signal<Record<string, string>>({});
+  outlineInclusion = signal<Record<string, boolean>>({});
   sceneCardMode = signal<SceneCardMode>(loadSceneCardMode());
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
@@ -162,6 +163,17 @@ export class Outline implements OnInit {
   // ---------------------------------------------------------------------------
   // View State
   // ---------------------------------------------------------------------------
+
+  isOutlineItemIncluded(itemId: string): boolean {
+    return this.outlineInclusion()[itemId] ?? true;
+  }
+
+  toggleOutlineItemInclusion(itemId: string): void {
+    this.outlineInclusion.update((inclusion) => ({
+      ...inclusion,
+      [itemId]: !this.isOutlineItemIncluded(itemId),
+    }));
+  }
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {

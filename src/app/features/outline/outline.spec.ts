@@ -1,3 +1,4 @@
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -183,6 +184,104 @@ describe('Outline', () => {
     await fixture.whenStable();
 
     expect(component.sceneCardMode()).toBe('compact');
+  });
+
+  it('renders a keep-open scene inclusion switch before the separated menu actions', async () => {
+    showScene('', 12);
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const menu = document.querySelector<HTMLElement>('.scene-options-menu')!;
+    const inclusionSwitch = menu.firstElementChild as HTMLButtonElement;
+
+    expect(inclusionSwitch.classList).toContain('outline-inclusion-switch');
+    expect(inclusionSwitch.textContent).toContain('Include scene');
+    expect(inclusionSwitch.getAttribute('role')).toBe('menuitemcheckbox');
+    expect(inclusionSwitch.getAttribute('aria-checked')).toBe('true');
+    expect(inclusionSwitch.nextElementSibling?.getAttribute('role')).toBe('separator');
+
+    inclusionSwitch.click();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.scene-options-menu')).not.toBeNull();
+    expect(inclusionSwitch.getAttribute('aria-checked')).toBe('false');
+    expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
+    expect(component.isOutlineItemIncluded('scene-2')).toBe(true);
+
+    const sceneMenuTrigger = fixture.debugElement
+      .query(By.css('.scene-more'))
+      .injector.get(CdkMenuTrigger);
+    sceneMenuTrigger.close();
+    sceneMenuTrigger.open();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.outline-inclusion-switch')?.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('renders independent inclusion switches for acts and chapters', async () => {
+    showScene('', 12);
+    const actMenuButton = fixture.debugElement.query(By.css('.act-header-right .btn-more'));
+    actMenuButton.nativeElement.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const actSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+    expect(actSwitch.textContent).toContain('Include act');
+    expect(actSwitch.getAttribute('aria-checked')).toBe('true');
+    actSwitch.click();
+    fixture.detectChanges();
+    expect(component.isOutlineItemIncluded('act-1')).toBe(false);
+
+    actMenuButton.injector.get(CdkMenuTrigger).close();
+    const chapterMenuButton = fixture.debugElement.query(By.css('.chapter-row-right .btn-more'));
+    chapterMenuButton.nativeElement.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const chapterSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+    expect(chapterSwitch.textContent).toContain('Include chapter');
+    expect(chapterSwitch.getAttribute('aria-checked')).toBe('true');
+    chapterSwitch.click();
+    fixture.detectChanges();
+
+    expect(component.isOutlineItemIncluded('chapter-1')).toBe(false);
+    expect(component.isOutlineItemIncluded('act-1')).toBe(false);
+  });
+
+  it('toggles scene inclusion from the keyboard and resets it with the component', async () => {
+    showScene('', 12);
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const inclusionSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+    inclusionSwitch.focus();
+    inclusionSwitch.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ' ',
+      code: 'Space',
+      bubbles: true,
+    }));
+    inclusionSwitch.dispatchEvent(new KeyboardEvent('keyup', {
+      key: ' ',
+      code: 'Space',
+      bubbles: true,
+    }));
+    inclusionSwitch.click();
+    fixture.detectChanges();
+
+    expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
+    expect(document.querySelector('.scene-options-menu')).not.toBeNull();
+
+    fixture.destroy();
+    fixture = TestBed.createComponent(Outline);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.isOutlineItemIncluded('scene-1')).toBe(true);
   });
 
   it('resolves the active Summary and Codex Detection models when the scene AI menu opens', async () => {

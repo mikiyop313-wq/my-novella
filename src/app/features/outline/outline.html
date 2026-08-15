@@ -360,7 +360,21 @@
 
 <!-- Act options menu -->
 <ng-template #actOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu" cdkMenu>
+    <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
+      [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
+      (cdkMenuItemTriggered)="toggleOutlineItemInclusion(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+      <span class="outline-inclusion-label">Include act</span>
+      <span class="outline-inclusion-switch-track" aria-hidden="true">
+        <span class="outline-inclusion-switch-thumb"></span>
+      </span>
+    </button>
+    <div class="inclusion-menu-separator" role="separator"></div>
     <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -393,7 +407,21 @@
 
 <!-- Chapter options menu -->
 <ng-template #chapterOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu" cdkMenu>
+    <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
+      [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
+      (cdkMenuItemTriggered)="toggleOutlineItemInclusion(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+      <span class="outline-inclusion-label">Include chapter</span>
+      <span class="outline-inclusion-switch-track" aria-hidden="true">
+        <span class="outline-inclusion-switch-thumb"></span>
+      </span>
+    </button>
+    <div class="inclusion-menu-separator" role="separator"></div>
     <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -426,7 +454,21 @@
 
 <!-- Scene options menu -->
 <ng-template #sceneOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu scene-options-menu" cdkMenu>
+    <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
+      [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
+      (cdkMenuItemTriggered)="toggleOutlineItemInclusion(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+      <span class="outline-inclusion-label">Include scene</span>
+      <span class="outline-inclusion-switch-track" aria-hidden="true">
+        <span class="outline-inclusion-switch-thumb"></span>
+      </span>
+    </button>
+    <div class="inclusion-menu-separator" role="separator"></div>
     <button class="menu-item" [cdkMenuTriggerFor]="sceneAiMenu" [cdkMenuTriggerData]="{ itemId: itemId }"
       [cdkMenuPosition]="sceneAiMenuPositions" (cdkMenuOpened)="prepareSceneAiMenu()" cdkMenuItem>
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
