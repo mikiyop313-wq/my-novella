@@ -48,7 +48,6 @@ export class AiStreamService {
   }
 
   async streamText(request: AiStreamRequest): Promise<string> {
-    let isNewlineSequence = false;
     let reasoningBuffer = '';
     let lastReasoningUpdate = -Infinity;
     let lastEmittedReasoning = '';
@@ -90,19 +89,7 @@ export class AiStreamService {
           this.setLoadingStatus(request.streamId, 'generating', request.onStatusChange);
 
           for (const char of token) {
-            if (char === '\r') continue;
-
-            if (char === '\n') {
-              if (!isNewlineSequence) {
-                request.onToken?.('\n');
-                isNewlineSequence = true;
-              }
-
-              continue;
-            }
-
-            isNewlineSequence = false;
-            request.onToken?.(char);
+            if (char !== '\r') request.onToken?.(char);
           }
         });
       }

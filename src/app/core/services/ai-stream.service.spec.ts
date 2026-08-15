@@ -56,7 +56,7 @@ describe('AiStreamService', () => {
     TestBed.resetTestingModule();
   });
 
-  it('streams content tokens in order with CR/newline normalization', async () => {
+  it('streams content tokens in order while normalizing CRLF', async () => {
     generate.mockImplementation(async () => {
       listeners.get('ai:generate-stream')?.('Hel');
       listeners.get('ai:generate-stream')?.('lo\r\n\nthere');
@@ -75,7 +75,7 @@ describe('AiStreamService', () => {
       onToken: token => tokens.push(token),
     });
 
-    expect(tokens.join('')).toBe('Hello\nthere');
+    expect(tokens.join('')).toBe('Hello\n\nthere');
     expect(generate).toHaveBeenCalledWith(
       'Write',
       'openrouter',

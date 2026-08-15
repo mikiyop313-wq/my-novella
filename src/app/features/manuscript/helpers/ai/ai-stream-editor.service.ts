@@ -223,6 +223,7 @@ export class AiStreamEditorService {
     let hasWrittenContent = false;
     let reasoningBuffer = '';
     let markdownSource = '';
+    let isNewlineSequence = false;
 
     const queue: string[] = [];
     let isAnimating = false;
@@ -274,8 +275,10 @@ export class AiStreamEditorService {
           markdownSource += token;
 
           if (token === '\n') {
-            enqueue('\n');
+            if (!isNewlineSequence) enqueue('\n');
+            isNewlineSequence = true;
           } else {
+            isNewlineSequence = false;
             enqueue(token);
           }
         },
