@@ -10,6 +10,7 @@ import { DetachedWindowManager } from './detached-window-manager';
 
 type ChatWindowManagerConfig = {
     preloadPath: string;
+    iconPath: string;
     applyShortcuts: (window: BrowserWindow) => void;
     loadRoute: (window: BrowserWindow, route: string) => void;
 };
@@ -33,6 +34,7 @@ export class ChatWindowManager {
                 minHeight: 520,
                 skipTaskbar: false,
                 title: 'Chat',
+                icon: config.iconPath,
                 webPreferences: {
                     preload: config.preloadPath,
                 },

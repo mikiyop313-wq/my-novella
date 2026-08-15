@@ -9,6 +9,7 @@ import { DetachedWindowManager } from './detached-window-manager';
 
 type CodexWindowManagerConfig = {
     preloadPath: string;
+    iconPath: string;
     applyShortcuts: (window: BrowserWindow) => void;
     loadRoute: (window: BrowserWindow, route: string) => void;
 };
@@ -33,6 +34,7 @@ export class CodexWindowManager {
                 minHeight: 560,
                 skipTaskbar: false,
                 title: 'Codex Entry',
+                icon: config.iconPath,
                 webPreferences: {
                     preload: config.preloadPath,
                 },

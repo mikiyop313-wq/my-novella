@@ -12,6 +12,7 @@ if (!app.isPackaged) {
 
 let win: BrowserWindow | null;
 let isReadyToClose = false;
+const appIconPath = path.join(app.getAppPath(), 'public', 'app-icon.ico');
 
 function isDevMode(): boolean {
     return process.env.NODE_ENV === 'development';
@@ -53,6 +54,7 @@ function loadAppRoute(window: BrowserWindow, route = '') {
 function setupCodexWindowHandlers() {
     const codexWindowManager = new CodexWindowManager({
         preloadPath: path.join(__dirname, 'preload.js'),
+        iconPath: appIconPath,
         applyShortcuts: applyWindowShortcuts,
         loadRoute: loadAppRoute,
     });
@@ -62,6 +64,7 @@ function setupCodexWindowHandlers() {
 function setupChatWindowHandlers() {
     const chatWindowManager = new ChatWindowManager({
         preloadPath: path.join(__dirname, 'preload.js'),
+        iconPath: appIconPath,
         applyShortcuts: applyWindowShortcuts,
         loadRoute: loadAppRoute,
     });
@@ -72,6 +75,7 @@ function createWindow() {
     win = new BrowserWindow({
         width: 1200,
         height: 800,
+        icon: appIconPath,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true, // Note: For production, use a preload script instead
