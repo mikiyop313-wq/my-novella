@@ -1,8 +1,13 @@
 import { Component, computed, effect, inject, NgZone, signal } from '@angular/core';
 import type { Editor } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Slice } from '@tiptap/pm/model';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
+import { AiStreamService } from '../../../../core/services/ai-stream.service';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { buildRephrasePrompt } from '../../../../shared/utils/story-context-builder';
+import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { ManuscriptStore } from '../../store/manuscript.store';
 
 type AiSelectionEffectState = 'idle' | 'drawing' | 'generating' | 'ready';
@@ -36,9 +41,19 @@ export class AiSelectionEffectComponent {
   });
 
   private readonly store = inject(ManuscriptStore);
+  private readonly workspaceStore = inject(WorkspaceStore);
+  private readonly aiStreamService = inject(AiStreamService);
+  private readonly toastService = inject(ToastService);
   private readonly zone = inject(NgZone);
   private selection: { from: number; to: number } | null = null;
+  private originalSelection: { from: number; to: number } | null = null;
+  private previewSelection: { from: number; to: number } | null = null;
+  private originalSlice: Slice | null = null;
+  private candidateSlice: Slice | null = null;
   private editor: Editor | null = null;
+  private mode: 'placeholder' | 'rephrase' | null = null;
+  private streamId: string | null = null;
+  private isInternalUpdate = false;
   private drawTimer: ReturnType<typeof setTimeout> | null = null;
   private responseTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -49,45 +64,24 @@ export class AiSelectionEffectComponent {
 
       currentEditor.on('selectionUpdate', this.onSelectionUpdate);
       currentEditor.on('update', this.onEditorUpdate);
-      window.addEventListener('resize', this.onSelectionUpdate);
-      window.addEventListener('scroll', this.onSelectionUpdate, true);
+      window.addEventListener('resize', this.onViewportChange);
+      window.addEventListener('scroll', this.onViewportChange, true);
 
       onCleanup(() => {
         currentEditor.off('selectionUpdate', this.onSelectionUpdate);
         currentEditor.off('update', this.onEditorUpdate);
-        window.removeEventListener('resize', this.onSelectionUpdate);
-        window.removeEventListener('scroll', this.onSelectionUpdate, true);
+        window.removeEventListener('resize', this.onViewportChange);
+        window.removeEventListener('scroll', this.onViewportChange, true);
+        this.restoreOriginalPreview();
         this.dismiss();
       });
     });
   }
 
+  /** Retains the existing placeholder effect used by unimplemented AI actions. */
   start(): boolean {
-    if (this.state() !== 'idle') return false;
+    if (!this.beginSelectionEffect('placeholder')) return false;
 
-    const currentEditor = this.store.editor();
-    if (!currentEditor) return false;
-
-    const { selection } = currentEditor.state;
-    if (selection.empty || selection.from === selection.to) return false;
-
-    const selectedText = currentEditor.state.doc
-      .textBetween(selection.from, selection.to, ' ')
-      .trim();
-    if (!selectedText) return false;
-
-    this.selection = { from: selection.from, to: selection.to };
-    this.editor = currentEditor;
-    this.addSelectionSpacing(currentEditor, this.selection, false, true);
-    if (!this.updatePosition(currentEditor)) {
-      this.removeSelectionSpacing();
-      this.selection = null;
-      this.editor = null;
-      return false;
-    }
-
-    window.getSelection()?.removeAllRanges();
-    this.state.set('drawing');
     this.drawTimer = setTimeout(() => {
       this.zone.run(() => {
         this.drawTimer = null;
@@ -108,17 +102,65 @@ export class AiSelectionEffectComponent {
     return true;
   }
 
+  /** Starts a real scene-aware rephrase request for the active selection. */
+  startRephrase(): boolean {
+    const currentEditor = this.store.editor();
+    const bookId = this.workspaceStore.bookId();
+    if (!currentEditor || this.state() !== 'idle') return false;
+    if (!bookId) {
+      this.toastService.error('No active book is available.', 'AI Rephrase');
+      return false;
+    }
+
+    const { selection } = currentEditor.state;
+    const context = buildRephrasePrompt(currentEditor.state.doc, {
+      from: selection.from,
+      to: selection.to,
+    });
+    if (!context) {
+      this.toastService.error(
+        'Select prose contained within a single scene to rephrase it.',
+        'AI Rephrase',
+      );
+      return false;
+    }
+
+    if (!this.beginSelectionEffect('rephrase')) return false;
+
+    this.originalSelection = { from: selection.from, to: selection.to };
+    this.originalSlice = currentEditor.state.doc.slice(selection.from, selection.to);
+    const requestId = crypto.randomUUID();
+    this.streamId = requestId;
+    this.drawTimer = setTimeout(() => {
+      this.zone.run(() => {
+        this.drawTimer = null;
+        if (this.streamId !== requestId || this.state() !== 'drawing') return;
+        this.state.set('generating');
+        void this.generateRephrase(requestId, bookId, context.prompt);
+      });
+    }, EFFECT_DRAW_DURATION_MS);
+
+    return true;
+  }
+
   cancel(): void {
+    this.restoreOriginalPreview();
     this.dismiss();
   }
 
   confirm(): void {
+    if (this.mode === 'rephrase') this.commitRephrasePreview();
     this.dismiss();
   }
 
   private readonly onSelectionUpdate = () => {
     this.zone.run(() => {
-      if (this.state() === 'idle') return;
+      if (this.state() === 'idle' || this.isInternalUpdate) return;
+      if (this.state() === 'ready' && this.mode === 'rephrase') {
+        this.restoreOriginalPreview();
+        this.dismiss();
+        return;
+      }
       if (!this.hasOriginalSelection()) {
         this.dismiss();
         return;
@@ -127,19 +169,194 @@ export class AiSelectionEffectComponent {
     });
   };
 
-  private readonly onEditorUpdate = () => {
+  private readonly onEditorUpdate = (event?: { transaction: Transaction }) => {
     this.zone.run(() => {
-      if (this.state() !== 'idle') this.dismiss();
+      if (this.state() === 'idle' || this.isInternalUpdate) return;
+
+      if (this.state() === 'ready' && this.previewSelection && event) {
+        this.previewSelection = {
+          from: event.transaction.mapping.map(this.previewSelection.from, -1),
+          to: event.transaction.mapping.map(this.previewSelection.to, 1),
+        };
+        this.selection = this.previewSelection;
+        this.restoreOriginalPreview();
+      }
+      this.dismiss();
     });
   };
 
+  private readonly onViewportChange = () => {
+    this.zone.run(() => {
+      if (this.state() !== 'idle') this.updatePosition();
+    });
+  };
+
+  private beginSelectionEffect(mode: 'placeholder' | 'rephrase'): boolean {
+    if (this.state() !== 'idle') return false;
+
+    const currentEditor = this.store.editor();
+    if (!currentEditor) return false;
+
+    const { selection } = currentEditor.state;
+    if (selection.empty || selection.from === selection.to) return false;
+
+    const selectedText = currentEditor.state.doc
+      .textBetween(selection.from, selection.to, ' ')
+      .trim();
+    if (!selectedText) return false;
+
+    this.mode = mode;
+    this.selection = { from: selection.from, to: selection.to };
+    this.editor = currentEditor;
+    this.addSelectionSpacing(currentEditor, this.selection, false, true);
+    if (!this.updatePosition(currentEditor)) {
+      this.removeSelectionSpacing();
+      this.resetSelectionState();
+      return false;
+    }
+
+    window.getSelection()?.removeAllRanges();
+    this.state.set('drawing');
+    return true;
+  }
+
+  private async generateRephrase(
+    requestId: string,
+    bookId: string,
+    prompt: string,
+  ): Promise<void> {
+    let response = '';
+
+    try {
+      await this.aiStreamService.streamText({
+        streamId: requestId,
+        bookId,
+        systemPromptCategory: 'rephrase',
+        prompt,
+        onToken: token => response += token,
+      });
+
+      if (this.streamId !== requestId || this.state() !== 'generating') return;
+
+      const replacement = response.trim();
+      if (!replacement) {
+        this.toastService.error('The model returned an empty rephrase.', 'AI Rephrase');
+        this.streamId = null;
+        this.dismiss();
+        return;
+      }
+
+      const candidateSlice = this.parseCandidateSlice(replacement);
+      if (!candidateSlice) {
+        this.toastService.error('The rephrased text could not be rendered.', 'AI Rephrase');
+        this.streamId = null;
+        this.dismiss();
+        return;
+      }
+
+      this.candidateSlice = candidateSlice;
+      this.streamId = null;
+      this.previewCandidate(candidateSlice);
+    } catch (error) {
+      if (this.streamId !== requestId) return;
+      console.error('AI rephrasing failed:', error);
+      this.streamId = null;
+      this.dismiss();
+    }
+  }
+
+  private parseCandidateSlice(markdown: string): Slice | null {
+    const editor = this.editor;
+    if (!editor?.markdown) return null;
+
+    try {
+      const parsedDocument = editor.markdown.parse(markdown);
+      const parsedNode = editor.schema.nodeFromJSON(parsedDocument);
+      if (parsedNode.content.size === 0) return null;
+      return Slice.maxOpen(parsedNode.content);
+    } catch (error) {
+      console.warn('Failed to parse rephrased Markdown:', error);
+      return null;
+    }
+  }
+
+  private previewCandidate(candidateSlice: Slice): void {
+    const editor = this.editor;
+    const original = this.originalSelection;
+    if (!editor || !original) return;
+
+    this.removeSelectionSpacing();
+    const tr = editor.state.tr.replaceRange(original.from, original.to, candidateSlice);
+    const previewSelection = {
+      from: tr.mapping.map(original.from, -1),
+      to: tr.mapping.map(original.to, 1),
+    };
+    tr.setMeta('addToHistory', false);
+    tr.setMeta('skipSaver', true);
+    this.dispatchInternal(editor, tr);
+
+    this.previewSelection = previewSelection;
+    this.selection = previewSelection;
+    this.addSelectionSpacing(editor, previewSelection, true);
+    this.state.set('ready');
+    this.updatePosition();
+  }
+
+  private restoreOriginalPreview(): void {
+    const editor = this.editor;
+    const preview = this.previewSelection;
+    const originalSlice = this.originalSlice;
+    if (!editor || !preview || !originalSlice) return;
+
+    this.removeSelectionSpacing();
+    const tr = editor.state.tr.replaceRange(preview.from, preview.to, originalSlice);
+    tr.setMeta('addToHistory', false);
+    tr.setMeta('skipSaver', true);
+    this.dispatchInternal(editor, tr);
+    this.previewSelection = null;
+    this.selection = this.originalSelection;
+  }
+
+  private commitRephrasePreview(): void {
+    const editor = this.editor;
+    const original = this.originalSelection;
+    const candidateSlice = this.candidateSlice;
+    if (!editor || !original || !candidateSlice || !this.previewSelection) return;
+
+    this.restoreOriginalPreview();
+    const tr = editor.state.tr.replaceRange(original.from, original.to, candidateSlice);
+    this.dispatchInternal(editor, tr);
+    editor.commands.focus();
+  }
+
+  private dispatchInternal(editor: Editor, transaction: Transaction): void {
+    this.isInternalUpdate = true;
+    try {
+      editor.view.dispatch(transaction);
+    } finally {
+      this.isInternalUpdate = false;
+    }
+  }
+
   private dismiss(): void {
+    const activeStreamId = this.streamId;
     this.clearTimers();
     this.removeSelectionSpacing();
-    this.selection = null;
-    this.editor = null;
+    this.resetSelectionState();
     this.bounds.set(null);
     this.state.set('idle');
+    if (activeStreamId) void this.aiStreamService.stopStream(activeStreamId);
+  }
+
+  private resetSelectionState(): void {
+    this.selection = null;
+    this.originalSelection = null;
+    this.previewSelection = null;
+    this.originalSlice = null;
+    this.candidateSlice = null;
+    this.editor = null;
+    this.mode = null;
+    this.streamId = null;
   }
 
   private updatePosition(editor = this.editor): boolean {

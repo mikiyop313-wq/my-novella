@@ -152,7 +152,7 @@ export class EditorBubbleMenuComponent {
   }
 
   rephrase(): void {
-    this.startAiEffect();
+    if (this.aiSelectionEffect.startRephrase()) this.isVisible.set(false);
   }
 
   shorten(): void {

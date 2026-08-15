@@ -22,6 +22,11 @@ const EXCLUDED_PROSE_NODES = new Set([
   'chapterHeader',
   'sceneSummary',
 ]);
+const STRUCTURAL_PROSE_BOUNDARY_NODES = new Set([
+  'actHeader',
+  'chapterHeader',
+  'sceneSummary',
+]);
 
 const FULL_OUTLINE_HEADING = '## Full Outline';
 const OUTLINE_HEADING = '## Outline';
@@ -61,6 +66,23 @@ export interface ManuscriptPromptBoundary {
   sceneId: string;
   beforePromptProse: string;
   afterPromptProse: string;
+}
+
+export interface RephraseSelectionRange {
+  from: number;
+  to: number;
+}
+
+export interface RephrasePromptContext {
+  prompt: string;
+  sceneId: string;
+}
+
+interface RephraseSceneBoundary {
+  id: string;
+  title: string;
+  proseFrom: number;
+  proseTo: number;
 }
 
 export function flattenScenes(hierarchy: readonly ActDto[]): SceneDto[] {
@@ -131,6 +153,37 @@ export function findCurrentSceneIdBeforePosition(
   });
 
   return currentSceneId;
+}
+
+/** Builds the scene-local user prompt for an AI rephrase selection. */
+export function buildRephrasePrompt(
+  doc: ProseMirrorNode,
+  selection: RephraseSelectionRange,
+): RephrasePromptContext | null {
+  if (selection.from >= selection.to) return null;
+
+  const scene = findSceneAroundSelection(doc, selection);
+  if (!scene) return null;
+
+  const proseBefore = serializeProseRange(doc, scene.proseFrom, selection.from);
+  const selectedProse = serializeProseRange(doc, selection.from, selection.to);
+  const proseAfter = serializeProseRange(doc, selection.to, scene.proseTo);
+  if (!selectedProse) return null;
+
+  return {
+    sceneId: scene.id,
+    prompt: [
+      `--- STORY CONTEXT ---\nScene: ${scene.title}\n`,
+      proseBefore ? `${proseBefore}\n` : '',
+      '--- PASSAGE TO REPHRASE ---',
+      selectedProse,
+      '--- END PASSAGE ---\n',
+      proseAfter,
+      '--- END STORY CONTEXT ---\n',
+      'Rephrase only the marked passage. Use the surrounding scene for continuity.',
+      'Return only its replacement text.',
+    ].filter(Boolean).join('\n'),
+  };
 }
 
 export function serializeTiptapDocument(doc: TiptapJsonDoc | null | undefined): string {
@@ -543,6 +596,57 @@ function serializeBlockNode(node: TiptapNode): string {
   }
 
   return children.join('');
+}
+
+function findSceneAroundSelection(
+  doc: ProseMirrorNode,
+  selection: RephraseSelectionRange,
+): RephraseSceneBoundary | null {
+  let candidate: RephraseSceneBoundary | null = null;
+
+  doc.forEach((node, offset) => {
+    if (!STRUCTURAL_PROSE_BOUNDARY_NODES.has(node.type.name)) return;
+
+    if (candidate && candidate.proseTo === doc.content.size) candidate.proseTo = offset;
+
+    if (node.type.name === 'sceneSummary' && offset < selection.from) {
+      candidate = {
+        id: stringAttribute(node.attrs['id']) ?? '',
+        title: stringAttribute(node.attrs['title']) ?? '',
+        proseFrom: offset + node.nodeSize,
+        proseTo: doc.content.size,
+      };
+    }
+  });
+
+  const resolvedCandidate = candidate as RephraseSceneBoundary | null;
+  if (
+    !resolvedCandidate
+    || selection.from < resolvedCandidate.proseFrom
+    || selection.to > resolvedCandidate.proseTo
+  ) {
+    return null;
+  }
+  return resolvedCandidate;
+}
+
+function serializeProseRange(doc: ProseMirrorNode, from: number, to: number): string {
+  if (from >= to) return '';
+
+  const blocks: string[] = [];
+  doc.forEach((node, offset) => {
+    const nodeTo = offset + node.nodeSize;
+    const intersectsRange = nodeTo > from && offset < to;
+    if (!intersectsRange || EXCLUDED_PROSE_NODES.has(node.type.name)) return;
+
+    const contentFrom = Math.max(from, offset + 1);
+    const contentTo = Math.min(to, nodeTo - 1);
+    if (contentFrom >= contentTo) return;
+
+    const text = doc.textBetween(contentFrom, contentTo, '\n').trim();
+    if (text) blocks.push(text);
+  });
+  return blocks.join('\n\n');
 }
 
 function applicableProgression(

@@ -43,8 +43,17 @@ describe('EditorBubbleMenuComponent AI actions', () => {
     TestBed.resetTestingModule();
   });
 
+  it('delegates rephrase to the real AI selection workflow and hides the menu on success', () => {
+    const startSpy = vi.spyOn(component.aiSelectionEffect, 'startRephrase').mockReturnValue(true);
+    component.isVisible.set(true);
+
+    component.rephrase();
+
+    expect(startSpy).toHaveBeenCalledOnce();
+    expect(component.isVisible()).toBe(false);
+  });
+
   it.each([
-    ['rephrase', () => component.rephrase()],
     ['shorten', () => component.shorten()],
     ['expand', () => component.expand()],
     ['other', () => component.other('Make it more tense')],
@@ -59,7 +68,7 @@ describe('EditorBubbleMenuComponent AI actions', () => {
   });
 
   it('keeps the menu visible when the effect cannot start', () => {
-    vi.spyOn(component.aiSelectionEffect, 'start').mockReturnValue(false);
+    vi.spyOn(component.aiSelectionEffect, 'startRephrase').mockReturnValue(false);
     component.isVisible.set(true);
 
     component.rephrase();

@@ -7,6 +7,7 @@ import type {
   SceneDto,
 } from '../../../../shared/models/manuscript.model';
 import {
+  buildRephrasePrompt,
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
@@ -344,6 +345,59 @@ describe('Story context builder', () => {
     ).toBe('Keep.\n\nLine one\nLine two');
   });
 
+  it('builds an exact scene-local rephrase prompt without the scene summary', () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-1', 'The Confrontation', 'This summary must not be included.'),
+      paragraph('Mara entered the room.'),
+      paragraph('Elias would not meet her eyes.'),
+      paragraph('The others waited outside.'),
+      sceneSummary('scene-2', 'Aftermath', 'Later summary.'),
+      paragraph('Later prose must not be included.'),
+    ]);
+    const selectedText = 'Elias would not meet her eyes.';
+    const from = findTextPos(doc, selectedText);
+
+    expect(buildRephrasePrompt(doc, { from, to: from + selectedText.length })).toEqual({
+      sceneId: 'scene-1',
+      prompt: `--- STORY CONTEXT ---
+Scene: The Confrontation
+
+Mara entered the room.
+
+--- PASSAGE TO REPHRASE ---
+Elias would not meet her eyes.
+--- END PASSAGE ---
+
+The others waited outside.
+--- END STORY CONTEXT ---
+
+Rephrase only the marked passage. Use the surrounding scene for continuity.
+Return only its replacement text.`,
+    });
+  });
+
+  it('rejects rephrase selections outside one scene', () => {
+    const doc = schema.node('doc', null, [
+      paragraph('Outside prose.'),
+      sceneSummary('scene-1'),
+      paragraph('First passage.'),
+      sceneSummary('scene-2'),
+      paragraph('Second passage.'),
+    ]);
+    const outsideFrom = findTextPos(doc, 'Outside prose.');
+    const firstFrom = findTextPos(doc, 'First passage.');
+    const secondFrom = findTextPos(doc, 'Second passage.');
+
+    expect(buildRephrasePrompt(doc, {
+      from: outsideFrom,
+      to: outsideFrom + 'Outside'.length,
+    })).toBeNull();
+    expect(buildRephrasePrompt(doc, {
+      from: firstFrom,
+      to: secondFrom + 'Second'.length,
+    })).toBeNull();
+  });
+
   it('serializes only progression at or before the current active scene', () => {
     const entry = createCodexEntry();
     const result = serializeCodexContext([entry], createHierarchy(), 'scene-2');
@@ -370,7 +424,15 @@ const schema = new Schema({
     paragraph: { group: 'block', content: 'inline*' },
     actHeader: { group: 'block', atom: true, attrs: { id: { default: '' } } },
     chapterHeader: { group: 'block', atom: true, attrs: { id: { default: '' } } },
-    sceneSummary: { group: 'block', atom: true, attrs: { id: { default: '' } } },
+    sceneSummary: {
+      group: 'block',
+      atom: true,
+      attrs: {
+        id: { default: '' },
+        title: { default: '' },
+        summary: { default: '' },
+      },
+    },
     sceneSkeleton: { group: 'block', atom: true },
     aiPrompt: { group: 'block', atom: true },
   },
@@ -389,8 +451,8 @@ function manuscriptDoc(): ProseMirrorNode {
   ]);
 }
 
-function sceneSummary(id: string): ProseMirrorNode {
-  return schema.node('sceneSummary', { id });
+function sceneSummary(id: string, title = '', summary = ''): ProseMirrorNode {
+  return schema.node('sceneSummary', { id, title, summary });
 }
 
 function paragraph(text: string): ProseMirrorNode {
@@ -406,6 +468,17 @@ function findNodePos(doc: ProseMirrorNode, type: string): number {
     }
     return true;
   });
+  return result;
+}
+
+function findTextPos(doc: ProseMirrorNode, text: string): number {
+  let result = -1;
+  doc.descendants((node, pos) => {
+    if (result < 0 && node.isText && node.text?.includes(text)) {
+      result = pos + node.text.indexOf(text);
+    }
+  });
+  if (result < 0) throw new Error(`Text not found: ${text}`);
   return result;
 }
 
