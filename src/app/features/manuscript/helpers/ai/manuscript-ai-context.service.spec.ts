@@ -34,7 +34,15 @@ describe('ManuscriptAiContextService', () => {
     searchSimilarParagraphs = vi.fn().mockResolvedValue([]);
     books = vi.fn(() => [{
       id: 'book-1',
-      settings: { pointOfView: 'third_omni' },
+      language: 'english',
+      synopsis: null,
+      categories: [],
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        synopsisAiContext: false,
+        povCharacterId: null,
+      },
     }]);
 
     TestBed.configureTestingModule({
@@ -359,7 +367,7 @@ describe('ManuscriptAiContextService', () => {
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
   });
 
-  it('uses the book POV for global prompts and omits a null POV character', async () => {
+  it('uses global narrative settings, omits English, and omits a null POV character', async () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
 
     const messages = await buildContextMessages(
@@ -368,10 +376,103 @@ describe('ManuscriptAiContextService', () => {
     );
 
     expect(messages[0].content).toContain('## Narrative Guidance');
+    expect(messages[0].content).not.toContain('Language:');
+    expect(messages[0].content).toContain('Prose Tense: Past');
     expect(messages[0].content).toContain('Point of View: Third Person Omniscient');
     expect(messages[0].content).toContain('Minimum Length: Write at least 500 words.');
     expect(messages[0].content).not.toContain('POV Character:');
+    expect(messages[0].content).not.toContain('## Book Context');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('places enabled book context before the partial outline', async () => {
+    const doc = schema.node('doc', null, [sceneSummary('scene-1'), schema.node('aiPrompt')]);
+    invoke.mockResolvedValue(createHierarchy());
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: 'english',
+      synopsis: '  Mara must recover the silver key.  ',
+      categories: [
+        { id: 'genre-1', name: 'Fantasy', type: 'genre', isCustom: false },
+        { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+      ],
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        synopsisAiContext: true,
+        povCharacterId: null,
+      },
+    }]);
+
+    const messages = await buildContextMessages(
+      service,
+      baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+    );
+    const content = messages[0].content;
+
+    expect(content).toContain(
+      '## Book Context\n\nSynopsis:\nMara must recover the silver key.\nGenres: Fantasy\nTropes: Found Family',
+    );
+    expect(content.indexOf('## Narrative Guidance')).toBeLessThan(content.indexOf('## Book Context'));
+    expect(content.indexOf('## Book Context')).toBeLessThan(content.indexOf('## Outline'));
+  });
+
+  it('places book context before the full outline', async () => {
+    const doc = schema.node('doc', null, [sceneSummary('scene-1'), schema.node('aiPrompt')]);
+    invoke.mockResolvedValue(createHierarchy());
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: 'english',
+      synopsis: null,
+      categories: [
+        { id: 'genre-1', name: 'Adventure', type: 'genre', isCustom: false },
+      ],
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        synopsisAiContext: false,
+        povCharacterId: null,
+      },
+    }]);
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      includeFullOutline: true,
+    });
+    const content = messages[0].content;
+
+    expect(content).toContain('## Book Context\n\nGenres: Adventure');
+    expect(content.indexOf('## Book Context')).toBeLessThan(content.indexOf('## Full Outline'));
+  });
+
+  it('omits disabled and empty book fields while retaining valid categories', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: 'english',
+      synopsis: 'Hidden synopsis.',
+      categories: [
+        { id: 'genre-empty', name: '   ', type: 'genre', isCustom: true },
+        { id: 'trope-1', name: 'Chosen One', type: 'trope', isCustom: false },
+        { id: 'demographic-1', name: 'Young Adult', type: 'demographic', isCustom: false },
+      ],
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        synopsisAiContext: false,
+        povCharacterId: null,
+      },
+    }]);
+
+    const messages = await buildContextMessages(
+      service,
+      baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+    );
+
+    expect(messages[0].content).toContain('## Book Context\n\nTropes: Chosen One');
+    expect(messages[0].content).not.toContain('Synopsis:');
+    expect(messages[0].content).not.toContain('Genres:');
+    expect(messages[0].content).not.toContain('Young Adult');
   });
 
   it('includes the requested minimum word count in narrative guidance', async () => {
@@ -396,7 +497,7 @@ describe('ManuscriptAiContextService', () => {
     expect(messages[0].content).not.toContain('Minimum Length:');
   });
 
-  it('uses a prompt POV override and defaults a missing book to third-person limited', async () => {
+  it('uses a prompt POV override and requires active book narrative settings', async () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
     const promptPos = findNodePos(doc, 'aiPrompt');
 
@@ -407,8 +508,37 @@ describe('ManuscriptAiContextService', () => {
     expect(overridden[0].content).toContain('Point of View: First Person');
 
     books.mockReturnValue([]);
-    const defaulted = await buildContextMessages(service, baseRequest(doc, promptPos));
-    expect(defaulted[0].content).toContain('Point of View: Third Person Limited');
+    await expect(buildContextMessages(service, baseRequest(doc, promptPos))).rejects.toThrow(
+      'Active book narrative settings are not available for AI context.',
+    );
+  });
+
+  it('includes non-English language, present tense, and the global POV character', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: ' romanian ',
+      settings: {
+        proseTense: 'present',
+        pointOfView: 'first',
+        povCharacterId: 'codex-1',
+      },
+    }]);
+    getEntry.mockResolvedValue({
+      ...cachedCodexEntry(),
+      entryNotes: [],
+      entryProgression: [],
+    });
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      codexEntries: [cachedCodexEntry()],
+    });
+
+    expect(messages[0].content).toContain(
+      'Language: Romanian\nProse Tense: Present\nPoint of View: First Person\nPOV Character: Mara',
+    );
+    expect(getEntry).toHaveBeenCalledWith('codex-1');
   });
 
   it('includes a selected POV character once in guidance and eligible Codex context', async () => {
@@ -446,6 +576,13 @@ describe('ManuscriptAiContextService', () => {
       povCharacterId: 'missing-character',
     });
     expect(unresolved[0].content).not.toContain('POV Character:');
+
+    const inactive = await buildContextMessages(service, {
+      ...baseRequest(doc, promptPos),
+      povCharacterId: 'codex-inactive',
+      codexEntries: [cachedCodexEntry({ id: 'codex-inactive', status: 'archived' })],
+    });
+    expect(inactive[0].content).not.toContain('POV Character:');
 
     const neverIncluded = await buildContextMessages(service, {
       ...baseRequest(doc, promptPos),
@@ -506,6 +643,32 @@ describe('ManuscriptAiContextService', () => {
     );
     expect(messages[0].content).toContain('Mara found the silver key.');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('uses a prompt POV character override instead of the global character', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: 'english',
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_limited',
+        povCharacterId: 'codex-global',
+      },
+    }]);
+    const overrideCharacter = cachedCodexEntry({ id: 'codex-override', name: 'Ilya' });
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      povCharacterId: 'codex-override',
+      codexEntries: [
+        cachedCodexEntry({ id: 'codex-global', name: 'Mara' }),
+        overrideCharacter,
+      ],
+    });
+
+    expect(messages[0].content).toContain('POV Character: Ilya');
+    expect(messages[0].content).not.toContain('POV Character: Mara');
   });
 
   it('renumbers semantic paragraph locations after excluded scenes are removed', async () => {
@@ -581,14 +744,26 @@ describe('ManuscriptAiContextService', () => {
 
     books.mockReturnValue([{
       id: 'book-1',
-      settings: { pointOfView: 'third_omni', vectorSearchEnabled: false },
+      language: 'english',
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        povCharacterId: null,
+        vectorSearchEnabled: false,
+      },
     }]);
     await buildContextMessages(service, request);
     expect(searchSimilarParagraphs).not.toHaveBeenCalled();
 
     books.mockReturnValue([{
       id: 'book-1',
-      settings: { pointOfView: 'third_omni', vectorSearchEnabled: true },
+      language: 'english',
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        povCharacterId: null,
+        vectorSearchEnabled: true,
+      },
     }]);
     await buildContextMessages(service, request);
     expect(searchSimilarParagraphs).toHaveBeenCalledWith({

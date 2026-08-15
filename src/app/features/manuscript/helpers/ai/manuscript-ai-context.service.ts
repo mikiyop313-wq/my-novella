@@ -20,6 +20,7 @@ import {
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
+  serializeBookContext,
   serializeCodexContext,
   serializeFullOutline,
   serializeNarrativeGuidance,
@@ -176,22 +177,35 @@ export class ManuscriptAiContextService {
       )
       : '';
 
+    const activeBook = this.libraryStore.books().find(book => book.id === request.bookId);
+    if (!activeBook?.settings) {
+      throw new Error('Active book narrative settings are not available for AI context.');
+    }
+
     const pointOfView = request.pointOfView === 'global'
-      ? this.resolveGlobalPointOfView(request.bookId)
+      ? activeBook.settings.pointOfView
       : request.pointOfView;
-    const povCharacter = request.povCharacterId
+    const povCharacterId = request.povCharacterId ?? activeBook.settings.povCharacterId;
+    const povCharacter = povCharacterId
       ? request.codexEntries.find(entry =>
-        entry.id === request.povCharacterId
+        entry.id === povCharacterId
         && entry.type === 'character'
         && entry.status === 'active'
         && entry.name.trim().length > 0,
       )
       : undefined;
-    const narrativeGuidance = serializeNarrativeGuidance(
+    const narrativeGuidance = serializeNarrativeGuidance({
+      language: activeBook.language,
+      proseTense: activeBook.settings.proseTense,
       pointOfView,
-      povCharacter?.name,
-      request.wordCount,
-    );
+      povCharacterName: povCharacter?.name,
+      wordCount: request.wordCount,
+    });
+    const bookContext = serializeBookContext({
+      synopsis: activeBook.synopsis,
+      synopsisAiContext: activeBook.settings.synopsisAiContext,
+      categories: activeBook.categories,
+    });
 
     const codexEntryIds = this.resolveCodexEntryIds(request, povCharacter?.id);
     const codexDetails = (await Promise.all(codexEntryIds.map(id => this.codexService.getEntry(id))))
@@ -206,6 +220,7 @@ export class ManuscriptAiContextService {
 
     return [
       narrativeGuidance,
+      bookContext,
       partialOutline,
       manuscriptContext,
       codexContext,
@@ -228,11 +243,6 @@ export class ManuscriptAiContextService {
       const entry = cachedEntries.get(id);
       return entry?.status === 'active' && entry.trackingSetting !== 'never_include';
     });
-  }
-
-  private resolveGlobalPointOfView(bookId: string): BookSettingsDto['pointOfView'] {
-    return this.libraryStore.books().find(book => book.id === bookId)?.settings?.pointOfView
-      ?? 'third_limited';
   }
 
   private async buildVectorContext(request: ManuscriptAiContextRequest): Promise<string> {

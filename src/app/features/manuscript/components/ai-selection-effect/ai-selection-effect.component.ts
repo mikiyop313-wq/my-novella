@@ -773,7 +773,6 @@ function buildSelectionEditAiPrompt(options: {
           content: [
             `Instruction: ${options.request.instruction}`,
             'Edit only the marked passage. Use the surrounding scene for continuity.',
-            'Return only its replacement text.',
           ].join('\n'),
         },
       ],

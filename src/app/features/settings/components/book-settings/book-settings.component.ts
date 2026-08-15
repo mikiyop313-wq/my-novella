@@ -162,7 +162,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     }
 
     try {
-      const [books] = await Promise.all([
+      const [books, charactersLoaded] = await Promise.all([
         this.libraryService.getBooks(),
         this.loadCharacters(bookId),
         this.config.loadLanguages(),
@@ -177,7 +177,11 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
         return;
       }
 
-      this.book.set(activeBook);
+      this.book.set(
+        charactersLoaded
+          ? await this.clearUnavailablePovCharacter(activeBook)
+          : activeBook,
+      );
     } catch (error) {
       this.book.set(null);
       this.loadError.set(error instanceof Error ? error.message : 'Unable to load book settings.');
@@ -588,7 +592,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     };
   }
 
-  private async loadCharacters(bookId: string): Promise<void> {
+  private async loadCharacters(bookId: string): Promise<boolean> {
     try {
       const characters = await this.codexService.getEntries(bookId, {
         type: 'character',
@@ -600,9 +604,25 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
           label: character.name,
         })),
       );
+      return true;
     } catch {
       this.characters.set([]);
+      return false;
     }
+  }
+
+  private async clearUnavailablePovCharacter(book: BookDto): Promise<BookDto> {
+    const povCharacterId = book.settings?.povCharacterId;
+    if (
+      !povCharacterId
+      || this.characters().some(character => character.value === povCharacterId)
+    ) {
+      return book;
+    }
+
+    return this.libraryService.updateBook(book.id, {
+      settings: this.mergeSettings(book, { povCharacterId: null }),
+    });
   }
 
   private fieldValue(field: EditableField, book: BookDto): string {

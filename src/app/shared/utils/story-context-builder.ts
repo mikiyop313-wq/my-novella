@@ -4,7 +4,7 @@ import type {
   CodexEntryDetailDto,
   CodexEntryProgressionDto,
 } from '../../../../shared/models/codex.model';
-import type { BookSettingsDto } from '../../../../shared/models/book.model';
+import type { BookSettingsDto, CategoryDto } from '../../../../shared/models/book.model';
 import type {
   ActDto,
   ChapterDto,
@@ -38,12 +38,18 @@ const FULL_OUTLINE_HEADING = '## Full Outline';
 const OUTLINE_HEADING = '## Outline';
 const MANUSCRIPT_CONTEXT_HEADING = '## Manuscript Context';
 const NARRATIVE_GUIDANCE_HEADING = '## Narrative Guidance';
+const BOOK_CONTEXT_HEADING = '## Book Context';
 const CODEX_CONTEXT_HEADING = '## Codex Context';
 
 const PROSE_LABEL = 'Prose';
+const LANGUAGE_LABEL = 'Language';
+const PROSE_TENSE_LABEL = 'Prose Tense';
 const POINT_OF_VIEW_LABEL = 'Point of View';
 const MINIMUM_LENGTH_LABEL = 'Minimum Length';
 const POV_CHARACTER_LABEL = 'POV Character';
+const SYNOPSIS_LABEL = 'Synopsis';
+const GENRES_LABEL = 'Genres';
+const TROPES_LABEL = 'Tropes';
 const CODEX_ALIASES_LABEL = 'Aliases';
 const CODEX_DESCRIPTION_LABEL = 'Description';
 const CODEX_PROGRESSION_LABEL = 'Progression';
@@ -323,17 +329,59 @@ export function serializeSelectedManuscript(
   return body ? `${MANUSCRIPT_CONTEXT_HEADING}\n\n${body}` : '';
 }
 
-export function serializeNarrativeGuidance(
-  pointOfView: BookSettingsDto['pointOfView'],
-  povCharacterName: string | null | undefined,
-  wordCount: number,
-): string {
-  const fields = [`${POINT_OF_VIEW_LABEL}: ${displayPointOfView(pointOfView)}`];
+export interface BookContext {
+  synopsis: string | null;
+  synopsisAiContext: boolean;
+  categories?: readonly CategoryDto[];
+}
+
+export function serializeBookContext({
+  synopsis,
+  synopsisAiContext,
+  categories = [],
+}: BookContext): string {
+  const fields: string[] = [];
+  const cleanSynopsis = synopsis?.trim();
+  if (synopsisAiContext && cleanSynopsis) {
+    fields.push(`${SYNOPSIS_LABEL}:\n${cleanSynopsis}`);
+  }
+
+  const genres = categoryNames(categories, 'genre');
+  if (genres.length > 0) fields.push(`${GENRES_LABEL}: ${genres.join(', ')}`);
+
+  const tropes = categoryNames(categories, 'trope');
+  if (tropes.length > 0) fields.push(`${TROPES_LABEL}: ${tropes.join(', ')}`);
+
+  return fields.length > 0 ? `${BOOK_CONTEXT_HEADING}\n\n${fields.join('\n')}` : '';
+}
+
+export interface NarrativeGuidance {
+  language: string;
+  proseTense: BookSettingsDto['proseTense'];
+  pointOfView: BookSettingsDto['pointOfView'];
+  povCharacterName?: string | null;
+  wordCount: number;
+}
+
+export function serializeNarrativeGuidance({
+  language,
+  proseTense,
+  pointOfView,
+  povCharacterName,
+  wordCount,
+}: NarrativeGuidance): string {
+  const cleanLanguage = language.trim();
+  const fields: string[] = [];
+  if (cleanLanguage.toLowerCase() !== 'english') {
+    fields.push(`${LANGUAGE_LABEL}: ${capitalize(cleanLanguage)}`);
+  }
+  fields.push(`${PROSE_TENSE_LABEL}: ${capitalize(proseTense)}`);
+  fields.push(`${POINT_OF_VIEW_LABEL}: ${displayPointOfView(pointOfView)}`);
+  const cleanCharacterName = povCharacterName?.trim();
+  if (cleanCharacterName) fields.push(`${POV_CHARACTER_LABEL}: ${cleanCharacterName}`);
   if (Number.isFinite(wordCount) && wordCount > 0) {
     fields.push(`${MINIMUM_LENGTH_LABEL}: Write at least ${wordCount} words.`);
   }
-  const cleanCharacterName = povCharacterName?.trim();
-  if (cleanCharacterName) fields.push(`${POV_CHARACTER_LABEL}: ${cleanCharacterName}`);
 
   return `${NARRATIVE_GUIDANCE_HEADING}\n\n${fields.join('\n')}`;
 }
@@ -847,7 +895,21 @@ function progressionBlock({
 }
 
 function displayCodexType(type: string): string {
-  return type.charAt(0).toUpperCase() + type.slice(1);
+  return capitalize(type);
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function categoryNames(
+  categories: readonly CategoryDto[],
+  type: CategoryDto['type'],
+): string[] {
+  return categories
+    .filter(category => category.type === type)
+    .map(category => category.name.trim())
+    .filter(Boolean);
 }
 
 function displayPointOfView(pointOfView: BookSettingsDto['pointOfView']): string {

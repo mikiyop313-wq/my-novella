@@ -11,6 +11,7 @@ import {
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
+  serializeBookContext,
   serializeCodexContext,
   serializeFullOutline,
   serializeNarrativeGuidance,
@@ -466,28 +467,125 @@ describe('Story context builder', () => {
     ['third_limited', 'Third Person Limited'],
     ['third_omni', 'Third Person Omniscient'],
   ] as const)('renders the %s point of view as %s', (pointOfView, label) => {
-    expect(serializeNarrativeGuidance(pointOfView, null, 500)).toBe(
-      `## Narrative Guidance\n\nPoint of View: ${label}\nMinimum Length: Write at least 500 words.`,
+    expect(serializeNarrativeGuidance({
+      language: 'english',
+      proseTense: 'past',
+      pointOfView,
+      wordCount: 500,
+    })).toBe(
+      `## Narrative Guidance\n\nProse Tense: Past\nPoint of View: ${label}\nMinimum Length: Write at least 500 words.`,
     );
+  });
+
+  it('serializes enabled synopsis, genres, and tropes in category order', () => {
+    expect(serializeBookContext({
+      synopsis: '  A locksmith discovers a door between worlds.  ',
+      synopsisAiContext: true,
+      categories: [
+        { id: 'genre-1', name: ' Fantasy ', type: 'genre', isCustom: false },
+        { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+        { id: 'genre-2', name: 'Adventure', type: 'genre', isCustom: false },
+        { id: 'trope-2', name: ' Hidden Heir ', type: 'trope', isCustom: true },
+      ],
+    })).toBe([
+      '## Book Context',
+      '',
+      'Synopsis:',
+      'A locksmith discovers a door between worlds.',
+      'Genres: Fantasy, Adventure',
+      'Tropes: Found Family, Hidden Heir',
+    ].join('\n'));
+  });
+
+  it('omits disabled or empty synopsis, empty categories, and demographics', () => {
+    expect(serializeBookContext({
+      synopsis: 'Hidden synopsis.',
+      synopsisAiContext: false,
+      categories: [
+        { id: 'demographic-1', name: 'Young Adult', type: 'demographic', isCustom: false },
+        { id: 'genre-empty', name: '   ', type: 'genre', isCustom: true },
+        { id: 'trope-empty', name: '', type: 'trope', isCustom: true },
+      ],
+    })).toBe('');
+
+    expect(serializeBookContext({
+      synopsis: '   ',
+      synopsisAiContext: true,
+      categories: [],
+    })).toBe('');
+  });
+
+  it('includes genres and tropes independently of the synopsis preference', () => {
+    expect(serializeBookContext({
+      synopsis: 'Hidden synopsis.',
+      synopsisAiContext: false,
+      categories: [
+        { id: 'genre-1', name: 'Mystery', type: 'genre', isCustom: false },
+        { id: 'trope-1', name: 'Locked Room', type: 'trope', isCustom: false },
+      ],
+    })).toBe('## Book Context\n\nGenres: Mystery\nTropes: Locked Room');
+  });
+
+  it('includes non-English language and omits English case-insensitively', () => {
+    expect(serializeNarrativeGuidance({
+      language: ' romanian ',
+      proseTense: 'present',
+      pointOfView: 'third_limited',
+      wordCount: 500,
+    })).toContain('Language: Romanian\nProse Tense: Present');
+    expect(serializeNarrativeGuidance({
+      language: ' English ',
+      proseTense: 'past',
+      pointOfView: 'third_limited',
+      wordCount: 500,
+    })).not.toContain('Language:');
   });
 
   it('adds a resolved POV character and omits an empty one', () => {
-    expect(serializeNarrativeGuidance('first', '  Mara  ', 500)).toContain(
+    expect(serializeNarrativeGuidance({
+      language: 'english',
+      proseTense: 'past',
+      pointOfView: 'first',
+      povCharacterName: '  Mara  ',
+      wordCount: 500,
+    })).toContain(
       'POV Character: Mara',
     );
-    expect(serializeNarrativeGuidance('first', null, 500)).not.toContain('POV Character:');
-    expect(serializeNarrativeGuidance('first', '   ', 500)).not.toContain('POV Character:');
+    expect(serializeNarrativeGuidance({
+      language: 'english',
+      proseTense: 'past',
+      pointOfView: 'first',
+      povCharacterName: null,
+      wordCount: 500,
+    })).not.toContain('POV Character:');
+    expect(serializeNarrativeGuidance({
+      language: 'english',
+      proseTense: 'past',
+      pointOfView: 'first',
+      povCharacterName: '   ',
+      wordCount: 500,
+    })).not.toContain('POV Character:');
   });
 
   it('renders the requested minimum output length', () => {
-    expect(serializeNarrativeGuidance('third_limited', null, 1250)).toContain(
+    expect(serializeNarrativeGuidance({
+      language: 'english',
+      proseTense: 'past',
+      pointOfView: 'third_limited',
+      wordCount: 1250,
+    })).toContain(
       'Minimum Length: Write at least 1250 words.',
     );
   });
 
   it('omits minimum output length when word count is automatic', () => {
-    expect(serializeNarrativeGuidance('third_limited', null, 0)).toBe(
-      '## Narrative Guidance\n\nPoint of View: Third Person Limited',
+    expect(serializeNarrativeGuidance({
+      language: 'english',
+      proseTense: 'past',
+      pointOfView: 'third_limited',
+      wordCount: 0,
+    })).toBe(
+      '## Narrative Guidance\n\nProse Tense: Past\nPoint of View: Third Person Limited',
     );
   });
 

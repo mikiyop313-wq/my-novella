@@ -937,6 +937,44 @@ describe('BookSettingsComponent', () => {
     expect(component.povCharacterOptions()[0]).toEqual({ value: '', label: 'None' });
   });
 
+  it('clears a global POV character that is no longer available', async () => {
+    getBooks.mockResolvedValue([{
+      ...book,
+      settings: {
+        ...book.settings!,
+        povCharacterId: 'missing-character',
+      },
+    }]);
+    getCodexEntries.mockResolvedValue([]);
+    updateBook.mockImplementation(async (_id: string, update: UpdateBookDto) => ({
+      ...book,
+      ...update,
+    }));
+    updateBook.mockClear();
+
+    await fixture.componentInstance.loadSettings();
+
+    expect(updateBook).toHaveBeenCalledOnce();
+    expect(updateBook).toHaveBeenCalledWith('book-1', {
+      settings: {
+        ...book.settings!,
+        povCharacterId: null,
+      },
+    });
+    expect(fixture.componentInstance.book()?.settings?.povCharacterId).toBeNull();
+    expect(fixture.componentInstance.povCharacterLabel(null)).toBe('None');
+  });
+
+  it('does not clear the global POV character when characters fail to load', async () => {
+    getCodexEntries.mockRejectedValue(new Error('Codex unavailable'));
+    updateBook.mockClear();
+
+    await fixture.componentInstance.loadSettings();
+
+    expect(updateBook).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.book()?.settings?.povCharacterId).toBe('character-1');
+  });
+
   it('can clear genres without removing tropes or demographic categories', async () => {
     const component = fixture.componentInstance;
     component.startEditing('genres');
