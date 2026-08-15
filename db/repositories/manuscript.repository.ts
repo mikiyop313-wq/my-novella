@@ -129,7 +129,7 @@ export class ManuscriptRepository {
    * Used for navigation trees and other lightweight hierarchy views.
    */
   async getBookHierarchy(mode: ManuscriptMode, id: string): Promise<ActDto[]> {
-    const bookId = await this.resolveBookId(mode, id);
+    const bookId = await this.getBookIdForTarget(mode, id);
 
     if (!bookId) {
       return [];
@@ -697,7 +697,8 @@ export class ManuscriptRepository {
     }
   }
 
-  private async resolveBookId(mode: ManuscriptMode, id: string): Promise<string | undefined> {
+  /** Resolves the owning book for a manuscript export or other cross-cutting operation. */
+  async getBookIdForTarget(mode: ManuscriptMode, id: string): Promise<string | undefined> {
     switch (mode) {
       case 'book':
         return id;
@@ -728,7 +729,7 @@ export class ManuscriptRepository {
     const isActive = await this.isActiveManuscriptPath(payload.entityType, payload.id);
     if (!isActive) return undefined;
 
-    const bookId = await this.resolveBookId(payload.entityType, payload.id);
+    const bookId = await this.getBookIdForTarget(payload.entityType, payload.id);
     return bookId ? { bookId } : undefined;
   }
 
@@ -770,7 +771,7 @@ export class ManuscriptRepository {
   }
 
   private async touchBookLastEdited(mode: ManuscriptMode, id: string): Promise<void> {
-    const bookId = await this.resolveBookId(mode, id);
+    const bookId = await this.getBookIdForTarget(mode, id);
 
     if (!bookId) {
       return;
