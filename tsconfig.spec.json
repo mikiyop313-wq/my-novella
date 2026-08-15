@@ -5,11 +5,13 @@
   "compilerOptions": {
     "outDir": "./out-tsc/spec",
     "types": [
-      "vitest/globals"
+      "vitest/globals",
+      "node"
     ]
   },
   "include": [
     "electron/**/*.spec.ts",
+    "vectors/**/*.spec.ts",
     "src/**/*.d.ts",
     "src/**/*.spec.ts"
   ]

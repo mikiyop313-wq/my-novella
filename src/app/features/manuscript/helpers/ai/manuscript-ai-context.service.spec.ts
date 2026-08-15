@@ -9,18 +9,26 @@ import { LibraryStore } from '../../../library/store/book.store';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
 import { ManuscriptAiContextService } from './manuscript-ai-context.service';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
 
 describe('ManuscriptAiContextService', () => {
   let service: ManuscriptAiContextService;
   let invoke: ReturnType<typeof vi.fn>;
   let getEntry: ReturnType<typeof vi.fn>;
   let flushDirtySections: ReturnType<typeof vi.fn>;
+  let flushParagraphVectorChanges: ReturnType<typeof vi.fn>;
+  let warning: ReturnType<typeof vi.fn>;
   let books: ReturnType<typeof vi.fn>;
+  let searchSimilarParagraphs: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     invoke = vi.fn();
     getEntry = vi.fn().mockResolvedValue(undefined);
     flushDirtySections = vi.fn().mockResolvedValue(undefined);
+    flushParagraphVectorChanges = vi.fn().mockResolvedValue(undefined);
+    warning = vi.fn();
+    searchSimilarParagraphs = vi.fn().mockResolvedValue([]);
     books = vi.fn(() => [{
       id: 'book-1',
       settings: { pointOfView: 'third_omni' },
@@ -32,7 +40,12 @@ describe('ManuscriptAiContextService', () => {
         { provide: ElectronService, useValue: { invoke } },
         { provide: CodexService, useValue: { getEntry } },
         { provide: LibraryStore, useValue: { books } },
-        { provide: ManuscriptProseSaverService, useValue: { flushDirtySections } },
+        {
+          provide: ManuscriptProseSaverService,
+          useValue: { flushDirtySections, flushParagraphVectorChanges },
+        },
+        { provide: ToastService, useValue: { warning } },
+        { provide: ParagraphVectorService, useValue: { searchSimilarParagraphs } },
       ],
     });
     service = TestBed.inject(ManuscriptAiContextService);
@@ -266,6 +279,105 @@ describe('ManuscriptAiContextService', () => {
     getEntry.mockRejectedValueOnce(new Error('Codex unavailable'));
     await expect(service.buildMessages(request)).rejects.toThrow('Codex unavailable');
   });
+
+  it('adds the top similar manuscript paragraphs before the author prompt', async () => {
+    const doc = schema.node('doc', null, [sceneSummary('scene-1'), schema.node('aiPrompt')]);
+    searchSimilarParagraphs.mockResolvedValue([{
+      paragraphId: 'paragraph-1',
+      actId: 'act-1',
+      chapterId: 'chapter-1',
+      sceneId: 'scene-1',
+      text: 'Mara found the silver key.',
+      distance: 0.12,
+    }]);
+
+    const messages = await service.buildMessages({
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'enabled',
+    });
+
+    expect(flushDirtySections).toHaveBeenCalledOnce();
+    expect(flushParagraphVectorChanges).toHaveBeenCalledOnce();
+    expect(searchSimilarParagraphs).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      query: 'Continue the scene.',
+      limit: 3,
+    });
+    expect(messages[0].content).toContain('## Semantically Relevant Manuscript Paragraphs');
+    expect(messages[0].content).toContain(
+      'Treat them as optional reference material, not content that must appear in the response.',
+    );
+    expect(messages[0].content).toContain(
+      '1. [Act 1: Act One > Chapter 1: Chapter One > Scene 1: Scene 1]',
+    );
+    expect(messages[0].content).toContain('Mara found the silver key.');
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('omits missing titles from vector-context hierarchy labels', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    const hierarchy = createHierarchy();
+    hierarchy[0].title = '';
+    hierarchy[0].chapters![0].scenes![0].title = '  ';
+    searchSimilarParagraphs.mockResolvedValue([{
+      paragraphId: 'paragraph-1',
+      actId: 'act-1',
+      chapterId: 'chapter-1',
+      sceneId: 'scene-1',
+      text: 'Mara found the silver key.',
+      distance: 0.12,
+    }]);
+
+    const messages = await service.buildMessages({
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      hierarchy,
+      vectorSearch: 'enabled',
+    });
+
+    expect(messages[0].content).toContain(
+      '1. [Act 1 > Chapter 1: Chapter One > Scene 1]',
+    );
+  });
+
+  it('warns and continues without vector context when search fails', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    searchSimilarParagraphs.mockRejectedValue(new Error('Embedding provider unavailable'));
+
+    const messages = await service.buildMessages({
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'enabled',
+    });
+
+    expect(warning).toHaveBeenCalledOnce();
+    expect(messages[0].content).not.toContain('Semantically Relevant Manuscript Paragraphs');
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('resolves global vector search from the book setting', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    const request = {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'global' as const,
+    };
+
+    books.mockReturnValue([{
+      id: 'book-1',
+      settings: { pointOfView: 'third_omni', vectorSearchEnabled: false },
+    }]);
+    await service.buildMessages(request);
+    expect(searchSimilarParagraphs).not.toHaveBeenCalled();
+
+    books.mockReturnValue([{
+      id: 'book-1',
+      settings: { pointOfView: 'third_omni', vectorSearchEnabled: true },
+    }]);
+    await service.buildMessages(request);
+    expect(searchSimilarParagraphs).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      query: 'Continue the scene.',
+      limit: 3,
+    });
+  });
 });
 
 const schema = new Schema({
@@ -296,6 +408,7 @@ function baseRequest(doc: ProseMirrorNode, promptPos: number) {
     wordCount: 500,
     pointOfView: 'global',
     povCharacterId: null,
+    vectorSearch: 'disabled',
   } as const;
 }
 

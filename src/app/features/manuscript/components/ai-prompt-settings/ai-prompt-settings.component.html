@@ -87,12 +87,13 @@
             <!-- Main Toggle Switch -->
             <div class="toggle-control">
               <label class="premium-switch" [class.disabled]="vectorSearch() === 'global'">
-                <input type="checkbox" [checked]="vectorSearch() === 'global' || vectorSearch() === 'enabled'"
+                <input type="checkbox"
+                  [checked]="vectorSearch() === 'global' ? globalVectorSearchEnabled() : vectorSearch() === 'enabled'"
                   [disabled]="vectorSearch() === 'global'" (change)="onVectorSearchToggleChange($event)" />
                 <span class="switch-slider"></span>
               </label>
               <span class="switch-status" [class.inherited]="vectorSearch() === 'global'">
-                {{ vectorSearch() === 'global' ? 'Inherited (Enabled)' : (vectorSearch() === 'enabled' ? 'Enabled' :
+                {{ vectorSearch() === 'global' ? (globalVectorSearchEnabled() ? 'Inherited (Enabled)' : 'Inherited (Disabled)') : (vectorSearch() === 'enabled' ? 'Enabled' :
                 'Disabled') }}
               </span>
             </div>

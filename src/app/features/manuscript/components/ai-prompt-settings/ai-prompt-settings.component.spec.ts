@@ -13,10 +13,15 @@ describe('AiPromptSettingsComponent', () => {
   let fixture: ComponentFixture<AiPromptSettingsComponent>;
   let component: AiPromptSettingsComponent;
   let bookId: WritableSignal<string | null>;
+  let books: WritableSignal<Array<{
+    id: string;
+    settings: { vectorSearchEnabled?: boolean };
+  }>>;
   let getEntries: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     bookId = signal<string | null>('book-1');
+    books = signal([]);
     getEntries = vi.fn();
 
     await TestBed.configureTestingModule({
@@ -26,7 +31,7 @@ describe('AiPromptSettingsComponent', () => {
         {
           provide: LibraryStore,
           useValue: {
-            books: signal([]),
+            books,
             loadBooks: vi.fn(),
           },
         },
@@ -90,6 +95,46 @@ describe('AiPromptSettingsComponent', () => {
     component.onWordCountPresetSelect(0);
 
     expect(emitted).toHaveBeenCalledWith(0);
+  });
+
+  it('emits global when vector search inheritance is enabled', () => {
+    const emitted = vi.fn();
+    component.vectorSearchChange.subscribe(emitted);
+
+    component.onInheritVectorSearchChange(checkboxEvent(true));
+
+    expect(emitted).toHaveBeenCalledWith('global');
+  });
+
+  it('emits the enabled global value when vector search inheritance is removed', () => {
+    books.set([{ id: 'book-1', settings: { vectorSearchEnabled: true } }]);
+    const emitted = vi.fn();
+    component.vectorSearchChange.subscribe(emitted);
+
+    component.onInheritVectorSearchChange(checkboxEvent(false));
+
+    expect(emitted).toHaveBeenCalledWith('enabled');
+  });
+
+  it('emits the disabled global value when vector search inheritance is removed', () => {
+    books.set([{ id: 'book-1', settings: { vectorSearchEnabled: false } }]);
+    const emitted = vi.fn();
+    component.vectorSearchChange.subscribe(emitted);
+
+    component.onInheritVectorSearchChange(checkboxEvent(false));
+
+    expect(emitted).toHaveBeenCalledWith('disabled');
+  });
+
+  it('emits enabled and disabled when vector search is toggled', () => {
+    const emitted = vi.fn();
+    component.vectorSearchChange.subscribe(emitted);
+
+    component.onVectorSearchToggleChange(checkboxEvent(true));
+    component.onVectorSearchToggleChange(checkboxEvent(false));
+
+    expect(emitted).toHaveBeenNthCalledWith(1, 'enabled');
+    expect(emitted).toHaveBeenNthCalledWith(2, 'disabled');
   });
 
   it('does not query Codex without a current book', async () => {
@@ -165,4 +210,8 @@ function deferred<T>(): {
   });
 
   return { promise, resolve };
+}
+
+function checkboxEvent(checked: boolean): Event {
+  return { target: { checked } } as unknown as Event;
 }

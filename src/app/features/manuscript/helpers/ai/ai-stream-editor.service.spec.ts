@@ -3,17 +3,14 @@ import type { Editor } from '@tiptap/core';
 import { vi } from 'vitest';
 
 import { AiStreamService } from '../../../../core/services/ai-stream.service';
-import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 import { AiStreamEditorService } from './ai-stream-editor.service';
 
 describe('AiStreamEditorService', () => {
   it('forwards structured messages through new-block streaming', async () => {
-    const flushParagraphVectorChanges = vi.fn().mockResolvedValue(undefined);
     TestBed.configureTestingModule({
       providers: [
         AiStreamEditorService,
         { provide: AiStreamService, useValue: { loadingState: new Map() } },
-        { provide: ManuscriptProseSaverService, useValue: { flushParagraphVectorChanges } },
       ],
     });
     const service = TestBed.inject(AiStreamEditorService);
@@ -36,7 +33,6 @@ describe('AiStreamEditorService', () => {
       messages,
     );
 
-    expect(flushParagraphVectorChanges).toHaveBeenCalledOnce();
     expect(insertInitialBlock).toHaveBeenCalled();
     expect(streamToBlock).toHaveBeenCalledWith(
       editor,

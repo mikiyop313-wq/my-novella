@@ -5,6 +5,7 @@ import { AutocompleteDropdownComponent, DropdownOption } from '../../../../share
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
 import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
+import type { VectorSearchSetting } from '../../../../shared/models/vector-search.model';
 import { LibraryStore } from '../../../library/store/book.store';
 import { AiStore } from '../../../../core/store/ai.store';
 import { CodexService } from '../../../codex/services/codex.service';
@@ -28,14 +29,14 @@ export class AiPromptSettingsComponent {
   wordCount = input<number>(500);
   pov = input<string>('global');
   povCharacter = input<string | null>(null);
-  vectorSearch = input<string>('global');
+  vectorSearch = input<VectorSearchSetting>('global');
   selectedModel = input<string | null>(null);
   reasoningMode = input<boolean>(false);
 
   wordCountChange = output<number>();
   povChange = output<string>();
   povCharacterChange = output<string | null>();
-  vectorSearchChange = output<string>();
+  vectorSearchChange = output<VectorSearchSetting>();
   reasoningModeChange = output<boolean>();
   reset = output<void>();
 
@@ -109,6 +110,10 @@ export class AiPromptSettingsComponent {
 
     return map[pov] || 'Third Person Limited';
   });
+
+  globalVectorSearchEnabled = computed(
+    () => this.activeBook()?.settings?.vectorSearchEnabled ?? true,
+  );
 
   povOptions = computed<DropdownOption[]>(() => {
     const globalLabel = this.globalPOVLabel();
@@ -214,7 +219,11 @@ export class AiPromptSettingsComponent {
   onInheritVectorSearchChange(event: Event): void {
     const target = event.target as HTMLInputElement;
 
-    this.vectorSearchChange.emit(target.checked ? 'global' : 'enabled');
+    this.vectorSearchChange.emit(
+      target.checked
+        ? 'global'
+        : this.globalVectorSearchEnabled() ? 'enabled' : 'disabled',
+    );
   }
 
   onVectorSearchToggleChange(event: Event): void {

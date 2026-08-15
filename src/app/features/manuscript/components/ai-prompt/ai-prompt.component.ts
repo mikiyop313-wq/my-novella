@@ -20,6 +20,10 @@ import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
+import {
+  isVectorSearchSetting,
+  type VectorSearchSetting,
+} from '../../../../shared/models/vector-search.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import {
   findDetectedCodexEntryIdsForPrompt,
@@ -44,7 +48,7 @@ interface PromptSettings {
   wordCount: number;
   pov: ManuscriptAiPointOfViewSetting;
   povCharacter: string | null;
-  vectorSearch: string;
+  vectorSearch: VectorSearchSetting;
   reasoningMode: boolean;
 }
 
@@ -283,7 +287,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.setAttribute(this.povCharacter, 'povCharacter', value);
   }
 
-  onVectorSearchChange(value: string): void {
+  onVectorSearchChange(value: VectorSearchSetting): void {
     this.setAttribute(this.vectorSearch, 'vectorSearch', value);
   }
 
@@ -398,6 +402,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         wordCount: this.wordCount(),
         pointOfView: this.pov(),
         povCharacterId: this.povCharacter(),
+        vectorSearch: this.vectorSearch(),
       });
     } catch (error) {
       console.error('AI context preparation failed:', error);
@@ -459,7 +464,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       wordCount: attrs['wordCount'] ?? DEFAULT_PROMPT_SETTINGS.wordCount,
       pov: attrs['pov'] || DEFAULT_PROMPT_SETTINGS.pov,
       povCharacter: attrs['povCharacter'] || DEFAULT_PROMPT_SETTINGS.povCharacter,
-      vectorSearch: attrs['vectorSearch'] || DEFAULT_PROMPT_SETTINGS.vectorSearch,
+      vectorSearch: isVectorSearchSetting(attrs['vectorSearch'])
+        ? attrs['vectorSearch']
+        : DEFAULT_PROMPT_SETTINGS.vectorSearch,
       reasoningMode: attrs['reasoningMode'] || DEFAULT_PROMPT_SETTINGS.reasoningMode
     });
   }

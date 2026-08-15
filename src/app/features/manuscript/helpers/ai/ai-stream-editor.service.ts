@@ -3,7 +3,6 @@ import { Editor } from '@tiptap/core';
 
 import { AiStreamService, LoadingStatus } from '../../../../core/services/ai-stream.service';
 import type { AiChatMessage } from '../../../../core/services/ai-state.service';
-import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 
 type GeneratedBlockAttrs = Record<string, any>;
 
@@ -18,7 +17,6 @@ export class AiStreamEditorService {
   // ---------------------------------------------------------------------------
 
   private readonly aiStreamService = inject(AiStreamService);
-  private readonly saver = inject(ManuscriptProseSaverService);
 
 
   // ---------------------------------------------------------------------------
@@ -58,9 +56,6 @@ export class AiStreamEditorService {
     blockId?: string,
     messages?: AiChatMessage[],
   ): Promise<void> {
-    // Keep retrieval/vector context current before the AI request is built.
-    await this.saver.flushParagraphVectorChanges();
-
     const blockAttrs = this.createGeneratingBlockAttrs({
       id: blockId || crypto.randomUUID(),
       promptText,

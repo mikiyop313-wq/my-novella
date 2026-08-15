@@ -346,6 +346,16 @@
                     </div>
                 </div>
 
+                <div class="form-group">
+                    <label class="section-label">AI MANUSCRIPT CONTEXT</label>
+                    <div class="ai-toggle-container" (click)="toggleVectorSearch()">
+                        <span class="toggle-label">Semantic paragraph search</span>
+                        <app-info-icon [infoText]="INFO.AI_PROMPT.VECTOR_SEARCH"></app-info-icon>
+                        <div class="premium-switch" [class.active]="vectorSearchEnabled()">
+                            <div class="switch-handle"></div>
+                        </div>
+                    </div>
+                </div>
 
             </div>
 

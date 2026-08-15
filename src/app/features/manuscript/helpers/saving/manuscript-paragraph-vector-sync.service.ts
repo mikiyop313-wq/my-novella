@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { ManuscriptStore } from '../../store/manuscript.store';
-import { ElectronService } from '../../../../core/services/electron.service';
+import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
 import { extractTextFromJsonNode } from '../content/manuscript-content.utils';
 import type {
   DeleteParagraphsPayload,
@@ -8,6 +8,10 @@ import type {
   ParagraphUpsert,
   UpsertParagraphsPayload,
 } from '../../../../../../shared/models/vector.model';
+import {
+  hashParagraphVectorText,
+  normalizeParagraphVectorText,
+} from '../../../../../../shared/utils/paragraph-vector';
 
 @Injectable({ providedIn: 'root' })
 export class ManuscriptParagraphVectorSyncService {
@@ -17,7 +21,7 @@ export class ManuscriptParagraphVectorSyncService {
   // ---------------------------------------------------------------------------
 
   private readonly store = inject(ManuscriptStore);
-  private readonly electronService = inject(ElectronService);
+  private readonly paragraphVectorService = inject(ParagraphVectorService);
 
 
   // ---------------------------------------------------------------------------
@@ -36,21 +40,21 @@ export class ManuscriptParagraphVectorSyncService {
   snapshotDirtyParagraphs(sceneId: string, newContent: Record<string, any>[]): void {
     const previous = this.lastKnownParagraphs.get(sceneId) ?? [];
     const prevMap = new Map<string, Record<string, any>>();
-    previous.forEach(node => {
+    this.flattenParagraphNodes(previous).forEach(({ node }) => {
       const id = node['attrs']?.['id'] as string | undefined;
       if (id && this.isSyncableParagraphNode(node)) prevMap.set(id, node);
     });
 
     const newIds = new Set<string>();
 
-    newContent.forEach((node, index) => {
+    this.flattenParagraphNodes(newContent).forEach(({ node, position: index }) => {
       const paraId = node['attrs']?.['id'] as string | undefined;
       if (!paraId) return;
 
       if (!this.isParagraphNode(node)) return;
 
       const text = extractTextFromJsonNode(node);
-      const normalizedText = this.normalizeTextForSync(text);
+      const normalizedText = normalizeParagraphVectorText(text);
       if (!this.hasSyncableText(normalizedText)) {
         this.pendingUpserts.delete(paraId);
         return;
@@ -58,14 +62,20 @@ export class ManuscriptParagraphVectorSyncService {
 
       newIds.add(paraId);
 
-      const hash = this.simpleHash(normalizedText);
+      const hash = hashParagraphVectorText(normalizedText);
       const prevNode = prevMap.get(paraId);
       const prevHash = prevNode
-        ? this.simpleHash(this.normalizeTextForSync(extractTextFromJsonNode(prevNode)))
+        ? hashParagraphVectorText(normalizeParagraphVectorText(extractTextFromJsonNode(prevNode)))
         : null;
 
       if (prevHash !== hash) {
-        this.pendingUpserts.set(paraId, { paragraphId: paraId, sceneId, text, hash, position: index });
+        this.pendingUpserts.set(paraId, {
+          paragraphId: paraId,
+          sceneId,
+          text: normalizedText,
+          hash,
+          position: index,
+        });
         this.pendingParagraphDeletes.delete(paraId);
       }
     });
@@ -107,6 +117,8 @@ export class ManuscriptParagraphVectorSyncService {
     try {
       const bookId = this.store.bookId();
       if (!bookId) {
+        upserts.forEach(upsert => this.pendingUpserts.set(upsert.paragraphId, upsert));
+        deletes.forEach(deletion => this.pendingParagraphDeletes.set(deletion.paragraphId, deletion));
         console.warn('[VectorSync] No bookId in store - skipping vector sync.');
         return;
       }
@@ -115,19 +127,25 @@ export class ManuscriptParagraphVectorSyncService {
 
       if (upserts.length > 0) {
         calls.push(
-          this.electronService.invoke('vectors:upsertParagraphs', { bookId, upserts } satisfies UpsertParagraphsPayload)
+          this.paragraphVectorService.upsertParagraphs(
+            { bookId, upserts } satisfies UpsertParagraphsPayload,
+          )
         );
       }
 
       if (deletes.length > 0) {
         calls.push(
-          this.electronService.invoke('vectors:deleteParagraphs', { deletes } satisfies DeleteParagraphsPayload)
+          this.paragraphVectorService.deleteParagraphs(
+            { bookId, deletes } satisfies DeleteParagraphsPayload,
+          )
         );
       }
 
       await Promise.all(calls);
       console.debug('[VectorSync] IPC call(s) completed successfully');
     } catch (error) {
+      upserts.forEach(upsert => this.pendingUpserts.set(upsert.paragraphId, upsert));
+      deletes.forEach(deletion => this.pendingParagraphDeletes.set(deletion.paragraphId, deletion));
       console.error('[VectorSync] Vector DB sync failed:', error);
     }
   }
@@ -142,26 +160,27 @@ export class ManuscriptParagraphVectorSyncService {
   }
 
   private isSyncableParagraphNode(node: Record<string, any>): boolean {
-    return this.isParagraphNode(node) && this.hasSyncableText(this.normalizeTextForSync(extractTextFromJsonNode(node)));
+    return this.isParagraphNode(node)
+      && this.hasSyncableText(normalizeParagraphVectorText(extractTextFromJsonNode(node)));
   }
 
   private hasSyncableText(text: string): boolean {
     return text.length > 0;
   }
 
-  private normalizeTextForSync(text: string): string {
-    return text.trim().replace(/\s+/g, ' ');
+  private flattenParagraphNodes(
+    nodes: Record<string, any>[],
+  ): Array<{ node: Record<string, any>; position: number }> {
+    const paragraphs: Array<{ node: Record<string, any>; position: number }> = [];
+    const visit = (node: Record<string, any>) => {
+      if (this.isParagraphNode(node)) {
+        paragraphs.push({ node, position: paragraphs.length });
+      }
+      const children = Array.isArray(node['content']) ? node['content'] : [];
+      children.forEach(visit);
+    };
+    nodes.forEach(visit);
+    return paragraphs;
   }
 
-  /**
-   * Lightweight djb2 string hash, fast enough for per-keystroke diffing.
-   * Collisions are extremely unlikely for paragraph-length strings.
-   */
-  private simpleHash(text: string): string {
-    let h = 5381;
-    for (let i = 0; i < text.length; i++) {
-      h = ((h << 5) + h) ^ text.charCodeAt(i);
-    }
-    return (h >>> 0).toString(36);
-  }
 }
