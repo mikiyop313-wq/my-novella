@@ -1,25 +1,35 @@
-import { ManuscriptMode, ActDto, ChapterDto, SceneDto, TiptapJsonDoc, TiptapNode, ManuscriptDataDto } from '../../../../../../shared/models/manuscript.model';
 import { Editor } from '@tiptap/core';
 
-/**
- * Number of scenes whose prose is included immediately on load.
- * All subsequent scenes are represented by `sceneSkeleton` placeholder nodes
- * and their prose is fetched lazily when they scroll into view.
- */
-export const INITIAL_SCENE_COUNT = 3; // ← set back to 3 after testing
+import {
+  ActDto,
+  ChapterDto,
+  ManuscriptDataDto,
+  ManuscriptMode,
+  SceneDto,
+  TiptapJsonDoc,
+  TiptapNode,
+} from '../../../../../../shared/models/manuscript.model';
 
 /**
- * Builds a Tiptap-compatible JSON document from manuscript DTOs.
- * Each structural element (act, chapter, scene) becomes a header node,
- * followed by the paragraph/text nodes from its stored `prose` JSON.
+ * Number of scenes whose prose is included immediately on load. Remaining
+ * scenes render as skeleton nodes and fetch their prose when scrolled into view.
+ */
+export const INITIAL_SCENE_COUNT = 3;
+
+
+// ---------------------------------------------------------------------------
+// Editor Document Builders
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a full Tiptap JSON document from manuscript DTOs.
+ * Lazy loading uses `buildEditorContentLazy` below.
  */
 export function buildEditorContent(mode: ManuscriptMode, data: ManuscriptDataDto): TiptapJsonDoc {
   const content: TiptapNode[] = [];
 
   if (mode === 'book') {
-    (data as ActDto[]).forEach(act => {
-      pushActNodes(content, act);
-    });
+    (data as ActDto[]).forEach(act => pushActNodes(content, act));
   } else if (mode === 'act') {
     pushActNodes(content, data as ActDto);
   } else if (mode === 'chapter') {
@@ -28,21 +38,15 @@ export function buildEditorContent(mode: ManuscriptMode, data: ManuscriptDataDto
     pushSceneNodes(content, data as SceneDto);
   }
 
-  // Ensure the document always has at least one node (empty paragraph)
-  if (content.length === 0) {
-    content.push({ type: 'paragraph' });
-  }
+  ensureNonEmptyDocument(content);
 
   return { type: 'doc', content };
 }
 
 /**
- * Lazy variant of buildEditorContent.
- * The first `INITIAL_SCENE_COUNT` scenes get their real prose nodes.
- * All remaining scenes get a `sceneSkeleton` placeholder node instead.
- *
- * Returns both the Tiptap document and the list of scene IDs that were
- * deferred as skeletons so the store can track which ones still need loading.
+ * Builds the editor document with only the first few scenes fully loaded.
+ * The returned skeleton IDs let the store track which scene prose still needs
+ * to be fetched and patched into the document.
  */
 export function buildEditorContentLazy(
   mode: ManuscriptMode,
@@ -53,36 +57,26 @@ export function buildEditorContentLazy(
   let sceneCount = 0;
 
   const pushSceneLazy = (scene: SceneDto) => {
-    content.push({
-      type: 'sceneSummary',
-      attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position }
-    });
+    pushSceneSummaryNode(content, scene);
 
     if (sceneCount < INITIAL_SCENE_COUNT) {
-      // Load prose immediately for the first N scenes
       pushProseContent(content, scene.prose);
     } else {
-      // Defer: insert a skeleton placeholder
       content.push({ type: 'sceneSkeleton', attrs: { sceneId: scene.id } });
       skeletonSceneIds.push(scene.id);
     }
+
     sceneCount++;
   };
 
   const pushChapterLazy = (chapter: ChapterDto) => {
-    content.push({
-      type: 'chapterHeader',
-      attrs: { id: chapter.id, title: chapter.title, position: chapter.position }
-    });
+    pushChapterHeaderNode(content, chapter);
     chapter.scenes?.forEach(scene => pushSceneLazy(scene));
   };
 
-  const pushActLazy = (actDto: ActDto) => {
-    content.push({
-      type: 'actHeader',
-      attrs: { id: actDto.id, title: actDto.title, position: actDto.position }
-    });
-    actDto.chapters?.forEach(chapter => pushChapterLazy(chapter));
+  const pushActLazy = (act: ActDto) => {
+    pushActHeaderNode(content, act);
+    act.chapters?.forEach(chapter => pushChapterLazy(chapter));
   };
 
   if (mode === 'book') {
@@ -95,76 +89,32 @@ export function buildEditorContentLazy(
     pushSceneLazy(data as SceneDto);
   }
 
-  if (content.length === 0) {
-    content.push({ type: 'paragraph' });
-  }
+  ensureNonEmptyDocument(content);
 
   return { doc: { type: 'doc', content }, skeletonSceneIds };
 }
 
 /**
- * Builds the replacement nodes for a skeleton scene patch.
- * Returns the prose paragraph nodes for the given TiptapJsonDoc (or an empty
- * paragraph if the scene has no prose), ready to be spliced into the document
- * in place of the `sceneSkeleton` node.
+ * Builds replacement nodes for a skeleton scene. Empty scenes still receive a
+ * paragraph so the user has a writable place after lazy loading completes.
  */
 export function buildScenePatch(prose: TiptapJsonDoc | null): TiptapNode[] {
   if (prose?.content?.length) {
     return prose.content;
   }
+
   return [{ type: 'paragraph' }];
 }
 
 
 // ---------------------------------------------------------------------------
-// Private helpers — push nodes into the content array
+// Manuscript DTO Extraction
 // ---------------------------------------------------------------------------
 
-function pushActNodes(content: TiptapNode[], act: ActDto): void {
-  content.push({
-    type: 'actHeader',
-    attrs: { id: act.id, title: act.title, position: act.position }
-  });
-
-  act.chapters?.forEach(chapter => {
-    pushChapterNodes(content, chapter);
-  });
-}
-
-function pushChapterNodes(content: TiptapNode[], chapter: ChapterDto): void {
-  content.push({
-    type: 'chapterHeader',
-    attrs: { id: chapter.id, title: chapter.title, position: chapter.position }
-  });
-
-  chapter.scenes?.forEach(scene => {
-    pushSceneNodes(content, scene);
-  });
-}
-
-function pushSceneNodes(content: TiptapNode[], scene: SceneDto): void {
-  content.push({
-    type: 'sceneSummary',
-    attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position }
-  });
-  pushProseContent(content, scene.prose);
-}
-
 /**
- * Spreads the paragraph/text nodes from a stored prose JSON document
- * into the target content array. If prose is null or has no content,
- * nothing is pushed (the header node alone is sufficient).
- */
-function pushProseContent(content: TiptapNode[], prose: TiptapJsonDoc | null): void {
-  if (prose?.content?.length) {
-    content.push(...prose.content);
-  }
-}
-
-/**
- * Retrieves the structural Manuscript Data (DTO) associated with a given node ID.
- * It builds a hierarchical DTO tree (Act -> Chapter -> Scene) from the editor nodes.
- * If no ID is provided, it returns the entire document as an array of Acts.
+ * Reads the editor document back into nested manuscript DTOs.
+ * If `id` is provided, returns the matching act/chapter/scene; otherwise
+ * returns the whole document as an array of acts.
  */
 export function getProseTextById(editor: Editor | undefined, id?: string): ManuscriptDataDto | ActDto[] | null {
   if (!editor || !editor.state?.doc) return null;
@@ -174,165 +124,133 @@ export function getProseTextById(editor: Editor | undefined, id?: string): Manus
   let currentChapter: ChapterDto | null = null;
   let currentScene: SceneDto | null = null;
 
-  editor.state.doc.forEach(n => {
-    if (n.type.name === 'actHeader') {
-      currentAct = {
-        id: n.attrs['id'],
-        title: n.attrs['title'] || '',
-        position: n.attrs['position'] || 0,
-        bookId: '',
-        summary: null,
-        chapters: []
-      };
+  editor.state.doc.forEach(node => {
+    if (node.type.name === 'actHeader') {
+      currentAct = createActFromNode(node);
       acts.push(currentAct);
       currentChapter = null;
       currentScene = null;
-    } else if (n.type.name === 'chapterHeader') {
-      currentChapter = {
-        id: n.attrs['id'],
-        title: n.attrs['title'] || '',
-        position: n.attrs['position'] || 0,
-        actId: currentAct?.id || '',
-        summary: null,
-        scenes: []
-      };
-      if (currentAct) {
-        currentAct.chapters!.push(currentChapter);
-      } else {
-        currentAct = { id: '', title: '', position: 0, bookId: '', summary: null, chapters: [currentChapter] };
+      return;
+    }
+
+    if (node.type.name === 'chapterHeader') {
+      currentChapter = createChapterFromNode(node, currentAct?.id || '');
+
+      if (!currentAct) {
+        currentAct = createEmptyAct([currentChapter]);
         acts.push(currentAct);
-      }
-      currentScene = null;
-    } else if (n.type.name === 'sceneSummary') {
-      currentScene = {
-        id: n.attrs['id'],
-        title: n.attrs['title'] || '',
-        position: n.attrs['position'] || 0,
-        chapterId: currentChapter?.id || '',
-        summary: n.attrs['summary'] || null,
-        prose: { type: 'doc', content: [] },
-        wordCount: null,
-        pointOfViewOverride: null,
-        povCharacterIdOverride: null
-      };
-      if (currentChapter) {
-        currentChapter.scenes!.push(currentScene);
       } else {
-        currentChapter = { id: '', title: '', position: 0, actId: currentAct?.id || '', summary: null, scenes: [currentScene] };
-        if (currentAct) {
-          currentAct.chapters!.push(currentChapter);
-        } else {
-          currentAct = { id: '', title: '', position: 0, bookId: '', summary: null, chapters: [currentChapter] };
-          acts.push(currentAct);
-        }
+        currentAct.chapters!.push(currentChapter);
       }
-    } else if (currentScene) {
-      currentScene.prose!.content.push(n.toJSON());
+
+      currentScene = null;
+      return;
+    }
+
+    if (node.type.name === 'sceneSummary') {
+      currentScene = createSceneFromNode(node, currentChapter?.id || '');
+
+      if (!currentChapter) {
+        currentChapter = createEmptyChapter(currentAct?.id || '', [currentScene]);
+
+        if (!currentAct) {
+          currentAct = createEmptyAct([currentChapter]);
+          acts.push(currentAct);
+        } else {
+          currentAct.chapters!.push(currentChapter);
+        }
+      } else {
+        currentChapter.scenes!.push(currentScene);
+      }
+
+      return;
+    }
+
+    if (currentScene) {
+      currentScene.prose!.content.push(node.toJSON());
     }
   });
 
   if (!id) return acts;
 
-  for (const act of acts) {
-    if (act.id === id) return act;
-    for (const chapter of act.chapters || []) {
-      if (chapter.id === id) return chapter;
-      for (const scene of chapter.scenes || []) {
-        if (scene.id === id) return scene;
-      }
-    }
-  }
-
-  return null;
+  return findManuscriptDataById(acts, id);
 }
 
 export function extractTextFromJsonNode(node: any): string {
   if (node['type'] === 'text') return node['text'] || '';
   if (node['content']) return node['content'].map(extractTextFromJsonNode).join('');
+
   return '';
 }
 
 export function extractTextFromManuscriptData(data: ManuscriptDataDto | ActDto[] | null): string {
   if (!data) return '';
+
   let text = '';
 
   if (Array.isArray(data)) {
     data.forEach(act => text += extractTextFromManuscriptData(act));
-  } else if ('chapters' in data) { // ActDto
-    (data.chapters || []).forEach(c => text += extractTextFromManuscriptData(c));
-  } else if ('scenes' in data) { // ChapterDto
-    (data.scenes || []).forEach(s => text += extractTextFromManuscriptData(s));
-  } else if ('prose' in data) { // SceneDto
+  } else if ('chapters' in data) {
+    (data.chapters || []).forEach(chapter => text += extractTextFromManuscriptData(chapter));
+  } else if ('scenes' in data) {
+    (data.scenes || []).forEach(scene => text += extractTextFromManuscriptData(scene));
+  } else if ('prose' in data) {
     const scene = data as SceneDto;
-    if (scene.prose && scene.prose.content) {
-      scene.prose.content.forEach(node => {
-        const nodeText = extractTextFromJsonNode(node);
-        if (nodeText) text += nodeText + '\n';
-      });
-    }
+
+    scene.prose?.content?.forEach(node => {
+      const nodeText = extractTextFromJsonNode(node);
+      if (nodeText) text += `${nodeText}\n`;
+    });
   }
+
   return text.trim();
 }
 
+
+// ---------------------------------------------------------------------------
+// AI Context Builders
+// ---------------------------------------------------------------------------
+
 /**
- * Retrieves prose context specifically formatted as well-structured HTML for the AI.
- * It iterates over the generated DTO object to inject hierarchical HTML headers 
- * (<h1>, <h2>, <h3>) so the AI knows exactly what structure and section the text belongs to.
+ * Returns manuscript context as simple hierarchical HTML for the AI request.
  */
 export function getAiContextById(editor: Editor | undefined, id?: string): string {
   const data = getProseTextById(editor, id);
   if (!data) return '';
+
   return buildHtmlFromManuscriptData(data);
 }
 
 export function buildHtmlFromManuscriptData(data: ManuscriptDataDto | ActDto[] | null): string {
   if (!data) return '';
+
   let html = '';
 
   if (Array.isArray(data)) {
     data.forEach(act => html += buildHtmlFromManuscriptData(act));
-  } else if ('chapters' in data) { // ActDto
+  } else if ('chapters' in data) {
     const act = data as ActDto;
-    const pos = (act.position !== undefined ? act.position + 1 : '');
+    const pos = act.position !== undefined ? act.position + 1 : '';
     const title = act.title ? `: ${act.title}` : '';
-    html += `<h1>Act ${pos}${title}</h1>\n`;
-    (act.chapters || []).forEach(c => html += buildHtmlFromManuscriptData(c));
-  } else if ('scenes' in data) { // ChapterDto
-    const chapter = data as ChapterDto;
-    const pos = (chapter.position !== undefined ? chapter.position + 1 : '');
-    const title = chapter.title ? `: ${chapter.title}` : '';
-    html += `<h2>Chapter ${pos}${title}</h2>\n`;
-    (chapter.scenes || []).forEach(s => html += buildHtmlFromManuscriptData(s));
-  } else if ('prose' in data) { // SceneDto
-    const scene = data as SceneDto;
-    const pos = (scene.position !== undefined ? scene.position + 1 : '');
-    const title = scene.title ? `: ${scene.title}` : '';
-    html += `<h3>Scene ${pos}${title}</h3>\n`;
 
-    if (scene.prose && scene.prose.content) {
-      scene.prose.content.forEach(node => {
-        if (node['type'] === 'paragraph') {
-          const text = extractTextFromJsonNode(node);
-          if (text) html += `<p>${text}</p>\n`;
-        } else if (node['type'] === 'heading') {
-          const attrs = node['attrs'] as Record<string, any> | undefined;
-          const level = attrs?.['level'] || 1;
-          const text = extractTextFromJsonNode(node);
-          if (text) html += `<h${level + 3}>${text}</h${level + 3}>\n`;
-        } else {
-          const text = extractTextFromJsonNode(node);
-          if (text) html += `<p>${text}</p>\n`;
-        }
-      });
-    }
+    html += `<h1>Act ${pos}${title}</h1>\n`;
+    (act.chapters || []).forEach(chapter => html += buildHtmlFromManuscriptData(chapter));
+  } else if ('scenes' in data) {
+    const chapter = data as ChapterDto;
+    const pos = chapter.position !== undefined ? chapter.position + 1 : '';
+    const title = chapter.title ? `: ${chapter.title}` : '';
+
+    html += `<h2>Chapter ${pos}${title}</h2>\n`;
+    (chapter.scenes || []).forEach(scene => html += buildHtmlFromManuscriptData(scene));
+  } else if ('prose' in data) {
+    html += buildSceneHtml(data as SceneDto);
   }
 
   return html;
 }
 
 /**
- * Counts the total words used in a scene, given its ID and the Editor instance.
- * Returns 0 if the scene is not found or has no content.
+ * Counts the total words in a scene by rebuilding that scene from the editor.
  */
 export function countWordsInScene(editor: Editor | undefined, sceneId: string): number {
   const scene = getProseTextById(editor, sceneId) as SceneDto | null;
@@ -342,3 +260,155 @@ export function countWordsInScene(editor: Editor | undefined, sceneId: string): 
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+
+// ---------------------------------------------------------------------------
+// Private Node Builders
+// ---------------------------------------------------------------------------
+
+function pushActNodes(content: TiptapNode[], act: ActDto): void {
+  pushActHeaderNode(content, act);
+  act.chapters?.forEach(chapter => pushChapterNodes(content, chapter));
+}
+
+function pushChapterNodes(content: TiptapNode[], chapter: ChapterDto): void {
+  pushChapterHeaderNode(content, chapter);
+  chapter.scenes?.forEach(scene => pushSceneNodes(content, scene));
+}
+
+function pushSceneNodes(content: TiptapNode[], scene: SceneDto): void {
+  pushSceneSummaryNode(content, scene);
+  pushProseContent(content, scene.prose);
+}
+
+function pushActHeaderNode(content: TiptapNode[], act: ActDto): void {
+  content.push({
+    type: 'actHeader',
+    attrs: { id: act.id, title: act.title, position: act.position },
+  });
+}
+
+function pushChapterHeaderNode(content: TiptapNode[], chapter: ChapterDto): void {
+  content.push({
+    type: 'chapterHeader',
+    attrs: { id: chapter.id, title: chapter.title, position: chapter.position },
+  });
+}
+
+function pushSceneSummaryNode(content: TiptapNode[], scene: SceneDto): void {
+  content.push({
+    type: 'sceneSummary',
+    attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position },
+  });
+}
+
+function pushProseContent(content: TiptapNode[], prose: TiptapJsonDoc | null): void {
+  if (prose?.content?.length) {
+    content.push(...prose.content);
+  }
+}
+
+function ensureNonEmptyDocument(content: TiptapNode[]): void {
+  if (content.length === 0) {
+    content.push({ type: 'paragraph' });
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Private DTO Builders
+// ---------------------------------------------------------------------------
+
+function createActFromNode(node: any): ActDto {
+  return {
+    id: node.attrs['id'],
+    title: node.attrs['title'] || '',
+    position: node.attrs['position'] || 0,
+    bookId: '',
+    summary: null,
+    chapters: [],
+  };
+}
+
+function createChapterFromNode(node: any, actId: string): ChapterDto {
+  return {
+    id: node.attrs['id'],
+    title: node.attrs['title'] || '',
+    position: node.attrs['position'] || 0,
+    actId,
+    summary: null,
+    scenes: [],
+  };
+}
+
+function createSceneFromNode(node: any, chapterId: string): SceneDto {
+  return {
+    id: node.attrs['id'],
+    title: node.attrs['title'] || '',
+    position: node.attrs['position'] || 0,
+    chapterId,
+    summary: node.attrs['summary'] || null,
+    prose: { type: 'doc', content: [] },
+    wordCount: null,
+    pointOfViewOverride: null,
+    povCharacterIdOverride: null,
+  };
+}
+
+function createEmptyAct(chapters: ChapterDto[] = []): ActDto {
+  return {
+    id: '',
+    title: '',
+    position: 0,
+    bookId: '',
+    summary: null,
+    chapters,
+  };
+}
+
+function createEmptyChapter(actId: string, scenes: SceneDto[] = []): ChapterDto {
+  return {
+    id: '',
+    title: '',
+    position: 0,
+    actId,
+    summary: null,
+    scenes,
+  };
+}
+
+function findManuscriptDataById(acts: ActDto[], id: string): ManuscriptDataDto | null {
+  for (const act of acts) {
+    if (act.id === id) return act;
+
+    for (const chapter of act.chapters || []) {
+      if (chapter.id === id) return chapter;
+
+      for (const scene of chapter.scenes || []) {
+        if (scene.id === id) return scene;
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildSceneHtml(scene: SceneDto): string {
+  const pos = scene.position !== undefined ? scene.position + 1 : '';
+  const title = scene.title ? `: ${scene.title}` : '';
+  let html = `<h3>Scene ${pos}${title}</h3>\n`;
+
+  scene.prose?.content?.forEach(node => {
+    const text = extractTextFromJsonNode(node);
+    if (!text) return;
+
+    if (node['type'] === 'heading') {
+      const attrs = node['attrs'] as Record<string, any> | undefined;
+      const level = attrs?.['level'] || 1;
+      html += `<h${level + 3}>${text}</h${level + 3}>\n`;
+    } else {
+      html += `<p>${text}</p>\n`;
+    }
+  });
+
+  return html;
+}

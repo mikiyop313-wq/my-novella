@@ -1,11 +1,63 @@
-import { Component, ElementRef, ViewChild, computed, signal, inject, effect } from '@angular/core';
+import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 import { CommonModule, DOCUMENT } from '@angular/common';
+import { Component, ElementRef, ViewChild, WritableSignal, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
-import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
+
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
+import { AiStreamEditorService, LoadingStatus } from '../../helpers/ai/ai-stream-editor.service';
 import { AiStore } from '../../store/ai.store';
-import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+
+// ---------------------------------------------------------------------------
+//  Local Types
+// ---------------------------------------------------------------------------
+
+type ModelSource = 'direct' | 'openrouter' | string;
+
+interface AiModel {
+  id: string;
+  name: string;
+  provider: string;
+  providerName: string;
+  source: ModelSource;
+}
+
+interface ModelGroup {
+  providerName: string;
+  models: AiModel[];
+}
+
+interface MenuProvider {
+  id: string;
+  name: string;
+  type: 'direct' | 'openrouter';
+  models: AiModel[];
+}
+
+interface PromptSettings {
+  wordCount: number;
+  pov: string;
+  povCharacter: string | null;
+  vectorSearch: string;
+  reasoningMode: boolean;
+}
+
+// ---------------------------------------------------------------------------
+//  Defaults
+// ---------------------------------------------------------------------------
+
+const DEFAULT_PROMPT_SETTINGS: PromptSettings = {
+  wordCount: 500,
+  pov: 'global',
+  povCharacter: null,
+  vectorSearch: 'global',
+  reasoningMode: false
+};
+
+const DIRECT_PROVIDER_NAMES: Record<string, string> = {
+  openai: 'OpenAI (Direct)',
+  google: 'Google Gemini (Direct)'
+};
 
 @Component({
   selector: 'app-ai-prompt',
@@ -15,239 +67,161 @@ import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service
   styleUrl: './ai-prompt.component.scss'
 })
 export class AiPromptComponent extends AngularNodeViewComponent {
+
+  // ---------------------------------------------------------------------------
+  //  Dependency Injection
+  // ---------------------------------------------------------------------------
+
+  private readonly aiStore = inject(AiStore);
+  private readonly aiStreamEditor = inject(AiStreamEditorService);
+  private readonly document = inject(DOCUMENT);
+
+
+  // ---------------------------------------------------------------------------
+  //  View Children
+  // ---------------------------------------------------------------------------
+
   @ViewChild('promptInput') promptInput!: ElementRef<HTMLDivElement>;
 
-  // Collapse and delete state/methods
+  @ViewChild(CdkMenuTrigger) menuTrigger?: CdkMenuTrigger;
+
+
+  // ---------------------------------------------------------------------------
+  //  Component State
+  // ---------------------------------------------------------------------------
+
   isCollapsed = signal(false);
+  promptText = signal('');
+  isFocused = signal(false);
+  selectedModel = signal<string | null>(null);
+  searchTerm = signal('');
+  activeSubmenuProvider = signal<MenuProvider | null>(null);
+
+  // Per-prompt generation settings persisted on the Tiptap node.
+  wordCount = signal(DEFAULT_PROMPT_SETTINGS.wordCount);
+  pov = signal(DEFAULT_PROMPT_SETTINGS.pov);
+  povCharacter = signal<string | null>(DEFAULT_PROMPT_SETTINGS.povCharacter);
+  vectorSearch = signal(DEFAULT_PROMPT_SETTINGS.vectorSearch);
+  reasoningMode = signal(DEFAULT_PROMPT_SETTINGS.reasoningMode);
+
+
+  // ---------------------------------------------------------------------------
+  //  Computed Properties
+  // ---------------------------------------------------------------------------
+
+  allModels = computed<AiModel[]>(() => this.aiStore.models() as AiModel[]);
+
+  isEmpty = computed(() => {
+    const text = this.promptText();
+    return !text || text.trim() === '';
+  });
+
   loadingStatus = computed(() => {
-    const blockId = this.node().attrs['id'];
-    const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
+    const blockId = this.blockId();
+    const loadingSig = this.loadingSignal(blockId);
     return loadingSig ? loadingSig() : 'idle';
   });
 
   isLoading = computed(() => this.loadingStatus() !== 'idle');
 
-  private aiStore = inject(AiStore);
-  private aiStreamEditor = inject(AiStreamEditorService);
-  private document = inject(DOCUMENT);
-  allModels = computed(() => this.aiStore.models());
-  searchTerm = signal<string>('');
-  activeSubmenuProvider = signal<any | null>(null);
+  selectedModelName = computed(() => {
+    const id = this.selectedModel();
 
-  @ViewChild(CdkMenuTrigger) menuTrigger?: CdkMenuTrigger;
+    if (!id) return 'No model selected';
+
+    const found = this.allModels().find(m => m.id === id);
+    if (found) return found.name;
+
+    return id.split('/').pop() || id;
+  });
+
+  /**
+   * Flat grouped models used as a fallback search results display.
+   * Groups all models by provider, with "Direct" providers sorted first.
+   */
+  groupedModels = computed(() => {
+    const term = this.searchTerm().trim().toLowerCase();
+    const models = this.allModels();
+    const filteredModels = term ? models.filter(model => this.modelMatchesSearch(model, term)) : models;
+
+    return this.groupModelsByProviderName(filteredModels, this.sortDirectProvidersFirst);
+  });
+
+  /**
+   * Top-level providers for the model selector menu.
+   * Direct API providers appear first, followed by OpenRouter.
+   */
+  mainProviders = computed(() => {
+    const models = this.allModels();
+    const directProviders = this.buildDirectProviders(models.filter(model => model.source === 'direct'));
+    const openRouterProvider = this.buildOpenRouterProvider(models.filter(model => model.source === 'openrouter'));
+
+    return [...directProviders, ...openRouterProvider].sort(this.sortMenuProviders);
+  });
+
+  /**
+   * Sub-grouped OpenRouter models by their upstream provider name.
+   */
+  openRouterGroups = computed(() => {
+    const models = this.allModels().filter(model => model.source === 'openrouter');
+
+    return this.groupModelsByProviderName(
+      models,
+      (a, b) => a.localeCompare(b),
+      providerName => providerName.replace(/^OpenRouter:\s*/, '')
+    );
+  });
+
+
+  // ---------------------------------------------------------------------------
+  //  Scroll-close listener for dropdown menu
+  // ---------------------------------------------------------------------------
 
   private scrollListener = (event: Event) => {
-    // If the scroll target is inside the menu, ignore it
     const target = event.target as HTMLElement;
-    if (target && target.closest && target.closest('.cdk-menu')) {
-      return;
-    }
+
+    // Ignore scroll events originating inside the menu overlay
+    if (target?.closest?.('.cdk-menu')) return;
+
     if (this.menuTrigger?.isOpen()) {
       this.menuTrigger.close();
     }
   };
 
-  onMenuOpened() {
-    // Listen to all scroll events in capture phase
-    this.document.addEventListener('scroll', this.scrollListener, true);
-  }
 
-  onMenuClosed() {
-    this.document.removeEventListener('scroll', this.scrollListener, true);
-  }
-
-  // Fallback flat search results display
-  groupedModels = computed(() => {
-    const term = this.searchTerm().trim().toLowerCase();
-    const models = this.allModels();
-
-    const filtered = term
-      ? models.filter(m => m.name.toLowerCase().includes(term) || m.providerName.toLowerCase().includes(term))
-      : models;
-
-    const groupMap = new Map<string, any[]>();
-
-    filtered.forEach(m => {
-      if (!groupMap.has(m.providerName)) {
-        groupMap.set(m.providerName, []);
-      }
-      groupMap.get(m.providerName)!.push(m);
-    });
-
-    const sortedProviderNames = Array.from(groupMap.keys()).sort((a, b) => {
-      const aIsDirect = a.includes('(Direct)');
-      const bIsDirect = b.includes('(Direct)');
-      if (aIsDirect && !bIsDirect) return -1;
-      if (!aIsDirect && bIsDirect) return 1;
-      return a.localeCompare(b);
-    });
-
-    return sortedProviderNames.map(name => ({
-      providerName: name,
-      models: groupMap.get(name)!
-    }));
-  });
-
-  mainProviders = computed(() => {
-    const models = this.allModels();
-
-    const directModels = models.filter(m => m.source === 'direct');
-    const openRouterModels = models.filter(m => m.source === 'openrouter');
-
-    const providers: any[] = [];
-
-    const directGroups = new Map<string, any[]>();
-    directModels.forEach(m => {
-      if (!directGroups.has(m.provider)) {
-        directGroups.set(m.provider, []);
-      }
-      directGroups.get(m.provider)!.push(m);
-    });
-
-    directGroups.forEach((modelsList, providerId) => {
-      let displayName = providerId.charAt(0).toUpperCase() + providerId.slice(1);
-      if (providerId === 'openai') displayName = 'OpenAI (Direct)';
-      if (providerId === 'google') displayName = 'Google Gemini (Direct)';
-
-      providers.push({
-        id: providerId,
-        name: displayName,
-        type: 'direct',
-        models: modelsList
-      });
-    });
-
-    if (openRouterModels.length > 0) {
-      providers.push({
-        id: 'openrouter',
-        name: 'OpenRouter',
-        type: 'openrouter',
-        models: openRouterModels
-      });
-    }
-
-    return providers.sort((a, b) => {
-      if (a.type === 'direct' && b.type !== 'direct') return -1;
-      if (a.type !== 'direct' && b.type === 'direct') return 1;
-      return a.name.localeCompare(b.name);
-    });
-  });
-
-  openRouterGroups = computed(() => {
-    const models = this.allModels().filter(m => m.source === 'openrouter');
-    const groupMap = new Map<string, any[]>();
-
-    models.forEach(m => {
-      const providerName = m.providerName.replace(/^OpenRouter:\s*/, '');
-      if (!groupMap.has(providerName)) {
-        groupMap.set(providerName, []);
-      }
-      groupMap.get(providerName)!.push(m);
-    });
-
-    const sortedProviderNames = Array.from(groupMap.keys()).sort((a, b) => a.localeCompare(b));
-
-    return sortedProviderNames.map(name => ({
-      providerName: name,
-      models: groupMap.get(name)!
-    }));
-  });
-
-  selectedModelName = computed(() => {
-    const id = this.selectedModel();
-    if (!id) return 'No model selected';
-    const found = this.allModels().find(m => m.id === id);
-    if (found) return found.name;
-    return id.split('/').pop() || id;
-  });
+  // ---------------------------------------------------------------------------
+  //  Constructor
+  // ---------------------------------------------------------------------------
 
   constructor() {
     super();
-    // Set default model once models are loaded and if no selected model exists
+
+    // Auto-select once models arrive. This effect intentionally does not
+    // overwrite a model restored from persisted node attributes.
     effect(() => {
       const models = this.allModels();
+
       if (models.length > 0 && !this.selectedModel()) {
-        const defaultModel = models.find((m: any) => m.id.includes('free')) || models[0];
+        const defaultModel = models.find(model => model.id.includes('free')) || models[0];
         this.selectedModel.set(defaultModel.id);
       }
     });
   }
 
-  collapse(): void {
-    this.isCollapsed.update(c => !c);
-  }
 
-  colapse(): void {
-    this.collapse();
-  }
-
-  deletePrompt(): void {
-    // Left empty for now
-  }
-
-  deleteComponent(): void {
-    // Left empty for now
-  }
-
-  // Interactive UI states
-  promptText = signal('');
-  isEmpty = computed(() => {
-    const text = this.promptText();
-    return !text || text.trim() === '';
-  });
-  isFocused = signal(false);
-  selectedModel = signal<string | null>(null);
-
-  // AI Generation configuration overrides
-  wordCount = signal<number>(500);
-  pov = signal<string>('global');
-  povCharacter = signal<string | null>(null);
-  vectorSearch = signal<string>('global');
-  reasoningMode = signal<boolean>(false);
+  // ---------------------------------------------------------------------------
+  //  Lifecycle Hooks
+  // ---------------------------------------------------------------------------
 
   ngOnInit(): void {
-    // 1. Restore attributes from Tiptap document on load
-    const attrs = this.node()?.attrs;
-    if (attrs) {
-      this.promptText.set(attrs['promptText'] || '');
-      this.selectedModel.set(attrs['selectedModel'] || null);
-      this.wordCount.set(attrs['wordCount'] || 500);
-      this.pov.set(attrs['pov'] || 'global');
-      this.povCharacter.set(attrs['povCharacter'] || null);
-      this.vectorSearch.set(attrs['vectorSearch'] || 'global');
-      this.reasoningMode.set(attrs['reasoningMode'] || false);
-    }
-
-    let blockId = this.node().attrs['id'];
-
-    // Generate an ID if it doesn't have one
-    if (!blockId) {
-      blockId = crypto.randomUUID();
-      // Use setTimeout to avoid Angular lifecycle conflicts when updating the editor
-      setTimeout(() => {
-        if (typeof this.getPos === 'function') {
-          const pos = this.getPos()();
-          if (pos != null) {
-            const tr = this.editor().state.tr.setNodeMarkup(pos, undefined, {
-              ...this.node().attrs,
-              id: blockId
-            });
-            // We set addToHistory to false so generating an ID doesn't mess up undo/redo
-            tr.setMeta('addToHistory', false);
-            this.editor().view.dispatch(tr);
-          }
-        }
-      });
-    }
-
-    if (!this.aiStreamEditor.loadingState.has(blockId)) {
-      this.aiStreamEditor.loadingState.set(blockId, signal('idle'));
-    }
+    this.restoreAttributesFromNode();
+    this.ensureBlockId();
     this.aiStore.loadModels();
   }
 
   ngAfterViewInit(): void {
-    // 2. Restore contenteditable text once view is initialized
+    // The prompt body is contenteditable, so Angular cannot bind it like a
+    // normal input. Restore the DOM text once the NodeView exists.
     if (this.promptInput && this.promptText()) {
       this.promptInput.nativeElement.innerText = this.promptText();
     }
@@ -257,6 +231,29 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       this.promptInput.nativeElement.focus();
     }
   }
+
+  ngOnDestroy(): void {
+    this.aiStreamEditor.loadingState.delete(this.blockId());
+    this.document.removeEventListener('scroll', this.scrollListener, true);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  //  Menu Event Handlers
+  // ---------------------------------------------------------------------------
+
+  onMenuOpened(): void {
+    this.document.addEventListener('scroll', this.scrollListener, true);
+  }
+
+  onMenuClosed(): void {
+    this.document.removeEventListener('scroll', this.scrollListener, true);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  //  Prompt Input Event Handlers
+  // ---------------------------------------------------------------------------
 
   onFocus(): void {
     this.isFocused.set(true);
@@ -269,124 +266,62 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   onInput(event: Event): void {
     const target = event.target as HTMLDivElement;
     const text = target.innerText || '';
-    this.promptText.set(text);
 
-    // Sync text back to Tiptap
+    this.promptText.set(text);
     this.updateAttributes()({ promptText: text });
+  }
+
+
+  // ---------------------------------------------------------------------------
+  //  Settings Change Handlers (sync state to Tiptap)
+  // ---------------------------------------------------------------------------
+
+  onModelChange(model: string | null): void {
+    this.setAttribute(this.selectedModel, 'selectedModel', model);
+  }
+
+  onWordCountChange(value: number): void {
+    this.setAttribute(this.wordCount, 'wordCount', value);
+  }
+
+  onPovChange(value: string): void {
+    this.setAttribute(this.pov, 'pov', value);
+  }
+
+  onPovCharacterChange(value: string | null): void {
+    this.setAttribute(this.povCharacter, 'povCharacter', value);
+  }
+
+  onVectorSearchChange(value: string): void {
+    this.setAttribute(this.vectorSearch, 'vectorSearch', value);
+  }
+
+  onReasoningModeChange(value: boolean): void {
+    this.setAttribute(this.reasoningMode, 'reasoningMode', value);
+  }
+
+  onSettingsReset(): void {
+    this.applySettings(DEFAULT_PROMPT_SETTINGS);
+    this.updateAttributes()(DEFAULT_PROMPT_SETTINGS);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  //  Actions
+  // ---------------------------------------------------------------------------
+
+  collapse(): void {
+    this.isCollapsed.update(c => !c);
   }
 
   setPromptText(text: string): void {
     this.promptText.set(text);
+
     if (this.promptInput) {
       this.promptInput.nativeElement.innerText = text;
     }
-    // Sync text back to Tiptap
+
     this.updateAttributes()({ promptText: text });
-  }
-
-  // 3. Change handlers that update state and sync with Tiptap
-  onWordCountChange(value: number): void {
-    this.wordCount.set(value);
-    this.updateAttributes()({ wordCount: value });
-  }
-
-  onPovChange(value: string): void {
-    this.pov.set(value);
-    this.updateAttributes()({ pov: value });
-  }
-
-  onPovCharacterChange(value: string | null): void {
-    this.povCharacter.set(value);
-    this.updateAttributes()({ povCharacter: value });
-  }
-
-  onVectorSearchChange(value: string): void {
-    this.vectorSearch.set(value);
-    this.updateAttributes()({ vectorSearch: value });
-  }
-
-  onReasoningModeChange(value: boolean): void {
-    this.reasoningMode.set(value);
-    this.updateAttributes()({ reasoningMode: value });
-  }
-
-  onModelChange(model: string | null): void {
-    this.selectedModel.set(model);
-    this.updateAttributes()({ selectedModel: model });
-  }
-
-  onSettingsReset(): void {
-    this.wordCount.set(500);
-    this.pov.set('global');
-    this.povCharacter.set(null);
-    this.vectorSearch.set('global');
-    this.reasoningMode.set(false);
-
-    this.updateAttributes()({
-      wordCount: 500,
-      pov: 'global',
-      povCharacter: null,
-      vectorSearch: 'global',
-      reasoningMode: false
-    });
-  }
-
-  async onSubmit(): Promise<void> {
-
-    const blockId = this.node().attrs['id'];
-
-
-    // Prevent multiple submissions while already generating
-    if (this.isLoading()) return;
-
-    const text = this.promptText().trim();
-    if (text && typeof this.getPos === 'function') {
-      // Calculate the position immediately after this prompt component
-      const pos: number = this.getPos()() ?? 0;
-      const nodeSizePosition: number = this.node().nodeSize + pos;
-
-      // Determine provider and modelId
-      const selectedId = this.selectedModel();
-      const selectedModelObj = this.allModels().find(m => m.id === selectedId);
-
-      let provider = 'openrouter';
-      let modelId: string = '';
-
-      if (selectedModelObj) {
-        if (selectedModelObj.source === 'direct') {
-          provider = selectedModelObj.provider;
-          modelId = selectedModelObj.id.split('/')[1];
-        } else {
-          provider = 'openrouter';
-          modelId = selectedModelObj.id;
-        }
-      }
-
-      const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
-      loadingSig?.set('loading');
-
-      try {
-        await this.aiStreamEditor.generateNewBlock(
-          this.editor(),
-          nodeSizePosition,
-          text,
-          provider,
-          modelId,
-          this.reasoningMode(),
-          blockId
-        );
-      } finally {
-        loadingSig?.set('idle');
-      }
-    }
-  }
-
-  async stopGeneration(): Promise<void> {
-    const blockId = this.node().attrs['id'];
-    // Immediately update UI to feel responsive
-    const loadingSig = this.aiStreamEditor.loadingState.get(blockId);
-    await this.aiStreamEditor.stopGeneration(blockId);
-    loadingSig?.set('idle');
   }
 
   clearPrompt(): void {
@@ -394,15 +329,237 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   }
 
   removePrompt(): void {
-    if (typeof this.getPos === 'function') {
-      const pos = this.getPos()() ?? 0;
-      this.editor().commands.deleteRange({ from: pos, to: pos + this.node().nodeSize });
+    const pos = this.currentNodePosition();
+    if (pos === null) return;
 
+    this.editor().commands.deleteRange({ from: pos, to: pos + this.node().nodeSize });
+  }
+
+  async onSubmit(): Promise<void> {
+    const blockId = this.blockId();
+
+    if (this.isLoading()) return;
+
+    const text = this.promptText().trim();
+    const pos = this.currentNodePosition();
+
+    if (!text || pos === null) return;
+
+    const insertAt: number = pos + this.node().nodeSize;
+    const { provider, modelId } = this.resolveSelectedModel();
+
+    const loadingSig = this.loadingSignal(blockId);
+    loadingSig?.set('loading');
+
+    try {
+      await this.aiStreamEditor.generateNewBlock(
+        this.editor(),
+        insertAt,
+        text,
+        provider,
+        modelId,
+        this.reasoningMode(),
+        blockId
+      );
+    } finally {
+      loadingSig?.set('idle');
     }
   }
 
-  ngOnDestroy(): void {
-    this.aiStreamEditor.loadingState.delete(this.node().attrs['id']);
-    this.document.removeEventListener('scroll', this.scrollListener, true);
+  async stopGeneration(): Promise<void> {
+    const blockId = this.blockId();
+    const loadingSig = this.loadingSignal(blockId);
+
+    await this.aiStreamEditor.stopGeneration(blockId);
+
+    loadingSig?.set('idle');
+  }
+
+
+  // ---------------------------------------------------------------------------
+  //  Private Helpers
+  // ---------------------------------------------------------------------------
+
+  /** Restore all persisted attributes from the Tiptap node back into local signals. */
+  private restoreAttributesFromNode(): void {
+    const attrs = this.node()?.attrs;
+    if (!attrs) return;
+
+    this.promptText.set(attrs['promptText'] || '');
+    this.selectedModel.set(attrs['selectedModel'] || null);
+    this.applySettings({
+      wordCount: attrs['wordCount'] || DEFAULT_PROMPT_SETTINGS.wordCount,
+      pov: attrs['pov'] || DEFAULT_PROMPT_SETTINGS.pov,
+      povCharacter: attrs['povCharacter'] || DEFAULT_PROMPT_SETTINGS.povCharacter,
+      vectorSearch: attrs['vectorSearch'] || DEFAULT_PROMPT_SETTINGS.vectorSearch,
+      reasoningMode: attrs['reasoningMode'] || DEFAULT_PROMPT_SETTINGS.reasoningMode
+    });
+  }
+
+  /** Ensure the node has a unique block ID; generate one if missing. */
+  private ensureBlockId(): void {
+    let blockId = this.blockId();
+
+    if (!blockId) {
+      blockId = crypto.randomUUID();
+
+      // Use setTimeout to avoid Angular lifecycle conflicts when updating the editor
+      setTimeout(() => {
+        const pos = this.currentNodePosition();
+
+        if (pos != null) {
+          const tr = this.editor().state.tr.setNodeMarkup(pos, undefined, {
+            ...this.node().attrs,
+            id: blockId
+          });
+
+          // Don't pollute undo/redo history with internal ID assignment
+          tr.setMeta('addToHistory', false);
+          this.editor().view.dispatch(tr);
+        }
+      });
+    }
+
+    if (!this.aiStreamEditor.loadingState.has(blockId)) {
+      this.aiStreamEditor.loadingState.set(blockId, signal('idle'));
+    }
+  }
+
+  /** Returns the stable ID used to connect this prompt with its loading state. */
+  private blockId(): string {
+    return this.node().attrs['id'] || '';
+  }
+
+  /** Apply all prompt settings to local signals without touching Tiptap attrs. */
+  private applySettings(settings: PromptSettings): void {
+    this.wordCount.set(settings.wordCount);
+    this.pov.set(settings.pov);
+    this.povCharacter.set(settings.povCharacter);
+    this.vectorSearch.set(settings.vectorSearch);
+    this.reasoningMode.set(settings.reasoningMode);
+  }
+
+  /** Sync a single local signal and its matching Tiptap node attribute. */
+  private setAttribute<T>(state: WritableSignal<T>, attrName: string, value: T): void {
+    state.set(value);
+    this.updateAttributes()({ [attrName]: value });
+  }
+
+  /** Safely read the current node position from the Tiptap NodeView API. */
+  private currentNodePosition(): number | null {
+    if (typeof this.getPos !== 'function') return null;
+
+    return this.getPos()() ?? null;
+  }
+
+  /** Get the per-block loading signal managed by the AI stream service. */
+  private loadingSignal(blockId: string): WritableSignal<LoadingStatus> | undefined {
+    return this.aiStreamEditor.loadingState.get(blockId);
+  }
+
+  /** Translate the selected UI model into the provider/model IDs expected by the stream service. */
+  private resolveSelectedModel(): { provider: string; modelId: string } {
+    const selectedModelObj = this.allModels().find(model => model.id === this.selectedModel());
+
+    if (!selectedModelObj) {
+      return { provider: 'openrouter', modelId: '' };
+    }
+
+    if (selectedModelObj.source !== 'direct') {
+      return { provider: 'openrouter', modelId: selectedModelObj.id };
+    }
+
+    return {
+      provider: selectedModelObj.provider,
+      modelId: selectedModelObj.id.split('/')[1] || selectedModelObj.id
+    };
+  }
+
+  /** Check whether a model should appear for the current search term. */
+  private modelMatchesSearch(model: AiModel, term: string): boolean {
+    return model.name.toLowerCase().includes(term) || model.providerName.toLowerCase().includes(term);
+  }
+
+  /** Build grouped model lists for search results and OpenRouter submenus. */
+  private groupModelsByProviderName(
+    models: AiModel[],
+    sortProviders: (a: string, b: string) => number,
+    normalizeProviderName: (providerName: string) => string = providerName => providerName
+  ): ModelGroup[] {
+    const groupMap = new Map<string, AiModel[]>();
+
+    models.forEach(model => {
+      const providerName = normalizeProviderName(model.providerName);
+      const group = groupMap.get(providerName) ?? [];
+
+      group.push(model);
+      groupMap.set(providerName, group);
+    });
+
+    return Array.from(groupMap.keys())
+      .sort(sortProviders)
+      .map(providerName => ({
+        providerName,
+        models: groupMap.get(providerName)!
+      }));
+  }
+
+  /** Build top-level menu entries for direct API providers. */
+  private buildDirectProviders(models: AiModel[]): MenuProvider[] {
+    const groupedModels = new Map<string, AiModel[]>();
+
+    models.forEach(model => {
+      const group = groupedModels.get(model.provider) ?? [];
+
+      group.push(model);
+      groupedModels.set(model.provider, group);
+    });
+
+    return Array.from(groupedModels.entries()).map(([providerId, providerModels]) => ({
+      id: providerId,
+      name: this.directProviderDisplayName(providerId),
+      type: 'direct',
+      models: providerModels
+    }));
+  }
+
+  /** Build the aggregated OpenRouter top-level menu entry. */
+  private buildOpenRouterProvider(models: AiModel[]): MenuProvider[] {
+    return models.length
+      ? [{
+          id: 'openrouter',
+          name: 'OpenRouter',
+          type: 'openrouter',
+          models
+        }]
+      : [];
+  }
+
+  /** Prefer friendly display names for known direct providers. */
+  private directProviderDisplayName(providerId: string): string {
+    return DIRECT_PROVIDER_NAMES[providerId] ?? this.capitalize(providerId);
+  }
+
+  private capitalize(value: string): string {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  /** Sort direct providers above aggregated OpenRouter providers. */
+  private sortMenuProviders(a: MenuProvider, b: MenuProvider): number {
+    if (a.type === 'direct' && b.type !== 'direct') return -1;
+    if (a.type !== 'direct' && b.type === 'direct') return 1;
+
+    return a.name.localeCompare(b.name);
+  }
+
+  /** Sort search result groups with Direct providers first. */
+  private sortDirectProvidersFirst(a: string, b: string): number {
+    const aIsDirect = a.includes('(Direct)');
+    const bIsDirect = b.includes('(Direct)');
+
+    if (aIsDirect && !bIsDirect) return -1;
+    if (!aIsDirect && bIsDirect) return 1;
+
+    return a.localeCompare(b);
   }
 }

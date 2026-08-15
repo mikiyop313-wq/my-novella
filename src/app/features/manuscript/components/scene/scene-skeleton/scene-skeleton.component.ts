@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal, NgZone, ElementRef, OnDestroy } from '@angular/core';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { ManuscriptStore } from '../../../store/manuscript.store';
+import { ManuscriptProseSaverService } from '../../../helpers/saving/manuscript-prose-saver.service';
 
 /**
  * Renders an animated skeleton placeholder for a deferred scene.
@@ -19,6 +20,7 @@ import { ManuscriptStore } from '../../../store/manuscript.store';
 })
 export class SceneSkeletonComponent extends AngularNodeViewComponent implements OnInit, OnDestroy {
   private readonly store = inject(ManuscriptStore);
+  private readonly saver = inject(ManuscriptProseSaverService);
   private readonly ngZone = inject(NgZone);
   private readonly el = inject(ElementRef<HTMLElement>);
 
@@ -43,9 +45,13 @@ export class SceneSkeletonComponent extends AngularNodeViewComponent implements 
       this.observer = new IntersectionObserver(
         (entries) => {
           if (entries[0]?.isIntersecting) {
-            this.ngZone.run(() => {
+            this.ngZone.run(async () => {
               this.isLoading.set(true);
-              this.store.loadAndPatchScene(this.sceneId());
+              await this.store.loadAndPatchScene(this.sceneId());
+              const editor = this.store.editor();
+              if (editor) {
+                this.saver.seedCleanSnapshot(this.sceneId(), editor);
+              }
             });
             // Once triggered, disconnect — the node will be replaced anyway.
             this.observer?.disconnect();

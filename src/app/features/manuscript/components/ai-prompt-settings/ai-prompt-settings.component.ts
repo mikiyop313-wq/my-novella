@@ -1,12 +1,13 @@
-import { Component, signal, computed, inject, input, output, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
-import { LibraryStore } from '../../../library/store/book.store';
-import { ManuscriptStore } from '../../store/manuscript.store';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
+import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
+import { LibraryStore } from '../../../library/store/book.store';
 import { AiStore } from '../../store/ai.store';
+import { ManuscriptStore } from '../../store/manuscript.store';
 
 @Component({
   selector: 'app-ai-prompt-settings',
@@ -16,6 +17,11 @@ import { AiStore } from '../../store/ai.store';
   styleUrl: './ai-prompt-settings.component.scss'
 })
 export class AiPromptSettingsComponent {
+
+  // ---------------------------------------------------------------------------
+  // Inputs / Outputs
+  // ---------------------------------------------------------------------------
+
   wordCount = input<number>(500);
   pov = input<string>('global');
   povCharacter = input<string | null>(null);
@@ -30,30 +36,77 @@ export class AiPromptSettingsComponent {
   reasoningModeChange = output<boolean>();
   reset = output<void>();
 
-  private store = inject(ManuscriptStore);
-  private libraryStore = inject(LibraryStore);
-  private aiStore = inject(AiStore);
+
+  // ---------------------------------------------------------------------------
+  // Dependencies
+  // ---------------------------------------------------------------------------
+
+  private readonly store = inject(ManuscriptStore);
+  private readonly libraryStore = inject(LibraryStore);
+  private readonly aiStore = inject(AiStore);
+
+
+  // ---------------------------------------------------------------------------
+  // Derived State
+  // ---------------------------------------------------------------------------
 
   /**
-   * Whether the currently selected model supports reasoning/thinking mode.
-   * Determined at the IPC layer by checking supported_parameters from the
-   * OpenRouter API response — no client-side heuristics needed.
+   * Whether the selected model supports reasoning/thinking tokens.
+   * The IPC layer provides this metadata, so the UI does no model-name guessing.
    */
   supportsReasoning = computed(() => {
     const modelId = this.selectedModel();
     if (!modelId) return false;
+
     const model = this.aiStore.models().find((m: any) => m.id === modelId);
     return model?.supportsReasoning === true;
   });
 
   bookId = computed(() => this.store.bookId());
-  characters = signal<DropdownOption[]>([]); // Empty state by default
+
+  characters = signal<DropdownOption[]>([]);
 
   activeBook = computed(() => {
     const id = this.bookId();
     if (!id) return null;
+
     return this.libraryStore.books().find(b => b.id === id) || null;
   });
+
+  globalPOVLabel = computed(() => {
+    const book = this.activeBook();
+    const pov = book?.settings?.pointOfView;
+
+    if (!pov) return 'Third Person Limited';
+
+    const map: Record<string, string> = {
+      first: 'First Person',
+      second: 'Second Person',
+      third_limited: 'Third Person Limited',
+      third_omni: 'Third Person Omniscient',
+    };
+
+    return map[pov] || 'Third Person Limited';
+  });
+
+  povOptions = computed<DropdownOption[]>(() => {
+    const globalLabel = this.globalPOVLabel();
+
+    return [
+      { value: 'global', label: `Use Global Setting (${globalLabel})` },
+      { value: 'first', label: 'First Person' },
+      { value: 'second', label: 'Second Person' },
+      { value: 'third_limited', label: 'Third Person Limited' },
+      { value: 'third_omni', label: 'Third Person Omniscient' },
+    ];
+  });
+
+  readonly INFO = INFO_MESSAGES.AI_PROMPT;
+
+
+  // ---------------------------------------------------------------------------
+  // Constructor
+  // ---------------------------------------------------------------------------
 
   constructor() {
     effect(() => {
@@ -63,8 +116,7 @@ export class AiPromptSettingsComponent {
       }
     });
 
-    // When the model changes to one that doesn't support reasoning,
-    // automatically turn off reasoning mode.
+    // Keep persisted prompt settings valid when the user changes model.
     effect(() => {
       if (!this.supportsReasoning() && this.reasoningMode()) {
         this.reasoningModeChange.emit(false);
@@ -72,72 +124,48 @@ export class AiPromptSettingsComponent {
     });
   }
 
-  globalPOVLabel = computed(() => {
-    const book = this.activeBook();
-    const pov = book?.settings?.pointOfView;
-    if (!pov) return 'Third Person Limited';
-    const map: Record<string, string> = {
-      'first': 'First Person',
-      'second': 'Second Person',
-      'third_limited': 'Third Person Limited',
-      'third_omni': 'Third Person Omniscient'
-    };
-    return map[pov] || 'Third Person Limited';
-  });
 
-  // Build dynamic options using the computed global POV label
-  povOptions = computed<DropdownOption[]>(() => {
-    const globalLabel = this.globalPOVLabel();
-    return [
-      { value: 'global', label: `Use Global Setting (${globalLabel})` },
-      { value: 'first', label: 'First Person' },
-      { value: 'second', label: 'Second Person' },
-      { value: 'third_limited', label: 'Third Person Limited' },
-      { value: 'third_omni', label: 'Third Person Omniscient' }
-    ];
-  });
+  // ---------------------------------------------------------------------------
+  // Event Handlers
+  // ---------------------------------------------------------------------------
 
-  readonly INFO = INFO_MESSAGES.AI_PROMPT;
-
-  onWordCountPresetSelect(val: number) {
-    this.wordCountChange.emit(val);
+  onWordCountPresetSelect(value: number): void {
+    this.wordCountChange.emit(value);
   }
 
-  onCustomWordCountInput(event: Event) {
+  onCustomWordCountInput(event: Event): void {
     const target = event.target as HTMLInputElement;
-    const val = parseInt(target.value, 10);
-    if (!isNaN(val) && val >= 0) {
-      this.wordCountChange.emit(val);
+    const value = parseInt(target.value, 10);
+
+    if (!isNaN(value) && value >= 0) {
+      this.wordCountChange.emit(value);
     }
   }
 
-  onPOVSelectionChange(value: string) {
+  onPOVSelectionChange(value: string): void {
     this.povChange.emit(value);
   }
 
-  onPovCharacterSelectionChange(value: string | null) {
+  onPovCharacterSelectionChange(value: string | null): void {
     this.povCharacterChange.emit(value);
   }
 
-  onInheritVectorSearchChange(event: Event) {
+  onInheritVectorSearchChange(event: Event): void {
     const target = event.target as HTMLInputElement;
-    if (target.checked) {
-      this.vectorSearchChange.emit('global');
-    } else {
-      this.vectorSearchChange.emit('enabled');
-    }
+
+    this.vectorSearchChange.emit(target.checked ? 'global' : 'enabled');
   }
 
-  onVectorSearchToggleChange(event: Event) {
+  onVectorSearchToggleChange(event: Event): void {
     const target = event.target as HTMLInputElement;
     this.vectorSearchChange.emit(target.checked ? 'enabled' : 'disabled');
   }
 
-  onReset() {
+  onReset(): void {
     this.reset.emit();
   }
 
-  onReasoningModeToggleChange(event: Event) {
+  onReasoningModeToggleChange(event: Event): void {
     const target = event.target as HTMLInputElement;
     this.reasoningModeChange.emit(target.checked);
   }

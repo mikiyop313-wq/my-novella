@@ -16,6 +16,11 @@ const DELETE_CHANNEL_BY_NODE_TYPE: Record<ManuscriptHeaderNodeType, string> = {
 
 @Injectable({ providedIn: 'root' })
 export class ManuscriptStructuralDeleteQueueService {
+
+  // ---------------------------------------------------------------------------
+  // Dependencies / Queue
+  // ---------------------------------------------------------------------------
+
   private readonly electronService = inject(ElectronService);
 
   private pendingDeletes = new Map<string, ManuscriptHeaderNodeType>();
