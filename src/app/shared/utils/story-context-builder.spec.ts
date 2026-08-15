@@ -18,6 +18,9 @@ import {
   serializeTiptapDocument,
 } from './story-context-builder';
 
+const AFTER_CONTEXT_NOTE = '[THE FOLLOWING MANUSCRIPT CONTEXT OCCURS AFTER THE INSERTION POINT. USE IT ONLY AS FUTURE CONTEXT.]';
+const AFTER_PROSE_NOTE = '[THE FOLLOWING PROSE AND ANY SUBSEQUENT SCENES, CHAPTERS, OR ACTS OCCUR AFTER THE INSERTION POINT. USE THEM ONLY AS FUTURE CONTEXT.]';
+
 describe('Story context builder', () => {
   it('expands structural references without duplicating scenes', () => {
     const hierarchy = createHierarchy();
@@ -65,18 +68,186 @@ describe('Story context builder', () => {
     expect(result).not.toContain('Summary:');
   });
 
+  it('places one prompt boundary inside a selected current scene with remaining prose', () => {
+    const hierarchy = createHierarchy();
+    const result = serializeSelectedManuscript(
+      hierarchy,
+      'Silver Key',
+      ['scene:scene-2', 'scene:scene-3'],
+      new Set(['scene-2', 'scene-3']),
+      new Map([
+        ['scene-2', 'Before. After.'],
+        ['scene-3', 'Later scene.'],
+      ]),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Before.',
+        afterPromptProse: 'After.',
+      },
+    );
+
+    expect(result).toContain(`Prose:\nBefore.\n\n${AFTER_PROSE_NOTE}\n\nAfter.`);
+    expect(result.indexOf(AFTER_PROSE_NOTE)).toBeLessThan(result.indexOf('Later scene.'));
+    expect(result.match(/FOLLOWING PROSE AND ANY SUBSEQUENT/g)).toHaveLength(1);
+  });
+
+  it('places the boundary before a wholly later selected act', () => {
+    const hierarchy = createHierarchy();
+    const result = serializeSelectedManuscript(
+      hierarchy,
+      'Silver Key',
+      ['scene:scene-1', 'act:act-2'],
+      new Set(['scene-1', 'scene-3']),
+      new Map([
+        ['scene-1', 'Earlier act prose.'],
+        ['scene-3', 'Later act prose.'],
+      ]),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Current prose.',
+        afterPromptProse: '',
+      },
+    );
+
+    expect(result.indexOf('--- END ACT 1 — Act One ---')).toBeLessThan(
+      result.indexOf(AFTER_CONTEXT_NOTE),
+    );
+    expect(result.indexOf(AFTER_CONTEXT_NOTE)).toBeLessThan(result.indexOf('--- BEGIN ACT 2 ---'));
+    expect(result).toContain('Prose:\nLater act prose.');
+    expect(result.match(/FOLLOWING MANUSCRIPT CONTEXT/g)).toHaveLength(1);
+  });
+
+  it('places the boundary before a wholly later selected chapter', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters?.push(
+      createChapter('chapter-later', 'Later Chapter', 1, null, [
+        createScene('scene-later', 'Later Scene', 0, null),
+      ]),
+    );
+    const result = serializeSelectedManuscript(
+      hierarchy,
+      'Silver Key',
+      ['scene:scene-1', 'chapter:chapter-later'],
+      new Set(['scene-1', 'scene-later']),
+      new Map([
+        ['scene-1', 'Earlier chapter prose.'],
+        ['scene-later', 'Later chapter prose.'],
+      ]),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Current prose.',
+        afterPromptProse: '',
+      },
+    );
+
+    expect(result.indexOf('--- END CHAPTER 1 — Chapter One ---')).toBeLessThan(
+      result.indexOf(AFTER_CONTEXT_NOTE),
+    );
+    expect(result.indexOf(AFTER_CONTEXT_NOTE)).toBeLessThan(
+      result.indexOf('--- BEGIN CHAPTER 2 — Later Chapter ---'),
+    );
+    expect(result.match(/FOLLOWING MANUSCRIPT CONTEXT/g)).toHaveLength(1);
+  });
+
+  it('places the boundary between an earlier selected scene and a later one', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters?.[0].scenes?.push(
+      createScene('scene-later', 'Later Scene', 2, null),
+    );
+    const result = serializeSelectedManuscript(
+      hierarchy,
+      'Silver Key',
+      ['scene:scene-1', 'scene:scene-later'],
+      new Set(['scene-1', 'scene-later']),
+      new Map([
+        ['scene-1', 'Earlier scene prose.'],
+        ['scene-later', 'Later scene prose.'],
+      ]),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Current prose.',
+        afterPromptProse: '',
+      },
+    );
+
+    expect(result.indexOf('--- END SCENE 1 — Opening ---')).toBeLessThan(
+      result.indexOf(AFTER_CONTEXT_NOTE),
+    );
+    expect(result.indexOf(AFTER_CONTEXT_NOTE)).toBeLessThan(
+      result.indexOf('--- BEGIN SCENE 3 — Later Scene ---'),
+    );
+    expect(result.match(/FOLLOWING MANUSCRIPT CONTEXT/g)).toHaveLength(1);
+  });
+
+  it('does not render a boundary when selected context has nothing after the prompt', () => {
+    const hierarchy = createHierarchy();
+    const result = serializeSelectedManuscript(
+      hierarchy,
+      'Silver Key',
+      ['scene:scene-1', 'scene:scene-2'],
+      new Set(['scene-1', 'scene-2']),
+      new Map([
+        ['scene-1', 'Earlier prose.'],
+        ['scene-2', 'Current prose.'],
+      ]),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Current prose.',
+        afterPromptProse: '',
+      },
+    );
+
+    expect(result).toContain('Prose:\nCurrent prose.');
+    expect(result).not.toContain('AFTER THE INSERTION POINT');
+  });
+
+  it('places future full-outline acts and summaries after the prompt boundary', () => {
+    const result = serializeFullOutline(
+      createHierarchy(),
+      'Silver Key',
+      new Map(),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Current prose.',
+        afterPromptProse: '',
+      },
+    );
+
+    expect(result.indexOf(AFTER_CONTEXT_NOTE)).toBeLessThan(result.indexOf('--- BEGIN ACT 2 ---'));
+    expect(result.indexOf('Second summary.')).toBeLessThan(result.indexOf(AFTER_CONTEXT_NOTE));
+    expect(result.match(/FOLLOWING MANUSCRIPT CONTEXT/g)).toHaveLength(1);
+  });
+
+  it('splits selected current prose while retaining the full outline', () => {
+    const result = serializeFullOutline(
+      createHierarchy(),
+      'Silver Key',
+      new Map([['scene-2', 'Before. After.']]),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Before.',
+        afterPromptProse: 'After.',
+      },
+    );
+
+    expect(result).toContain('Summary:\nSecond summary.');
+    expect(result).toContain(`Prose:\nBefore.\n\n${AFTER_PROSE_NOTE}\n\nAfter.`);
+    expect(result.indexOf('Second summary.')).toBeLessThan(result.indexOf(AFTER_PROSE_NOTE));
+    expect(result.match(/FOLLOWING PROSE AND ANY SUBSEQUENT/g)).toHaveLength(1);
+  });
+
   it('renders automatic scenes in hierarchy order with their distinct labels', () => {
     const result = serializeAutomaticManuscript(
       createHierarchy(),
       new Map([
-        ['scene-3', { label: 'Prose before AI prompt', text: 'Current.' }],
+        ['scene-3', { label: 'Prose', text: 'Current.' }],
         ['scene-2', { label: 'Full prose', text: 'Previous.' }],
       ]),
     );
 
     expect(result.indexOf('Previous.')).toBeLessThan(result.indexOf('Current.'));
     expect(result).toContain('Full prose:\nPrevious.');
-    expect(result).toContain('Prose before AI prompt:\nCurrent.');
+    expect(result).toContain('Prose:\nCurrent.');
     expect(result).toContain('--- BEGIN ACT 2 ---');
   });
 

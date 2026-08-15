@@ -12,6 +12,8 @@ import { ManuscriptAiContextService } from './manuscript-ai-context.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
 
+const AFTER_PROSE_NOTE = '[THE FOLLOWING PROSE AND ANY SUBSEQUENT SCENES, CHAPTERS, OR ACTS OCCUR AFTER THE INSERTION POINT. USE THEM ONLY AS FUTURE CONTEXT.]';
+
 describe('ManuscriptAiContextService', () => {
   let service: ManuscriptAiContextService;
   let invoke: ReturnType<typeof vi.fn>;
@@ -72,12 +74,12 @@ describe('ManuscriptAiContextService', () => {
     expect(invoke).toHaveBeenCalledWith('manuscript:getScenesProse', { sceneIds: ['scene-1'] });
     expect(messages.map(message => message.role)).toEqual(['user', 'user']);
     expect(messages[0].content).toContain('Full prose:\nPersisted previous prose.');
-    expect(messages[0].content).toContain('Prose before AI prompt:\nCurrent before prompt.');
+    expect(messages[0].content).toContain('Prose:\nCurrent before prompt.');
     expect(messages[0].content).not.toContain('Current after prompt.');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
   });
 
-  it('uses a loaded editor scene for explicit full-scene context without a prose read', async () => {
+  it('splits an explicitly selected current scene around the AI prompt', async () => {
     const doc = schema.node('doc', null, [
       sceneSummary('scene-1'),
       paragraph('Unsaved editor prose.'),
@@ -92,7 +94,37 @@ describe('ManuscriptAiContextService', () => {
 
     expect(flushDirtySections).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
-    expect(messages[0].content).toContain('Prose:\nUnsaved editor prose.\n\nProse after prompt.');
+    expect(messages[0].content).toContain(
+      `Prose:\nUnsaved editor prose.\n\n${AFTER_PROSE_NOTE}\n\nProse after prompt.`,
+    );
+    expect(messages[0].content.match(/FOLLOWING PROSE AND ANY SUBSEQUENT/g)).toHaveLength(1);
+  });
+
+  it('splits the current scene when it is included through a selected chapter', async () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-1'),
+      paragraph('Current before prompt.'),
+      schema.node('aiPrompt'),
+      paragraph('Current after prompt.'),
+      sceneSummary('scene-2'),
+      paragraph('Later selected scene.'),
+    ]);
+
+    const messages = await service.buildMessages({
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      manuscriptRefs: ['chapter:chapter-1'],
+    });
+    const context = messages[0].content;
+
+    expect(context).toContain(
+      `Prose:\nCurrent before prompt.\n\n${AFTER_PROSE_NOTE}\n\nCurrent after prompt.`,
+    );
+    expect(context).toContain('--- BEGIN SCENE 2 — Scene 2 ---');
+    expect(context).toContain('Prose:\nLater selected scene.');
+    expect(context.indexOf(AFTER_PROSE_NOTE)).toBeLessThan(
+      context.indexOf('Later selected scene.'),
+    );
+    expect(context.match(/FOLLOWING PROSE AND ANY SUBSEQUENT/g)).toHaveLength(1);
   });
 
   it('loads the outline without flushing prose when no unloaded scene prose is requested', async () => {

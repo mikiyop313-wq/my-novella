@@ -17,6 +17,7 @@ import type { VectorSearchSetting } from '../../../../shared/models/vector-searc
 import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
 import {
   type AutomaticSceneContent,
+  type ManuscriptPromptBoundary,
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
@@ -26,6 +27,7 @@ import {
   serializeNarrativeGuidance,
   serializeSelectedManuscript,
   serializeTiptapDocument,
+  serializeTiptapNodes,
 } from '../../../../shared/utils/story-context-builder';
 import { extractManuscriptHierarchyById } from '../content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
@@ -70,12 +72,15 @@ export class ManuscriptAiContextService {
     const editorDoc = request.editor.state.doc;
     const currentSceneId = findCurrentSceneIdBeforePosition(editorDoc, request.promptPos);
     const currentSceneHierarchy = currentSceneId
-      ? extractManuscriptHierarchyById(request.editor, currentSceneId, request.promptId)
+      ? extractManuscriptHierarchyById(request.editor, currentSceneId)
       : null;
     const currentScene = currentSceneId
       ? findSceneById(currentSceneHierarchy, currentSceneId)
       : null;
-    const currentProseBeforePrompt = serializeTiptapDocument(currentScene?.prose);
+    const promptBoundary = currentSceneId
+      ? createPromptBoundary(currentSceneId, currentScene?.prose, request.promptId)
+      : undefined;
+    const currentProseBeforePrompt = promptBoundary?.beforePromptProse ?? '';
     const selectedSceneIds = expandManuscriptRefs(request.hierarchy, request.manuscriptRefs);
     const usesAutomaticFallback = !request.includeFullOutline && request.manuscriptRefs.length === 0;
     const previousSceneId = usesAutomaticFallback && currentSceneId
@@ -87,8 +92,12 @@ export class ManuscriptAiContextService {
     const proseBySceneId = new Map<string, string>();
     const unloadedSceneIds: string[] = [];
     for (const sceneId of proseSceneIds) {
-      const extractedHierarchy = extractManuscriptHierarchyById(request.editor, sceneId);
-      const extractedScene = findSceneById(extractedHierarchy, sceneId);
+      const extractedScene = sceneId === currentSceneId
+        ? currentScene
+        : findSceneById(
+          extractManuscriptHierarchyById(request.editor, sceneId),
+          sceneId,
+        );
       if (!extractedScene || extractedScene.prose === null) unloadedSceneIds.push(sceneId);
       else proseBySceneId.set(sceneId, serializeTiptapDocument(extractedScene.prose));
     }
@@ -109,7 +118,12 @@ export class ManuscriptAiContextService {
     }
 
     const manuscriptContext = request.includeFullOutline
-      ? serializeFullOutline(outlineHierarchy ?? [], request.bookTitle, proseForScenes(proseBySceneId, selectedSceneIds))
+      ? serializeFullOutline(
+        outlineHierarchy ?? [],
+        request.bookTitle,
+        proseForScenes(proseBySceneId, selectedSceneIds),
+        promptBoundary,
+      )
       : request.manuscriptRefs.length > 0
         ? serializeSelectedManuscript(
           request.hierarchy,
@@ -117,6 +131,7 @@ export class ManuscriptAiContextService {
           request.manuscriptRefs,
           selectedSceneIds,
           proseForScenes(proseBySceneId, selectedSceneIds),
+          promptBoundary,
         )
         : this.buildAutomaticContext(
           request.hierarchy,
@@ -189,7 +204,7 @@ export class ManuscriptAiContextService {
       });
     }
     sceneContent.set(currentSceneId, {
-      label: 'Prose before AI prompt',
+      label: 'Prose',
       text: currentProseBeforePrompt,
     });
     return serializeAutomaticManuscript(hierarchy, sceneContent);
@@ -246,6 +261,25 @@ export class ManuscriptAiContextService {
       .find(book => book.id === request.bookId)
       ?.settings?.vectorSearchEnabled ?? true;
   }
+}
+
+function createPromptBoundary(
+  sceneId: string,
+  prose: TiptapJsonDoc | null | undefined,
+  promptId: string,
+): ManuscriptPromptBoundary {
+  const promptIndex = prose?.content.findIndex(
+    (node) => node.type === 'aiPrompt' && node.attrs?.['id'] === promptId,
+  ) ?? -1;
+  if (!prose || promptIndex < 0) {
+    throw new Error(`AI prompt '${promptId}' was not found in scene '${sceneId}'.`);
+  }
+
+  return {
+    sceneId,
+    beforePromptProse: serializeTiptapNodes(prose.content.slice(0, promptIndex)),
+    afterPromptProse: serializeTiptapNodes(prose.content.slice(promptIndex + 1)),
+  };
 }
 
 function findSceneById(

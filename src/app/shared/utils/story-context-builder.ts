@@ -22,9 +22,44 @@ const EXCLUDED_PROSE_NODES = new Set([
   'chapterHeader',
   'sceneSummary',
 ]);
+
+const FULL_OUTLINE_HEADING = '## Full Outline';
+const SELECTED_MANUSCRIPT_HEADING = '## Selected Manuscript Context';
+const AUTOMATIC_MANUSCRIPT_HEADING = '## Automatic Manuscript Context';
+const NARRATIVE_GUIDANCE_HEADING = '## Narrative Guidance';
+const CODEX_CONTEXT_HEADING = '## Codex Context';
+
+const PROSE_LABEL = 'Prose';
+const POINT_OF_VIEW_LABEL = 'Point of View';
+const MINIMUM_LENGTH_LABEL = 'Minimum Length';
+const POV_CHARACTER_LABEL = 'POV Character';
+const CODEX_TYPE_LABEL = 'Type';
+const CODEX_NAME_LABEL = 'Name';
+const CODEX_ALIASES_LABEL = 'Aliases';
+const CODEX_DESCRIPTION_LABEL = 'Description';
+const CODEX_PROGRESSION_LABEL = 'Progression';
+const SUMMARY_LABEL = 'Summary';
+
+const CODEX_ENTRY_BEGIN_MARKER = '--- BEGIN CODEX ENTRY ---';
+const CODEX_ENTRY_END_MARKER = '--- END CODEX ENTRY ---';
+const ENTITY_BEGIN_MARKER = '--- BEGIN';
+const ENTITY_END_MARKER = '--- END';
+const ENTITY_MARKER_SUFFIX = '---';
+
+const FUTURE_PROSE_GUIDANCE =
+  '[THE FOLLOWING PROSE AND ANY SUBSEQUENT SCENES, CHAPTERS, OR ACTS OCCUR AFTER THE INSERTION POINT. USE THEM ONLY AS FUTURE CONTEXT.]';
+const FUTURE_MANUSCRIPT_GUIDANCE =
+  '[THE FOLLOWING MANUSCRIPT CONTEXT OCCURS AFTER THE INSERTION POINT. USE IT ONLY AS FUTURE CONTEXT.]';
+
 export interface AutomaticSceneContent {
-  label: 'Full prose' | 'Prose before AI prompt';
+  label: 'Full prose' | 'Prose';
   text: string;
+}
+
+export interface ManuscriptPromptBoundary {
+  sceneId: string;
+  beforePromptProse: string;
+  afterPromptProse: string;
 }
 
 export function flattenScenes(hierarchy: readonly ActDto[]): SceneDto[] {
@@ -109,6 +144,7 @@ export function serializeFullOutline(
   hierarchy: readonly ActDto[],
   bookTitle: string | undefined,
   proseBySceneId: ReadonlyMap<string, string>,
+  promptBoundary?: ManuscriptPromptBoundary,
 ): string {
   const body = serializeHierarchy({
     hierarchy,
@@ -118,11 +154,12 @@ export function serializeFullOutline(
     includeSummaries: true,
     selectedSceneIds: new Set(proseBySceneId.keys()),
     sceneContent: new Map(
-      [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: 'Prose', text }]),
+      [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: PROSE_LABEL, text }]),
     ),
+    promptBoundary,
   });
 
-  return body ? `## Full Outline\n\n${body}` : '';
+  return body ? `${FULL_OUTLINE_HEADING}\n\n${body}` : '';
 }
 
 export function serializeSelectedManuscript(
@@ -131,6 +168,7 @@ export function serializeSelectedManuscript(
   refs: readonly AiManuscriptContextRef[],
   selectedSceneIds: ReadonlySet<string>,
   proseBySceneId: ReadonlyMap<string, string>,
+  promptBoundary?: ManuscriptPromptBoundary,
 ): string {
   const body = serializeHierarchy({
     hierarchy,
@@ -140,11 +178,12 @@ export function serializeSelectedManuscript(
     includeSummaries: false,
     selectedSceneIds,
     sceneContent: new Map(
-      [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: 'Prose', text }]),
+      [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: PROSE_LABEL, text }]),
     ),
+    promptBoundary,
   });
 
-  return body ? `## Selected Manuscript Context\n\n${body}` : '';
+  return body ? `${SELECTED_MANUSCRIPT_HEADING}\n\n${body}` : '';
 }
 
 export function serializeAutomaticManuscript(
@@ -160,7 +199,7 @@ export function serializeAutomaticManuscript(
     sceneContent,
   });
 
-  return body ? `## Automatic Manuscript Context\n\n${body}` : '';
+  return body ? `${AUTOMATIC_MANUSCRIPT_HEADING}\n\n${body}` : '';
 }
 
 export function serializeNarrativeGuidance(
@@ -168,14 +207,14 @@ export function serializeNarrativeGuidance(
   povCharacterName: string | null | undefined,
   wordCount: number,
 ): string {
-  const fields = [`Point of View: ${displayPointOfView(pointOfView)}`];
+  const fields = [`${POINT_OF_VIEW_LABEL}: ${displayPointOfView(pointOfView)}`];
   if (Number.isFinite(wordCount) && wordCount > 0) {
-    fields.push(`Minimum Length: Write at least ${wordCount} words.`);
+    fields.push(`${MINIMUM_LENGTH_LABEL}: Write at least ${wordCount} words.`);
   }
   const cleanCharacterName = povCharacterName?.trim();
-  if (cleanCharacterName) fields.push(`POV Character: ${cleanCharacterName}`);
+  if (cleanCharacterName) fields.push(`${POV_CHARACTER_LABEL}: ${cleanCharacterName}`);
 
-  return `## Narrative Guidance\n\n${fields.join('\n')}`;
+  return `${NARRATIVE_GUIDANCE_HEADING}\n\n${fields.join('\n')}`;
 }
 
 export function serializeCodexContext(
@@ -190,33 +229,35 @@ export function serializeCodexContext(
     .filter((entry) => entry.status === 'active' && entry.trackingSetting !== 'never_include')
     .map((entry) => {
       const fields = [
-        '--- BEGIN CODEX ENTRY ---',
-        `Type: ${displayCodexType(entry.type)}`,
-        `Name: ${entry.name.trim()}`,
+        CODEX_ENTRY_BEGIN_MARKER,
+        `${CODEX_TYPE_LABEL}: ${displayCodexType(entry.type)}`,
+        `${CODEX_NAME_LABEL}: ${entry.name.trim()}`,
       ];
       const aliases = entry.alias
         ?.split(',')
         .map((alias) => alias.trim())
         .filter(Boolean)
         .join(', ');
-      if (aliases) fields.push(`Aliases: ${aliases}`);
-      if (entry.description?.trim()) fields.push(`Description:\n${entry.description.trim()}`);
+      if (aliases) fields.push(`${CODEX_ALIASES_LABEL}: ${aliases}`);
+      if (entry.description?.trim()) {
+        fields.push(`${CODEX_DESCRIPTION_LABEL}:\n${entry.description.trim()}`);
+      }
 
       const progression = applicableProgression(entry.entryProgression, sceneRanks, currentRank);
       if (progression.length > 0) {
         fields.push(
-          `Progression:\n${progression
+          `${CODEX_PROGRESSION_LABEL}:\n${progression
             .map((item) => progressionLine(item, sceneLocations.get(item.sceneId ?? '')))
             .join('\n')}`,
         );
       }
 
-      fields.push('--- END CODEX ENTRY ---');
+      fields.push(CODEX_ENTRY_END_MARKER);
       return fields.join('\n\n');
     });
 
   return serializedEntries.length > 0
-    ? `## Codex Context\n\n${serializedEntries.join('\n\n')}`
+    ? `${CODEX_CONTEXT_HEADING}\n\n${serializedEntries.join('\n\n')}`
     : '';
 }
 
@@ -228,10 +269,25 @@ interface HierarchySerializationRequest {
   includeSummaries: boolean;
   selectedSceneIds: ReadonlySet<string>;
   sceneContent: ReadonlyMap<string, { label: string; text: string }>;
+  promptBoundary?: ManuscriptPromptBoundary;
+}
+
+interface HierarchySerializationState {
+  boundaryRendered: boolean;
+  currentPath: ScenePath | null;
+}
+
+interface ScenePath {
+  actIndex: number;
+  chapterIndex: number;
+  sceneIndex: number;
 }
 
 function serializeHierarchy(request: HierarchySerializationRequest): string {
-  const acts = request.hierarchy.map((act) => serializeAct(act, request)).filter(Boolean);
+  const state = createSerializationState(request);
+  const acts = request.hierarchy
+    .map((act, actIndex) => serializeAct(act, actIndex, request, state))
+    .filter(Boolean);
   if (acts.length === 0 && !request.includeNovel) return '';
 
   const body = acts.join('\n\n');
@@ -241,14 +297,28 @@ function serializeHierarchy(request: HierarchySerializationRequest): string {
   return [delimiter.begin, body, delimiter.end].filter(Boolean).join('\n\n');
 }
 
-function serializeAct(act: ActDto, request: HierarchySerializationRequest): string {
+function serializeAct(
+  act: ActDto,
+  actIndex: number,
+  request: HierarchySerializationRequest,
+  state: HierarchySerializationState,
+): string {
+  if (!shouldIncludeAct(act, request)) return '';
+
+  const boundary = boundaryBeforeEntity(
+    comparePathPart(actIndex, state.currentPath?.actIndex),
+    request,
+    state,
+  );
   const chapters = (act.chapters ?? [])
-    .map((chapter) => serializeChapter(chapter, request))
+    .map((chapter, chapterIndex) =>
+      serializeChapter(chapter, actIndex, chapterIndex, request, state),
+    )
     .filter(Boolean);
-  if (!request.includeAll && chapters.length === 0) return '';
 
   const delimiter = entityDelimiter('ACT', act.position, act.title);
   return [
+    boundary,
     delimiter.begin,
     request.includeSummaries ? summaryBlock(act.summary) : '',
     chapters.join('\n\n'),
@@ -258,14 +328,28 @@ function serializeAct(act: ActDto, request: HierarchySerializationRequest): stri
     .join('\n\n');
 }
 
-function serializeChapter(chapter: ChapterDto, request: HierarchySerializationRequest): string {
+function serializeChapter(
+  chapter: ChapterDto,
+  actIndex: number,
+  chapterIndex: number,
+  request: HierarchySerializationRequest,
+  state: HierarchySerializationState,
+): string {
+  if (!shouldIncludeChapter(chapter, request)) return '';
+
+  const relation = actIndex === state.currentPath?.actIndex
+    ? comparePathPart(chapterIndex, state.currentPath.chapterIndex)
+    : 'current';
+  const boundary = boundaryBeforeEntity(relation, request, state);
   const scenes = (chapter.scenes ?? [])
-    .map((scene) => serializeScene(scene, request))
+    .map((scene, sceneIndex) =>
+      serializeScene(scene, actIndex, chapterIndex, sceneIndex, request, state),
+    )
     .filter(Boolean);
-  if (!request.includeAll && scenes.length === 0) return '';
 
   const delimiter = entityDelimiter('CHAPTER', chapter.position, chapter.title);
   return [
+    boundary,
     delimiter.begin,
     request.includeSummaries ? summaryBlock(chapter.summary) : '',
     scenes.join('\n\n'),
@@ -275,12 +359,53 @@ function serializeChapter(chapter: ChapterDto, request: HierarchySerializationRe
     .join('\n\n');
 }
 
-function serializeScene(scene: SceneDto, request: HierarchySerializationRequest): string {
+function serializeScene(
+  scene: SceneDto,
+  actIndex: number,
+  chapterIndex: number,
+  sceneIndex: number,
+  request: HierarchySerializationRequest,
+  state: HierarchySerializationState,
+): string {
   if (!request.includeAll && !request.selectedSceneIds.has(scene.id)) return '';
 
+  const isCurrentScene = scene.id === request.promptBoundary?.sceneId;
+  const relation = actIndex === state.currentPath?.actIndex
+    && chapterIndex === state.currentPath.chapterIndex
+    ? comparePathPart(sceneIndex, state.currentPath.sceneIndex)
+    : 'current';
+  const boundary = isCurrentScene
+    ? ''
+    : boundaryBeforeEntity(relation, request, state);
   const delimiter = entityDelimiter('SCENE', scene.position, scene.title);
   const content = request.sceneContent.get(scene.id);
+
+  if (isCurrentScene && content) {
+    const beforePromptProse = request.promptBoundary?.beforePromptProse.trim() ?? '';
+    const afterPromptProse = request.promptBoundary?.afterPromptProse.trim() ?? '';
+    const promptBoundary = afterPromptProse
+      ? renderPromptBoundary(request, state, true)
+      : '';
+    const prose = beforePromptProse || afterPromptProse
+      ? [
+        beforePromptProse ? `${PROSE_LABEL}:\n${beforePromptProse}` : `${PROSE_LABEL}:`,
+        promptBoundary,
+        afterPromptProse,
+      ].filter(Boolean).join('\n\n')
+      : '';
+
+    return [
+      delimiter.begin,
+      request.includeSummaries ? summaryBlock(scene.summary) : '',
+      prose,
+      delimiter.end,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
   return [
+    boundary,
     delimiter.begin,
     request.includeSummaries ? summaryBlock(scene.summary) : '',
     content?.text.trim() ? `${content.label}:\n${content.text.trim()}` : '',
@@ -288,6 +413,71 @@ function serializeScene(scene: SceneDto, request: HierarchySerializationRequest)
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+function createSerializationState(
+  request: HierarchySerializationRequest,
+): HierarchySerializationState {
+  if (!request.promptBoundary) {
+    return { boundaryRendered: false, currentPath: null };
+  }
+
+  for (const [actIndex, act] of request.hierarchy.entries()) {
+    for (const [chapterIndex, chapter] of (act.chapters ?? []).entries()) {
+      const sceneIndex = (chapter.scenes ?? [])
+        .findIndex((scene) => scene.id === request.promptBoundary?.sceneId);
+      if (sceneIndex >= 0) {
+        return {
+          boundaryRendered: false,
+          currentPath: { actIndex, chapterIndex, sceneIndex },
+        };
+      }
+    }
+  }
+
+  return { boundaryRendered: false, currentPath: null };
+}
+
+function shouldIncludeAct(act: ActDto, request: HierarchySerializationRequest): boolean {
+  return request.includeAll
+    || (act.chapters ?? []).some((chapter) => shouldIncludeChapter(chapter, request));
+}
+
+function shouldIncludeChapter(
+  chapter: ChapterDto,
+  request: HierarchySerializationRequest,
+): boolean {
+  return request.includeAll
+    || (chapter.scenes ?? []).some((scene) => request.selectedSceneIds.has(scene.id));
+}
+
+function comparePathPart(
+  index: number,
+  currentIndex: number | undefined,
+): 'before' | 'current' | 'after' {
+  if (currentIndex === undefined || index === currentIndex) return 'current';
+  return index < currentIndex ? 'before' : 'after';
+}
+
+function boundaryBeforeEntity(
+  relation: 'before' | 'current' | 'after',
+  request: HierarchySerializationRequest,
+  state: HierarchySerializationState,
+): string {
+  return relation === 'after' ? renderPromptBoundary(request, state) : '';
+}
+
+function renderPromptBoundary(
+  request: HierarchySerializationRequest,
+  state: HierarchySerializationState,
+  hasFollowingProse = false,
+): string {
+  if (state.boundaryRendered || !request.promptBoundary || !state.currentPath) return '';
+
+  state.boundaryRendered = true;
+  return hasFollowingProse
+    ? FUTURE_PROSE_GUIDANCE
+    : FUTURE_MANUSCRIPT_GUIDANCE;
 }
 
 function entityDelimiter(
@@ -300,13 +490,13 @@ function entityDelimiter(
   const suffix = cleanTitle ? ` — ${cleanTitle}` : '';
   const label = `${type}${number}${suffix}`;
   return {
-    begin: `--- BEGIN ${label} ---`,
-    end: `--- END ${label} ---`,
+    begin: `${ENTITY_BEGIN_MARKER} ${label} ${ENTITY_MARKER_SUFFIX}`,
+    end: `${ENTITY_END_MARKER} ${label} ${ENTITY_MARKER_SUFFIX}`,
   };
 }
 
 function summaryBlock(summary: string | null | undefined): string {
-  return summary?.trim() ? `Summary:\n${summary.trim()}` : '';
+  return summary?.trim() ? `${SUMMARY_LABEL}:\n${summary.trim()}` : '';
 }
 
 function serializeBlockNode(node: TiptapNode): string {
