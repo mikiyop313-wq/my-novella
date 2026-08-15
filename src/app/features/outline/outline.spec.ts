@@ -21,6 +21,8 @@ import { Outline } from './outline';
 import { OutlineStore } from './store/outline.store';
 
 describe('Outline', () => {
+  const sceneCardModeStorageKey = 'outline-scene-card-mode';
+
   let component: Outline;
   let fixture: ComponentFixture<Outline>;
   let store: any;
@@ -44,6 +46,7 @@ describe('Outline', () => {
   const matchChooser = { open: vi.fn() };
 
   beforeEach(async () => {
+    localStorage.removeItem(sceneCardModeStorageKey);
     trieState.set({});
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
     contextTrie.refreshCurrentContext.mockClear();
@@ -141,6 +144,45 @@ describe('Outline', () => {
 
   it('loads the outline for the current book', () => {
     expect(store.enterBook).toHaveBeenCalledWith('book-1');
+  });
+
+  it('uses compact scene cards when no mode has been saved', () => {
+    expect(component.sceneCardMode()).toBe('compact');
+  });
+
+  it('saves each selected scene card mode', () => {
+    component.setSceneCardMode('fit');
+    expect(localStorage.getItem(sceneCardModeStorageKey)).toBe('fit');
+
+    component.setSceneCardMode('list');
+    expect(localStorage.getItem(sceneCardModeStorageKey)).toBe('list');
+
+    component.setSceneCardMode('compact');
+    expect(localStorage.getItem(sceneCardModeStorageKey)).toBe('compact');
+  });
+
+  it('restores the saved scene card mode when the outline is recreated', async () => {
+    component.setSceneCardMode('list');
+    fixture.destroy();
+
+    fixture = TestBed.createComponent(Outline);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.sceneCardMode()).toBe('list');
+  });
+
+  it('uses compact scene cards when the saved mode is invalid', async () => {
+    localStorage.setItem(sceneCardModeStorageKey, 'unsupported');
+    fixture.destroy();
+
+    fixture = TestBed.createComponent(Outline);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.sceneCardMode()).toBe('compact');
   });
 
   it('resolves the active Summary and Codex Detection models when the scene AI menu opens', async () => {

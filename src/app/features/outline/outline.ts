@@ -46,6 +46,20 @@ import {
 import { buildCodexDetectionPrompt } from '../codex/utils/codex-detection-prompt';
 import { OutlineStore } from './store/outline.store';
 
+type SceneCardMode = 'compact' | 'fit' | 'list';
+
+const SCENE_CARD_MODE_STORAGE_KEY = 'outline-scene-card-mode';
+
+function loadSceneCardMode(): SceneCardMode {
+  const storedMode = localStorage.getItem(SCENE_CARD_MODE_STORAGE_KEY);
+
+  if (storedMode === 'compact' || storedMode === 'fit' || storedMode === 'list') {
+    return storedMode;
+  }
+
+  return 'compact';
+}
+
 // -----------------------------------------------------------------------------
 // Drag Helpers
 // -----------------------------------------------------------------------------
@@ -131,7 +145,7 @@ export class Outline implements OnInit {
   collapsed = signal<Record<string, boolean>>({});
   editing = signal<Record<string, boolean>>({});
   sceneSummaryDrafts = signal<Record<string, string>>({});
-  sceneCardMode = signal<'compact' | 'fit' | 'list'>('compact');
+  sceneCardMode = signal<SceneCardMode>(loadSceneCardMode());
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
   resolvingSummaryModel = signal(false);
@@ -196,18 +210,23 @@ export class Outline implements OnInit {
     }));
   }
 
-  setSceneCardMode(mode: 'compact' | 'fit' | 'list'): void {
+  setSceneCardMode(mode: SceneCardMode): void {
     if (this.sceneCardMode() === mode) return;
 
     if (!document.startViewTransition) {
-      this.sceneCardMode.set(mode);
+      this.applySceneCardMode(mode);
       return;
     }
 
     document.startViewTransition(() => {
-      this.sceneCardMode.set(mode);
+      this.applySceneCardMode(mode);
       this.cdr.detectChanges();
     });
+  }
+
+  private applySceneCardMode(mode: SceneCardMode): void {
+    this.sceneCardMode.set(mode);
+    localStorage.setItem(SCENE_CARD_MODE_STORAGE_KEY, mode);
   }
 
   // ---------------------------------------------------------------------------
