@@ -42,6 +42,54 @@ describe('AI prompt dropdown options', () => {
     expect(chapter.submenu!.sections[0].options.map(option => option.label)).toEqual(['Opening', 'Crossroads']);
   });
 
+  it('adds optional book metadata and disables it when no fields are available', () => {
+    const availableSections = buildContextDropdownSections({
+      hierarchy: [],
+      codexEntries: [],
+      automaticallyIncludedCodexEntryIds: new Set(),
+      hierarchyLoading: false,
+      codexLoading: false,
+      hierarchyError: null,
+      codexError: null,
+      bookMetadata: {
+        availableFields: ['Synopsis', 'Genres'],
+        loading: false,
+        error: null,
+      },
+    });
+    const emptySections = buildContextDropdownSections({
+      hierarchy: [],
+      codexEntries: [],
+      automaticallyIncludedCodexEntryIds: new Set(),
+      hierarchyLoading: false,
+      codexLoading: false,
+      hierarchyError: null,
+      codexError: null,
+      bookMetadata: {
+        availableFields: [],
+        loading: false,
+        error: null,
+      },
+    });
+
+    expect(availableSections[0]).toEqual(expect.objectContaining({
+      key: 'book-metadata',
+      title: 'Book Metadata',
+    }));
+    expect(availableSections[0].options[0]).toEqual({
+      value: 'book-metadata',
+      label: 'Book Metadata',
+      hint: 'Synopsis, Genres',
+      disabled: false,
+    });
+    expect(emptySections[0].options[0]).toEqual({
+      value: 'book-metadata',
+      label: 'Book Metadata',
+      hint: 'No metadata available',
+      disabled: true,
+    });
+  });
+
   it('removes excluded branches and prunes stale manuscript selections', () => {
     const hierarchy = createHierarchy();
     hierarchy[0].chapters![0].scenes![1].includeInContext = false;
@@ -62,6 +110,7 @@ describe('AI prompt dropdown options', () => {
     expect(novel.selectionValues).toEqual(['scene:scene-1']);
     expect(novel.submenu?.sections[0].options.map((option) => option.label)).toEqual(['Act One']);
     expect(contextSelectionToValues({
+      includeBookMetadata: false,
       includeFullOutline: false,
       manuscriptRefs: ['scene:scene-2', 'act:act-2'],
       codexEntryIds: [],
@@ -136,16 +185,18 @@ describe('AI prompt dropdown options', () => {
 
   it('round-trips persisted context state and ignores branch identifiers', () => {
     const values = contextSelectionToValues({
+      includeBookMetadata: true,
       includeFullOutline: true,
       manuscriptRefs: ['scene:scene-1'],
       codexEntryIds: ['entry-1'],
     }, createHierarchy());
 
-    expect(values).toEqual(['outline', 'scene:scene-1', 'codex:entry-1']);
+    expect(values).toEqual(['book-metadata', 'outline', 'scene:scene-1', 'codex:entry-1']);
     expect(dropdownValuesToContextSelection(
       [...values, 'branch:novel', 'scene:scene-1'],
       createHierarchy(),
     )).toEqual({
+      includeBookMetadata: true,
       includeFullOutline: true,
       manuscriptRefs: ['scene:scene-1'],
       codexEntryIds: ['entry-1'],
@@ -182,6 +233,7 @@ describe('AI prompt dropdown options', () => {
   it('invalidates incomplete ancestors while preserving complete sibling aggregates', () => {
     const hierarchy = createHierarchy();
     const selectedNovel = contextSelectionToValues({
+      includeBookMetadata: false,
       includeFullOutline: false,
       manuscriptRefs: ['novel'],
       codexEntryIds: [],

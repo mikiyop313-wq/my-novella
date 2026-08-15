@@ -12,6 +12,7 @@ import type {
 export type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 
 export interface AiContextSelection {
+  includeBookMetadata: boolean;
   includeFullOutline: boolean;
   manuscriptRefs: AiManuscriptContextRef[];
   codexEntryIds: string[];
@@ -33,6 +34,11 @@ export interface AiContextDropdownSource {
   codexLoading: boolean;
   hierarchyError: string | null;
   codexError: string | null;
+  bookMetadata?: {
+    availableFields: readonly string[];
+    loading: boolean;
+    error: string | null;
+  };
 }
 
 interface CodexCategory {
@@ -82,10 +88,33 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
       source.automaticallyIncludedCodexEntryIds,
     ));
 
-  return [
+  const sections: DropdownSection<string>[] = [];
+
+  if (source.bookMetadata) {
+    const { availableFields, loading, error } = source.bookMetadata;
+    const metadataAvailable = availableFields.length > 0;
+    sections.push({
+      key: 'book-metadata',
+      title: 'Book Metadata',
+      options: [{
+        value: 'book-metadata',
+        label: 'Book Metadata',
+        hint: metadataAvailable ? availableFields.join(', ') : 'No metadata available',
+        disabled: loading || !!error || !metadataAvailable,
+      }],
+      message: loading
+        ? { text: 'Loading book metadata...' }
+        : error
+          ? { text: error, tone: 'error' }
+          : undefined,
+    });
+  }
+
+  sections.push(
     {
       key: 'outline-novel',
       title: 'Outline & Novel',
+      dividerBefore: source.bookMetadata !== undefined,
       options: outlineOptions,
       message: source.hierarchyLoading
         ? { text: 'Loading novel structure...' }
@@ -104,7 +133,9 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
           ? { text: source.codexError, tone: 'error' }
           : undefined,
     },
-  ];
+  );
+
+  return sections;
 }
 
 export function contextSelectionToValues(
@@ -114,6 +145,7 @@ export function contextSelectionToValues(
   const selectableHierarchy = filterHierarchyForContext(hierarchy);
   const values = new Set<string>();
 
+  if (selection.includeBookMetadata) values.add('book-metadata');
   if (selection.includeFullOutline) values.add('outline');
 
   const refs = new Set<AiManuscriptContextRef>(selection.manuscriptRefs);
@@ -178,6 +210,7 @@ export function dropdownValuesToContextSelection(
   }
 
   return {
+    includeBookMetadata: selected.has('book-metadata'),
     includeFullOutline: selected.has('outline'),
     manuscriptRefs,
     codexEntryIds: [...selected]

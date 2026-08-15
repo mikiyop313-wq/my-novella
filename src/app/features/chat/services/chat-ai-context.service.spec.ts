@@ -32,6 +32,7 @@ describe('ChatAiContextService', () => {
 
   it('returns no context without refs or Full Outline', async () => {
     await expect(service.buildContext({
+      includeBookMetadata: false,
       includeFullOutline: false,
       sceneIds: [],
       codexEntryIds: [],
@@ -55,6 +56,7 @@ describe('ChatAiContextService', () => {
     codexService.getEntry.mockResolvedValueOnce(codexEntry());
 
     const result = await service.buildContext({
+      includeBookMetadata: false,
       includeFullOutline: false,
       sceneIds: ['scene-1'],
       codexEntryIds: ['codex-1'],
@@ -73,13 +75,45 @@ describe('ChatAiContextService', () => {
     expect(result).toContain('Mara enters the observatory.');
     expect(result).toContain('## Codex Context');
     expect(result).toContain('### Mara Vale');
-    expect(result).toContain('Arrival: Enters the observatory.');
+    expect(result).toContain('Title: Arrival');
+    expect(result).toContain('Description: Enters the observatory.');
+  });
+
+  it('serializes book metadata without requiring other context selections', async () => {
+    const result = await service.buildContext({
+      includeBookMetadata: true,
+      bookContext: {
+        synopsis: 'A locksmith discovers a door between worlds.',
+        synopsisAiContext: true,
+        categories: [
+          { id: 'genre-1', name: 'Fantasy', type: 'genre', isCustom: false },
+          { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+        ],
+      },
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+      bookId: 'book-1',
+      hierarchy: hierarchy(),
+    });
+
+    expect(result).toBe([
+      '## Book Context',
+      '',
+      'Synopsis:',
+      'A locksmith discovers a door between worlds.',
+      'Genres: Fantasy',
+      'Tropes: Found Family',
+    ].join('\n'));
+    expect(electronService.invoke).not.toHaveBeenCalled();
+    expect(codexService.getEntry).not.toHaveBeenCalled();
   });
 
   it('serializes Codex-only context without manuscript structure', async () => {
     codexService.getEntry.mockResolvedValueOnce(codexEntry());
 
     const result = await service.buildContext({
+      includeBookMetadata: false,
       includeFullOutline: false,
       sceneIds: [],
       codexEntryIds: ['codex-1'],
@@ -104,6 +138,7 @@ describe('ChatAiContextService', () => {
     electronService.invoke.mockResolvedValueOnce(hierarchy());
 
     const result = await service.buildContext({
+      includeBookMetadata: false,
       includeFullOutline: true,
       sceneIds: [],
       codexEntryIds: [],

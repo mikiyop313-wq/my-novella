@@ -85,6 +85,7 @@ describe('ChatResponseService', () => {
     selectedModelId: 'openrouter/test-model',
     reasoningMode: true,
     context: {
+      includeBookMetadata: false,
       includeFullOutline: false,
       sceneIds: [],
       codexEntryIds: [],
@@ -246,6 +247,7 @@ describe('ChatResponseService', () => {
     await service.generateResponse(messages[0], 'Write a scene', {
       ...settings,
       context: {
+        includeBookMetadata: false,
         includeFullOutline: true,
         sceneIds: ['scene-current'],
         codexEntryIds: ['codex-current'],
@@ -268,6 +270,7 @@ describe('ChatResponseService', () => {
       },
     }));
     expect(chatAiContext.buildContext).toHaveBeenCalledWith({
+      includeBookMetadata: false,
       includeFullOutline: true,
       sceneIds: ['scene-current'],
       codexEntryIds: ['codex-current'],

@@ -204,6 +204,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   }));
 
   selectedContextValues = computed(() => contextSelectionToValues({
+    includeBookMetadata: false,
     includeFullOutline: this.includeFullOutline(),
     manuscriptRefs: this.contextManuscriptRefs(),
     codexEntryIds: this.contextCodexEntryIds(),

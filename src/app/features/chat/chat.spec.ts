@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import { of } from 'rxjs';
 import { provideMarkdown } from 'ngx-markdown';
 
+import type { BookDto } from '../../../../shared/models/book.model';
 import {
   type ChatMessageDetailDto,
   type ChatThreadDetailDto,
@@ -21,6 +22,7 @@ import { CodexMatchChooserService } from '../codex/highlighting/codex-match-choo
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.service';
 import { CodexWindowService } from '../codex/services/codex-window.service';
+import { LibraryService } from '../library/services/library.service';
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
 import { WorkspaceStore } from '../workspace/workspace.store';
 import { Chat } from './chat';
@@ -75,6 +77,29 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     error: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function makeBook(overrides: Partial<BookDto> = {}): BookDto {
+  return {
+    id: 'book-1',
+    title: 'Draft Book',
+    author: 'Author',
+    status: 'draft',
+    synopsis: null,
+    coverImage: null,
+    wordCount: 0,
+    language: 'English',
+    createdAt: '',
+    lastEditedAt: '',
+    categories: [],
+    settings: {
+      language: 'English',
+      proseTense: 'past',
+      pointOfView: 'third_limited',
+      synopsisAiContext: false,
+    },
     ...overrides,
   };
 }
@@ -169,6 +194,9 @@ describe('Chat', () => {
   const chatAiContext = {
     buildContext: vi.fn(async () => null),
   };
+  const libraryService = {
+    getBooks: vi.fn(),
+  };
   const highlightRegistry = {
     setRanges: vi.fn(),
     clearRanges: vi.fn(),
@@ -193,6 +221,7 @@ describe('Chat', () => {
         { provide: CodexEntryOpenerService, useValue: { open: vi.fn() } },
         { provide: WorkspaceBookStore, useValue: workspaceBookStore },
         { provide: WorkspaceStore, useValue: workspaceStore },
+        { provide: LibraryService, useValue: libraryService },
         { provide: ChatAiContextService, useValue: chatAiContext },
         ...provideMarkdown(),
       ],
@@ -250,6 +279,7 @@ describe('Chat', () => {
     contextTrie.refreshCurrentContext.mockClear();
     workspaceBookStore.loadBookHierarchy.mockClear();
     workspaceStore.enterBook.mockClear();
+    libraryService.getBooks.mockReset().mockResolvedValue([makeBook()]);
     chatAiContext.buildContext.mockClear();
     highlightRegistry.setRanges.mockClear();
     highlightRegistry.clearRanges.mockClear();
@@ -953,6 +983,76 @@ describe('Chat', () => {
     expect(component.includeFullOutline()).toBe(true);
     expect(component.contextManuscriptRefs()).toEqual(['novel']);
     expect(component.contextCodexEntryIds()).toEqual(['codex-manual']);
+  });
+
+  it('loads and submits the active book metadata as one context selection', async () => {
+    libraryService.getBooks.mockResolvedValueOnce([makeBook({
+      synopsis: 'A locksmith discovers a door between worlds.',
+      categories: [
+        { id: 'genre-1', name: 'Fantasy', type: 'genre', isCustom: false },
+        { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+      ],
+      settings: {
+        language: 'English',
+        proseTense: 'past',
+        pointOfView: 'third_limited',
+        synopsisAiContext: true,
+      },
+    })]);
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+
+    const metadataSection = component.contextDropdownSections()[0];
+    expect(metadataSection.title).toBe('Book Metadata');
+    expect(metadataSection.options[0]).toEqual(expect.objectContaining({
+      value: 'book-metadata',
+      hint: 'Synopsis, Genres, Tropes',
+      disabled: false,
+    }));
+
+    component.onContextChange(['book-metadata']);
+    setComposerValue('Help me develop this premise.');
+    await component.sendPrompt();
+
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeBookMetadata: true,
+      bookContext: {
+        synopsis: 'A locksmith discovers a door between worlds.',
+        synopsisAiContext: true,
+        categories: [
+          { id: 'genre-1', name: 'Fantasy', type: 'genre', isCustom: false },
+          { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+        ],
+      },
+    }));
+  });
+
+  it('disables book metadata when only a synopsis excluded by settings exists', async () => {
+    libraryService.getBooks.mockResolvedValueOnce([makeBook({
+      synopsis: 'This synopsis is disabled for AI context.',
+    })]);
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    expect(component.contextDropdownSections()[0].options[0]).toEqual(expect.objectContaining({
+      hint: 'No metadata available',
+      disabled: true,
+    }));
   });
 
   it('uses replacement selection state and does not detect Codex from message history', async () => {
@@ -2013,6 +2113,7 @@ describe('Chat', () => {
     expect(component.isDetachedMode).toBe(true);
     expect(chatWindowService.getDetachedSession).toHaveBeenCalledWith('session-1');
     expect(chatStore.enterBook).toHaveBeenCalledWith('book-1');
+    expect(libraryService.getBooks).toHaveBeenCalled();
     expect(contextTrie.loadForContext).toHaveBeenCalledWith('book-1');
     expect(chatStore.openThread).toHaveBeenCalledWith('thread-1');
     expect(fixture.nativeElement.querySelector('.detach-btn')).toBeNull();

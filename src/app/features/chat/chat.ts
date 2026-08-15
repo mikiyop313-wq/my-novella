@@ -19,6 +19,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MarkdownComponent } from 'ngx-markdown';
 
+import type { BookDto } from '../../../../shared/models/book.model';
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { buildContextHighlightSegments } from '../../../../shared/utils/context-highlighter';
 import { AiStore } from '../../core/store/ai.store';
@@ -30,12 +31,16 @@ import {
   type MarkdownKeywordHighlight,
 } from '../../shared/components/markdown-editor/markdown-editor.extensions';
 import { ToastService } from '../../shared/services/toast.service';
-import { expandManuscriptRefs } from '../../shared/utils/story-context-builder';
+import {
+  type BookContext,
+  expandManuscriptRefs,
+} from '../../shared/utils/story-context-builder';
 import { filterSelectableManuscriptRefs } from '../manuscript/components/ai-prompt/ai-prompt-dropdown-options';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { CodexWindowService } from '../codex/services/codex-window.service';
+import { LibraryService } from '../library/services/library.service';
 import {
   getAutomaticallyIncludedCodexEntryIds,
   reconcileSelectedCodexEntryIds,
@@ -95,6 +100,7 @@ export class Chat implements OnInit, OnDestroy {
   private readonly codexMatchChooser = inject(CodexMatchChooserService);
   private readonly workspaceBookStore = inject(WorkspaceBookStore);
   private readonly workspaceStore = inject(WorkspaceStore);
+  private readonly libraryService = inject(LibraryService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
 
@@ -128,9 +134,13 @@ export class Chat implements OnInit, OnDestroy {
   readonly isAutoScrollEnabled = signal(true);
   readonly isChatAtBottom = signal(true);
   readonly includeFullOutline = signal(false);
+  readonly includeBookMetadata = signal(false);
   readonly contextManuscriptRefs = signal<AiManuscriptContextRef[]>([]);
   readonly contextCodexEntryIds = signal<string[]>([]);
   readonly automaticallyIncludedCodexEntryIds = signal<ReadonlySet<string>>(new Set());
+  readonly contextBook = signal<BookDto | null>(null);
+  readonly contextBookLoading = signal(false);
+  readonly contextBookError = signal<string | null>(null);
 
   readonly contextHierarchy = this.workspaceBookStore.bookHierarchy;
   readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
@@ -209,6 +219,32 @@ export class Chat implements OnInit, OnDestroy {
       }));
   });
 
+  readonly contextBookMetadata = computed<BookContext | null>(() => {
+    const book = this.contextBook();
+    if (!book) return null;
+
+    return {
+      synopsis: book.synopsis,
+      synopsisAiContext: book.settings?.synopsisAiContext === true,
+      categories: book.categories,
+    };
+  });
+
+  readonly contextBookMetadataFields = computed<string[]>(() => {
+    const metadata = this.contextBookMetadata();
+    if (!metadata) return [];
+
+    const fields: string[] = [];
+    if (metadata.synopsisAiContext && metadata.synopsis?.trim()) fields.push('Synopsis');
+    if (metadata.categories?.some(category => category.type === 'genre' && category.name.trim())) {
+      fields.push('Genres');
+    }
+    if (metadata.categories?.some(category => category.type === 'trope' && category.name.trim())) {
+      fields.push('Tropes');
+    }
+    return fields;
+  });
+
   readonly contextDropdownSections = computed(() => buildContextDropdownSections({
     hierarchy: this.contextHierarchy(),
     codexEntries: this.contextCodexEntries(),
@@ -217,9 +253,15 @@ export class Chat implements OnInit, OnDestroy {
     codexLoading: this.contextCodexLoading(),
     hierarchyError: this.contextHierarchyError(),
     codexError: this.contextCodexError(),
+    bookMetadata: {
+      availableFields: this.contextBookMetadataFields(),
+      loading: this.contextBookLoading(),
+      error: this.contextBookError(),
+    },
   }));
 
   readonly selectedContextValues = computed(() => contextSelectionToValues({
+    includeBookMetadata: this.includeBookMetadata(),
     includeFullOutline: this.includeFullOutline(),
     manuscriptRefs: this.contextManuscriptRefs(),
     codexEntryIds: this.contextCodexEntryIds(),
@@ -305,6 +347,7 @@ export class Chat implements OnInit, OnDestroy {
     this.initializeConversationState(initialThreadId, isNewChatRoute);
 
     void this.loadContextHierarchy(bookId);
+    void this.loadBookMetadata(bookId);
     await this.enterWorkspaceChat(bookId, initialThreadId, isNewChatRoute);
     this.route.paramMap?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       void this.syncThreadFromRoute(params.get('threadId'));
@@ -632,6 +675,7 @@ export class Chat implements OnInit, OnDestroy {
     );
 
     this.includeFullOutline.set(selection.includeFullOutline);
+    this.includeBookMetadata.set(selection.includeBookMetadata);
     this.contextManuscriptRefs.set(manuscriptRefs);
     this.contextCodexEntryIds.set(codexEntryIds);
   }
@@ -985,6 +1029,7 @@ export class Chat implements OnInit, OnDestroy {
       void this.codexContextTrie.loadForContext(session.bookId);
       void this.workspaceStore.enterBook(session.bookId);
       void this.loadContextHierarchy(session.bookId);
+      void this.loadBookMetadata(session.bookId);
       await this.chatStore.enterBook(session.bookId);
       if (session.selectedThreadId) {
         await this.selectThread(session.selectedThreadId);
@@ -1024,6 +1069,8 @@ export class Chat implements OnInit, OnDestroy {
       selectedModelId: this.selectedModelId(),
       reasoningMode: this.reasoningMode(),
       context: {
+        includeBookMetadata: this.includeBookMetadata(),
+        bookContext: this.contextBookMetadata() ?? undefined,
         includeFullOutline: this.includeFullOutline(),
         sceneIds: [...expandManuscriptRefs(
           this.contextHierarchy(),
@@ -1042,6 +1089,25 @@ export class Chat implements OnInit, OnDestroy {
       await this.workspaceBookStore.loadBookHierarchy('book', bookId);
     } catch {
       // The store exposes the error to the context dropdown and send guard.
+    }
+  }
+
+  private async loadBookMetadata(bookId: string): Promise<void> {
+    this.contextBookLoading.set(true);
+    this.contextBookError.set(null);
+
+    try {
+      const books = await this.libraryService.getBooks();
+      const book = books.find(candidate => candidate.id === bookId);
+      if (!book) throw new Error('Book metadata is not available.');
+      this.contextBook.set(book);
+    } catch (error) {
+      this.contextBook.set(null);
+      this.contextBookError.set(
+        error instanceof Error ? error.message : 'Failed to load book metadata.',
+      );
+    } finally {
+      this.contextBookLoading.set(false);
     }
   }
 

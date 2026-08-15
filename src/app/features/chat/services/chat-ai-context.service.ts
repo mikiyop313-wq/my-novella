@@ -8,7 +8,9 @@ import type {
 } from '../../../../../shared/models/manuscript.model';
 import { ElectronService } from '../../../core/services/electron.service';
 import {
+  type BookContext,
   flattenScenes,
+  serializeBookContext,
   serializeCodexContext,
   serializeFullOutline,
   serializeSelectedManuscript,
@@ -19,6 +21,8 @@ import { ManuscriptStructureService } from '../../workspace/services/manuscript-
 import { filterHierarchyForContext } from '../../../../../shared/utils/manuscript-context-inclusion';
 
 export interface ChatAiContextRequest {
+  includeBookMetadata: boolean;
+  bookContext?: BookContext;
   includeFullOutline: boolean;
   sceneIds: readonly string[];
   codexEntryIds: readonly string[];
@@ -36,9 +40,13 @@ export class ChatAiContextService {
   async buildContext(request: ChatAiContextRequest): Promise<string | null> {
     const sceneIds = uniqueStrings(request.sceneIds);
     const codexEntryIds = uniqueStrings(request.codexEntryIds);
+    const bookContext = request.includeBookMetadata && request.bookContext
+      ? serializeBookContext(request.bookContext)
+      : '';
 
     if (
-      !request.includeFullOutline
+      !bookContext
+      && !request.includeFullOutline
       && sceneIds.length === 0
       && codexEntryIds.length === 0
     ) {
@@ -89,6 +97,7 @@ export class ChatAiContextService {
       progressionSceneId,
     );
     const content = [
+      bookContext,
       manuscriptContext,
       codexContext,
     ].filter(Boolean).join('\n\n');

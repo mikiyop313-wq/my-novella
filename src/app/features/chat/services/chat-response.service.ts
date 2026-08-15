@@ -28,7 +28,7 @@ export interface ChatResponseSettings {
   reasoningMode: boolean;
   context: Pick<
     ChatAiContextRequest,
-    'includeFullOutline' | 'sceneIds' | 'codexEntryIds'
+    'includeBookMetadata' | 'bookContext' | 'includeFullOutline' | 'sceneIds' | 'codexEntryIds'
   >;
   branchGroupId?: string;
   selectCreatedBranch?: boolean;
