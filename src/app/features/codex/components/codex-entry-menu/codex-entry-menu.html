@@ -119,9 +119,10 @@
         </div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group description-form-group">
         <label>Description</label>
-        <textarea [ngModel]="newEntryDescription()" (ngModelChange)="updateEntryDescription($event)" placeholder="Brief description..." rows="3"></textarea>
+        <app-markdown-editor [value]="newEntryDescription()" placeholder="Brief description..."
+          ariaLabel="Codex description" (valueChange)="updateEntryDescription($event)"></app-markdown-editor>
       </div>
     } @else if (activeEntryView() === 'Notes') {
       <div class="notes-view">

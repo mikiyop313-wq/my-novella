@@ -175,7 +175,7 @@
             <span>{{ getTrackingLabel(entry.trackingSetting) }}</span>
           </div>
           @if (entry.description) {
-          <p class="entry-description">{{ entry.description }}</p>
+          <p class="entry-description">{{ entry.description | markdownPlainText }}</p>
           }
         </div>
       </article>

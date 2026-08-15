@@ -19,6 +19,7 @@ import { type ActDto } from '../../../../../../shared/models/manuscript.model';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
+import { MarkdownEditorComponent } from '../../../../shared/components/markdown-editor/markdown-editor.component';
 
 type CodexEntryProgressionInput = CodexEntryProgressionPayload & {
   localId: string;
@@ -42,7 +43,7 @@ const UNRANKED_SCENE_RANK = Number.MAX_SAFE_INTEGER;
 @Component({
   selector: 'app-codex-entry-menu',
   standalone: true,
-  imports: [FormsModule, AutocompleteDropdownComponent, CdkMenuModule, InfoIconComponent],
+  imports: [FormsModule, MarkdownEditorComponent, AutocompleteDropdownComponent, CdkMenuModule, InfoIconComponent],
   templateUrl: './codex-entry-menu.html',
   styleUrl: './codex-entry-menu.scss'
 })

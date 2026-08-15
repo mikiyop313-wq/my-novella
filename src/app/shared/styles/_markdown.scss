@@ -1,12 +1,11 @@
-@mixin markdown-content {
+@mixin markdown-content($font-size: 0.94rem, $line-height: 1.62) {
   display: block;
   color: color-mix(in srgb, var(--color-text-primary) 92%, var(--color-text-secondary));
-  font-size: 0.94rem;
-  line-height: 1.62;
+  font-size: $font-size;
+  line-height: $line-height;
   overflow-wrap: anywhere;
 
   :host ::ng-deep & {
-
     p,
     ul,
     ol,

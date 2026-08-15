@@ -23,6 +23,7 @@ import {
   type CodexDetachRequest,
   type CodexEntryMenuPayload,
 } from '../../../../../../shared/models/codex-window.model';
+import { MarkdownPlainTextPipe } from '../../../../shared/pipes/markdown-plain-text.pipe';
 
 type CodexEntityType = {
   value: CodexEntryType;
@@ -36,7 +37,15 @@ export type FilterTriState = 'include' | 'exclude' | 'any';
 @Component({
   selector: 'app-codex-sidebar-section',
   standalone: true,
-  imports: [LowerCasePipe, NgTemplateOutlet, FormsModule, OverlayModule, CdkMenuModule, CodexEntryMenuComponent],
+  imports: [
+    LowerCasePipe,
+    NgTemplateOutlet,
+    FormsModule,
+    OverlayModule,
+    CdkMenuModule,
+    CodexEntryMenuComponent,
+    MarkdownPlainTextPipe,
+  ],
   templateUrl: './codex-sidebar-section.html',
   styleUrl: './codex-sidebar-section.scss',
 })
