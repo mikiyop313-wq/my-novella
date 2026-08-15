@@ -3,6 +3,7 @@ import * as path from 'path';
 import { initializeIpc } from './ipc';
 import { ChatWindowManager } from './windows/chat-window-manager';
 import { CodexWindowManager } from './windows/codex-window-manager';
+import { localEmbeddingModelManager } from '../vectors/embeddings/local-model-manager';
 import '../db/index';
 
 if (!app.isPackaged) {
@@ -125,10 +126,11 @@ ipcMain.on('app:close-ready', () => {
     win?.close();
 });
 
-app.on('ready', () => {
+app.on('ready', async () => {
     initializeIpc();
     setupCodexWindowHandlers();
     setupChatWindowHandlers();
+    await localEmbeddingModelManager.cleanupIncompleteDownloads();
     createWindow();
 });
 

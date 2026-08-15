@@ -27,6 +27,11 @@ export function setupLocalEmbeddingModelHandlers(): void {
     ));
 
     ipcMain.handle(
+        'vectors:local-model:cancel-download',
+        () => localEmbeddingModelManager.cancelActiveDownload(),
+    );
+
+    ipcMain.handle(
         'vectors:local-model:uninstall',
         (_, payload: UninstallLocalEmbeddingModelPayload) => (
             localEmbeddingModelManager.uninstall(payload)

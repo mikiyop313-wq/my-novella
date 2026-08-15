@@ -26,6 +26,13 @@ import {
 
 type LifecycleOperation = 'download' | 'uninstall';
 
+interface ActiveDownload {
+  modelName: LocalEmbeddingModelName;
+  cancelRequested: boolean;
+  completion: Promise<void>;
+  finish: () => void;
+}
+
 /** Minimal provider capability required to perform an explicit model download. */
 export interface LocalEmbeddingModelLifecycleProvider {
   download: (
@@ -47,6 +54,7 @@ export interface LocalEmbeddingModelManagerDependencies {
 /** Coordinates mutually exclusive local-model lifecycle operations. */
 export class LocalEmbeddingModelManager {
   private activeOperation: LifecycleOperation | null = null;
+  private activeDownload: ActiveDownload | null = null;
 
   /** Creates a manager backed by the supplied filesystem and provider operations. */
   constructor(private readonly dependencies: LocalEmbeddingModelManagerDependencies) {}
@@ -57,6 +65,8 @@ export class LocalEmbeddingModelManager {
    * @returns Current status for the supported local model.
    */
   async getStatuses(): Promise<LocalEmbeddingModelStatus[]> {
+    const activeDownload = this.activeDownload;
+    if (activeDownload?.cancelRequested) await activeDownload.completion;
     return Promise.all(this.dependencies.models.map((model) => this.getStatus(model.modelName)));
   }
 
@@ -91,24 +101,75 @@ export class LocalEmbeddingModelManager {
     payload: DownloadLocalEmbeddingModelPayload,
     onProgress?: (progress: LocalEmbeddingModelDownloadProgress) => void,
   ): Promise<LocalEmbeddingModelStatus> {
-    return this.runExclusive('download', async () => {
-      const model = this.requireModel(payload.modelName);
-      const paths = this.dependencies.getPaths(model.modelName);
-      const provider = this.dependencies.createProvider(model);
+    if (this.activeOperation) this.throwOperationConflict();
+
+    const model = this.requireModel(payload.modelName);
+    const paths = this.dependencies.getPaths(model.modelName);
+    let finishDownload!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      finishDownload = resolve;
+    });
+    const activeDownload: ActiveDownload = {
+      modelName: model.modelName,
+      cancelRequested: false,
+      completion,
+      finish: finishDownload,
+    };
+
+    this.activeOperation = 'download';
+    this.activeDownload = activeDownload;
+    const provider = this.dependencies.createProvider(model);
+    try {
       try {
-        await provider.download((progress) =>
+        await provider.download((progress) => {
+          this.throwIfDownloadCancelled(activeDownload);
           onProgress?.({
             ...progress,
             modelName: model.modelName,
-          }),
-        );
+          });
+        });
       } finally {
         await provider.dispose();
       }
+
+      this.throwIfDownloadCancelled(activeDownload);
       await mkdir(paths.modelDir, { recursive: true });
+      this.throwIfDownloadCancelled(activeDownload);
       await writeFile(paths.installationMarkerPath, model.modelName, 'utf8');
-      return this.getStatus(model.modelName);
-    });
+      this.throwIfDownloadCancelled(activeDownload);
+      const status = await this.getStatus(model.modelName);
+      this.throwIfDownloadCancelled(activeDownload);
+      return status;
+    } catch (error) {
+      if (!activeDownload.cancelRequested) throw error;
+      await rm(paths.modelDir, { recursive: true, force: true });
+      throw new Error(`Download cancelled for local embedding model: ${model.modelName}`);
+    } finally {
+      this.activeOperation = null;
+      this.activeDownload = null;
+      activeDownload.finish();
+    }
+  }
+
+  /** Cooperatively cancels the active download and waits for partial-file cleanup. */
+  async cancelActiveDownload(): Promise<void> {
+    const activeDownload = this.activeDownload;
+    if (!activeDownload) return;
+
+    activeDownload.cancelRequested = true;
+    await activeDownload.completion;
+  }
+
+  /** Removes cache directories that do not contain a completed installation marker. */
+  async cleanupIncompleteDownloads(): Promise<void> {
+    await Promise.all(
+      this.dependencies.models.map(async (model) => {
+        const paths = this.dependencies.getPaths(model.modelName);
+        if (!(await pathExists(paths.modelDir))) return;
+        if (await pathExists(paths.installationMarkerPath)) return;
+        await rm(paths.modelDir, { recursive: true });
+      }),
+    );
   }
 
   /**
@@ -149,17 +210,25 @@ export class LocalEmbeddingModelManager {
 
   /** Runs one lifecycle operation and rejects attempts to overlap another operation. */
   private async runExclusive<T>(operation: LifecycleOperation, run: () => Promise<T>): Promise<T> {
-    if (this.activeOperation) {
-      throw new Error(
-        `A local embedding model ${this.activeOperation} operation is already in progress.`,
-      );
-    }
+    if (this.activeOperation) this.throwOperationConflict();
 
     this.activeOperation = operation;
     try {
       return await run();
     } finally {
       this.activeOperation = null;
+    }
+  }
+
+  private throwOperationConflict(): never {
+    throw new Error(
+      `A local embedding model ${this.activeOperation} operation is already in progress.`,
+    );
+  }
+
+  private throwIfDownloadCancelled(activeDownload: ActiveDownload): void {
+    if (activeDownload.cancelRequested) {
+      throw new Error(`Download cancelled for local embedding model: ${activeDownload.modelName}`);
     }
   }
 }

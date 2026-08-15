@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => unknown>(),
   getStatuses: vi.fn(),
   download: vi.fn(),
+  cancelActiveDownload: vi.fn(),
   uninstall: vi.fn(),
 }));
 
@@ -21,6 +22,7 @@ vi.mock('../../../../vectors/embeddings/local-model-manager', () => ({
   localEmbeddingModelManager: {
     getStatuses: mocks.getStatuses,
     download: mocks.download,
+    cancelActiveDownload: mocks.cancelActiveDownload,
     uninstall: mocks.uninstall,
   },
 }));
@@ -34,12 +36,18 @@ describe('local embedding model IPC handlers', () => {
     setupLocalEmbeddingModelHandlers();
   });
 
-  it('registers status, download, and uninstall handlers', () => {
+  it('registers status, download cancellation, and uninstall handlers', () => {
     expect([...mocks.handlers.keys()]).toEqual([
       'vectors:local-model:get-status',
       'vectors:local-model:download',
+      'vectors:local-model:cancel-download',
       'vectors:local-model:uninstall',
     ]);
+  });
+
+  it('forwards active download cancellation', async () => {
+    await mocks.handlers.get('vectors:local-model:cancel-download')?.({});
+    expect(mocks.cancelActiveDownload).toHaveBeenCalledOnce();
   });
 
   it('sends download progress only through the initiating renderer', async () => {

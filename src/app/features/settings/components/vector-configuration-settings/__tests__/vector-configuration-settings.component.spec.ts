@@ -58,6 +58,7 @@ describe('VectorConfigurationSettingsComponent', () => {
 
   let fixture: ComponentFixture<VectorConfigurationSettingsComponent>;
   let invoke: ReturnType<typeof vi.fn>;
+  let on: ReturnType<typeof vi.fn>;
   let removeProgressListener: ReturnType<typeof vi.fn>;
   let progressListener: ((progress: LocalEmbeddingModelDownloadProgress) => void) | undefined;
   let confirmService: ConfirmModalService;
@@ -65,7 +66,7 @@ describe('VectorConfigurationSettingsComponent', () => {
   beforeEach(async () => {
     invoke = vi.fn().mockResolvedValue(catalog);
     removeProgressListener = vi.fn();
-    const on = vi.fn(
+    on = vi.fn(
       (channel: string, callback: (progress: LocalEmbeddingModelDownloadProgress) => void) => {
         if (channel === 'vectors:local-model:download-progress') progressListener = callback;
         return removeProgressListener;
@@ -74,7 +75,17 @@ describe('VectorConfigurationSettingsComponent', () => {
 
     await TestBed.configureTestingModule({
       imports: [VectorConfigurationSettingsComponent],
-      providers: [{ provide: ElectronService, useValue: { invoke, on } }],
+      providers: [
+        {
+          provide: ElectronService,
+          useValue: {
+            invoke,
+            on,
+            onBeforeClose: vi.fn(),
+            removeBeforeCloseHandler: vi.fn(),
+          },
+        },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(VectorConfigurationSettingsComponent);
@@ -228,9 +239,39 @@ describe('VectorConfigurationSettingsComponent', () => {
     },
   );
 
-  it('removes its download progress listener when destroyed', () => {
+  it('keeps download progress and the selected tier when the settings view is recreated', async () => {
+    let finishDownload: ((status: LocalEmbeddingModelStatus) => void) | undefined;
+    const target = catalog[3];
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise<LocalEmbeddingModelStatus>((resolve) => {
+          finishDownload = resolve;
+        }),
+    );
+
+    fixture.componentInstance.selectLocalModelTier('medium');
+    const downloadPromise = fixture.componentInstance.downloadLocalModel(target.modelName);
     fixture.destroy();
-    expect(removeProgressListener).toHaveBeenCalledOnce();
+
+    progressListener?.({
+      modelName: target.modelName,
+      status: 'progress',
+      file: 'onnx/model_quantized.onnx',
+      progress: 42,
+    });
+
+    fixture = TestBed.createComponent(VectorConfigurationSettingsComponent);
+    fixture.detectChanges();
+
+    expect(on).toHaveBeenCalledOnce();
+    expect(removeProgressListener).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.selectedLocalModelTier()).toBe('medium');
+    expect(
+      modelCard(target.modelName).querySelector('.local-model-progress')?.textContent,
+    ).toContain('42%');
+
+    finishDownload?.({ ...target, installed: true, cachedBytes: 1024 });
+    await downloadPromise;
   });
 
   it('renders cloud providers and keeps separate API key drafts', () => {

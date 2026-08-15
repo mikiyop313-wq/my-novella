@@ -1,15 +1,15 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 
 import type {
-  DownloadLocalEmbeddingModelPayload,
-  LocalEmbeddingModelDownloadProgress,
   LocalEmbeddingModelName,
   LocalEmbeddingModelStatus,
   LocalEmbeddingModelTier,
-  UninstallLocalEmbeddingModelPayload,
 } from '../../../../../../shared/models/vector.model';
-import { ElectronService } from '../../../../core/services/electron.service';
 import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
+import {
+  LocalEmbeddingModelStateService,
+  type LocalModelOperationType,
+} from '../../services/local-embedding-model-state.service';
 
 import { AiProviderIconComponent } from '../ai-configuration-settings/ai-provider-icon.component';
 
@@ -22,23 +22,15 @@ interface VectorCloudProvider {
   keyPlaceholder: string;
 }
 
-type LocalModelOperationType = 'download' | 'uninstall';
-
-interface LocalModelOperation {
-  type: LocalModelOperationType;
-  modelName: LocalEmbeddingModelName;
-}
-
 @Component({
   selector: 'app-vector-configuration-settings',
   imports: [AiProviderIconComponent],
   templateUrl: './vector-configuration-settings.component.html',
   styleUrl: '../ai-configuration-settings/ai-configuration-settings.component.scss',
 })
-export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
-  private readonly electronService = inject(ElectronService);
+export class VectorConfigurationSettingsComponent implements OnInit {
+  private readonly localModelState = inject(LocalEmbeddingModelStateService);
   private readonly confirmService = inject(ConfirmModalService);
-  private removeDownloadProgressListener: () => void = () => {};
 
   readonly providers: readonly VectorCloudProvider[] = [
     {
@@ -66,13 +58,13 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
     openai: '',
     voyage: '',
   });
-  readonly localModelStatuses = signal<LocalEmbeddingModelStatus[]>([]);
-  readonly selectedLocalModelTier = signal<LocalEmbeddingModelTier>('large');
-  readonly localModelStatusLoading = signal(true);
-  readonly localModelOperation = signal<LocalModelOperation | null>(null);
-  readonly localModelProgress = signal<LocalEmbeddingModelDownloadProgress | null>(null);
-  readonly localModelErrors = signal<Partial<Record<LocalEmbeddingModelName, string>>>({});
-  readonly localModelLoadError = signal<string | null>(null);
+  readonly localModelStatuses = this.localModelState.statuses;
+  readonly selectedLocalModelTier = this.localModelState.selectedTier;
+  readonly localModelStatusLoading = this.localModelState.statusLoading;
+  readonly localModelOperation = this.localModelState.operation;
+  readonly localModelProgress = this.localModelState.progress;
+  readonly localModelErrors = this.localModelState.errors;
+  readonly localModelLoadError = this.localModelState.loadError;
 
   readonly selectedProvider = computed(() => {
     const providerId = this.selectedProviderId();
@@ -80,62 +72,15 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    this.removeDownloadProgressListener = this.electronService.on(
-      'vectors:local-model:download-progress',
-      (progress: LocalEmbeddingModelDownloadProgress) => {
-        const operation = this.localModelOperation();
-        if (operation?.type === 'download' && operation.modelName === progress.modelName) {
-          this.localModelProgress.set(progress);
-        }
-      },
-    );
-    void this.loadLocalModelStatus();
-  }
-
-  ngOnDestroy(): void {
-    this.removeDownloadProgressListener();
+    void this.localModelState.ensureStatuses().catch(() => undefined);
   }
 
   async loadLocalModelStatus(): Promise<void> {
-    this.localModelStatusLoading.set(true);
-    this.localModelLoadError.set(null);
-    try {
-      const statuses = await this.electronService.invoke('vectors:local-model:get-status');
-      this.localModelStatuses.set(statuses as LocalEmbeddingModelStatus[]);
-    } catch (error) {
-      this.localModelStatuses.set([]);
-      this.localModelLoadError.set(this.errorMessage(error));
-    } finally {
-      this.localModelStatusLoading.set(false);
-    }
+    await this.localModelState.reloadStatuses().catch(() => undefined);
   }
 
   async downloadLocalModel(modelName: LocalEmbeddingModelName): Promise<void> {
-    if (this.localModelOperation()) return;
-
-    this.localModelOperation.set({ type: 'download', modelName });
-    this.localModelProgress.set(null);
-    this.setModelError(modelName, null);
-    try {
-      const payload: DownloadLocalEmbeddingModelPayload = { modelName };
-      const status = await this.electronService.invoke('vectors:local-model:download', payload);
-      this.updateModelStatus(status as LocalEmbeddingModelStatus);
-    } catch (error) {
-      const downloadError = this.errorMessage(error);
-      try {
-        const statuses = await this.electronService.invoke('vectors:local-model:get-status');
-        this.localModelStatuses.set(statuses as LocalEmbeddingModelStatus[]);
-        this.setModelError(modelName, downloadError);
-      } catch (statusError) {
-        this.setModelError(
-          modelName,
-          `${downloadError} Status refresh failed: ${this.errorMessage(statusError)}`,
-        );
-      }
-    } finally {
-      this.localModelOperation.set(null);
-      this.localModelProgress.set(null);
-    }
+    await this.localModelState.download(modelName);
   }
 
   requestLocalModelUninstall(status: LocalEmbeddingModelStatus): void {
@@ -184,7 +129,7 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
   }
 
   selectLocalModelTier(tier: LocalEmbeddingModelTier): void {
-    this.selectedLocalModelTier.set(tier);
+    this.localModelState.selectTier(tier);
   }
 
   modelError(modelName: LocalEmbeddingModelName): string | null {
@@ -200,42 +145,11 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
     modelName: LocalEmbeddingModelName,
     clearVectors: boolean,
   ): Promise<void> {
-    if (this.localModelOperation()) return;
-
-    this.localModelOperation.set({ type: 'uninstall', modelName });
-    this.setModelError(modelName, null);
-    try {
-      const payload: UninstallLocalEmbeddingModelPayload = { modelName, clearVectors };
-      const status = await this.electronService.invoke('vectors:local-model:uninstall', payload);
-      this.updateModelStatus(status as LocalEmbeddingModelStatus);
-    } catch (error) {
-      this.setModelError(modelName, this.errorMessage(error));
-    } finally {
-      this.localModelOperation.set(null);
-    }
-  }
-
-  private updateModelStatus(status: LocalEmbeddingModelStatus): void {
-    this.localModelStatuses.update((statuses) =>
-      statuses.map((current) => (current.modelName === status.modelName ? status : current)),
-    );
-  }
-
-  private setModelError(modelName: LocalEmbeddingModelName, error: string | null): void {
-    this.localModelErrors.update((errors) => {
-      const updated = { ...errors };
-      if (error) updated[modelName] = error;
-      else delete updated[modelName];
-      return updated;
-    });
+    await this.localModelState.uninstall(modelName, clearVectors);
   }
 
   private clampPercentage(value: number): number {
     return Math.round(Math.min(100, Math.max(0, value)));
-  }
-
-  private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
   }
 
   selectProvider(providerId: VectorCloudProviderId): void {

@@ -130,6 +130,66 @@ describe('LocalEmbeddingModelManager', () => {
     expect(provider.dispose).toHaveBeenCalledTimes(2);
   });
 
+  it('cooperatively cancels a download, removes partial files, and permits retry', async () => {
+    const paths = pathsByModel.get(mixedbread.modelName)!;
+    let reportProgress!: () => void;
+    provider.download = vi.fn(
+      (onProgress) =>
+        new Promise<void>((_resolve, reject) => {
+          reportProgress = () => {
+            try {
+              onProgress?.({ status: 'progress', file: 'model.onnx', progress: 50 });
+            } catch (error) {
+              reject(error);
+            }
+          };
+        }),
+    );
+    await mkdir(paths.modelDir, { recursive: true });
+    await writeFile(path.join(paths.modelDir, 'partial.onnx'), 'partial');
+
+    const download = manager.download({ modelName: mixedbread.modelName });
+    const cancellation = manager.cancelActiveDownload();
+    reportProgress();
+
+    await expect(download).rejects.toThrow('Download cancelled');
+    await expect(cancellation).resolves.toBeUndefined();
+    await expect(manager.getStatus(mixedbread.modelName)).resolves.toMatchObject({
+      installed: false,
+      cachedBytes: 0,
+    });
+
+    provider.download = vi.fn().mockResolvedValue(undefined);
+    await expect(manager.download({ modelName: mixedbread.modelName })).resolves.toMatchObject({
+      installed: true,
+    });
+  });
+
+  it('treats cancellation without an active download as a no-op', async () => {
+    await expect(manager.cancelActiveDownload()).resolves.toBeUndefined();
+  });
+
+  it('cleans incomplete model directories while preserving completed installations', async () => {
+    const incompletePaths = pathsByModel.get(mixedbread.modelName)!;
+    const installedPaths = pathsByModel.get(bgeLarge.modelName)!;
+    await mkdir(incompletePaths.modelDir, { recursive: true });
+    await mkdir(installedPaths.modelDir, { recursive: true });
+    await writeFile(path.join(incompletePaths.modelDir, 'partial.onnx'), 'partial');
+    await writeFile(path.join(installedPaths.modelDir, 'model.onnx'), 'complete');
+    await writeFile(installedPaths.installationMarkerPath, bgeLarge.modelName);
+
+    await manager.cleanupIncompleteDownloads();
+
+    await expect(manager.getStatus(mixedbread.modelName)).resolves.toMatchObject({
+      installed: false,
+      cachedBytes: 0,
+    });
+    await expect(manager.getStatus(bgeLarge.modelName)).resolves.toMatchObject({
+      installed: true,
+      cachedBytes: 8 + bgeLarge.modelName.length,
+    });
+  });
+
   it('removes only the selected model directory and preserves sibling caches', async () => {
     const mixedbreadPaths = pathsByModel.get(mixedbread.modelName)!;
     const bgePaths = pathsByModel.get(bgeLarge.modelName)!;
