@@ -70,4 +70,41 @@
 
     }
   }
+
+  .act-header, .chapter-header {
+    position: relative;
+
+    .header-actions {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0;
+      transition: opacity 0.2s ease-in-out;
+      display: flex;
+      gap: 8px;
+
+      .delete-btn {
+        background: transparent;
+        border: none;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+
+        &:hover {
+          color: #e74c3c;
+          background: rgba(231, 76, 60, 0.1);
+        }
+      }
+    }
+
+    &:hover .header-actions {
+      opacity: 1;
+    }
+  }
 }

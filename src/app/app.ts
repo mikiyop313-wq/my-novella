@@ -4,10 +4,11 @@ import { ElectronService } from './core/services/electron.service';
 import { ThemeService } from './core/services/theme.service';
 import { routeAnimations } from './shared/animations/route-animations';
 import { RouterLink } from '@angular/router';
+import { ConfirmModalComponent } from './shared/components/confirm-modal/confirm-modal.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink],
+  imports: [RouterOutlet, RouterLink, ConfirmModalComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   animations: [routeAnimations]

@@ -22,7 +22,7 @@ export function buildEditorContent(mode: ManuscriptMode, data: any): string {
         content += `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>`;
         if (chapter.prose) content += chapter.prose;
         chapter.scenes?.forEach(scene => {
-          content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}"></scene-summary>`;
+          content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>`;
           if (scene.prose) content += scene.prose;
         });
       });
@@ -35,7 +35,7 @@ export function buildEditorContent(mode: ManuscriptMode, data: any): string {
       content += `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>`;
       if (chapter.prose) content += chapter.prose;
       chapter.scenes?.forEach(scene => {
-        content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}"></scene-summary>`;
+        content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>`;
         if (scene.prose) content += scene.prose;
       });
     });
@@ -44,12 +44,12 @@ export function buildEditorContent(mode: ManuscriptMode, data: any): string {
     content += `<chapter-header data-id="${chapter.id}" data-title="${escapeHtml(chapter.title)}" data-position="${chapter.position}"></chapter-header>`;
     if (chapter.prose) content += chapter.prose;
     chapter.scenes?.forEach(scene => {
-      content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}"></scene-summary>`;
+      content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>`;
       if (scene.prose) content += scene.prose;
     });
   } else if (mode === 'scene') {
     const scene = data as SceneDto;
-    content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}"></scene-summary>`;
+    content += `<scene-summary data-id="${scene.id}" data-summary="${escapeHtml(scene.summary)}" data-position="${scene.position}"></scene-summary>`;
     if (scene.prose) content += scene.prose;
   }
 
