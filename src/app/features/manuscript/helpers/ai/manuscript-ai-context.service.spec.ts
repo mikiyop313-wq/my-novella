@@ -64,8 +64,11 @@ describe('ManuscriptAiContextService', () => {
       schema.node('aiPrompt'),
       paragraph('Current after prompt.'),
     ]);
-    invoke.mockResolvedValue({
-      'scene-1': proseDocument('Persisted previous prose.'),
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'manuscript:getOutline') return createHierarchy();
+      return {
+        'scene-1': proseDocument('Persisted previous prose.'),
+      };
     });
 
     const messages = await service.buildMessages(baseRequest(doc, findNodePos(doc, 'aiPrompt')));
@@ -77,6 +80,26 @@ describe('ManuscriptAiContextService', () => {
     expect(messages[0].content).toContain('Prose:\nCurrent before prompt.');
     expect(messages[0].content).not.toContain('Current after prompt.');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('loads an Outline with persisted summaries for scenes before the current prompt scene', async () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-1'),
+      paragraph('Earlier scene prose.'),
+      sceneSummary('scene-2'),
+      schema.node('aiPrompt'),
+    ]);
+
+    const request = baseRequest(doc, findNodePos(doc, 'aiPrompt'));
+    request.hierarchy[0].chapters![0].scenes![0].summary = null;
+    invoke.mockResolvedValue(createHierarchy());
+
+    const messages = await service.buildMessages(request);
+
+    expect(invoke).toHaveBeenCalledWith('manuscript:getOutline', { bookId: 'book-1' });
+    expect(messages[0].content).toContain('## Outline');
+    expect(messages[0].content).toContain('Summary:\nScene 1 summary.');
+    expect(messages[0].content).not.toContain('Summary:\nScene 2 summary.');
   });
 
   it('splits an explicitly selected current scene around the AI prompt', async () => {

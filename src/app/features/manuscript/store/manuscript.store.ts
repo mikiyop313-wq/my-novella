@@ -455,10 +455,7 @@ export const ManuscriptStore = signalStore(
     async updateAct(payload: UpdateActPayload): Promise<void> {
       try {
         await manuscriptStructureService.updateAct(payload);
-
-        if (payload.title !== undefined) {
-          workspaceBookStore.updateActTitle(payload.id, payload.title);
-        }
+        workspaceBookStore.updateActMetadata(payload);
       } catch (error) {
         console.error('updateAct: IPC call failed', error);
       }
@@ -467,10 +464,7 @@ export const ManuscriptStore = signalStore(
     async updateChapter(payload: UpdateChapterPayload): Promise<void> {
       try {
         await manuscriptStructureService.updateChapter(payload);
-
-        if (payload.title !== undefined) {
-          workspaceBookStore.updateChapterTitle(payload.id, payload.title);
-        }
+        workspaceBookStore.updateChapterMetadata(payload);
       } catch (error) {
         console.error('updateChapter: IPC call failed', error);
       }
@@ -479,10 +473,7 @@ export const ManuscriptStore = signalStore(
     async updateScene(payload: UpdateScenePayload): Promise<void> {
       try {
         await manuscriptStructureService.updateScene(payload);
-
-        if (payload.title !== undefined) {
-          workspaceBookStore.updateSceneTitle(payload.id, payload.title);
-        }
+        workspaceBookStore.updateSceneMetadata(payload);
       } catch (error) {
         console.error('updateScene: IPC call failed', error);
       }

@@ -49,14 +49,14 @@ describe('Story context builder', () => {
     expect(result.match(/Selected prose\./g)).toHaveLength(1);
   });
 
-  it('renders a Partial Outline with summaries only for scenes before the current scene', () => {
+  it('renders an Outline with summaries only for scenes before the current scene', () => {
     const result = serializePartialOutline(
       createHierarchy(),
       'Silver Key',
       'scene-3',
     );
 
-    expect(result).toContain('## Partial Outline');
+    expect(result).toContain('## Outline');
     expect(result).toContain('--- BEGIN NOVEL — Silver Key ---');
     expect(result).toContain('--- BEGIN ACT 1 — Act One ---');
     expect(result).toContain('--- BEGIN CHAPTER 1 — Chapter One ---');
@@ -76,7 +76,7 @@ describe('Story context builder', () => {
     ['the first scene', createHierarchy(), 'scene-1'],
     ['an unknown scene', createHierarchy(), 'missing-scene'],
     ['an empty hierarchy', [], 'scene-1'],
-  ])('omits the Partial Outline for %s', (_label, hierarchy, currentSceneId) => {
+  ])('omits the Outline for %s', (_label, hierarchy, currentSceneId) => {
     expect(serializePartialOutline(hierarchy, 'Silver Key', currentSceneId)).toBe('');
   });
 

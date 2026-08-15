@@ -24,7 +24,7 @@ const EXCLUDED_PROSE_NODES = new Set([
 ]);
 
 const FULL_OUTLINE_HEADING = '## Full Outline';
-const PARTIAL_OUTLINE_HEADING = '## Partial Outline';
+const OUTLINE_HEADING = '## Outline';
 const SELECTED_MANUSCRIPT_HEADING = '## Selected Manuscript Context';
 const AUTOMATIC_MANUSCRIPT_HEADING = '## Automatic Manuscript Context';
 const NARRATIVE_GUIDANCE_HEADING = '## Narrative Guidance';
@@ -187,7 +187,7 @@ export function serializePartialOutline(
     sceneContent: new Map(),
   });
 
-  return body ? `${PARTIAL_OUTLINE_HEADING}\n\n${body}` : '';
+  return body ? `${OUTLINE_HEADING}\n\n${body}` : '';
 }
 
 export function serializeSelectedManuscript(

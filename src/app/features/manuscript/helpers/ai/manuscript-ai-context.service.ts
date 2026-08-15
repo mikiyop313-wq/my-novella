@@ -25,6 +25,7 @@ import {
   serializeCodexContext,
   serializeFullOutline,
   serializeNarrativeGuidance,
+  serializePartialOutline,
   serializeSelectedManuscript,
   serializeTiptapDocument,
   serializeTiptapNodes,
@@ -83,9 +84,12 @@ export class ManuscriptAiContextService {
     const currentProseBeforePrompt = promptBoundary?.beforePromptProse ?? '';
     const selectedSceneIds = expandManuscriptRefs(request.hierarchy, request.manuscriptRefs);
     const usesAutomaticFallback = !request.includeFullOutline && request.manuscriptRefs.length === 0;
-    const previousSceneId = usesAutomaticFallback && currentSceneId
+    const precedingSceneId = currentSceneId
       ? findPreviousSceneId(request.hierarchy, currentSceneId)
       : null;
+    const hasPartialOutline = !request.includeFullOutline
+      && precedingSceneId !== null;
+    const previousSceneId = usesAutomaticFallback ? precedingSceneId : null;
     const proseSceneIds = new Set(selectedSceneIds);
     if (previousSceneId) proseSceneIds.add(previousSceneId);
 
@@ -105,7 +109,7 @@ export class ManuscriptAiContextService {
     if (unloadedSceneIds.length > 0) await this.saver.flushDirtySections();
 
     const [outlineHierarchy, databaseProse] = await Promise.all([
-      request.includeFullOutline
+      request.includeFullOutline || hasPartialOutline
         ? this.manuscriptStructureService.getOutline(request.bookId)
         : Promise.resolve(null),
       unloadedSceneIds.length > 0
@@ -140,6 +144,9 @@ export class ManuscriptAiContextService {
           previousSceneId,
           proseBySceneId,
         );
+    const partialOutline = hasPartialOutline && currentSceneId
+      ? serializePartialOutline(outlineHierarchy ?? [], request.bookTitle, currentSceneId)
+      : '';
 
     const pointOfView = request.pointOfView === 'global'
       ? this.resolveGlobalPointOfView(request.bookId)
@@ -176,6 +183,7 @@ export class ManuscriptAiContextService {
         content: [
           '--- BEGIN STORY CONTEXT ---',
           narrativeGuidance,
+          partialOutline,
           manuscriptContext,
           codexContext,
           vectorContext,
