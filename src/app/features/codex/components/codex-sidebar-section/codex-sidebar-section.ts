@@ -1,5 +1,5 @@
 import { LowerCasePipe, NgTemplateOutlet } from '@angular/common';
-import { Component, DestroyRef, ElementRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, ElementRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CdkMenuModule } from '@angular/cdk/menu';
@@ -24,6 +24,7 @@ import {
   type CodexEntryMenuPayload,
 } from '../../../../../../shared/models/codex-window.model';
 import { MarkdownPlainTextPipe } from '../../../../shared/pipes/markdown-plain-text.pipe';
+import { ElementAnimationDirective } from '../../../../shared/directives/element-animation.directive';
 
 type CodexEntityType = {
   value: CodexEntryType;
@@ -45,6 +46,7 @@ export type FilterTriState = 'include' | 'exclude' | 'any';
     CdkMenuModule,
     CodexEntryMenuComponent,
     MarkdownPlainTextPipe,
+    ElementAnimationDirective,
   ],
   templateUrl: './codex-sidebar-section.html',
   styleUrl: './codex-sidebar-section.scss',
@@ -57,6 +59,8 @@ export class CodexSidebarSection {
   readonly codexEntryOpener = inject(CodexEntryOpenerService);
   readonly codexWindowService = inject(CodexWindowService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
+  private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly activeType = this.codexStore.activeType;
   readonly searchQuery = this.codexStore.searchQuery;
@@ -130,6 +134,7 @@ export class CodexSidebarSection {
   readonly hasSearchQuery = computed(() => this.searchQuery().trim().length > 0);
 
   readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+  private readonly entryAnimation = viewChild<ElementAnimationDirective>('entryAnimation');
 
   constructor() {
     effect((onCleanup) => {
@@ -220,7 +225,33 @@ export class CodexSidebarSection {
   }
 
   async saveEntry(entryData: CodexEntryMenuPayload): Promise<void> {
-    await this.codexStore.saveEntry(this.store.bookId(), entryData);
+    if (this.selectedEntry()) {
+      await this.codexStore.saveEntry(this.store.bookId(), entryData);
+      return;
+    }
+
+    const previousEntryIds = new Set(this.entries().map(entry => entry.id));
+    const previousEntryPositions = this.captureEntryPositions();
+    const animation = this.entryAnimation();
+    let createdEntryId: string | undefined;
+    const createEntry = async (): Promise<void> => {
+      await this.codexStore.saveEntry(this.store.bookId(), entryData);
+      createdEntryId = this.entries().find(entry => !previousEntryIds.has(entry.id))?.id;
+      this.changeDetectorRef.detectChanges();
+
+      if (animation && createdEntryId) {
+        this.findEntryElement(createdEntryId)?.classList.add('codex-entry-pending');
+        await this.animateEntryReflow(previousEntryPositions, createdEntryId);
+      }
+    };
+
+    await (animation
+      ? animation.animateAfterCreate(createEntry, () => {
+          const createdEntry = this.findEntryElement(createdEntryId);
+          createdEntry?.classList.remove('codex-entry-pending');
+          return createdEntry;
+        })
+      : createEntry());
   }
 
   async archiveEntry(): Promise<void> {
@@ -232,7 +263,23 @@ export class CodexSidebarSection {
   }
 
   async deleteEntry(): Promise<void> {
-    await this.codexStore.deleteEntry(this.store.bookId());
+    const entryId = this.selectedEntry()?.id;
+    const entryElement = this.findEntryElement(entryId);
+    const deleteEntry = async (): Promise<void> => {
+      await this.codexStore.deleteEntry(this.store.bookId());
+      this.changeDetectorRef.detectChanges();
+    };
+    const animation = this.entryAnimation();
+
+    if (!animation || !entryElement) {
+      await deleteEntry();
+      return;
+    }
+
+    await animation.animateBeforeDelete(entryElement, deleteEntry);
+    if (this.entries().some(entry => entry.id === entryId)) {
+      entryElement.classList.remove('codex-entry-leaving');
+    }
   }
 
   async detachEntryWindow(request: CodexDetachRequest): Promise<void> {
@@ -256,6 +303,55 @@ export class CodexSidebarSection {
     }
 
     this.entryImageUrls.set(urls);
+  }
+
+  private findEntryElement(entryId: string | undefined): HTMLElement | null {
+    if (!entryId) return null;
+
+    return this.getEntryElements()
+      .find(element => element.dataset['codexEntryId'] === entryId) ?? null;
+  }
+
+  private getEntryElements(): HTMLElement[] {
+    return Array.from(
+      this.hostElement.nativeElement.querySelectorAll<HTMLElement>('[data-codex-entry-id]'),
+    );
+  }
+
+  private captureEntryPositions(): Map<string, number> {
+    return new Map(
+      this.getEntryElements().flatMap(element => {
+        const entryId = element.dataset['codexEntryId'];
+        return entryId ? [[entryId, element.getBoundingClientRect().top] as const] : [];
+      }),
+    );
+  }
+
+  private async animateEntryReflow(
+    previousPositions: ReadonlyMap<string, number>,
+    createdEntryId: string,
+  ): Promise<void> {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    const animations = this.getEntryElements().flatMap(element => {
+      const entryId = element.dataset['codexEntryId'];
+      const previousTop = entryId ? previousPositions.get(entryId) : undefined;
+      if (!entryId || entryId === createdEntryId || previousTop === undefined) return [];
+
+      const offsetY = previousTop - element.getBoundingClientRect().top;
+      if (Math.abs(offsetY) < 0.5 || typeof element.animate !== 'function') return [];
+
+      return [element.animate(
+        [
+          { transform: 'translateY(' + offsetY + 'px)' },
+          { transform: 'translateY(0)' },
+        ],
+        { duration: 160, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both' },
+      )];
+    });
+
+    await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
+    animations.forEach(animation => animation.cancel());
   }
 
   private clearEntryImageUrls(): void {

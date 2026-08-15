@@ -124,7 +124,7 @@ export const CodexStore = signalStore(
         patchState(store, { activeType: entryData.type });
         await loadEntries(bookId, entryData.type, store.searchQuery().trim());
         await codexContextTrie.refreshCurrentContext();
-        closeCreateMenu();
+        closeCreateMenuAfterFrame();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create codex entry.';
         patchState(store, { error: message });
@@ -170,6 +170,15 @@ export const CodexStore = signalStore(
         selectedEntry: null,
         isLoadingSelectedEntry: false,
       });
+    }
+
+    function closeCreateMenuAfterFrame(): void {
+      if (typeof globalThis.requestAnimationFrame === 'function') {
+        globalThis.requestAnimationFrame(() => closeCreateMenu());
+        return;
+      }
+
+      closeCreateMenu();
     }
 
     async function openEntryById(entryId: string): Promise<void> {

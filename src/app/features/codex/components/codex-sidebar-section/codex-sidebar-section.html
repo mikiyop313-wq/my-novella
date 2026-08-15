@@ -1,5 +1,8 @@
 <section class="sidebar-section" [class.is-collapsed]="!store.sidebarOpen()" cdkOverlayOrigin
-  #sectionOrigin="cdkOverlayOrigin">
+  #sectionOrigin="cdkOverlayOrigin" appElementAnimation #entryAnimation="appElementAnimation"
+  appElementAnimationEnterClass="codex-entry-entering"
+  appElementAnimationLeaveClass="codex-entry-leaving" [appElementAnimationDurationMs]="260"
+  [appElementAnimationUseViewTransition]="false">
   <div class="section-body">
     <ng-template #typeIcon let-type="type">
       @if (type === 'character') {
@@ -160,7 +163,7 @@
     } @else if (entries().length > 0) {
     <div class="entry-list" [attr.aria-label]="type.label">
       @for (entry of entries(); track entry.id) {
-      <article class="entry-card" (click)="openEntry(entry)" tabindex="0" role="button"
+      <article class="entry-card" [attr.data-codex-entry-id]="entry.id" (click)="openEntry(entry)" tabindex="0" role="button"
         (keydown.enter)="openEntry(entry)" (keydown.space)="openEntry(entry); $event.preventDefault()">
         <div class="entry-card-icon">
           @if (getEntryImageUrl(entry); as thumbnailUrl) {

@@ -5,27 +5,38 @@ import type {
   CodexEntryDetailDto,
   CodexEntryDto,
 } from '../../../../../shared/models/codex.model';
+import type { CodexEntryMenuPayload } from '../../../../../shared/models/codex-window.model';
 import { ToastService } from '../../../shared/services/toast.service';
 import { CodexContextTrieService } from '../services/codex-context-trie.service';
 import { CodexEntryPersistenceService } from '../services/codex-entry-persistence.service';
 import { CodexService } from '../services/codex.service';
 import { CodexStore } from './codex.store';
 
-describe('CodexStore entry opening', () => {
+describe('CodexStore', () => {
   let store: InstanceType<typeof CodexStore>;
-  let codexService: { getEntry: ReturnType<typeof vi.fn> };
+  let codexService: {
+    getEntry: ReturnType<typeof vi.fn>;
+    getEntries: ReturnType<typeof vi.fn>;
+  };
+  let persistenceService: { createEntry: ReturnType<typeof vi.fn> };
+  let codexContextTrie: { refreshCurrentContext: ReturnType<typeof vi.fn> };
   let toastService: { error: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    codexService = { getEntry: vi.fn() };
+    codexService = {
+      getEntry: vi.fn(),
+      getEntries: vi.fn(),
+    };
+    persistenceService = { createEntry: vi.fn() };
+    codexContextTrie = { refreshCurrentContext: vi.fn() };
     toastService = { error: vi.fn() };
 
     TestBed.configureTestingModule({
       providers: [
         CodexStore,
         { provide: CodexService, useValue: codexService },
-        { provide: CodexEntryPersistenceService, useValue: {} },
-        { provide: CodexContextTrieService, useValue: {} },
+        { provide: CodexEntryPersistenceService, useValue: persistenceService },
+        { provide: CodexContextTrieService, useValue: codexContextTrie },
         { provide: ToastService, useValue: toastService },
       ],
     });
@@ -34,7 +45,66 @@ describe('CodexStore entry opening', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     TestBed.resetTestingModule();
+  });
+
+  it('refreshes entries and context before closing the create menu on the next frame', async () => {
+    const callOrder: string[] = [];
+    let frameCallback: FrameRequestCallback | undefined;
+    const refreshedEntries = [createEntry({ id: 'codex-2', type: 'location' })];
+    persistenceService.createEntry.mockImplementationOnce(async () => {
+      callOrder.push('persist');
+    });
+    codexService.getEntries.mockImplementationOnce(async () => {
+      callOrder.push('entries');
+      return refreshedEntries;
+    });
+    codexContextTrie.refreshCurrentContext.mockImplementationOnce(async () => {
+      callOrder.push('context');
+    });
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      callOrder.push('schedule-close');
+      frameCallback = callback;
+      return 1;
+    }));
+    store.openCreateMenu('location');
+
+    await store.saveEntry('book-1', createEntryPayload({ type: 'location' }));
+
+    expect(callOrder).toEqual(['persist', 'entries', 'context', 'schedule-close']);
+    expect(store.entries()).toEqual(refreshedEntries);
+    expect(store.isCreatingEntry()).toBe(true);
+    expect(store.isSavingEntry()).toBe(false);
+
+    frameCallback?.(performance.now());
+
+    expect(store.isCreatingEntry()).toBe(false);
+  });
+
+  it('closes the create menu immediately when animation frames are unavailable', async () => {
+    vi.stubGlobal('requestAnimationFrame', undefined);
+    persistenceService.createEntry.mockResolvedValueOnce(undefined);
+    codexService.getEntries.mockResolvedValueOnce([]);
+    codexContextTrie.refreshCurrentContext.mockResolvedValueOnce(undefined);
+    store.openCreateMenu('character');
+
+    await store.saveEntry('book-1', createEntryPayload());
+
+    expect(store.isCreatingEntry()).toBe(false);
+    expect(store.isSavingEntry()).toBe(false);
+  });
+
+  it('keeps the create menu open and clears saving state when creation fails', async () => {
+    persistenceService.createEntry.mockRejectedValueOnce(new Error('Create failed'));
+    store.openCreateMenu('character');
+
+    await store.saveEntry('book-1', createEntryPayload());
+
+    expect(store.isCreatingEntry()).toBe(true);
+    expect(store.isSavingEntry()).toBe(false);
+    expect(store.error()).toBe('Create failed');
+    expect(toastService.error).toHaveBeenCalledWith('Create failed', 'Codex');
   });
 
   it('loads and selects an entry by ID', async () => {
@@ -139,6 +209,21 @@ function createEntryDetail(
     ...createEntry(overrides),
     entryNotes: [],
     entryProgression: [],
+    ...overrides,
+  };
+}
+
+function createEntryPayload(
+  overrides: Partial<CodexEntryMenuPayload> = {},
+): CodexEntryMenuPayload {
+  return {
+    type: 'character',
+    name: 'Mara Vale',
+    alias: '',
+    description: '',
+    trackingSetting: 'include_when_detected',
+    notes: [],
+    progression: [],
     ...overrides,
   };
 }
