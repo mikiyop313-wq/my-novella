@@ -29,7 +29,9 @@ export const subcategories = sqliteTable('subcategories', {
     name: text('name').notNull(),
     isCustom: integer('is_custom', { mode: 'boolean' }).notNull().default(false),
     parentCategoryId: text('parent_category_id').notNull().references(() => categories.id, { onDelete: 'cascade' }),
-});
+}, (t) => ({
+    unq: unique().on(t.name, t.parentCategoryId),
+}));
 
 export const bookTags = sqliteTable('book_tags', {
     bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),

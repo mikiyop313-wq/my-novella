@@ -1,5 +1,5 @@
 import { db } from '../index';
-import { books, categories, bookTags, language } from '../schema';
+import { books, categories, bookTags, language, subcategories } from '../schema';
 import { eq } from 'drizzle-orm';
 import { BookDto, CreateBookDto, UpdateBookDto, CategoryDto } from '../../shared/models/book.model';
 
@@ -18,7 +18,7 @@ export class BookRepository {
 
         const dto: BookDto = {
             ...rest,
-            coverImage,
+            coverImage: coverImage as Uint8Array,
             createdAt: createdAt.toISOString(),
             lastEditedAt: lastEditedAt.toISOString(),
             categories
@@ -137,6 +137,15 @@ export class BookRepository {
 
     async getLanguages(): Promise<{ languageName: string }[]> {
         return await db.select().from(language);
+    }
+
+    async getGenres() {
+        return await db.query.categories.findMany({
+            where: eq(categories.type, 'genre'),
+            with: {
+                subcategories: true
+            }
+        });
     }
 }
 

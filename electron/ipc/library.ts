@@ -46,4 +46,13 @@ export function setupLibraryHandlers() {
             throw error;
         }
     });
+
+    ipcMain.handle('library:get-genres', async () => {
+        try {
+            return await bookRepository.getGenres();
+        } catch (error) {
+            console.error('Error fetching genres:', error);
+            throw error;
+        }
+    });
 }

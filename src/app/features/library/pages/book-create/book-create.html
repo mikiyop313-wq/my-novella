@@ -51,10 +51,10 @@
         <!-- Genres -->
         <div class="input-group autocomplete-group">
           <label>Genres & Subgenres</label>
-          <app-autocomplete-dropdown [options]="genreOptions" [selectedValue]="genres.value" [multi]="true"
-            [allowCustom]="false" placeholder="Select genres..."
-            (selectionChange)="onSelectionChange('genre', $event)">
-          </app-autocomplete-dropdown>
+                        <app-autocomplete-dropdown [options]="config.genres()" [selectedValue]="genres.value"
+                            [multi]="true" [allowCustom]="false" [grouped]="true" placeholder="Select book genres..."
+                            (selectionChange)="onSelectionChange('genre', $event)">
+                        </app-autocomplete-dropdown>
         </div>
 
         <!-- Tropes -->
