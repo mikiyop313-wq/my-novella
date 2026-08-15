@@ -5,7 +5,7 @@ import {
   type ChatThreadDetailDto,
 } from '../../../../../shared/models/chat.model';
 import { AiStore } from '../../../core/store/ai.store';
-import { AiStreamService } from '../../../core/services/ai-stream.service';
+import { AiGenerationSessionService } from '../../../core/services/ai-generation-session.service';
 import { ToastService } from '../../../shared/services/toast.service';
 import {
   buildAiPrompt,
@@ -50,7 +50,7 @@ export class ChatResponseService {
   // ---------------------------------------------------------------------------
 
   private readonly aiStore = inject(AiStore);
-  private readonly aiStreamService = inject(AiStreamService);
+  private readonly generationSessions = inject(AiGenerationSessionService);
   private readonly chatAiContext = inject(ChatAiContextService);
   private readonly chatStore = inject(ChatStore);
   private readonly toastService = inject(ToastService);
@@ -65,6 +65,9 @@ export class ChatResponseService {
   private readonly stoppingResponse = signal(false);
   private readonly responseRenderVersion = signal(0);
   private activeStreamId: string | null = null;
+  private activeResponseThreadId: string | null = null;
+  private activeAssistantMessageId: string | null = null;
+  private activeResponseSessionId: string | null = null;
 
   readonly isGeneratingResponse = this.generatingResponse.asReadonly();
   readonly isStoppingResponse = this.stoppingResponse.asReadonly();
@@ -113,6 +116,9 @@ export class ChatResponseService {
     let reasoningSummary = '';
 
     this.activeStreamId = streamId;
+    this.activeResponseThreadId = threadId;
+    this.activeAssistantMessageId = null;
+    this.activeResponseSessionId = null;
     this.generatingResponse.set(true);
     this.requestRender();
 
@@ -140,6 +146,7 @@ export class ChatResponseService {
             }
 
             assistantMessage = message;
+            this.activeAssistantMessageId = message?.id ?? null;
             return message;
           });
       }
@@ -164,15 +171,16 @@ export class ChatResponseService {
     };
 
     try {
-      const generatedText = await this.aiStreamService.streamText({
+      const session = this.generationSessions.start({
         streamId,
+        source: 'chat-response',
         bookId,
         aiPrompt,
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: settings.reasoningMode,
-        onToken: (token) => {
-          streamedContent += token;
+        onContentChange: (content) => {
+          streamedContent = content;
           if (!streamedContent.trim()) return;
 
           queueStreamingPatch({
@@ -180,17 +188,27 @@ export class ChatResponseService {
             ...(reasoningSummary.trim() ? { reasoningSummary } : {}),
           });
         },
-        onReasoningUpdate: (reasoningText) => {
+        onReasoningChange: (reasoningText) => {
           reasoningSummary = reasoningText;
           if (assistantMessage || assistantMessagePromise) {
             queueStreamingPatch({ reasoningSummary });
           }
         },
       });
+      if (!session) return;
+      this.activeResponseSessionId = session.id;
+
+      const result = await session.completion;
 
       await lastStreamingPatch;
 
-      const finalContent = streamedContent || generatedText;
+      streamedContent = result.content;
+      reasoningSummary = result.reasoning;
+      const finalContent = result.content;
+
+      if (result.status === 'failed') {
+        throw result.error ?? new Error('Failed to generate AI response.');
+      }
 
       // Some providers can finish without returning visible content. In that
       // case there is no assistant message worth showing or persisting.
@@ -205,7 +223,7 @@ export class ChatResponseService {
       const finalReasoningSummary = this.getReasoningSummary(reasoningSummary);
       const data = {
         content: finalContent,
-        status: 'complete' as const,
+        status: result.status === 'stopped' ? 'aborted' as const : 'complete' as const,
         modelId,
         provider,
         reasoningSummary: finalReasoningSummary,
@@ -218,7 +236,9 @@ export class ChatResponseService {
       // The local patch keeps the UI responsive; the update persists the final
       // status and metadata once streaming has settled.
       await this.chatStore.updateMessage(assistantMessage.id, data);
-      if (shouldGenerateTitle && titleBookId) {
+      this.generationSessions.release(streamId);
+      if (this.activeStreamId === streamId) this.activeStreamId = null;
+      if (result.status === 'complete' && shouldGenerateTitle && titleBookId) {
         await this.generateThreadTitle(userMessage, titleBookId, provider, modelId);
       }
     } catch (error) {
@@ -246,12 +266,35 @@ export class ChatResponseService {
       this.requestRender();
       await this.chatStore.updateMessage(assistantMessage.id, data);
     } finally {
+      this.generationSessions.release(streamId);
       this.generatingResponse.set(false);
       if (this.activeStreamId === streamId) {
         this.activeStreamId = null;
       }
+      if (this.activeResponseSessionId === streamId) {
+        this.activeResponseSessionId = null;
+        this.activeResponseThreadId = null;
+        this.activeAssistantMessageId = null;
+      }
       this.requestRender();
     }
+  }
+
+  rehydrateThread(threadId: string): void {
+    if (
+      this.activeResponseThreadId !== threadId
+      || !this.activeAssistantMessageId
+      || !this.activeResponseSessionId
+    ) return;
+
+    const session = this.generationSessions.getSession(this.activeResponseSessionId);
+    if (!session) return;
+
+    this.chatStore.patchStreamingMessage(this.activeAssistantMessageId, {
+      content: session.content(),
+      reasoningSummary: this.getReasoningSummary(session.reasoning()),
+    });
+    this.requestRender();
   }
 
   /** Stops the active response and returns a displayable error when aborting fails. */
@@ -260,7 +303,7 @@ export class ChatResponseService {
 
     this.stoppingResponse.set(true);
     try {
-      await this.aiStreamService.stopStream(this.activeStreamId);
+      await this.generationSessions.stop(this.activeStreamId);
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : 'Failed to stop the AI response.';
@@ -368,8 +411,10 @@ export class ChatResponseService {
     modelId: string | null,
   ): Promise<void> {
     try {
-      const rawTitle = await this.aiStreamService.streamText({
-        streamId: `title-${userMessage.id}`,
+      const streamId = `title-${userMessage.id}`;
+      const session = this.generationSessions.start({
+        streamId,
+        source: 'chat-title',
         bookId,
         aiPrompt: buildAiPrompt({
           requestType: 'title',
@@ -382,7 +427,15 @@ export class ChatResponseService {
         modelId: modelId ?? undefined,
         reasoningMode: false,
       });
-      const title = this.normalizeThreadTitle(rawTitle);
+      if (!session) return;
+
+      this.activeStreamId = streamId;
+      const result = await session.completion;
+      if (result.status === 'failed') {
+        throw result.error ?? new Error('Failed to generate chat thread title.');
+      }
+
+      const title = this.normalizeThreadTitle(result.content);
 
       if (title) {
         await this.chatStore.updateThread(userMessage.threadId, { title });
@@ -390,6 +443,10 @@ export class ChatResponseService {
     } catch (error) {
       // Title generation is opportunistic and should not fail the response.
       console.warn('[ChatResponseService] Failed to generate chat thread title:', error);
+    } finally {
+      const streamId = `title-${userMessage.id}`;
+      this.generationSessions.release(streamId);
+      if (this.activeStreamId === streamId) this.activeStreamId = null;
     }
   }
 

@@ -22,6 +22,7 @@ import { MarkdownComponent } from 'ngx-markdown';
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { buildContextHighlightSegments } from '../../../../shared/utils/context-highlighter';
 import { AiStore } from '../../core/store/ai.store';
+import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
 import { AutocompleteDropdownComponent } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import type { AiManuscriptContextRef } from '../../shared/models/ai-context.model';
@@ -85,6 +86,7 @@ export class Chat implements OnInit, OnDestroy {
   readonly chatStore = inject(ChatStore);
   readonly aiStore = inject(AiStore);
   readonly response = inject(ChatResponseService);
+  readonly generationSessions = inject(AiGenerationSessionService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -529,7 +531,10 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   isPromptSubmitDisabled(): boolean {
-    return !this.hasSelectedModel() || this.chatStore.isSaving() || this.isAiResponseActive();
+    return !this.hasSelectedModel()
+      || this.chatStore.isSaving()
+      || this.isAiResponseActive()
+      || this.generationSessions.hasActiveSession();
   }
 
   isSendButtonDisabled(): boolean {
@@ -922,6 +927,7 @@ export class Chat implements OnInit, OnDestroy {
 
     this.selectedModelId.set(this.chatStore.selectedThread()?.lastModelId ?? null);
     this.reasoningMode.set(false);
+    this.response.rehydrateThread(id);
   }
 
   private async openOrFocusDetachedChat(): Promise<boolean> {
