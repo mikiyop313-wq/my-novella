@@ -37,4 +37,12 @@ export class LibraryService {
   async getTropes(): Promise<any[]> {
     return await this.electronService.invoke('library:get-tropes');
   }
+
+  async getWordCount(mode: 'book' | 'act' | 'chapter' | 'scene', id: string): Promise<number> {
+    return await this.electronService.invoke('manuscript:getWordCount', { mode, id });
+  }
+
+  async getChapterCount(bookId: string): Promise<number> {
+    return await this.electronService.invoke('manuscript:getChapterCount', { bookId });
+  }
 }

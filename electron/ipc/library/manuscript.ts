@@ -96,4 +96,22 @@ export function setupManuscriptHandlers() {
             throw error;
         }
     });
+
+    ipcMain.handle('manuscript:getWordCount', async (_, { mode, id }: { mode: 'book' | 'act' | 'chapter' | 'scene', id: string }) => {
+        try {
+            return await manuscriptRepository.getWordCount(mode, id);
+        } catch (error) {
+            console.error('Failed to get word count:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('manuscript:getChapterCount', async (_, { bookId }: { bookId: string }) => {
+        try {
+            return await manuscriptRepository.getChapterCount(bookId);
+        } catch (error) {
+            console.error('Failed to get chapter count:', error);
+            throw error;
+        }
+    });
 }
