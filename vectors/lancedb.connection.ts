@@ -1,3 +1,9 @@
+/**
+ * Owns the LanceDB connection and isolates manuscript records by embedding space.
+ *
+ * @packageDocumentation
+ */
+
 import * as lancedb from '@lancedb/lancedb';
 import { app } from 'electron';
 import * as fs from 'fs';
@@ -26,16 +32,19 @@ export type { ManuscriptVectorRecord } from '../shared/models/vector.model';
 
 export { embeddingSpaceId } from './embedding-space';
 
+/** Escapes a string value before interpolation into a LanceDB SQL predicate. */
 export function escapeLanceSql(value: string): string {
     return value.replace(/'/g, "''");
 }
 
+/** Provides connection and table lifecycle operations for manuscript vectors. */
 export class VectorDatabase {
     private static instance: VectorDatabase;
     private db: lancedb.Connection | null = null;
 
     private constructor() {}
 
+    /** Returns the process-wide vector database instance. */
     public static getInstance(): VectorDatabase {
         if (!VectorDatabase.instance) {
             VectorDatabase.instance = new VectorDatabase();
@@ -43,6 +52,7 @@ export class VectorDatabase {
         return VectorDatabase.instance;
     }
 
+    /** Opens the configured LanceDB directory once and reuses the connection. */
     public async connect(): Promise<lancedb.Connection> {
         if (this.db) return this.db;
 
@@ -51,10 +61,16 @@ export class VectorDatabase {
         return this.db;
     }
 
+    /** Derives the stable manuscript table name for an embedding space. */
     public tableNameForSpace(space: EmbeddingSpaceDescriptor): string {
         return tableNameForEmbeddingSpace(space);
     }
 
+    /**
+     * Opens an embedding space's manuscript table or creates it from the record shape.
+     *
+     * @param space - Provider, model, dimensions, and revision defining vector compatibility.
+     */
     public async getManuscriptTable(space: EmbeddingSpaceDescriptor) {
         const conn = await this.connect();
         const tableName = this.tableNameForSpace(space);
@@ -89,6 +105,7 @@ export class VectorDatabase {
         );
     }
 
+    /** Removes one book's records from every manuscript space except its active space. */
     public async deleteBookFromOtherSpaces(
         bookId: string,
         activeSpace: EmbeddingSpaceDescriptor,
@@ -106,6 +123,20 @@ export class VectorDatabase {
         }
     }
 
+    /**
+     * Drops only the table derived from the supplied exact embedding-space descriptor.
+     *
+     * @param space - Provider, model, dimensions, and revision whose vectors should be removed.
+     */
+    public async dropEmbeddingSpace(space: EmbeddingSpaceDescriptor): Promise<void> {
+        const conn = await this.connect();
+        const tableName = this.tableNameForSpace(space);
+        if ((await conn.tableNames()).includes(tableName)) {
+            await conn.dropTable(tableName);
+        }
+    }
+
+    /** Removes the obsolete shared manuscript table when it is still present. */
     public async retireLegacyManuscriptTable(): Promise<void> {
         const conn = await this.connect();
         if ((await conn.tableNames()).includes(LEGACY_MANUSCRIPT_TABLE)) {
@@ -114,4 +145,5 @@ export class VectorDatabase {
     }
 }
 
+/** Process-wide LanceDB facade used by repositories and lifecycle services. */
 export const vectorDb = VectorDatabase.getInstance();

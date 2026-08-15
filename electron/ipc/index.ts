@@ -1,3 +1,9 @@
+/**
+ * Composes and registers every Electron main-process IPC handler used by the application.
+ *
+ * @packageDocumentation
+ */
+
 import { setupIpcHandlers } from './core/handlers';
 import { setupLibraryHandlers } from './library/library';
 import { setupAiHandlers } from './ai/ai';
@@ -6,8 +12,10 @@ import { setupCodexHandlers } from './codex/codex';
 import { setupManuscriptHandlers } from './library/manuscript';
 import { setupVectorHandlers } from './library/paragraph-vectors';
 import { setupSystemPromptHandlers } from './system-prompt/system-prompt';
+import { setupLocalEmbeddingModelHandlers } from './library/local-embedding-model';
 
-export function initializeIpc() {
+/** Initializes all application IPC domains once the Electron app is ready. */
+export function initializeIpc(): void {
     setupIpcHandlers();
     setupLibraryHandlers();
     setupAiHandlers();
@@ -16,6 +24,7 @@ export function initializeIpc() {
     setupManuscriptHandlers();
     setupVectorHandlers();
     setupSystemPromptHandlers();
+    setupLocalEmbeddingModelHandlers();
 
     try {
         console.log('IPC handlers initialized');

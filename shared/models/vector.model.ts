@@ -87,3 +87,42 @@ export interface SimilarParagraphResult {
     distance: number;
 }
 
+/**
+ * Defines the shared vector-search records, embedding-space identifiers, and IPC contracts.
+ *
+ * @packageDocumentation
+ */
+
+// ---------------------------------------------------------------------------
+// Local embedding model management
+// ---------------------------------------------------------------------------
+
+/** Describes whether the managed local model is installed and how much cache space it uses. */
+export interface LocalEmbeddingModelStatus {
+    modelName: string;
+    installed: boolean;
+    cachedBytes: number;
+}
+
+/** Lifecycle events emitted by Transformers.js while preparing a model. */
+export type LocalEmbeddingModelDownloadStatus =
+    | 'initiate'
+    | 'download'
+    | 'progress'
+    | 'done'
+    | 'ready';
+
+/** Progress information for one file involved in a local-model download. */
+export interface LocalEmbeddingModelDownloadProgress {
+    file: string;
+    status: LocalEmbeddingModelDownloadStatus;
+    loaded?: number;
+    total?: number;
+    progress?: number;
+}
+
+/** Options accepted by the local-model uninstall IPC operation. */
+export interface UninstallLocalEmbeddingModelPayload {
+    clearVectors: boolean;
+}
+

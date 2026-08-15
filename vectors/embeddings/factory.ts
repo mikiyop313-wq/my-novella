@@ -1,5 +1,9 @@
-import * as path from 'path';
-import { app } from 'electron';
+/**
+ * Selects, constructs, caches, and releases embedding providers for manuscript vector work.
+ *
+ * @packageDocumentation
+ */
+
 import { bookRepository } from '../../db/repositories/book.repository';
 import { EmbeddingProvider } from './types';
 import { EmbeddingModel } from '../../shared/models/vector.model';
@@ -10,6 +14,11 @@ import {
     EmbeddingProviderUnavailableError,
     requireEmbeddingApiKey,
 } from './provider-selection';
+import {
+    getLocalEmbeddingModelPaths,
+    LOCAL_EMBEDDING_MODEL_DIMENSIONS,
+    LOCAL_EMBEDDING_MODEL_NAME,
+} from './local-model-definition';
 
 // ---------------------------------------------------------------------------
 // API key stub
@@ -34,18 +43,21 @@ export { EmbeddingProviderUnavailableError } from './provider-selection';
 // ---------------------------------------------------------------------------
 
 const providerCache = new Map<EmbeddingModel, EmbeddingProvider>();
+let localProviderUnavailable = false;
 
-const modelCacheDir = path.join(app.getPath('userData'), 'models');
+const localModelPaths = getLocalEmbeddingModelPaths();
 
+/** Creates the configured provider for an embedding-provider selection. */
 function buildProvider(model: EmbeddingModel): EmbeddingProvider {
     switch (model) {
         case 'local':
             return new LocalEmbeddingProvider({
                 type: 'local',
-                modelName: 'mixedbread-ai/mxbai-embed-large-v1',
-                dimensions: 1024,
+                modelName: LOCAL_EMBEDDING_MODEL_NAME,
+                dimensions: LOCAL_EMBEDDING_MODEL_DIMENSIONS,
                 inputType: 'document',
-                cacheDir: modelCacheDir,
+                cacheDir: localModelPaths.cacheDir,
+                installationMarkerPath: localModelPaths.installationMarkerPath,
             });
 
         case 'openAI': {
@@ -92,9 +104,42 @@ export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingPro
 
     console.log(`[EmbeddingFactory] book=${bookId} → model=${model}`);
 
-    if (!providerCache.has(model)) {
-        providerCache.set(model, buildProvider(model));
+    return getOrCreateProvider(model);
+}
+
+/**
+ * Returns the cached local provider used by explicit model-management operations.
+ *
+ * @returns The active local embedding provider.
+ * @throws Error while local model files are being uninstalled.
+ */
+export function getLocalEmbeddingProvider(): LocalEmbeddingProvider {
+    return getOrCreateProvider('local') as LocalEmbeddingProvider;
+}
+
+/**
+ * Blocks new local-provider access, disposes the loaded pipeline, and invalidates its cache entry.
+ *
+ * Access remains blocked until {@link restoreLocalEmbeddingProviderAccess} is called.
+ */
+export async function releaseLocalEmbeddingProvider(): Promise<void> {
+    localProviderUnavailable = true;
+    const cached = providerCache.get('local');
+    if (cached) await (cached as LocalEmbeddingProvider).dispose();
+    providerCache.delete('local');
+}
+
+/** Allows a fresh local provider to be created after an uninstall operation has finished. */
+export function restoreLocalEmbeddingProviderAccess(): void {
+    localProviderUnavailable = false;
+}
+
+/** Returns a cached provider or constructs it when first requested. */
+function getOrCreateProvider(model: EmbeddingModel): EmbeddingProvider {
+    if (model === 'local' && localProviderUnavailable) {
+        throw new Error('The local embedding model is being uninstalled.');
     }
 
+    if (!providerCache.has(model)) providerCache.set(model, buildProvider(model));
     return providerCache.get(model)!;
 }
