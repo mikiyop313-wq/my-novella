@@ -114,7 +114,8 @@
         [selectedValue]="selectedContextValues()" [multi]="true" placeholder="+ Add Context"
         triggerVariant="add" triggerAriaLabel="Add context" chipsPosition="before"
         [compactSelectionChips]="true" [clearSearchOnSelect]="false" searchPlaceholder="Search context..."
-        emptyText="No context found." (selectionChange)="onContextChange($any($event))" />
+        emptyText="No context found." (menuOpened)="refreshContextAvailability()"
+        (selectionChange)="onContextChange($any($event))" />
     </div>
   </div>
 </div>

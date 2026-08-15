@@ -14,6 +14,7 @@ describe('AI prompt dropdown options', () => {
     const sections = buildContextDropdownSections({
       hierarchy: createHierarchy(),
       codexEntries: [],
+      automaticallyIncludedCodexEntryIds: new Set(),
       hierarchyLoading: false,
       codexLoading: false,
       hierarchyError: null,
@@ -39,6 +40,7 @@ describe('AI prompt dropdown options', () => {
         createCodexEntry('char-1', 'Ari', 'character', 'active', 'The Protagonist'),
         createCodexEntry('archived', 'Old Hero', 'character', 'archived'),
       ],
+      automaticallyIncludedCodexEntryIds: new Set(),
       hierarchyLoading: false,
       codexLoading: false,
       hierarchyError: null,
@@ -53,6 +55,42 @@ describe('AI prompt dropdown options', () => {
     expect(characters.selectionValues).toEqual(['codex:char-1', 'codex:char-2']);
     expect(entries.map(entry => entry.label)).toEqual(['Ari', 'Zara']);
     expect(entries[0].searchTerms).toEqual(['The Protagonist']);
+  });
+
+  it('disables automatically included Codex entries and excludes them from category selection', () => {
+    const sections = buildContextDropdownSections({
+      hierarchy: [],
+      codexEntries: [
+        createCodexEntry('always', 'Ari', 'character', 'active', null, 'always_include'),
+        createCodexEntry('detected', 'Mara', 'character', 'active', null, 'include_when_detected'),
+        createCodexEntry('manual', 'Zara', 'character', 'active', null, 'manual'),
+        createCodexEntry('location', 'Citadel', 'location', 'active', null, 'always_include'),
+      ],
+      automaticallyIncludedCodexEntryIds: new Set(['always', 'detected', 'location']),
+      hierarchyLoading: false,
+      codexLoading: false,
+      hierarchyError: null,
+      codexError: null,
+    });
+
+    const characters = sections[1].options[0];
+    const characterEntries = characters.submenu!.sections[0].options;
+    const locations = sections[1].options[1];
+
+    expect(characters.selectionValues).toEqual(['codex:manual']);
+    expect(characterEntries.map(entry => ({
+      value: entry.value,
+      disabled: entry.disabled,
+      hint: entry.hint,
+    }))).toEqual([
+      { value: 'codex:always', disabled: true, hint: 'Always included' },
+      { value: 'codex:detected', disabled: true, hint: 'Detected above' },
+      { value: 'codex:manual', disabled: false, hint: undefined },
+    ]);
+    expect(locations.disabled).toBe(false);
+    expect(locations.selectable).toBe(false);
+    expect(locations.selectionValues).toEqual([]);
+    expect(locations.submenu!.sections[0].options[0].hint).toBe('Always included');
   });
 
   it('round-trips persisted context state and ignores branch identifiers', () => {
@@ -74,6 +112,7 @@ describe('AI prompt dropdown options', () => {
     const sections = buildContextDropdownSections({
       hierarchy: createHierarchy(),
       codexEntries: [createCodexEntry('char-1', 'Ari', 'character')],
+      automaticallyIncludedCodexEntryIds: new Set(),
       hierarchyLoading: true,
       codexLoading: false,
       hierarchyError: null,
@@ -149,6 +188,7 @@ function createCodexEntry(
   type: CodexEntryType,
   status: CodexEntryDto['status'] = 'active',
   alias: string | null = null,
+  trackingSetting: CodexEntryDto['trackingSetting'] = 'manual',
 ): CodexEntryDto {
   return {
     id,
@@ -159,7 +199,7 @@ function createCodexEntry(
     description: null,
     image: null,
     status,
-    trackingSetting: 'manual',
+    trackingSetting,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
   };

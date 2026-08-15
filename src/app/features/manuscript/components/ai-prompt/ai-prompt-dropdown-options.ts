@@ -23,6 +23,7 @@ export interface AiPromptModel {
 export interface AiContextDropdownSource {
   hierarchy: readonly ActDto[];
   codexEntries: readonly CodexEntryDto[];
+  automaticallyIncludedCodexEntryIds: ReadonlySet<string>;
   hierarchyLoading: boolean;
   codexLoading: boolean;
   hierarchyError: string | null;
@@ -74,7 +75,11 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
 
   const codexOptions = source.codexLoading || source.codexError
     ? []
-    : CODEX_CATEGORIES.map(category => buildCodexCategoryOption(category, activeCodexEntries));
+    : CODEX_CATEGORIES.map(category => buildCodexCategoryOption(
+      category,
+      activeCodexEntries,
+      source.automaticallyIncludedCodexEntryIds,
+    ));
 
   return [
     {
@@ -171,23 +176,33 @@ function buildChapterMenu(chapter: ChapterDto): DropdownMenu<string> {
 function buildCodexCategoryOption(
   category: CodexCategory,
   activeEntries: readonly CodexEntryDto[],
+  automaticallyIncludedEntryIds: ReadonlySet<string>,
 ): DropdownOption<string> {
   const entries = activeEntries.filter(entry => entry.type === category.type);
-  const values = entries.map(entry => codexValue(entry.id));
+  const selectableEntries = entries.filter(entry => !automaticallyIncludedEntryIds.has(entry.id));
+  const values = selectableEntries.map(entry => codexValue(entry.id));
   return {
     value: `branch:codex:${category.type}`,
     label: category.label,
     count: entries.length,
     disabled: entries.length === 0,
+    selectable: entries.length > 0 && selectableEntries.length === 0 ? false : undefined,
     selectionValues: values,
     submenu: {
       sections: [{
         key: `codex-entries:${category.type}`,
-        options: entries.map(entry => ({
-          value: codexValue(entry.id),
-          label: entry.name,
-          searchTerms: entry.alias ? [entry.alias] : undefined,
-        })),
+        options: entries.map(entry => {
+          const automaticallyIncluded = automaticallyIncludedEntryIds.has(entry.id);
+          return {
+            value: codexValue(entry.id),
+            label: entry.name,
+            searchTerms: entry.alias ? [entry.alias] : undefined,
+            disabled: automaticallyIncluded,
+            hint: automaticallyIncluded
+              ? entry.trackingSetting === 'always_include' ? 'Always included' : 'Detected above'
+              : undefined,
+          };
+        }),
       }],
     },
   };

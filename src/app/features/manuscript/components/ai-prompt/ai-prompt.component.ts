@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, WritableSignal, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import type { Transaction } from '@tiptap/pm/state';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
@@ -11,6 +12,11 @@ import { CodexContextTrieService } from '../../../codex/services/codex-context-t
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import {
+  findDetectedCodexEntryIdsAbovePrompt,
+  getAutomaticallyIncludedCodexEntryIds,
+  removeAutomaticallyIncludedCodexEntryIds,
+} from './ai-prompt-codex-context';
 import {
   type AiContextSelection,
   type AiPromptModel,
@@ -67,6 +73,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
   readonly contextHierarchyError = this.workspaceBookStore.bookHierarchyError;
   readonly contextCodexEntries = this.codexContext.entries;
+  readonly contextCodexTrie = this.codexContext.trie;
   readonly contextCodexLoading = this.codexContext.isLoading;
   readonly contextCodexError = this.codexContext.error;
 
@@ -101,6 +108,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   includeFullOutline = signal(false);
   contextSceneIds = signal<string[]>([]);
   contextCodexEntryIds = signal<string[]>([]);
+  automaticallyIncludedCodexEntryIds = signal<ReadonlySet<string>>(new Set());
 
 
   // ---------------------------------------------------------------------------
@@ -138,6 +146,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   contextDropdownSections = computed(() => buildContextDropdownSections({
     hierarchy: this.contextHierarchy(),
     codexEntries: this.contextCodexEntries(),
+    automaticallyIncludedCodexEntryIds: this.automaticallyIncludedCodexEntryIds(),
     hierarchyLoading: this.contextHierarchyLoading(),
     codexLoading: this.contextCodexLoading(),
     hierarchyError: this.contextHierarchyError(),
@@ -168,6 +177,14 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         this.selectedModel.set(defaultModel.id);
       }
     });
+
+    // Codex entries and their compiled matcher load asynchronously. Refresh
+    // prompt-local availability when either source is replaced.
+    effect(() => {
+      this.contextCodexEntries();
+      this.contextCodexTrie();
+      if (this.contextTrackingInitialized) this.scheduleContextAvailabilityRefresh();
+    });
   }
 
 
@@ -179,6 +196,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.restoreAttributesFromNode();
     this.ensureBlockId();
     this.aiStore.loadModels();
+    this.contextTrackingInitialized = true;
+    this.editor().on('transaction', this.onEditorTransaction);
+    this.refreshContextAvailability();
   }
 
   ngAfterViewInit(): void {
@@ -195,6 +215,8 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   }
 
   ngOnDestroy(): void {
+    this.contextTrackingDestroyed = true;
+    this.editor().off('transaction', this.onEditorTransaction);
     this.aiStreamEditor.loadingState.delete(this.blockId());
   }
 
@@ -256,7 +278,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   onContextChange(values: readonly string[]): void {
     const selection: AiContextSelection = dropdownValuesToContextSelection(values);
     const sceneIds = [...new Set(selection.sceneIds)];
-    const codexEntryIds = [...new Set(selection.codexEntryIds)];
+    const codexEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+      [...new Set(selection.codexEntryIds)],
+      this.automaticallyIncludedCodexEntryIds(),
+    );
 
     this.includeFullOutline.set(selection.includeFullOutline);
     this.contextSceneIds.set(sceneIds);
@@ -410,6 +435,37 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.updateAttributes()({ [attrName]: value });
   }
 
+  /** Rechecks tracking immediately before presenting the context menu. */
+  refreshContextAvailability(): void {
+    const pos = this.currentNodePosition();
+    if (pos === null) return;
+
+    const detectedEntryIds = findDetectedCodexEntryIdsAbovePrompt(
+      this.editor().state.doc,
+      pos,
+      text => this.codexContext.findMatches(text),
+    );
+    const automaticallyIncludedEntryIds = getAutomaticallyIncludedCodexEntryIds(
+      this.contextCodexEntries(),
+      detectedEntryIds,
+    );
+
+    if (!this.setsEqual(this.automaticallyIncludedCodexEntryIds(), automaticallyIncludedEntryIds)) {
+      this.automaticallyIncludedCodexEntryIds.set(automaticallyIncludedEntryIds);
+    }
+
+    const selectedEntryIds = this.contextCodexEntryIds();
+    const reconciledEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+      selectedEntryIds,
+      automaticallyIncludedEntryIds,
+    );
+
+    if (reconciledEntryIds.length !== selectedEntryIds.length) {
+      this.contextCodexEntryIds.set(reconciledEntryIds);
+      this.updateAttributes()({ contextCodexEntryIds: reconciledEntryIds });
+    }
+  }
+
   private restoreStringArray(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))];
@@ -443,6 +499,28 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       provider: selectedModelObj.provider,
       modelId: selectedModelObj.id.split('/')[1] || selectedModelObj.id
     };
+  }
+
+  private contextTrackingInitialized = false;
+  private contextTrackingDestroyed = false;
+  private contextAvailabilityRefreshQueued = false;
+
+  private readonly onEditorTransaction = ({ transaction }: { transaction: Transaction }): void => {
+    if (transaction.docChanged) this.scheduleContextAvailabilityRefresh();
+  };
+
+  private scheduleContextAvailabilityRefresh(): void {
+    if (this.contextAvailabilityRefreshQueued || this.contextTrackingDestroyed) return;
+
+    this.contextAvailabilityRefreshQueued = true;
+    queueMicrotask(() => {
+      this.contextAvailabilityRefreshQueued = false;
+      if (!this.contextTrackingDestroyed) this.refreshContextAvailability();
+    });
+  }
+
+  private setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+    return left.size === right.size && [...left].every(value => right.has(value));
   }
 
 }
