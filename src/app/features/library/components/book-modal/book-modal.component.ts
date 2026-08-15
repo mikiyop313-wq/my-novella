@@ -4,8 +4,14 @@ import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { BookDto, CategoryDto } from '../../../../../../shared/models/book.model';
+import type { SaveDataExportResult } from '../../../../../../shared/models/data-transfer.model';
+import type {
+  ManuscriptExportFormat,
+  SaveManuscriptExportResult,
+} from '../../../../../../shared/models/manuscript-export.model';
 import { BookUi } from '../../store/book.store';
 import { CommonModule } from '@angular/common';
+import { ElectronService } from '../../../../core/services/electron.service';
 import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
@@ -41,6 +47,7 @@ export class BookModalComponent {
 
   private confirmService = inject(ConfirmModalService);
   private toastService = inject(ToastService);
+  private readonly electronService = inject(ElectronService);
   readonly store = inject(LibraryStore);
   readonly config = inject(ConfigStore);
   private readonly codexService = inject(CodexService);
@@ -72,9 +79,11 @@ export class BookModalComponent {
   @ViewChild('genresContent') genresContent!: ElementRef;
   @ViewChild('tropesContent') tropesContent!: ElementRef;
 
-  currentView = signal<'details' | 'settings'>('details');
+  currentView = signal<'details' | 'settings' | 'export'>('details');
   activeSlideModalAnimation = signal<boolean>(false);
+  verticalDetailsAnimation = signal<boolean>(false);
   isLifecycleActionPending = signal(false);
+  isExportPending = signal(false);
   pendingCoverFile = signal<File | null>(null);
   readonly coverCropConfig = COVER_CROP_CONFIG;
 
@@ -227,17 +236,69 @@ export class BookModalComponent {
     accordionItem.toggle();
   }
 
-  toggleView() {
-    const isNowDetails = this.currentView() === 'settings';
+  showDetails(): void {
+    this.verticalDetailsAnimation.set(this.currentView() === 'export');
+    this.currentView.set('details');
+    setTimeout(() => this.initObserver(), 0);
+    this.activeSlideModalAnimation.set(true);
+  }
 
-    if (isNowDetails) {
-      this.currentView.set('details');
-      // Re-initialize observer after the DOM updates
-      setTimeout(() => this.initObserver(), 0);
-      this.activeSlideModalAnimation.set(true);
-    } else {
-      this.activeSlideModalAnimation.set(false);
-      this.currentView.set('settings');
+  openSettingsView(): void {
+    this.activeSlideModalAnimation.set(false);
+    this.verticalDetailsAnimation.set(false);
+    this.currentView.set('settings');
+  }
+
+  openExportView(): void {
+    this.activeSlideModalAnimation.set(false);
+    this.verticalDetailsAnimation.set(true);
+    this.currentView.set('export');
+  }
+
+  async exportManuscript(format: ManuscriptExportFormat): Promise<void> {
+    if (this.isExportPending()) return;
+
+    this.isExportPending.set(true);
+    try {
+      const result = (await this.electronService.invoke('manuscript-export:save', {
+        mode: 'book',
+        id: this.book().id,
+        format,
+      })) as SaveManuscriptExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success(`The ${format.toUpperCase()} manuscript was exported.`);
+      }
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : 'Unable to export the manuscript.',
+        'Export failed',
+      );
+    } finally {
+      this.isExportPending.set(false);
+    }
+  }
+
+  async exportBookArchive(): Promise<void> {
+    if (this.isExportPending()) return;
+
+    this.isExportPending.set(true);
+    try {
+      const result = (await this.electronService.invoke('data-transfer:export', {
+        type: 'book',
+        bookId: this.book().id,
+      })) as SaveDataExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success('The book archive was exported.');
+      }
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : 'Unable to export the book archive.',
+        'Export failed',
+      );
+    } finally {
+      this.isExportPending.set(false);
     }
   }
 
