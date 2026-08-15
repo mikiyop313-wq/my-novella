@@ -7,6 +7,7 @@ import {
     ManuscriptVectorRecord,
     SearchSimilarParagraphsPayload,
     BookIndexingConfiguration,
+    ClearBookVectorIndexPayload,
 } from '../../../shared/models/vector.model';
 import { bookRepository } from '../../../db/repositories/book.repository';
 import { db } from '../../../db';
@@ -140,6 +141,34 @@ async function handleDeleteParagraphsNow(
 // ---------------------------------------------------------------------------
 
 export function setupVectorHandlers() {
+    ipcMain.handle(
+        'vectors:getBookIndexSizes',
+        async (_, payload: { bookId: string }) => {
+            if (!payload || typeof payload.bookId !== 'string' || !payload.bookId.trim()) {
+                throw new Error('Invalid book vector index size request.');
+            }
+            return manuscriptVectorIndexService.getBookIndexSizes(payload.bookId);
+        },
+    );
+
+    ipcMain.handle(
+        'vectors:clearBookIndex',
+        async (_, payload: ClearBookVectorIndexPayload) => {
+            const providers = ['local', 'openAI', 'voyage', 'openRouter'];
+            if (
+                !payload
+                || typeof payload.bookId !== 'string'
+                || !payload.bookId.trim()
+                || !providers.includes(payload.provider)
+                || typeof payload.model !== 'string'
+                || !payload.model.trim()
+            ) {
+                throw new Error('Invalid book vector index cleanup request.');
+            }
+            await manuscriptVectorIndexService.clearBookIndex(payload);
+        },
+    );
+
     ipcMain.handle(
         'vectors:getBookIndexingConfiguration',
         async (_, payload: { bookId: string }): Promise<BookIndexingConfiguration> => {

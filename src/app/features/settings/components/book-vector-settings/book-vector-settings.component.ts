@@ -16,6 +16,8 @@ import type {
   BookLocalEmbeddingModelSelection,
   BookOpenRouterEmbeddingModelSelection,
   BookOpenRouterEmbeddingReindexProgress,
+  BookVectorIndexSize,
+  ClearBookVectorIndexPayload,
   LocalEmbeddingModelName,
   LocalEmbeddingModelStatus,
   OpenRouterEmbeddingModelDescriptor,
@@ -29,11 +31,12 @@ import type {
   VectorProviderConfiguration,
 } from '../../../../../../shared/models/vector.model';
 import { ElectronService } from '../../../../core/services/electron.service';
+import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { LocalEmbeddingModelStateService } from '../../services/local-embedding-model-state.service';
 
 type BookVectorProviderId = 'local' | VectorConfigurationProviderId;
-type BookVectorOperation = 'select' | 'enable' | 'disable' | 'automatic';
+type BookVectorOperation = 'select' | 'enable' | 'disable' | 'automatic' | 'clear';
 type ReindexProgress = { processedParagraphs: number; totalParagraphs: number };
 
 interface BookVectorProviderOption {
@@ -60,6 +63,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   private readonly electronService = inject(ElectronService);
   private readonly libraryService = inject(LibraryService);
   private readonly localModelState = inject(LocalEmbeddingModelStateService);
+  private readonly confirmService = inject(ConfirmModalService);
   private readonly removeProgressListeners: Array<() => void> = [];
 
   readonly providers: readonly BookVectorProviderOption[] = [
@@ -82,6 +86,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   readonly operationTarget = signal<string | null>(null);
   readonly operationError = signal<string | null>(null);
   readonly reindexProgress = signal<ReindexProgress | null>(null);
+  readonly indexSizes = signal<readonly BookVectorIndexSize[]>([]);
   readonly localModelStatuses = this.localModelState.statuses;
 
   readonly selectedProviderId = computed(() => this.providerIdFromBook(this.book()));
@@ -89,7 +94,9 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   readonly visibleLocalModels = computed(() => {
     const selectedModelName = this.selectedLocalModelName();
     return this.localModelStatuses().filter(
-      status => status.installed || status.modelName === selectedModelName,
+      status => status.installed
+        || status.modelName === selectedModelName
+        || this.hasIndex('local', status.modelName),
     );
   });
 
@@ -164,7 +171,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.loadError.set(null);
     try {
-      const [, localSelection, configuration, openRouterModels, openRouterSelection] =
+      const [, localSelection, configuration, openRouterModels, openRouterSelection, indexSizes] =
         await Promise.all([
           this.localModelState.reloadStatuses(),
           this.electronService.invoke('vectors:local-model:get-book-selection', {
@@ -177,11 +184,15 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
           this.electronService.invoke('vectors:openrouter:get-book-selection', {
             bookId: this.book().id,
           }) as Promise<BookOpenRouterEmbeddingModelSelection>,
+          this.electronService.invoke('vectors:getBookIndexSizes', {
+            bookId: this.book().id,
+          }) as Promise<readonly BookVectorIndexSize[] | undefined>,
         ]);
       this.selectedLocalModelName.set(localSelection.modelName);
       this.apiKeyStatuses.set(configuration.apiKeys);
       this.openRouterModels.set(openRouterModels);
       this.selectedOpenRouterModelName.set(openRouterSelection.modelName);
+      this.indexSizes.set(Array.isArray(indexSizes) ? indexSizes : []);
       this.viewedProviderId.set(this.selectedProviderId());
     } catch (error) {
       this.loadError.set(this.errorMessage(error));
@@ -192,22 +203,19 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
 
   async selectProvider(providerId: BookVectorProviderId): Promise<void> {
     if (this.operation()) return;
+    this.viewedProviderId.set(providerId);
     if (providerId === 'local' || providerId === 'openrouter') {
-      if (providerId === 'local' || this.isProviderConfigured(providerId)) {
-        this.viewedProviderId.set(providerId);
-      }
       return;
     }
     if (!this.isProviderConfigured(providerId)) return;
     if (providerId === this.selectedProviderId()) {
-      this.viewedProviderId.set(providerId);
       return;
     }
 
-    this.viewedProviderId.set(providerId);
     this.beginOperation('select', providerId);
     try {
       await this.selectCloudProviderForBook(providerId, this.savedIndexingEnabled());
+      if (this.savedIndexingEnabled()) await this.reloadIndexSizes();
       this.emitSettingsUpdate({ embeddingModel: providerId === 'openai' ? 'openAI' : 'voyage' });
     } catch (error) {
       this.operationError.set(this.errorMessage(error));
@@ -222,6 +230,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     this.beginOperation('select', status.modelName);
     try {
       await this.selectLocalModelForBook(status.modelName, this.savedIndexingEnabled());
+      if (this.savedIndexingEnabled()) await this.reloadIndexSizes();
       this.selectedLocalModelName.set(status.modelName);
       this.emitSettingsUpdate({
         embeddingModel: 'local',
@@ -248,6 +257,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     this.beginOperation('select', model.modelName);
     try {
       await this.selectOpenRouterModelForBook(model.modelName, this.savedIndexingEnabled());
+      if (this.savedIndexingEnabled()) await this.reloadIndexSizes();
       this.selectedOpenRouterModelName.set(model.modelName);
       this.emitSettingsUpdate({
         embeddingModel: 'openRouter',
@@ -280,6 +290,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     this.beginOperation('enable', target);
     try {
       await this.reconcileCurrentSelection();
+      await this.reloadIndexSizes();
       await this.saveSettingsUpdate({ vectorSearchEnabled: true });
     } catch (error) {
       this.operationError.set(this.errorMessage(error));
@@ -322,6 +333,91 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
       && model.modelName === this.selectedOpenRouterModelName();
   }
 
+  formatIndexSize(provider: BookVectorIndexSize['provider'], model: string): string {
+    const bytes = this.indexSize(provider, model)?.estimatedBytes ?? 0;
+    if (bytes === 0) return '0 B';
+
+    const units = ['B', 'KB', 'MB', 'GB'] as const;
+    const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / (1024 ** unitIndex);
+    return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+  }
+
+  hasIndex(provider: BookVectorIndexSize['provider'], model: string): boolean {
+    return (this.indexSize(provider, model)?.paragraphCount ?? 0) > 0;
+  }
+
+  requestClearIndex(
+    provider: BookVectorIndexSize['provider'],
+    model: string,
+    displayName: string,
+  ): void {
+    if (this.operation() || !this.hasIndex(provider, model)) return;
+
+    const selected = this.isSelectedIndex(provider, model);
+    const disableMessage = selected && this.savedIndexingEnabled()
+      ? ' Vector search for this book will also be disabled.'
+      : '';
+    this.confirmService.open(
+      `Clear ${displayName} index?`,
+      `This permanently deletes all ${displayName} paragraph embeddings for this book.`
+        + `${disableMessage} This procedure is irreversible. Using this model again will require indexing all paragraphs.`,
+      () => {
+        void this.clearIndex(provider, model, selected);
+      },
+      undefined,
+      { confirmLabel: 'Clear index' },
+    );
+  }
+
+  private async clearIndex(
+    provider: BookVectorIndexSize['provider'],
+    model: string,
+    selected: boolean,
+  ): Promise<void> {
+    if (this.operation() || !this.hasIndex(provider, model)) return;
+
+    this.beginOperation('clear', model);
+    try {
+      if (selected && this.savedIndexingEnabled()) {
+        await this.saveSettingsUpdate({ vectorSearchEnabled: false });
+      }
+      const payload: ClearBookVectorIndexPayload = {
+        bookId: this.book().id,
+        provider,
+        model,
+      };
+      await this.electronService.invoke('vectors:clearBookIndex', payload);
+      await this.reloadIndexSizes();
+    } catch (error) {
+      this.operationError.set(this.errorMessage(error));
+    } finally {
+      this.finishOperation();
+    }
+  }
+
+  private indexSize(
+    provider: BookVectorIndexSize['provider'],
+    model: string,
+  ): BookVectorIndexSize | undefined {
+    return this.indexSizes().find(
+      size => size.provider === provider && size.model === model,
+    );
+  }
+
+  private isSelectedIndex(provider: BookVectorIndexSize['provider'], model: string): boolean {
+    const selectedProvider = this.selectedProviderId();
+    if (provider === 'local') {
+      return selectedProvider === 'local' && model === this.selectedLocalModelName();
+    }
+    if (provider === 'openRouter') {
+      return selectedProvider === 'openrouter' && model === this.selectedOpenRouterModelName();
+    }
+    return provider === 'openAI'
+      ? selectedProvider === 'openai'
+      : selectedProvider === 'voyage';
+  }
+
   private async reconcileCurrentSelection(): Promise<void> {
     const providerId = this.selectedProviderId();
     if (providerId === 'local') {
@@ -335,6 +431,13 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
       return;
     }
     await this.selectCloudProviderForBook(providerId, true);
+  }
+
+  private async reloadIndexSizes(): Promise<void> {
+    const sizes = await this.electronService.invoke('vectors:getBookIndexSizes', {
+      bookId: this.book().id,
+    }) as readonly BookVectorIndexSize[];
+    this.indexSizes.set(Array.isArray(sizes) ? sizes : []);
   }
 
   private selectLocalModelForBook(modelName: LocalEmbeddingModelName, reindex: boolean): Promise<unknown> {

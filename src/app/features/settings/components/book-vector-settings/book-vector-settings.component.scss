@@ -191,7 +191,7 @@
 
 .cloud-model-summary {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 14px;
   padding: 15px;
@@ -207,21 +207,16 @@
 
 .model-option {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 20px;
+  grid-template-columns: minmax(0, 1fr) 34px;
   align-items: center;
-  gap: 14px;
   width: 100%;
-  padding: 15px;
   border: 1px solid var(--color-border);
   border-radius: 11px;
   background: color-mix(in srgb, var(--color-background) 55%, transparent);
   color: var(--color-text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
   transition: border-color 160ms ease, background-color 160ms ease;
 
-  &:hover:not(:disabled),
+  &:hover,
   &.is-selected {
     border-color: color-mix(in srgb, var(--color-text-primary) 42%, var(--color-border));
     background: color-mix(in srgb, var(--color-text-primary) 6%, var(--color-surface));
@@ -231,8 +226,58 @@
     opacity: 0.68;
   }
 
+}
+
+.model-select-button {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 15px 10px 15px 15px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
   &:disabled {
     cursor: not-allowed;
+  }
+}
+
+.clear-index-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
+    color: var(--color-text-primary);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+  }
+
+  .model-option > & {
+    transform: translateX(-35px);
   }
 }
 
@@ -297,6 +342,10 @@
   justify-content: center;
   border: 1.5px solid var(--color-text-secondary);
   border-radius: 50%;
+
+  .model-option & {
+    transform: translateX(34px);
+  }
 
   span {
     width: 9px;

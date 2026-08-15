@@ -215,6 +215,21 @@ export interface BookIndexingConfiguration {
     automaticIndexingEnabled: boolean;
 }
 
+/** Estimated logical storage used by one book in one retained embedding space. */
+export interface BookVectorIndexSize {
+    provider: EmbeddingModel;
+    model: string;
+    paragraphCount: number;
+    estimatedBytes: number;
+}
+
+/** Identifies one retained model index to clear for a book. */
+export interface ClearBookVectorIndexPayload {
+    bookId: string;
+    provider: EmbeddingModel;
+    model: string;
+}
+
 export interface SearchSimilarParagraphsPayload {
     bookId: string;
     query: string;

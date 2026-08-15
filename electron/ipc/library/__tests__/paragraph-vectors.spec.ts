@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   getAutomaticIndexingEnabled: vi.fn(),
   runBookOperation: vi.fn(),
   searchSimilar: vi.fn(),
+  getBookIndexSizes: vi.fn(),
+  clearBookIndex: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -21,6 +23,8 @@ vi.mock('../../../../vectors/services/manuscript-vector-index.service', () => ({
     isBookIndexingAvailable: mocks.isBookIndexingAvailable,
     runBookOperation: mocks.runBookOperation,
     searchSimilar: mocks.searchSimilar,
+    getBookIndexSizes: mocks.getBookIndexSizes,
+    clearBookIndex: mocks.clearBookIndex,
   },
 }));
 
@@ -51,6 +55,8 @@ describe('paragraph vector IPC availability gate', () => {
     mocks.isBookIndexingAvailable.mockResolvedValue(false);
     mocks.getAutomaticIndexingEnabled.mockResolvedValue(true);
     mocks.searchSimilar.mockResolvedValue([]);
+    mocks.getBookIndexSizes.mockResolvedValue([]);
+    mocks.clearBookIndex.mockResolvedValue(undefined);
     setupVectorHandlers();
   });
 
@@ -91,5 +97,37 @@ describe('paragraph vector IPC availability gate', () => {
 
     expect(mocks.isBookIndexingAvailable).toHaveBeenCalledWith('book-1');
     expect(mocks.getAutomaticIndexingEnabled).toHaveBeenCalledWith('book-1');
+  });
+
+  it('reports retained index sizes for a book', async () => {
+    const sizes = [{
+      provider: 'local',
+      model: 'BAAI/bge-m3',
+      paragraphCount: 2,
+      estimatedBytes: 9000,
+    }];
+    mocks.getBookIndexSizes.mockResolvedValueOnce(sizes);
+
+    await expect(mocks.handlers.get('vectors:getBookIndexSizes')?.(
+      {},
+      { bookId: 'book-1' },
+    )).resolves.toEqual(sizes);
+    expect(mocks.getBookIndexSizes).toHaveBeenCalledWith('book-1');
+  });
+
+  it('validates and clears one retained book index', async () => {
+    const payload = {
+      bookId: 'book-1',
+      provider: 'local',
+      model: 'BAAI/bge-m3',
+    } as const;
+
+    await expect(mocks.handlers.get('vectors:clearBookIndex')?.({}, payload)).resolves.toBeUndefined();
+    expect(mocks.clearBookIndex).toHaveBeenCalledWith(payload);
+
+    await expect(mocks.handlers.get('vectors:clearBookIndex')?.({}, {
+      ...payload,
+      provider: 'unknown',
+    })).rejects.toThrow('Invalid book vector index cleanup request.');
   });
 });

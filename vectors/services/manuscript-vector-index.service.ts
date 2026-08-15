@@ -13,6 +13,7 @@ import type {
     BookEmbeddingSelectionResult,
     BookOpenRouterEmbeddingReindexProgress,
     BookOpenRouterEmbeddingSelectionResult,
+    ClearBookVectorIndexPayload,
     LocalEmbeddingModelName,
     ManuscriptVectorRecord,
     OpenRouterEmbeddingModelName,
@@ -60,6 +61,18 @@ interface ReconciliationSummary {
 
 /** Keeps a book's paragraph embeddings synchronized with its manuscript and searches them. */
 export class ManuscriptVectorIndexService {
+    /** Returns per-model logical storage estimates for this book's retained indexes. */
+    async getBookIndexSizes(bookId: string) {
+        return vectorDb.getBookIndexSizes(bookId);
+    }
+
+    /** Clears one retained model index while serializing against other work for the book. */
+    async clearBookIndex(payload: ClearBookVectorIndexPayload): Promise<void> {
+        await this.runBookOperation(payload.bookId, () => (
+            vectorDb.clearBookIndex(payload.bookId, payload.provider, payload.model)
+        ));
+    }
+
     private readonly bookOperationTails = new Map<string, Promise<void>>();
     private readonly switchingBooks = new Set<string>();
     private readonly deletingBooks = new Set<string>();

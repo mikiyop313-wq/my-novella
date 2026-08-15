@@ -56,4 +56,48 @@ describe('VectorDatabase local embedding cleanup', () => {
         }
         expect(unrelatedTable.delete).not.toHaveBeenCalled();
     });
+
+    it('clears only the requested book and model across matching revisions', async () => {
+        const targetOne = tableWithRecords([{
+            provider: 'local', model: 'BAAI/bge-m3', bookId: "book-'1",
+        }]);
+        const targetTwo = tableWithRecords([{
+            provider: 'local', model: 'BAAI/bge-m3', bookId: "book-'1",
+        }]);
+        const otherModel = tableWithRecords([{
+            provider: 'local', model: 'BAAI/bge-small-en-v1.5', bookId: "book-'1",
+        }]);
+        const otherBook = tableWithRecords([]);
+        const tables = new Map([
+            ['manuscript_target_v1', targetOne],
+            ['manuscript_target_v2', targetTwo],
+            ['manuscript_other_model', otherModel],
+            ['manuscript_other_book', otherBook],
+        ]);
+        const connection = {
+            tableNames: vi.fn().mockResolvedValue([...tables.keys(), 'unrelated']),
+            openTable: vi.fn(async (tableName: string) => tables.get(tableName)),
+        };
+        const database = Object.create(VectorDatabase.prototype) as VectorDatabase;
+        vi.spyOn(database, 'connect').mockResolvedValue(connection as never);
+
+        await database.clearBookIndex("book-'1", 'local', 'BAAI/bge-m3');
+
+        expect(targetOne.delete).toHaveBeenCalledWith("bookId = 'book-''1'");
+        expect(targetTwo.delete).toHaveBeenCalledWith("bookId = 'book-''1'");
+        expect(otherModel.delete).not.toHaveBeenCalled();
+        expect(otherBook.delete).not.toHaveBeenCalled();
+        expect(connection.openTable).not.toHaveBeenCalledWith('unrelated');
+    });
 });
+
+function tableWithRecords(records: Record<string, unknown>[]) {
+    return {
+        query: vi.fn(() => ({
+            where: vi.fn(() => ({
+                toArray: vi.fn().mockResolvedValue(records),
+            })),
+        })),
+        delete: vi.fn().mockResolvedValue(undefined),
+    };
+}

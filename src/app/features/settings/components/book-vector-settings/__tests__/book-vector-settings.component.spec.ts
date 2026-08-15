@@ -8,6 +8,7 @@ import type {
   LocalEmbeddingModelStatus,
 } from '../../../../../../../shared/models/vector.model';
 import { ElectronService } from '../../../../../core/services/electron.service';
+import { ConfirmModalService } from '../../../../../shared/components/confirm-modal/confirm-modal.service';
 import { LibraryService } from '../../../../library/services/library.service';
 import { BookVectorSettingsComponent } from '../book-vector-settings.component';
 
@@ -30,9 +31,21 @@ describe('BookVectorSettingsComponent', () => {
   let invoke: ReturnType<typeof vi.fn>;
   let updateBook: ReturnType<typeof vi.fn>;
   let listeners: Map<string, (payload: unknown) => void>;
+  let retainedIndexSizes: Array<{
+    provider: 'local' | 'openAI' | 'voyage' | 'openRouter';
+    model: string;
+    paragraphCount: number;
+    estimatedBytes: number;
+  }>;
 
   beforeEach(async () => {
     listeners = new Map();
+    retainedIndexSizes = [{
+      provider: 'local',
+      model: unavailableModel.modelName,
+      paragraphCount: 4,
+      estimatedBytes: 1536,
+    }];
     updateBook = vi.fn(async (_id: string, update: UpdateBookDto) => ({
       ...book(),
       ...update,
@@ -59,6 +72,15 @@ describe('BookVectorSettingsComponent', () => {
       if (channel === 'vectors:openrouter:get-models') return [openRouterModel];
       if (channel === 'vectors:openrouter:get-book-selection') {
         return { bookId: 'book-1', modelName: null };
+      }
+      if (channel === 'vectors:getBookIndexSizes') {
+        return retainedIndexSizes;
+      }
+      if (channel === 'vectors:clearBookIndex') {
+        retainedIndexSizes = retainedIndexSizes.filter(size => (
+          size.provider !== payload?.['provider'] || size.model !== payload?.['model']
+        ));
+        return undefined;
       }
       if (channel === 'vectors:local-model:select-for-book') {
         if (payload?.['reindex']) {
@@ -111,9 +133,159 @@ describe('BookVectorSettingsComponent', () => {
     expect(element.textContent).toContain('General Settings → Vector Search');
     expect(indexingSwitch?.disabled).toBe(true);
     expect(indexingSwitch?.getAttribute('aria-checked')).toBe('false');
+    expect(modelOption(unavailableModel.modelName).textContent).toContain('Index ~1.5 KB');
+    expect(modelOption(installedModel.modelName).textContent).toContain('Index ~0 B');
+    expect(element.querySelector<HTMLButtonElement>(
+      `[data-clear-index-button][aria-label="Clear index for ${installedModel.displayName}"]`,
+    )?.disabled).toBe(true);
   });
 
-  it('reindexes an enabled book and immediately removes its old unavailable model', async () => {
+  it('uses the small button and disables indexing before clearing the active model', async () => {
+    await create(book());
+
+    const trigger = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      `[data-clear-index-button][aria-label="Clear index for ${unavailableModel.displayName}"]`,
+    );
+    expect(trigger?.disabled).toBe(false);
+    trigger?.click();
+    const confirmService = TestBed.inject(ConfirmModalService);
+    expect(confirmService.state().message).toContain('Vector search for this book will also be disabled.');
+    expect(confirmService.state().message).toContain('irreversible');
+
+    confirmService.state().onConfirm();
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('vectors:clearBookIndex', {
+      bookId: 'book-1',
+      provider: 'local',
+      model: unavailableModel.modelName,
+    }));
+    fixture.detectChanges();
+
+    expect(updateBook).toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({ vectorSearchEnabled: false }),
+      }),
+    );
+    expect(updateBook.mock.invocationCallOrder[0]).toBeLessThan(
+      invoke.mock.invocationCallOrder.find((_, index) => (
+        invoke.mock.calls[index][0] === 'vectors:clearBookIndex'
+      ))!,
+    );
+    expect(modelOption(unavailableModel.modelName).textContent).toContain('Index ~0 B');
+    expect(trigger?.disabled).toBe(true);
+  });
+
+  it('clears an inactive model without changing the indexing preference', async () => {
+    retainedIndexSizes.push({
+      provider: 'local',
+      model: installedModel.modelName,
+      paragraphCount: 2,
+      estimatedBytes: 900,
+    });
+    await create(book());
+    updateBook.mockClear();
+
+    fixture.componentInstance.requestClearIndex(
+      'local',
+      installedModel.modelName,
+      installedModel.displayName,
+    );
+    TestBed.inject(ConfirmModalService).state().onConfirm();
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('vectors:clearBookIndex', {
+      bookId: 'book-1',
+      provider: 'local',
+      model: installedModel.modelName,
+    }));
+
+    expect(updateBook).not.toHaveBeenCalled();
+  });
+
+  it('leaves the index and settings untouched when cleanup is cancelled', async () => {
+    await create(book());
+    invoke.mockClear();
+    updateBook.mockClear();
+
+    fixture.componentInstance.requestClearIndex(
+      'local',
+      unavailableModel.modelName,
+      unavailableModel.displayName,
+    );
+    TestBed.inject(ConfirmModalService).state().onCancel();
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(updateBook).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.hasIndex('local', unavailableModel.modelName)).toBe(true);
+  });
+
+  it('keeps indexing disabled and reports an active-index cleanup failure', async () => {
+    await create(book());
+    const currentInvoke = invoke.getMockImplementation() as (
+      channel: string,
+      payload?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    invoke.mockImplementation(async (channel: string, payload?: Record<string, unknown>) => {
+      if (channel === 'vectors:clearBookIndex') throw new Error('cleanup failed');
+      return currentInvoke(channel, payload);
+    });
+
+    fixture.componentInstance.requestClearIndex(
+      'local',
+      unavailableModel.modelName,
+      unavailableModel.displayName,
+    );
+    TestBed.inject(ConfirmModalService).state().onConfirm();
+    await vi.waitFor(() => expect(fixture.componentInstance.operation()).toBeNull());
+
+    expect(updateBook).toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({ vectorSearchEnabled: false }),
+      }),
+    );
+    expect(fixture.componentInstance.operationError()).toBe('cleanup failed');
+    expect(fixture.componentInstance.hasIndex('local', unavailableModel.modelName)).toBe(true);
+  });
+
+  it('allows an unconfigured provider tab to be viewed for retained-index cleanup', async () => {
+    retainedIndexSizes.push({
+      provider: 'voyage',
+      model: 'voyage-3',
+      paragraphCount: 3,
+      estimatedBytes: 1200,
+    });
+    await create(book());
+
+    providerTab('voyage').click();
+    fixture.detectChanges();
+
+    expect(providerTab('voyage').disabled).toBe(false);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Voyage 3');
+    expect((fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[aria-label="Clear index for Voyage 3"]',
+    )?.disabled).toBe(false);
+    expect(invoke).not.toHaveBeenCalledWith(
+      'vectors:cloud-provider:select-for-book',
+      expect.anything(),
+    );
+  });
+
+  it('renders small clear-index buttons for fixed and OpenRouter models', async () => {
+    await create(book());
+
+    await fixture.componentInstance.selectProvider('openai');
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector(
+      '[data-clear-index-button][aria-label="Clear index for Text Embedding 3 Large"]',
+    )).not.toBeNull();
+
+    await fixture.componentInstance.selectProvider('openrouter');
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector(
+      `[data-clear-index-button][aria-label="Clear index for ${openRouterModel.displayName}"]`,
+    )).not.toBeNull();
+  });
+
+  it('reindexes an enabled book and keeps its old unavailable retained index manageable', async () => {
     await create(book());
 
     await fixture.componentInstance.selectLocalModel(installedModel);
@@ -124,7 +296,10 @@ describe('BookVectorSettingsComponent', () => {
       modelName: installedModel.modelName,
       reindex: true,
     });
-    expect(modelOption(unavailableModel.modelName, false)).toBeNull();
+    expect(modelOption(unavailableModel.modelName, false)).not.toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      `[data-clear-index-button][aria-label="Clear index for ${unavailableModel.displayName}"]`,
+    )?.disabled).toBe(false);
     expect(modelOption(installedModel.modelName).getAttribute('aria-checked')).toBe('true');
     expect(
       (fixture.nativeElement as HTMLElement)
@@ -234,14 +409,15 @@ describe('BookVectorSettingsComponent', () => {
     );
   });
 
-  it('renders all providers and disables cloud providers without an API key', async () => {
+  it('renders all providers and marks cloud providers without an API key', async () => {
     await create(book());
 
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelectorAll('.provider-tab')).toHaveLength(4);
     expect(providerTab('local').classList.contains('is-selected')).toBe(true);
     expect(providerTab('openai').disabled).toBe(false);
-    expect(providerTab('voyage').disabled).toBe(true);
+    expect(providerTab('voyage').disabled).toBe(false);
+    expect(providerTab('voyage').classList.contains('is-unavailable')).toBe(true);
     expect(providerTab('openrouter').disabled).toBe(false);
     expect(element.textContent).toContain('General Settings → Vector Search');
   });

@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     searchSimilar: vi.fn(),
     retireLegacyManuscriptTable: vi.fn(),
     deleteBookVectors: vi.fn(),
+    clearBookIndex: vi.fn(),
 }));
 
 vi.mock('../../../db/repositories/manuscript.repository', () => ({
@@ -78,6 +79,7 @@ vi.mock('../../lancedb.connection', () => ({
     vectorDb: {
         retireLegacyManuscriptTable: mocks.retireLegacyManuscriptTable,
         deleteBookVectors: mocks.deleteBookVectors,
+        clearBookIndex: mocks.clearBookIndex,
     },
 }));
 
@@ -117,6 +119,7 @@ describe('ManuscriptVectorIndexService', () => {
         mocks.getBookById.mockResolvedValue({ id: 'book-1' });
         mocks.deleteBook.mockResolvedValue({ success: true });
         mocks.deleteBookVectors.mockResolvedValue(undefined);
+        mocks.clearBookIndex.mockResolvedValue(undefined);
         mocks.isInstalled.mockResolvedValue(true);
         mocks.getVectorApiKey.mockResolvedValue('configured-key');
         mocks.searchSimilar.mockResolvedValue([]);
@@ -402,6 +405,31 @@ describe('ManuscriptVectorIndexService', () => {
         expect(mocks.deleteBook).toHaveBeenCalledWith('book-1');
         expect(mocks.deleteBookVectors.mock.invocationCallOrder[0]).toBeLessThan(
             mocks.deleteBook.mock.invocationCallOrder[0],
+        );
+    });
+
+    it('serializes targeted index cleanup with other vector work for the book', async () => {
+        let finishOperation!: () => void;
+        const queued = service.runBookOperation('book-1', () => new Promise<void>(resolve => {
+            finishOperation = resolve;
+        }));
+        await vi.waitFor(() => expect(mocks.getBookById).toHaveBeenCalledOnce());
+
+        const cleanup = service.clearBookIndex({
+            bookId: 'book-1',
+            provider: 'local',
+            model: 'BAAI/bge-m3',
+        });
+        expect(mocks.clearBookIndex).not.toHaveBeenCalled();
+
+        finishOperation();
+        await queued;
+        await cleanup;
+
+        expect(mocks.clearBookIndex).toHaveBeenCalledWith(
+            'book-1',
+            'local',
+            'BAAI/bge-m3',
         );
     });
 
