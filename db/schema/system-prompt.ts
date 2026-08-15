@@ -30,6 +30,7 @@ export const systemPromptPresets = sqliteTable(
     maxOutputTokens: integer('max_output_tokens'),
     presencePenalty: real('presence_penalty').notNull().default(0),
     frequencyPenalty: real('frequency_penalty').notNull().default(0),
+    defaultModelId: text('default_model_id'),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),

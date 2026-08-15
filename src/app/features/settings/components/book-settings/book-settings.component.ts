@@ -81,10 +81,17 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   readonly config = inject(ConfigStore);
 
   readonly isBookContext = this.router.url.startsWith('/workspace/');
+  private readonly requestedSettingsSection = this.isBookContext
+    ? settingsSectionFromHistory()
+    : null;
   readonly activeSection = signal<SettingsSection>(
-    this.isBookContext ? 'general' : 'editor-display',
+    this.requestedSettingsSection ?? (this.isBookContext ? 'general' : 'editor-display'),
   );
-  readonly activeView = signal<SettingsView>(this.isBookContext ? 'book' : 'general');
+  readonly activeView = signal<SettingsView>(
+    this.requestedSettingsSection === 'ai-configuration'
+      ? 'general'
+      : this.isBookContext ? 'book' : 'general',
+  );
   readonly activeBookId = computed(() =>
     this.isBookContext ? this.workspaceStore.bookId() : null,
   );
@@ -674,4 +681,11 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
         (option.subOptions ? this.optionExists(option.subOptions, value) : false),
     );
   }
+}
+
+function settingsSectionFromHistory(): SettingsSection | null {
+  const requested = globalThis.history?.state?.['settingsSection'];
+  return requested === 'system-prompts' || requested === 'ai-configuration'
+    ? requested
+    : null;
 }

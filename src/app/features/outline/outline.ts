@@ -1,4 +1,4 @@
-import { Component, DestroyRef, ElementRef, HostListener, NgZone, OnInit, QueryList, ViewChild, ViewChildren, inject, signal, ChangeDetectorRef } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, NgZone, OnInit, QueryList, ViewChild, ViewChildren, computed, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -12,12 +12,21 @@ import {
   ChapterDto,
   ManuscriptMode,
   SceneDto,
+  TiptapJsonDoc,
   UpdateStructurePositionsPayload,
 } from '../../../../shared/models/manuscript.model';
 
 import { ToastService } from '../../shared/services/toast.service';
+import { AiStreamService } from '../../core/services/ai-stream.service';
+import { ElectronService } from '../../core/services/electron.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
+import { AutocompleteKeepOpenMenuItemDirective } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import {
+  SystemPromptModelService,
+  type SystemPromptModelResolution,
+} from '../../shared/services/system-prompt-model.service';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { OutlineStore } from './store/outline.store';
 
@@ -71,6 +80,7 @@ const transferBetween = <T>(
     ElementAnimationDirective,
     MarkdownComponent,
     MarkdownEditorComponent,
+    AutocompleteKeepOpenMenuItemDirective,
     CodexContextHighlightDirective,
   ],
   templateUrl: './outline.html',
@@ -85,6 +95,9 @@ export class Outline implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toastService = inject(ToastService);
+  private readonly aiStreamService = inject(AiStreamService);
+  private readonly systemPromptModelService = inject(SystemPromptModelService);
+  private readonly electronService = inject(ElectronService);
   private readonly ngZone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
 
@@ -96,6 +109,9 @@ export class Outline implements OnInit {
   editing = signal<Record<string, boolean>>({});
   sceneSummaryDrafts = signal<Record<string, string>>({});
   sceneCardMode = signal<'compact' | 'fit' | 'list'>('compact');
+  summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
+  resolvingSummaryModel = signal(false);
+  generatingSummarySceneId = signal<string | null>(null);
   readonly sceneAiMenuPositions: ConnectedPosition[] = [
     { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
     { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
@@ -552,7 +568,134 @@ export class Outline implements OnInit {
     }));
   }
 
-  generateSceneSummary(_sceneId: string): void {}
+  async prepareSceneAiMenu(): Promise<void> {
+    const bookId = this.store.bookId();
+    this.summaryModelResolution.set(null);
+    if (!bookId) return;
+
+    this.resolvingSummaryModel.set(true);
+    try {
+      this.summaryModelResolution.set(
+        await this.systemPromptModelService.resolveActiveModel(bookId, 'summary'),
+      );
+    } catch (error) {
+      console.error('Failed to resolve the summary model:', error);
+      this.summaryModelResolution.set({
+        status: 'unavailable',
+        selectorId: null,
+        reason: 'missing-model',
+      });
+    } finally {
+      this.resolvingSummaryModel.set(false);
+      setTimeout(() => {
+        document.querySelector<HTMLButtonElement>(
+          '.scene-ai-menu .scene-summary-generate',
+        )?.focus();
+      });
+    }
+  }
+
+  hasSceneProse(sceneId: string): boolean {
+    return (this.findScene(sceneId)?.wordCount ?? 0) > 0;
+  }
+
+  isGeneratingSceneSummary(sceneId: string): boolean {
+    return this.generatingSummarySceneId() === sceneId;
+  }
+
+  isSceneSummaryGenerationDisabled(sceneId: string): boolean {
+    return !this.hasSceneProse(sceneId)
+      || this.resolvingSummaryModel()
+      || this.summaryModelResolution()?.status !== 'ready'
+      || this.generatingSummarySceneId() !== null;
+  }
+
+  summaryModelGuidance(): string {
+    const resolution = this.summaryModelResolution();
+    return resolution?.status === 'unavailable'
+      && resolution.reason === 'openrouter-unconfigured'
+      ? 'Configure OpenRouter in Settings'
+      : 'Choose a model in System Prompts';
+  }
+
+  openSummaryModelSettings(): void {
+    const bookId = this.store.bookId();
+    if (!bookId) return;
+    const resolution = this.summaryModelResolution();
+    const section = resolution?.status === 'unavailable'
+      && resolution.reason === 'openrouter-unconfigured'
+      ? 'ai-configuration'
+      : 'system-prompts';
+    void this.router.navigate(['/workspace', bookId, 'settings'], {
+      state: { settingsSection: section },
+    });
+  }
+
+  async generateSceneSummary(sceneId: string): Promise<void> {
+    if (this.isSceneSummaryGenerationDisabled(sceneId)) return;
+
+    const bookId = this.store.bookId();
+    const selectedModel = this.summaryModelResolution();
+    if (!bookId || selectedModel?.status !== 'ready') return;
+
+    this.generatingSummarySceneId.set(sceneId);
+
+    try {
+      let proseDocument: TiptapJsonDoc | null;
+      try {
+        const proseBySceneId = await this.electronService.invoke(
+          'manuscript:getScenesProse',
+          { sceneIds: [sceneId] },
+        ) as Record<string, TiptapJsonDoc | null>;
+        proseDocument = proseBySceneId[sceneId] ?? null;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load scene prose.';
+        this.toastService.error(message, 'Outline');
+        return;
+      }
+
+      const prose = serializeTiptapDocument(proseDocument);
+      if (!prose) {
+        this.toastService.error('The scene has no prose to summarize.', 'Outline');
+        return;
+      }
+
+      let generatedSummary: string;
+      try {
+        generatedSummary = await this.aiStreamService.streamText({
+          streamId: `outline-scene-summary:${sceneId}`,
+          bookId,
+          systemPromptCategory: 'summary',
+          prompt: [
+            '--- BEGIN SCENE PROSE ---',
+            prose,
+            '--- END SCENE PROSE ---',
+          ].join('\n\n'),
+          provider: selectedModel.provider,
+          modelId: selectedModel.modelId,
+        });
+      } catch (error) {
+        console.error('Failed to generate scene summary:', error);
+        return;
+      }
+
+      const summary = generatedSummary.trim();
+      if (!summary) {
+        this.toastService.error('AI returned an empty scene summary.', 'Outline');
+        return;
+      }
+
+      try {
+        await this.store.updateScene({ id: sceneId, summary });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to save scene summary.';
+        this.toastService.error(message, 'Outline');
+      }
+    } finally {
+      this.generatingSummarySceneId.set(null);
+      this.closeAllMenus();
+    }
+  }
 
   private normalizeEditableValue(value: string): string {
     return value.trim().length === 0 ? '' : value;

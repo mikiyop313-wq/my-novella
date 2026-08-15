@@ -4,9 +4,12 @@ import { systemPromptRepository } from '../../../db/repositories/system-prompt.r
 import type {
   CreateSystemPromptPresetPayload,
   DeleteSystemPromptPresetPayload,
+  GetBuiltInSystemPromptModelPayload,
   ListActiveSystemPromptPresetsPayload,
   ListAvailableSystemPromptPresetsPayload,
   ResetActiveSystemPromptPresetPayload,
+  ResolveActiveSystemPromptModelPayload,
+  SetBuiltInSystemPromptModelPayload,
   SetActiveSystemPromptPresetPayload,
   UpdateSystemPromptPresetPayload,
 } from '../../../shared/models/system-prompt.model';
@@ -94,6 +97,42 @@ export function setupSystemPromptHandlers(): void {
         return await systemPromptRepository.resetActivePreset(bookId, category);
       } catch (error) {
         console.error('Failed to reset active system prompt preset:', error);
+        throw error;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'system-prompts:get-built-in-model',
+    async (_, { presetId }: GetBuiltInSystemPromptModelPayload) => {
+      try {
+        return await systemPromptRepository.getBuiltInDefaultModelId(presetId);
+      } catch (error) {
+        console.error('Failed to get the built-in system prompt model:', error);
+        throw error;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'system-prompts:set-built-in-model',
+    async (_, { presetId, defaultModelId }: SetBuiltInSystemPromptModelPayload) => {
+      try {
+        return await systemPromptRepository.setBuiltInDefaultModelId(presetId, defaultModelId);
+      } catch (error) {
+        console.error('Failed to set the built-in system prompt model:', error);
+        throw error;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'system-prompts:resolve-active-model',
+    async (_, { bookId, category }: ResolveActiveSystemPromptModelPayload) => {
+      try {
+        return await systemPromptRepository.resolveActiveModel(bookId, category);
+      } catch (error) {
+        console.error('Failed to resolve the active system prompt model:', error);
         throw error;
       }
     },

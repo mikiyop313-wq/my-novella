@@ -340,6 +340,35 @@
               ></textarea>
             </div>
 
+            @if (showsDefaultModel(preset.category)) {
+              <div class="form-field default-model-field">
+                <div class="field-heading">
+                  <label for="prompt-default-model">Default model</label>
+                  <span>
+                    {{
+                      preset.isBuiltIn
+                        ? 'Global default for every book'
+                        : 'Used whenever this preset is active'
+                    }}
+                  </span>
+                </div>
+                <app-autocomplete-dropdown
+                  id="prompt-default-model"
+                  [sections]="modelDropdownSections()"
+                  [selectedValue]="preset.defaultModelId"
+                  placeholder="Select a default model"
+                  searchPlaceholder="Search models..."
+                  [showChips]="false"
+                  (selectionChange)="selectDefaultModel($event)"
+                ></app-autocomplete-dropdown>
+                @if (isDefaultModelUnavailable(preset)) {
+                  <p class="field-help is-warning">
+                    The saved model is currently unavailable. Configure its provider or choose another model.
+                  </p>
+                }
+              </div>
+            }
+
             <section class="generation-card" aria-labelledby="generation-settings-heading">
               <header class="generation-header">
                 <div>

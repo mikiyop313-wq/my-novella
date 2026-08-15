@@ -349,6 +349,7 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges, OnDestr
   readonly compactSelectionChips = input(false);
   readonly clearSearchOnSelect = input(true);
   readonly closeOnOutsideScroll = input(true);
+  readonly keepParentMenuOpen = input(false);
 
   readonly selectionChange = output<any | any[]>();
   readonly menuOpened = output<void>();

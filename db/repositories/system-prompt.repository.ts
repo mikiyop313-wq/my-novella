@@ -1,9 +1,13 @@
 import { and, asc, eq, ne, or } from 'drizzle-orm';
 
-import { createDefaultSystemPromptPresetIds } from '../../shared/constants/ai-system-prompts';
+import {
+  createDefaultSystemPromptPresetIds,
+  findBuiltInSystemPromptPreset,
+} from '../../shared/constants/ai-system-prompts';
 import type {
   ActiveSystemPromptPresetIds,
   CreateSystemPromptPresetDto,
+  ResolvedActiveSystemPromptModelDto,
   SystemPromptCategory,
   SystemPromptOwnership,
   SystemPromptPresetDto,
@@ -11,12 +15,21 @@ import type {
 } from '../../shared/models/system-prompt.model';
 import { db } from '../index';
 import { activeSystemPromptPresets, systemPromptPresets } from '../schema';
+import {
+  appSettingsRepository,
+  type AppSettingsStore,
+} from './app-settings.repository';
+
+const builtInModelSettingKey = (presetId: string): string =>
+  `system-prompt-built-in-model:${presetId}`;
 
 type SystemPromptPresetEntity = typeof systemPromptPresets.$inferSelect;
 type SystemPromptPresetInsert = typeof systemPromptPresets.$inferInsert;
 type SystemPromptPresetUpdate = Partial<Omit<SystemPromptPresetInsert, 'id' | 'createdAt'>>;
 
 export class SystemPromptRepository {
+  constructor(private readonly settingsStore: AppSettingsStore = appSettingsRepository) {}
+
   private mapToDto(preset: SystemPromptPresetEntity): SystemPromptPresetDto {
     return {
       id: preset.id,
@@ -30,6 +43,7 @@ export class SystemPromptRepository {
       maxOutputTokens: preset.maxOutputTokens,
       presencePenalty: preset.presencePenalty,
       frequencyPenalty: preset.frequencyPenalty,
+      defaultModelId: preset.defaultModelId,
       createdAt: preset.createdAt.toISOString(),
       lastEditedAt: preset.lastEditedAt.toISOString(),
     };
@@ -166,6 +180,7 @@ export class SystemPromptRepository {
         maxOutputTokens: data.maxOutputTokens,
         presencePenalty: data.presencePenalty,
         frequencyPenalty: data.frequencyPenalty,
+        defaultModelId: data.defaultModelId,
       })
       .returning();
 
@@ -188,6 +203,7 @@ export class SystemPromptRepository {
     if (data.maxOutputTokens !== undefined) update.maxOutputTokens = data.maxOutputTokens;
     if (data.presencePenalty !== undefined) update.presencePenalty = data.presencePenalty;
     if (data.frequencyPenalty !== undefined) update.frequencyPenalty = data.frequencyPenalty;
+    if (data.defaultModelId !== undefined) update.defaultModelId = data.defaultModelId;
     if (data.ownership !== undefined) {
       Object.assign(update, this.mapOwnership(data.ownership));
     }
@@ -229,6 +245,51 @@ export class SystemPromptRepository {
       .returning({ id: systemPromptPresets.id });
 
     return { success: deleted.length > 0 };
+  }
+
+  async getBuiltInDefaultModelId(presetId: string): Promise<string | null> {
+    const preset = findBuiltInSystemPromptPreset(presetId);
+    if (!preset) throw new Error('Built-in system prompt preset does not exist.');
+
+    return (await this.settingsStore.get(builtInModelSettingKey(presetId)))
+      ?? preset.defaultModelId;
+  }
+
+  async setBuiltInDefaultModelId(presetId: string, defaultModelId: string): Promise<string> {
+    const preset = findBuiltInSystemPromptPreset(presetId);
+    if (!preset || preset.defaultModelId === null) {
+      throw new Error('This built-in system prompt does not support a default model.');
+    }
+    const normalizedModelId = defaultModelId.trim();
+    if (!normalizedModelId) throw new Error('A default model is required.');
+
+    await this.settingsStore.set(builtInModelSettingKey(presetId), normalizedModelId);
+    return normalizedModelId;
+  }
+
+  async resolveActiveModel(
+    bookId: string,
+    category: SystemPromptCategory,
+  ): Promise<ResolvedActiveSystemPromptModelDto> {
+    const presetId = (await this.listActivePresetIdsForBook(bookId))[category];
+    const builtIn = findBuiltInSystemPromptPreset(presetId);
+    if (builtIn) {
+      return { presetId, defaultModelId: await this.getBuiltInDefaultModelId(presetId) };
+    }
+
+    const preset = await this.getById(presetId);
+    if (!preset || preset.category !== category) {
+      throw new Error('The active system prompt preset is unavailable.');
+    }
+    if (preset.defaultModelId) {
+      return { presetId, defaultModelId: preset.defaultModelId };
+    }
+
+    const defaultPresetId = createDefaultSystemPromptPresetIds()[category];
+    return {
+      presetId,
+      defaultModelId: await this.getBuiltInDefaultModelId(defaultPresetId),
+    };
   }
 }
 

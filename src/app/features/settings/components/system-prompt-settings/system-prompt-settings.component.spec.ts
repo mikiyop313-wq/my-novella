@@ -13,6 +13,7 @@ import { ToastService } from '../../../../shared/services/toast.service';
 import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
 import { SystemPromptService } from '../../services/system-prompt.service';
 import { SystemPromptSettingsComponent } from './system-prompt-settings.component';
+import { AiStore } from '../../../../core/store/ai.store';
 
 describe('SystemPromptSettingsComponent', () => {
   let fixture: ComponentFixture<SystemPromptSettingsComponent>;
@@ -28,6 +29,8 @@ describe('SystemPromptSettingsComponent', () => {
   let invalidate: ReturnType<typeof vi.fn>;
   let invalidateAll: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
+  let getBuiltInDefaultModelId: ReturnType<typeof vi.fn>;
+  let setBuiltInDefaultModelId: ReturnType<typeof vi.fn>;
 
   const savedScenePreset = presetDto({
     id: 'scene-custom',
@@ -59,13 +62,25 @@ describe('SystemPromptSettingsComponent', () => {
     invalidate = vi.fn();
     invalidateAll = vi.fn();
     toastError = vi.fn();
+    getBuiltInDefaultModelId = vi.fn().mockResolvedValue('deepseek/deepseek-v4-flash');
+    setBuiltInDefaultModelId = vi.fn().mockImplementation(
+      (_presetId: string, modelId: string) => Promise.resolve(modelId),
+    );
 
     await TestBed.configureTestingModule({
       imports: [SystemPromptSettingsComponent],
       providers: [
         {
           provide: SystemPromptService,
-          useValue: { listGlobal, listAvailable, create, update, delete: deletePreset },
+          useValue: {
+            listGlobal,
+            listAvailable,
+            create,
+            update,
+            delete: deletePreset,
+            getBuiltInDefaultModelId,
+            setBuiltInDefaultModelId,
+          },
         },
         {
           provide: SystemPromptSelectionService,
@@ -78,6 +93,16 @@ describe('SystemPromptSettingsComponent', () => {
           },
         },
         { provide: ToastService, useValue: { error: toastError } },
+        {
+          provide: AiStore,
+          useValue: {
+            models: () => [],
+            modelProviders: () => [],
+            isLoading: () => false,
+            error: () => null,
+            ensureModelsLoaded: vi.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compileComponents();
 
@@ -283,6 +308,23 @@ describe('SystemPromptSettingsComponent', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('shows an editable global model only for action prompt presets', async () => {
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.default-model-field')).toBeNull();
+
+    component.changeCategory('summary');
+    fixture.detectChanges();
+    expect(element.querySelector('.default-model-field')).not.toBeNull();
+    expect(component.selectedPreset()?.defaultModelId).toBe('deepseek/deepseek-v4-flash');
+
+    await component.selectDefaultModel('openai/gpt-5');
+    fixture.detectChanges();
+
+    expect(setBuiltInDefaultModelId).toHaveBeenCalledWith('default-summary', 'openai/gpt-5');
+    expect(component.selectedPreset()?.defaultModelId).toBe('openai/gpt-5');
+    expect(invalidateAll).toHaveBeenCalled();
+  });
+
   it('creates and clones presets with global ownership in the global library', async () => {
     const created = presetDto({
       id: 'created-preset',
@@ -328,6 +370,7 @@ describe('SystemPromptSettingsComponent', () => {
         category: 'rephrase',
         systemPrompt: AI_SYSTEM_PROMPTS.rephrase.default,
         scope: 'global',
+        defaultModelId: 'deepseek/deepseek-v4-flash',
       }),
     );
     expect(create.mock.calls[1][0]).not.toHaveProperty('bookId');
@@ -581,6 +624,7 @@ function presetDto(overrides: Partial<SystemPromptPresetDto> = {}): SystemPrompt
     maxOutputTokens: null,
     presencePenalty: 0,
     frequencyPenalty: 0,
+    defaultModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-02T00:00:00.000Z',
     ...overrides,
@@ -603,6 +647,7 @@ function activeIds(
 }
 
 async function settle(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let index = 0; index < 12; index++) {
+    await Promise.resolve();
+  }
 }

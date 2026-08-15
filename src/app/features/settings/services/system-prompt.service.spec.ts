@@ -32,6 +32,7 @@ describe('SystemPromptService', () => {
       maxOutputTokens: null,
       presencePenalty: 0,
       frequencyPenalty: 0,
+      defaultModelId: null,
     };
     const updateData: UpdateSystemPromptPresetDto = {
       name: 'Scene Designer',
@@ -42,13 +43,17 @@ describe('SystemPromptService', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ id: 'preset-1' })
       .mockResolvedValueOnce({ id: 'preset-1' })
-      .mockResolvedValueOnce({ success: true });
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce('deepseek/deepseek-v4-flash')
+      .mockResolvedValueOnce('openai/gpt-5');
 
     await service.listGlobal();
     await service.listAvailable('book-1');
     await service.create(createData);
     await service.update('preset-1', updateData);
     await service.delete('preset-1');
+    await service.getBuiltInDefaultModelId('default-summary');
+    await service.setBuiltInDefaultModelId('default-summary', 'openai/gpt-5');
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'system-prompts:list-global');
     expect(invoke).toHaveBeenNthCalledWith(2, 'system-prompts:list-available', {
@@ -60,5 +65,12 @@ describe('SystemPromptService', () => {
       data: updateData,
     });
     expect(invoke).toHaveBeenNthCalledWith(5, 'system-prompts:delete', { id: 'preset-1' });
+    expect(invoke).toHaveBeenNthCalledWith(6, 'system-prompts:get-built-in-model', {
+      presetId: 'default-summary',
+    });
+    expect(invoke).toHaveBeenNthCalledWith(7, 'system-prompts:set-built-in-model', {
+      presetId: 'default-summary',
+      defaultModelId: 'openai/gpt-5',
+    });
   });
 });

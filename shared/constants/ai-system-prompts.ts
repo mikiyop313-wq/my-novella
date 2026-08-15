@@ -74,6 +74,20 @@ export interface BuiltInSystemPromptPreset extends SystemPromptGenerationSetting
   name: string;
   category: SystemPromptCategory;
   systemPrompt: string;
+  defaultModelId: string | null;
+}
+
+export const DEFAULT_ACTION_MODEL_ID = 'deepseek/deepseek-v4-flash';
+
+export const MODEL_BACKED_SYSTEM_PROMPT_CATEGORIES = [
+  'rephrase',
+  'summary',
+  'expand',
+  'shorten',
+] as const satisfies readonly SystemPromptCategory[];
+
+export function categoryUsesDefaultModel(category: SystemPromptCategory): boolean {
+  return MODEL_BACKED_SYSTEM_PROMPT_CATEGORIES.some(candidate => candidate === category);
 }
 
 const DEFAULT_GENERATION_SETTINGS: SystemPromptGenerationSettings = {
@@ -152,6 +166,7 @@ function builtInPreset(
     name,
     category,
     systemPrompt,
+    defaultModelId: categoryUsesDefaultModel(category) ? DEFAULT_ACTION_MODEL_ID : null,
     ...DEFAULT_GENERATION_SETTINGS,
   };
 }

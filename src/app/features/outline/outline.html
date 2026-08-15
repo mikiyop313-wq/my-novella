@@ -418,7 +418,7 @@
 <ng-template #sceneOptionsMenu let-itemId="itemId">
   <div class="overlay-menu" cdkMenu>
     <button class="menu-item" [cdkMenuTriggerFor]="sceneAiMenu" [cdkMenuTriggerData]="{ itemId: itemId }"
-      [cdkMenuPosition]="sceneAiMenuPositions" cdkMenuItem>
+      [cdkMenuPosition]="sceneAiMenuPositions" (cdkMenuOpened)="prepareSceneAiMenu()" cdkMenuItem>
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
         <path
@@ -464,9 +464,24 @@
 </ng-template>
 
 <ng-template #sceneAiMenu let-itemId="itemId">
-  <div class="overlay-menu" cdkMenu>
-    <button class="menu-item" cdkMenuItem (click)="generateSceneSummary(itemId)">
+  <div class="overlay-menu scene-ai-menu" cdkMenu>
+    <button class="menu-item scene-summary-generate" autocompleteKeepOpenMenuItem
+      [cdkMenuItemDisabled]="isSceneSummaryGenerationDisabled(itemId)"
+      [disabled]="isSceneSummaryGenerationDisabled(itemId)"
+      [attr.aria-busy]="isGeneratingSceneSummary(itemId) || null" aria-live="polite"
+      [title]="hasSceneProse(itemId) ? 'Generate scene summary' : 'Add scene prose before generating a summary'"
+      (click)="generateSceneSummary(itemId)">
+      @if (isGeneratingSceneSummary(itemId)) {
+      <span class="scene-summary-spinner" aria-hidden="true"></span>
+      Generating...
+      } @else {
       Generate summary
+      }
     </button>
+    @if (!resolvingSummaryModel() && summaryModelResolution()?.status === 'unavailable') {
+      <button class="scene-summary-guidance" type="button" (click)="openSummaryModelSettings()">
+        {{ summaryModelGuidance() }}
+      </button>
+    }
   </div>
 </ng-template>

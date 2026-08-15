@@ -4,6 +4,7 @@ import type { SystemPromptCategory } from '../../../../shared/models/system-prom
 import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { AIStateService, type AiChatMessage } from './ai-state.service';
+import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 
 export type LoadingStatus = 'idle' | 'loading' | 'thinking' | 'generating';
 
@@ -28,6 +29,7 @@ export class AiStreamService {
   private readonly aiStateService = inject(AIStateService);
   private readonly systemPromptSelectionService = inject(SystemPromptSelectionService);
   private readonly toastService = inject(ToastService);
+  private readonly systemPromptModelService = inject(SystemPromptModelService);
 
   public readonly loadingState = new Map<string, WritableSignal<LoadingStatus>>();
 
@@ -107,10 +109,30 @@ export class AiStreamService {
         );
       }
 
+      let provider = request.provider;
+      let modelId = request.modelId;
+      if (provider === undefined && modelId === undefined) {
+        const model = await this.systemPromptModelService.resolveActiveModel(
+          request.bookId,
+          request.systemPromptCategory,
+        );
+        if (model.status !== 'ready') {
+          this.toastService.error(
+            model.reason === 'openrouter-unconfigured'
+              ? 'Configure OpenRouter in Settings before using this action.'
+              : 'Choose an available default model in System Prompts.',
+            'AI Generation',
+          );
+          throw new Error('The active system prompt model is unavailable.');
+        }
+        provider = model.provider;
+        modelId = model.modelId;
+      }
+
       return await this.aiStateService.generate(
         request.prompt,
-        request.provider,
-        request.modelId,
+        provider,
+        modelId,
         request.reasoningMode,
         request.messages,
         { category: request.systemPromptCategory, presetId },

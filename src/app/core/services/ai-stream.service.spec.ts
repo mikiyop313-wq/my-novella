@@ -5,6 +5,7 @@ import { SystemPromptSelectionService } from '../../shared/services/system-promp
 import { ToastService } from '../../shared/services/toast.service';
 import { AIStateService } from './ai-state.service';
 import { AiStreamService } from './ai-stream.service';
+import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 
 describe('AiStreamService', () => {
   let service: AiStreamService;
@@ -15,6 +16,7 @@ describe('AiStreamService', () => {
   let onMessage: ReturnType<typeof vi.fn>;
   let listeners: Map<string, (...args: any[]) => void>;
   let cleanupFns: ReturnType<typeof vi.fn>[];
+  let resolveActiveModel: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     listeners = new Map();
@@ -23,6 +25,12 @@ describe('AiStreamService', () => {
     abort = vi.fn().mockResolvedValue(undefined);
     getActivePresetId = vi.fn().mockResolvedValue('chat-preset');
     toastError = vi.fn();
+    resolveActiveModel = vi.fn().mockResolvedValue({
+      status: 'ready',
+      selectorId: 'openai/gpt-5',
+      provider: 'openai',
+      modelId: 'gpt-5',
+    });
     onMessage = vi.fn((channel: string, callback: (...args: any[]) => void) => {
       listeners.set(channel, callback);
 
@@ -45,6 +53,10 @@ describe('AiStreamService', () => {
         { provide: AIStateService, useValue: { generate, abort } },
         { provide: SystemPromptSelectionService, useValue: { getActivePresetId } },
         { provide: ToastService, useValue: { error: toastError } },
+        {
+          provide: SystemPromptModelService,
+          useValue: { resolveActiveModel },
+        },
       ],
     });
 
@@ -83,6 +95,25 @@ describe('AiStreamService', () => {
       undefined,
       undefined,
       { category: 'chat', presetId: 'chat-preset' },
+    );
+  });
+
+  it('uses the active prompt preset model when the caller does not supply one', async () => {
+    await service.streamText({
+      streamId: 'stream-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'summary',
+      prompt: 'Summarize',
+    });
+
+    expect(resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
+    expect(generate).toHaveBeenCalledWith(
+      'Summarize',
+      'openai',
+      'gpt-5',
+      undefined,
+      undefined,
+      { category: 'summary', presetId: 'chat-preset' },
     );
   });
 

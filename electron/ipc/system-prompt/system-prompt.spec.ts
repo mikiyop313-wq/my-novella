@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   listActivePresetIdsForBook: vi.fn(),
   setActivePreset: vi.fn(),
   resetActivePreset: vi.fn(),
+  getBuiltInDefaultModelId: vi.fn(),
+  setBuiltInDefaultModelId: vi.fn(),
+  resolveActiveModel: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -30,6 +33,9 @@ vi.mock('../../../db/repositories/system-prompt.repository', () => ({
     listActivePresetIdsForBook: mocks.listActivePresetIdsForBook,
     setActivePreset: mocks.setActivePreset,
     resetActivePreset: mocks.resetActivePreset,
+    getBuiltInDefaultModelId: mocks.getBuiltInDefaultModelId,
+    setBuiltInDefaultModelId: mocks.setBuiltInDefaultModelId,
+    resolveActiveModel: mocks.resolveActiveModel,
   },
 }));
 
@@ -53,6 +59,7 @@ describe('system prompt IPC handlers', () => {
       maxOutputTokens: null,
       presencePenalty: 0,
       frequencyPenalty: 0,
+      defaultModelId: 'deepseek/deepseek-v4-flash',
     };
     const updateData = {
       category: 'summary' as const,
@@ -80,6 +87,18 @@ describe('system prompt IPC handlers', () => {
         category: 'chat',
       },
     );
+    await mocks.handlers.get('system-prompts:get-built-in-model')?.(
+      {},
+      { presetId: 'default-summary' },
+    );
+    await mocks.handlers.get('system-prompts:set-built-in-model')?.(
+      {},
+      { presetId: 'default-summary', defaultModelId: 'openai/gpt-5' },
+    );
+    await mocks.handlers.get('system-prompts:resolve-active-model')?.(
+      {},
+      { bookId: 'book-1', category: 'summary' },
+    );
 
     expect([...mocks.handlers.keys()]).toEqual([
       'system-prompts:list-global',
@@ -90,6 +109,9 @@ describe('system prompt IPC handlers', () => {
       'system-prompts:list-active',
       'system-prompts:set-active',
       'system-prompts:reset-active',
+      'system-prompts:get-built-in-model',
+      'system-prompts:set-built-in-model',
+      'system-prompts:resolve-active-model',
     ]);
     expect(mocks.listGlobal).toHaveBeenCalledOnce();
     expect(mocks.listAvailableForBook).toHaveBeenCalledWith('book-1');
@@ -99,5 +121,11 @@ describe('system prompt IPC handlers', () => {
     expect(mocks.listActivePresetIdsForBook).toHaveBeenCalledWith('book-1');
     expect(mocks.setActivePreset).toHaveBeenCalledWith('book-1', 'chat', 'preset-1');
     expect(mocks.resetActivePreset).toHaveBeenCalledWith('book-1', 'chat');
+    expect(mocks.getBuiltInDefaultModelId).toHaveBeenCalledWith('default-summary');
+    expect(mocks.setBuiltInDefaultModelId).toHaveBeenCalledWith(
+      'default-summary',
+      'openai/gpt-5',
+    );
+    expect(mocks.resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
   });
 });

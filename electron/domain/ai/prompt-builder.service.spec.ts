@@ -236,6 +236,7 @@ function storedPreset(
         maxOutputTokens: 500,
         presencePenalty: 0,
         frequencyPenalty: 0,
+        defaultModelId: null,
         createdAt: new Date(0).toISOString(),
         lastEditedAt: new Date(0).toISOString(),
         ...overrides,

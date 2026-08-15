@@ -7,7 +7,10 @@ import { provideMarkdown } from 'ngx-markdown';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 
+import { AiStreamService } from '../../core/services/ai-stream.service';
+import { ElectronService } from '../../core/services/electron.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { CodexContextHighlightRegistryService } from '../codex/highlighting/codex-context-highlight-registry.service';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
@@ -19,6 +22,9 @@ describe('Outline', () => {
   let component: Outline;
   let fixture: ComponentFixture<Outline>;
   let store: any;
+  let systemPromptModelService: { resolveActiveModel: ReturnType<typeof vi.fn> };
+  let aiStreamService: { streamText: ReturnType<typeof vi.fn> };
+  let electronService: { invoke: ReturnType<typeof vi.fn> };
   let toastService: Pick<ToastService, 'error'>;
   const trieState = signal<object | null>({});
   const contextTrie = {
@@ -61,6 +67,18 @@ describe('Outline', () => {
       updateStructurePositions: vi.fn().mockResolvedValue(undefined),
     };
 
+    systemPromptModelService = {
+      resolveActiveModel: vi.fn().mockResolvedValue(readySummaryModel()),
+    };
+    aiStreamService = {
+      streamText: vi.fn().mockResolvedValue('Generated summary'),
+    };
+    electronService = {
+      invoke: vi.fn().mockResolvedValue({
+        'scene-1': proseDocument('Scene prose.'),
+      }),
+    };
+
     toastService = {
       error: vi.fn(),
     };
@@ -84,6 +102,9 @@ describe('Outline', () => {
           },
         },
         { provide: OutlineStore, useValue: store },
+        { provide: SystemPromptModelService, useValue: systemPromptModelService },
+        { provide: AiStreamService, useValue: aiStreamService },
+        { provide: ElectronService, useValue: electronService },
         { provide: ToastService, useValue: toastService },
         { provide: CodexContextTrieService, useValue: contextTrie },
         { provide: CodexContextHighlightRegistryService, useValue: highlightRegistry },
@@ -100,6 +121,176 @@ describe('Outline', () => {
 
   it('loads the outline for the current book', () => {
     expect(store.enterBook).toHaveBeenCalledWith('book-1');
+  });
+
+  it('resolves the active Summary preset model whenever the scene AI menu opens', async () => {
+    await component.prepareSceneAiMenu();
+
+    expect(systemPromptModelService.resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
+    expect(component.summaryModelResolution()).toEqual(readySummaryModel());
+  });
+
+  it('disables scene summary generation without prose or an available model', () => {
+    showScene('', 0);
+    component.summaryModelResolution.set(readySummaryModel());
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+
+    showScene('', 12);
+    component.summaryModelResolution.set(null);
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+
+    component.summaryModelResolution.set(readySummaryModel());
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(false);
+  });
+
+  it('generates and replaces a scene summary from only that scene prose', async () => {
+    showScene('Old summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockResolvedValueOnce('  New generated summary.  ');
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(electronService.invoke).toHaveBeenCalledWith(
+      'manuscript:getScenesProse',
+      { sceneIds: ['scene-1'] },
+    );
+    expect(aiStreamService.streamText).toHaveBeenCalledWith({
+      streamId: 'outline-scene-summary:scene-1',
+      bookId: 'book-1',
+      systemPromptCategory: 'summary',
+      prompt: [
+        '--- BEGIN SCENE PROSE ---',
+        'Scene prose.',
+        '--- END SCENE PROSE ---',
+      ].join('\n\n'),
+      provider: 'openai',
+      modelId: 'gpt-5',
+    });
+    expect(store.updateScene).toHaveBeenCalledWith({
+      id: 'scene-1',
+      summary: 'New generated summary.',
+    });
+    expect(component.generatingSummarySceneId()).toBeNull();
+  });
+
+  it('removes the model picker from the scene AI submenu', async () => {
+    showScene('', 12);
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const askAiItem = [...document.querySelectorAll<HTMLButtonElement>('.overlay-menu .menu-item')]
+      .find(button => button.textContent?.includes('Ask AI'))!;
+    askAiItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.scene-ai-menu')).not.toBeNull();
+    expect(document.querySelector('.scene-summary-model-picker')).toBeNull();
+  });
+
+  it('keeps the scene AI submenu open with a loader while generation is active', async () => {
+    showScene('', 12);
+    const deferred = createDeferred<string>();
+    aiStreamService.streamText.mockReturnValueOnce(deferred.promise);
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const askAiItem = [...document.querySelectorAll<HTMLButtonElement>('.overlay-menu .menu-item')]
+      .find(button => button.textContent?.includes('Ask AI'))!;
+    askAiItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    (document.querySelector('.scene-summary-generate') as HTMLButtonElement).click();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.scene-ai-menu')).not.toBeNull();
+    expect(document.querySelector('.scene-summary-spinner')).not.toBeNull();
+    expect(document.querySelector('.scene-summary-generate')?.textContent).toContain('Generating...');
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+
+    await component.generateSceneSummary('scene-1');
+    expect(electronService.invoke).toHaveBeenCalledTimes(1);
+
+    deferred.resolve('Finished summary');
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(document.querySelector('.scene-ai-menu')).toBeNull();
+  });
+
+  it('preserves the existing summary when scene prose serializes to empty text', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    electronService.invoke.mockResolvedValueOnce({ 'scene-1': proseDocument('') });
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(aiStreamService.streamText).not.toHaveBeenCalled();
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith(
+      'The scene has no prose to summarize.',
+      'Outline',
+    );
+    expect(component.generatingSummarySceneId()).toBeNull();
+  });
+
+  it('reports prose-loading failures without changing the existing summary', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    electronService.invoke.mockRejectedValueOnce(new Error('Could not load prose'));
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(aiStreamService.streamText).not.toHaveBeenCalled();
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith('Could not load prose', 'Outline');
+    expect(component.generatingSummarySceneId()).toBeNull();
+  });
+
+  it('preserves the existing summary when AI returns an empty response', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockResolvedValueOnce('   ');
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith(
+      'AI returned an empty scene summary.',
+      'Outline',
+    );
+    expect(component.generatingSummarySceneId()).toBeNull();
+  });
+
+  it('preserves the existing summary and avoids duplicate provider toasts when AI fails', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockRejectedValueOnce(new Error('Provider failed'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalled();
+    expect(component.generatingSummarySceneId()).toBeNull();
+    consoleError.mockRestore();
+  });
+
+  it('preserves the previous summary and reports persistence failures', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    store.updateScene.mockRejectedValueOnce(new Error('Could not save summary'));
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith('Could not save summary', 'Outline');
+    expect(component.generatingSummarySceneId()).toBeNull();
   });
 
   it('creates an act through the outline store', async () => {
@@ -486,7 +677,7 @@ describe('Outline', () => {
     expect(mockTrigger2.close).not.toHaveBeenCalled();
   });
 
-  function showScene(summary: string): void {
+  function showScene(summary: string, wordCount = 0): void {
     store.bookHierarchy.set([
       {
         id: 'act-1',
@@ -496,7 +687,7 @@ describe('Outline', () => {
             id: 'chapter-1',
             title: 'Chapter 1',
             scenes: [
-              { id: 'scene-1', title: 'Scene 1', summary, wordCount: 0 },
+              { id: 'scene-1', title: 'Scene 1', summary, wordCount },
             ],
           },
         ],
@@ -524,4 +715,29 @@ function findCodexMatches(text: string) {
     endIndex: match.index + match[0].length,
     text: match[0],
   }));
+}
+
+function proseDocument(text: string) {
+  return {
+    type: 'doc' as const,
+    content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
+  };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(resolver => resolve = resolver);
+  return { promise, resolve };
+}
+
+function readySummaryModel() {
+  return {
+    status: 'ready' as const,
+    selectorId: 'openai/gpt-5',
+    provider: 'openai',
+    modelId: 'gpt-5',
+  };
 }
