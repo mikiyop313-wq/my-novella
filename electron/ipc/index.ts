@@ -16,6 +16,7 @@ import { setupLocalEmbeddingModelHandlers } from './library/local-embedding-mode
 import { setupVectorConfigurationHandlers } from './library/vector-configuration';
 import { setupOpenRouterEmbeddingModelHandlers } from './library/openrouter-embedding-model';
 import { setupCloudEmbeddingProviderHandlers } from './library/cloud-embedding-provider';
+import { setupManuscriptExportHandlers } from './manuscript-export/manuscript-export';
 
 /** Initializes all application IPC domains once the Electron app is ready. */
 export function initializeIpc(): void {
@@ -31,6 +32,7 @@ export function initializeIpc(): void {
     setupVectorConfigurationHandlers();
     setupOpenRouterEmbeddingModelHandlers();
     setupCloudEmbeddingProviderHandlers();
+    setupManuscriptExportHandlers();
 
     try {
         console.log('IPC handlers initialized');
