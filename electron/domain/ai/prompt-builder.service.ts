@@ -14,6 +14,7 @@ import type {
 } from '../../../shared/models/system-prompt.model';
 import type { SystemPromptRepository } from '../../../db/repositories/system-prompt.repository';
 import { systemPromptRepository } from '../../../db/repositories/system-prompt.repository';
+import { appendRequiredSystemPromptContract } from './required-system-prompt-contracts';
 
 const CHAT_MESSAGE_ROLES = new Set<AiChatMessageRole>(['system', 'user', 'assistant']);
 
@@ -28,7 +29,13 @@ export class PromptBuilderService {
         defaultModelId: string,
     ): Promise<AiChatCompletionPayload> {
         const selectedPreset = await this.resolveSelectedPreset(request);
-        const messages = this.resolveMessages(request, selectedPreset?.systemPrompt);
+        const selectedSystemPrompt = selectedPreset && request.systemPromptPreset
+            ? appendRequiredSystemPromptContract(
+                request.systemPromptPreset.category,
+                selectedPreset.systemPrompt,
+            )
+            : selectedPreset?.systemPrompt;
+        const messages = this.resolveMessages(request, selectedSystemPrompt);
 
         if (!messages.some((message) => message.role !== 'system')) {
             throw new Error('AI prompt requires at least one non-empty message.');

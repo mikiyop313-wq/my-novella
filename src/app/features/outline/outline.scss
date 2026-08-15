@@ -102,7 +102,8 @@
 .scene-ai-menu {
   min-width: 240px;
 
-  .scene-summary-generate:disabled {
+  .scene-summary-generate:disabled,
+  .detect-codex-entries:disabled {
     cursor: not-allowed;
     opacity: 0.45;
 

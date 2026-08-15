@@ -101,6 +101,34 @@ describe('PromptBuilderService', () => {
         expect(getById).not.toHaveBeenCalled();
     });
 
+    it('appends the required JSON contract after the editable Codex detection prompt', async () => {
+        const preset = BUILT_IN_SYSTEM_PROMPT_PRESETS.codexDetection;
+        const payload = await service.buildChatCompletionPayload(makeRequest({
+            systemPromptPreset: { category: 'codexDetection', presetId: preset.id },
+        }), 'fallback-model');
+
+        const systemMessage = payload.messages[0]?.content ?? '';
+        expect(systemMessage.startsWith(`${preset.systemPrompt}\n\n`)).toBe(true);
+        expect(systemMessage).toContain('{"entries":[{"name":"string"');
+        expect(systemMessage).toMatch(/other\.$/);
+    });
+
+    it('appends the required contract to a stored editable detection preset', async () => {
+        const preset = storedPreset({
+            category: 'codexDetection',
+            systemPrompt: 'Detect only major story concepts.',
+        });
+        getById.mockResolvedValue(preset);
+
+        const payload = await service.buildChatCompletionPayload(makeRequest({
+            systemPromptPreset: { category: 'codexDetection', presetId: preset.id },
+        }), 'fallback-model');
+
+        expect(payload.messages[0]?.content.startsWith(
+            'Detect only major story concepts.\n\nReturn exactly one valid JSON object',
+        )).toBe(true);
+    });
+
     it('loads a stored preset by ID and replaces request generation settings', async () => {
         const preset = storedPreset({
             scope: 'book',

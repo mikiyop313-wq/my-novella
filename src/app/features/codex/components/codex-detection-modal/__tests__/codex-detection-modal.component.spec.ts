@@ -3,6 +3,12 @@ import { vi } from 'vitest';
 
 import { CodexDetectionModalComponent } from '../codex-detection-modal.component';
 
+const DETECTED_ENTRIES = [
+  { name: 'Elara Voss', type: 'character' as const, description: 'A guarded cartographer.' },
+  { name: 'The Glass Harbor', type: 'location' as const, description: 'A storm-battered port.' },
+  { name: 'The Ashen Key', type: 'object' as const, description: 'An unusual iron key.' },
+];
+
 describe('CodexDetectionModalComponent', () => {
   let fixture: ComponentFixture<CodexDetectionModalComponent>;
   let component: CodexDetectionModalComponent;
@@ -14,10 +20,12 @@ describe('CodexDetectionModalComponent', () => {
 
     fixture = TestBed.createComponent(CodexDetectionModalComponent);
     component = fixture.componentInstance;
+    fixture.componentRef.setInput('detectedEntries', DETECTED_ENTRIES);
+    fixture.componentRef.setInput('saveEntry', vi.fn().mockResolvedValue({ success: true }));
     fixture.detectChanges();
   });
 
-  it('renders the first mocked entry and its position', () => {
+  it('renders the first detected entry and its position', () => {
     expect(fixture.nativeElement.textContent).toContain('Elara Voss');
     expect(fixture.nativeElement.textContent).toContain('Character');
     expect(fixture.nativeElement.querySelector('.entry-count')?.textContent).toContain('1 / 3');
@@ -46,8 +54,9 @@ describe('CodexDetectionModalComponent', () => {
     expect(fixture.nativeElement.querySelector('.modal-body')?.classList).toContain('slide-previous-b');
   });
 
-  it('removes an accepted entry and keeps the next entry in the current position', () => {
+  it('removes an accepted entry and keeps the next entry in the current position', async () => {
     button('.add-button').click();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(component.entries()).toHaveLength(2);
@@ -57,6 +66,7 @@ describe('CodexDetectionModalComponent', () => {
     expect(fixture.nativeElement.querySelector('.modal-body')?.classList).toContain('slide-next-b');
 
     button('.add-button').click();
+    await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('The Ashen Key');
     expect(fixture.nativeElement.querySelector('.modal-body')?.classList).toContain('slide-next-a');
@@ -77,13 +87,52 @@ describe('CodexDetectionModalComponent', () => {
     expect(fixture.nativeElement.querySelector('.modal-body')?.classList).toContain('slide-previous-b');
   });
 
-  it('requests the modal to close after the final entry is resolved', () => {
+  it('shows a save error and keeps the failed entry available for retry', async () => {
+    const saveEntry = vi.fn()
+      .mockResolvedValueOnce({ success: false, error: 'Entry name already exists.' })
+      .mockResolvedValueOnce({ success: true });
+    fixture.componentRef.setInput('saveEntry', saveEntry);
+    fixture.detectChanges();
+
+    await component.addToCodex();
+    fixture.detectChanges();
+
+    expect(component.entries()).toHaveLength(3);
+    expect(component.currentEntry()?.name).toBe('Elara Voss');
+    expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain(
+      'Entry name already exists.',
+    );
+
+    const retry = component.addToCodex();
+    expect(component.saveError()).toBeNull();
+    await retry;
+
+    expect(saveEntry).toHaveBeenCalledTimes(2);
+    expect(component.entries()).toHaveLength(2);
+  });
+
+  it('clears a save error when navigating to another entry', async () => {
+    fixture.componentRef.setInput(
+      'saveEntry',
+      vi.fn().mockResolvedValue({ success: false, error: 'Could not save the entry.' }),
+    );
+    fixture.detectChanges();
+
+    await component.addToCodex();
+    expect(component.saveError()).toBe('Could not save the entry.');
+
+    component.next();
+
+    expect(component.saveError()).toBeNull();
+  });
+
+  it('requests the modal to close after the final entry is resolved', async () => {
     const close = vi.fn();
     component.close.subscribe(close);
 
-    component.addToCodex();
+    await component.addToCodex();
     component.discard();
-    component.addToCodex();
+    await component.addToCodex();
 
     expect(close).toHaveBeenCalledOnce();
   });

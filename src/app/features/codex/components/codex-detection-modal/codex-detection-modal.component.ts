@@ -1,30 +1,9 @@
-import { Component, computed, output, signal } from '@angular/core';
+import { Component, computed, effect, input, output, signal } from '@angular/core';
 
-import type { CodexEntryType } from '../../../../../../shared/models/codex.model';
-
-interface DetectedCodexEntry {
-  name: string;
-  type: CodexEntryType;
-  description: string;
-}
-
-const MOCK_DETECTED_ENTRIES: readonly DetectedCodexEntry[] = [
-  {
-    name: 'Elara Voss',
-    type: 'character',
-    description: 'A guarded cartographer who carries a brass compass that points toward forgotten places. Elara learned to read coastlines from her father, but abandoned the royal survey after discovering that entire villages had been deliberately erased from its maps. She speaks carefully, remembers every road she has traveled, and distrusts anyone who treats history as settled fact. Although she presents herself as practical and detached, she is quietly driven by the hope that one of the missing roads will lead her back to the brother she lost during the northern expedition.',
-  },
-  {
-    name: 'The Glass Harbor',
-    type: 'location',
-    description: 'A storm-battered port whose translucent cliffs glow blue beneath the moonlight. The harbor was carved into a ring of volcanic glass, leaving narrow passages that sing whenever the tide rises. Merchants arrive only during the calm season, when lanterns can be seen beneath the water and the old lighthouse briefly begins working without a keeper. Local families build their homes into the cliff face and mark every doorway with silver chalk to ward off the voices carried through the stone. Beneath the eastern quay lies a sealed customs tunnel that predates the city and appears on no surviving chart.',
-  },
-  {
-    name: 'The Ashen Key',
-    type: 'object',
-    description: 'An iron key warm to the touch, rumored to unlock doors that no longer exist. Its bow is shaped like a branching flame, while its teeth subtly change whenever nobody is looking directly at them. The key leaves a dusting of gray ash on every surface except human skin. According to an old monastery ledger, it belonged to an architect who designed hidden rooms for the last queen and later removed those rooms from the palace itself. Turning it in an ordinary lock produces no effect, but holding it near a bricked doorway reveals the faint sound of movement on the other side.',
-  },
-];
+import type {
+  CodexEntryType,
+  DetectedCodexEntryDto,
+} from '../../../../../../shared/models/codex.model';
 
 const ENTRY_TYPE_LABELS: Record<CodexEntryType, string> = {
   character: 'Character',
@@ -35,6 +14,10 @@ const ENTRY_TYPE_LABELS: Record<CodexEntryType, string> = {
   other: 'Other',
 };
 
+export type CodexDetectionSaveResult =
+  | { success: true }
+  | { success: false; error: string };
+
 @Component({
   selector: 'app-codex-detection-modal',
   standalone: true,
@@ -42,9 +25,13 @@ const ENTRY_TYPE_LABELS: Record<CodexEntryType, string> = {
   styleUrl: './codex-detection-modal.component.scss',
 })
 export class CodexDetectionModalComponent {
+  readonly detectedEntries = input.required<readonly DetectedCodexEntryDto[]>();
+  readonly saveEntry = input.required<
+    (entry: DetectedCodexEntryDto) => Promise<CodexDetectionSaveResult>
+  >();
   readonly close = output<void>();
 
-  readonly entries = signal<DetectedCodexEntry[]>([...MOCK_DETECTED_ENTRIES]);
+  readonly entries = signal<DetectedCodexEntryDto[]>([]);
   readonly currentIndex = signal(0);
   readonly currentEntry = computed(() => this.entries()[this.currentIndex()] ?? null);
   readonly currentTypeLabel = computed(() => {
@@ -53,6 +40,8 @@ export class CodexDetectionModalComponent {
   });
   readonly transitionDirection = signal<'next' | 'previous' | null>(null);
   readonly animationVariation = signal<'a' | 'b'>('a');
+  readonly saving = signal(false);
+  readonly saveError = signal<string | null>(null);
   readonly entryAnimationClass = computed(() => {
     const direction = this.transitionDirection();
     if (!direction) return '';
@@ -60,9 +49,18 @@ export class CodexDetectionModalComponent {
     return `slide-${direction}-${this.animationVariation()}`;
   });
 
+  constructor() {
+    effect(() => {
+      this.entries.set([...this.detectedEntries()]);
+      this.currentIndex.set(0);
+      this.saveError.set(null);
+    });
+  }
+
   previous(): void {
     if (this.currentIndex() === 0) return;
 
+    this.saveError.set(null);
     this.prepareTransition('previous');
     this.currentIndex.update(index => index - 1);
   }
@@ -70,16 +68,32 @@ export class CodexDetectionModalComponent {
   next(): void {
     if (this.currentIndex() >= this.entries().length - 1) return;
 
+    this.saveError.set(null);
     this.prepareTransition('next');
     this.currentIndex.update(index => index + 1);
   }
 
   discard(): void {
+    this.saveError.set(null);
     this.removeCurrentEntry();
   }
 
-  addToCodex(): void {
-    this.removeCurrentEntry();
+  async addToCodex(): Promise<void> {
+    const entry = this.currentEntry();
+    if (!entry || this.saving()) return;
+
+    this.saveError.set(null);
+    this.saving.set(true);
+    try {
+      const result = await this.saveEntry()(entry);
+      if (result.success) {
+        this.removeCurrentEntry();
+      } else {
+        this.saveError.set(result.error);
+      }
+    } finally {
+      this.saving.set(false);
+    }
   }
 
   private removeCurrentEntry(): void {

@@ -5,6 +5,7 @@ export type SystemPromptCategory =
   | 'summary'
   | 'expand'
   | 'shorten'
+  | 'codexDetection'
   | 'title';
 
 export type SystemPromptScope = 'global' | 'book';

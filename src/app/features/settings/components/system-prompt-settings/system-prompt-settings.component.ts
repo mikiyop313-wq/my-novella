@@ -50,6 +50,7 @@ const SYSTEM_PROMPT_CATEGORY_LABELS: Record<SystemPromptCategory, string> = {
   summary: 'Summary',
   expand: 'Expand',
   shorten: 'Shorten',
+  codexDetection: 'Codex Detection',
   title: 'Chat Title',
 };
 

@@ -478,13 +478,27 @@
       Generate summary
       }
     </button>
-    <button class="menu-item detect-codex-entries" type="button" cdkMenuItem
-      (click)="codexDetectionModalTrigger.openModal()">
+    <button class="menu-item detect-codex-entries" type="button" autocompleteKeepOpenMenuItem
+      [cdkMenuItemDisabled]="isCodexDetectionDisabled(itemId)"
+      [disabled]="isCodexDetectionDisabled(itemId)"
+      [attr.aria-busy]="isGeneratingCodexDetection(itemId) || null"
+      [title]="hasSceneProse(itemId) ? 'Detect new Codex entries' : 'Add scene prose before detecting Codex entries'"
+      (click)="detectCodexEntries(itemId)">
+      @if (isGeneratingCodexDetection(itemId)) {
+      <span class="scene-summary-spinner" aria-hidden="true"></span>
+      Detecting...
+      } @else {
       Detect Codex entries
+      }
     </button>
     @if (!resolvingSummaryModel() && summaryModelResolution()?.status === 'unavailable') {
       <button class="scene-summary-guidance" type="button" (click)="openSummaryModelSettings()">
         {{ summaryModelGuidance() }}
+      </button>
+    }
+    @if (!resolvingSummaryModel() && codexDetectionModelResolution()?.status === 'unavailable') {
+      <button class="scene-summary-guidance" type="button" (click)="openCodexDetectionModelSettings()">
+        {{ codexDetectionModelGuidance() }}
       </button>
     }
   </div>
@@ -494,5 +508,6 @@
   #codexDetectionModalTrigger="appOverlayModal"></ng-container>
 
 <ng-template #codexDetectionModal let-closeModal>
-  <app-codex-detection-modal (close)="closeModal()"></app-codex-detection-modal>
+  <app-codex-detection-modal [detectedEntries]="detectedCodexEntries()"
+    [saveEntry]="saveDetectedCodexEntry" (close)="closeModal()"></app-codex-detection-modal>
 </ng-template>

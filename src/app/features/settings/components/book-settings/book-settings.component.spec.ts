@@ -254,6 +254,7 @@ describe('BookSettingsComponent', () => {
             create: vi.fn(),
             update: vi.fn(),
             delete: vi.fn(),
+            getBuiltInDefaultModelId: vi.fn().mockResolvedValue('openai/gpt-5'),
           },
         },
         {
@@ -266,6 +267,7 @@ describe('BookSettingsComponent', () => {
               summary: 'default-summary',
               expand: 'default-expand',
               shorten: 'default-shorten',
+              codexDetection: 'default-codex-detection',
               title: 'default-title',
             }),
           },

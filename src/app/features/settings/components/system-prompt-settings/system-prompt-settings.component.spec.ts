@@ -121,7 +121,7 @@ describe('SystemPromptSettingsComponent', () => {
   it('opens the global library with built-ins and reusable presets', () => {
     expect(listAvailable).toHaveBeenCalledWith('book-1');
     expect(component.selectedScope()).toBe('global');
-    expect(component.presets()).toHaveLength(9);
+    expect(component.presets()).toHaveLength(10);
     expect(component.filteredPresets().map((preset) => preset.id)).toEqual([
       'default-assistant',
       'global-chat',
@@ -198,10 +198,12 @@ describe('SystemPromptSettingsComponent', () => {
       summary: 'default-summary',
       expand: 'default-expand',
       shorten: 'default-shorten',
+      codexDetection: 'default-codex-detection',
       title: 'default-title',
     });
 
     expect(component.categoryOptions.map((option) => option.label)).not.toContain('Chat Title');
+    expect(component.categoryOptions.map((option) => option.label)).toContain('Codex Detection');
 
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.preset-option.is-in-use .preset-name')?.textContent).toContain(
@@ -502,7 +504,7 @@ describe('SystemPromptSettingsComponent', () => {
     create.mockRejectedValueOnce(new Error('Create failed'));
     await component.addPreset();
 
-    expect(component.presets()).toHaveLength(9);
+    expect(component.presets()).toHaveLength(10);
     expect(toastError).toHaveBeenCalledWith('Create failed', 'Preset creation failed');
 
     selectSavedScenePreset();
@@ -641,6 +643,7 @@ function activeIds(
     summary: 'default-summary',
     expand: 'default-expand',
     shorten: 'default-shorten',
+    codexDetection: 'default-codex-detection',
     title: 'default-title',
     ...overrides,
   };

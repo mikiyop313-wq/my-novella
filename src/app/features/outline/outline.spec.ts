@@ -15,6 +15,8 @@ import { MarkdownEditorComponent } from '../../shared/components/markdown-editor
 import { CodexContextHighlightRegistryService } from '../codex/highlighting/codex-context-highlight-registry.service';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
+import { CodexService } from '../codex/services/codex.service';
+import { CodexStore } from '../codex/store/codex.store';
 import { Outline } from './outline';
 import { OutlineStore } from './store/outline.store';
 
@@ -25,11 +27,14 @@ describe('Outline', () => {
   let systemPromptModelService: { resolveActiveModel: ReturnType<typeof vi.fn> };
   let aiStreamService: { streamText: ReturnType<typeof vi.fn> };
   let electronService: { invoke: ReturnType<typeof vi.fn> };
-  let toastService: Pick<ToastService, 'error'>;
+  let codexService: { getEntries: ReturnType<typeof vi.fn>; createEntry: ReturnType<typeof vi.fn> };
+  let codexStore: any;
+  let toastService: Pick<ToastService, 'error' | 'info' | 'success'>;
   const trieState = signal<object | null>({});
   const contextTrie = {
     trie: trieState.asReadonly(),
     findMatches: vi.fn((text: string) => findCodexMatches(text)),
+    refreshCurrentContext: vi.fn().mockResolvedValue(undefined),
   };
   const highlightRegistry = {
     setRanges: vi.fn(),
@@ -41,6 +46,7 @@ describe('Outline', () => {
   beforeEach(async () => {
     trieState.set({});
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
+    contextTrie.refreshCurrentContext.mockClear();
     highlightRegistry.setRanges.mockClear();
     highlightRegistry.clearRanges.mockClear();
     highlightRegistry.getEntryIdsAtPoint.mockReset().mockReturnValue([]);
@@ -78,9 +84,21 @@ describe('Outline', () => {
         'scene-1': proseDocument('Scene prose.'),
       }),
     };
+    codexService = {
+      getEntries: vi.fn().mockResolvedValue([]),
+      createEntry: vi.fn().mockResolvedValue({ id: 'created-entry' }),
+    };
+    codexStore = {
+      activeType: signal('character'),
+      searchQuery: signal(''),
+      entryFilters: signal({}),
+      loadEntries: vi.fn().mockResolvedValue(undefined),
+    };
 
     toastService = {
       error: vi.fn(),
+      info: vi.fn(),
+      success: vi.fn(),
     };
 
     await TestBed.configureTestingModule({
@@ -105,6 +123,8 @@ describe('Outline', () => {
         { provide: SystemPromptModelService, useValue: systemPromptModelService },
         { provide: AiStreamService, useValue: aiStreamService },
         { provide: ElectronService, useValue: electronService },
+        { provide: CodexService, useValue: codexService },
+        { provide: CodexStore, useValue: codexStore },
         { provide: ToastService, useValue: toastService },
         { provide: CodexContextTrieService, useValue: contextTrie },
         { provide: CodexContextHighlightRegistryService, useValue: highlightRegistry },
@@ -123,11 +143,16 @@ describe('Outline', () => {
     expect(store.enterBook).toHaveBeenCalledWith('book-1');
   });
 
-  it('resolves the active Summary preset model whenever the scene AI menu opens', async () => {
+  it('resolves the active Summary and Codex Detection models when the scene AI menu opens', async () => {
     await component.prepareSceneAiMenu();
 
     expect(systemPromptModelService.resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
+    expect(systemPromptModelService.resolveActiveModel).toHaveBeenCalledWith(
+      'book-1',
+      'codexDetection',
+    );
     expect(component.summaryModelResolution()).toEqual(readySummaryModel());
+    expect(component.codexDetectionModelResolution()).toEqual(readySummaryModel());
   });
 
   it('disables scene summary generation without prose or an available model', () => {
@@ -190,6 +215,12 @@ describe('Outline', () => {
 
   it('opens detected Codex entries from the scene AI submenu', async () => {
     showScene('', 12);
+    aiStreamService.streamText.mockResolvedValueOnce(JSON.stringify({
+      entries: [
+        { name: 'Elara Voss', type: 'character', description: 'A cartographer.' },
+        { name: 'The Glass Harbor', type: 'location', description: 'A port.' },
+      ],
+    }));
 
     (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -206,6 +237,12 @@ describe('Outline', () => {
 
     expect(document.querySelector('.codex-detection-modal')).not.toBeNull();
     expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('Elara Voss');
+    expect(codexService.getEntries).toHaveBeenCalledWith('book-1', { includeArchived: true });
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      systemPromptCategory: 'codexDetection',
+      provider: 'openai',
+      modelId: 'gpt-5',
+    }));
 
     document.querySelector<HTMLButtonElement>(
       '.codex-detection-modal [aria-label="Next detected entry"]',
@@ -215,6 +252,73 @@ describe('Outline', () => {
     expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('The Glass Harbor');
 
     document.querySelector<HTMLButtonElement>('.codex-detection-modal .close-button')?.click();
+  });
+
+  it('rejects an invalid Codex detection response without opening the modal', async () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockResolvedValueOnce('```json\n{"entries":[]}\n```');
+
+    await component.detectCodexEntries('scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith(
+      'AI returned invalid JSON for Codex detection.',
+      'Codex Detection',
+    );
+    expect(component.detectedCodexEntries()).toEqual([]);
+    expect(document.querySelector('.codex-detection-modal')).toBeNull();
+  });
+
+  it('filters existing Codex names and reports when no new entries remain', async () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    codexService.getEntries.mockResolvedValueOnce([codexEntry('Elara Voss', 'Elara')]);
+    aiStreamService.streamText.mockResolvedValueOnce(JSON.stringify({
+      entries: [
+        { name: 'elara', type: 'character', description: 'Already known.' },
+      ],
+    }));
+
+    await component.detectCodexEntries('scene-1');
+
+    expect(toastService.info).toHaveBeenCalledWith(
+      'No new Codex entries were detected.',
+      'Codex Detection',
+    );
+    expect(component.detectedCodexEntries()).toEqual([]);
+  });
+
+  it('adds an accepted detection and refreshes Codex state and context', async () => {
+    const entry = {
+      name: 'The Glass Harbor',
+      type: 'location' as const,
+      description: 'A storm-battered port.',
+    };
+
+    await expect(component.saveDetectedCodexEntry(entry)).resolves.toEqual({ success: true });
+
+    expect(codexService.createEntry).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      ...entry,
+      trackingSetting: 'include_when_detected',
+    });
+    expect(codexStore.loadEntries).toHaveBeenCalledWith('book-1', 'character', '', {});
+    expect(contextTrie.refreshCurrentContext).toHaveBeenCalled();
+    expect(toastService.success).not.toHaveBeenCalled();
+  });
+
+  it('returns an accepted detection error without showing a toast', async () => {
+    const error = new Error('Entry name already exists.');
+    codexService.createEntry.mockRejectedValueOnce(error);
+
+    await expect(component.saveDetectedCodexEntry({
+      name: 'The Glass Harbor',
+      type: 'location',
+      description: 'A storm-battered port.',
+    })).resolves.toEqual({ success: false, error: error.message });
+
+    expect(toastService.error).not.toHaveBeenCalled();
+    expect(codexStore.loadEntries).not.toHaveBeenCalled();
   });
 
   it('keeps the scene AI submenu open with a loader while generation is active', async () => {
@@ -768,5 +872,21 @@ function readySummaryModel() {
     selectorId: 'openai/gpt-5',
     provider: 'openai',
     modelId: 'gpt-5',
+  };
+}
+
+function codexEntry(name: string, alias: string | null) {
+  return {
+    id: 'codex-1',
+    bookId: 'book-1',
+    type: 'character' as const,
+    name,
+    alias,
+    description: null,
+    image: null,
+    status: 'archived' as const,
+    trackingSetting: 'include_when_detected' as const,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastEditedAt: '2026-01-01T00:00:00.000Z',
   };
 }

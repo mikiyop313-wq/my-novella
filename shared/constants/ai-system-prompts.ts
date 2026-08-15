@@ -58,6 +58,14 @@ Keep the prose natural and coherent.
 Return only the shortened prose.`,
   },
 
+  /** Codex-entry detection system prompts. */
+  codexDetection: {
+    default: `You identify new Codex entries in fiction prose for a novelist.
+Detect distinct characters, locations, important objects, lore, subplots, and other story concepts that deserve reusable reference entries.
+Use the supplied existing Codex names and aliases to avoid proposing entries that already exist.
+Write a concise, factual description for each entry using only information supported by the supplied prose.`,
+  },
+
   /** Chat-thread title system prompts. */
   title: {
     default: [
@@ -84,6 +92,7 @@ export const MODEL_BACKED_SYSTEM_PROMPT_CATEGORIES = [
   'summary',
   'expand',
   'shorten',
+  'codexDetection',
 ] as const satisfies readonly SystemPromptCategory[];
 
 export function categoryUsesDefaultModel(category: SystemPromptCategory): boolean {
@@ -134,6 +143,12 @@ export const BUILT_IN_SYSTEM_PROMPT_PRESETS = {
     'Default Shorten',
     'shorten',
     AI_SYSTEM_PROMPTS.shorten.default,
+  ),
+  codexDetection: builtInPreset(
+    'default-codex-detection',
+    'Default Codex Detection',
+    'codexDetection',
+    AI_SYSTEM_PROMPTS.codexDetection.default,
   ),
   title: builtInPreset(
     'default-title',
