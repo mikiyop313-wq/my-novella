@@ -142,7 +142,8 @@ describe('ElementAnimationDirective', () => {
       },
     });
 
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(1);
     await animation;
 
     expect(animate).toHaveBeenCalledWith(
