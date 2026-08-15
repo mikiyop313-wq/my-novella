@@ -1,7 +1,7 @@
 <div class="autocomplete-wrapper">
   <button type="button" class="dropdown-trigger" [class.active]="isOpen()" [cdkMenuTriggerFor]="menu"
     (click)="onTriggerClick($event)" (cdkMenuOpened)="onMenuOpened()" (cdkMenuClosed)="onMenuClosed()">
-    <span class="trigger-label" [class.placeholder]="isPlaceholder()">
+    <span class="trigger-label" [class.placeholder]="isPlaceholder()" [style.font-family]="getSelectedFontFamily()">
       {{ getDisplayLabel() }}
     </span>
     <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
@@ -25,7 +25,7 @@
         }
         <li class="option-container">
           <div class="option-item" cdkMenuItem (click)="selectOption(option)">
-            <span class="option-label" [class.selected]="multi && isSelected(option.value)">{{ option.label }}</span>
+            <span class="option-label" [class.selected]="multi && isSelected(option.value)" [style.font-family]="option.fontFamily">{{ option.label }}</span>
             @if (isSelected(option.value)) {
             <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"
               class="check-icon">

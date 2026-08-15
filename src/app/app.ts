@@ -3,10 +3,11 @@ import { ChildrenOutletContexts, RouterOutlet } from '@angular/router';
 import { ElectronService } from './core/services/electron.service';
 import { ThemeService } from './core/services/theme.service';
 import { routeAnimations } from './shared/animations/route-animations';
+import { RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RouterLink],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   animations: [routeAnimations]
