@@ -118,6 +118,20 @@ function getLastNodeId(editor: Editor, typeName: string): string | null {
   return lastId;
 }
 
+function getActInsertionPosition(editor: Editor): number | { from: number; to: number } {
+  const doc = editor.state.doc;
+  const firstNode = doc.firstChild;
+  const isEmptyBookPlaceholder = doc.childCount === 1
+    && firstNode?.type.name === 'paragraph'
+    && firstNode.content.size === 0;
+
+  if (isEmptyBookPlaceholder) {
+    return { from: 0, to: doc.content.size };
+  }
+
+  return doc.content.size;
+}
+
 /**
  * Deletes a top-level structural section from the editor only. The saver later
  * detects the missing node and commits the physical DB delete after navigation
@@ -519,12 +533,12 @@ export const ManuscriptStore = signalStore(
 
       if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
 
-      const endPosition = editor.state.doc.content.size;
+      const insertionPosition = getActInsertionPosition(editor);
 
       editor.chain().focus().command(({ tr }) => {
         tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
         return true;
-      }).insertContentAt(endPosition, [
+      }).insertContentAt(insertionPosition, [
         { type: ACT_HEADER_NODE, attrs: { id: act.id, title: act.title, position: act.position } },
         { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },

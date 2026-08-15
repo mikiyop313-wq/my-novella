@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Editor } from '@tiptap/core';
-import { vi } from 'vitest';
+import { type Mock, vi } from 'vitest';
 
 import { ElectronService } from '../../../../core/services/electron.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
@@ -23,6 +23,7 @@ describe('ManuscriptStore structural insertion', () => {
     addScene: ReturnType<typeof vi.fn>;
   };
   let runInsertion: ReturnType<typeof vi.fn>;
+  let insertContentAt: Mock<(...args: unknown[]) => void>;
 
   beforeEach(() => {
     manuscriptStructureService = {
@@ -51,6 +52,7 @@ describe('ManuscriptStore structural insertion', () => {
 
     store = TestBed.inject(ManuscriptStore);
     runInsertion = vi.fn();
+    insertContentAt = vi.fn<(...args: unknown[]) => void>();
   });
 
   afterEach(() => {
@@ -77,7 +79,7 @@ describe('ManuscriptStore structural insertion', () => {
     expect(workspaceBookStore.addScene).not.toHaveBeenCalled();
   });
 
-  it('creates and inserts an act structure with one service operation', async () => {
+  it('replaces the empty-book placeholder when inserting the first act structure', async () => {
     const created = {
       act: createAct(),
       chapter: createChapter('act-new'),
@@ -85,13 +87,46 @@ describe('ManuscriptStore structural insertion', () => {
     };
     manuscriptStructureService.createActStructure.mockResolvedValue(created);
     store.setRouteParams('book', 'book-1');
-    store.setEditor(createEditor({ chapterId: 'chapter-a', runInsertion }));
+    store.setEditor(createEditor({
+      chapterId: 'chapter-a',
+      documentShape: 'empty-placeholder',
+      insertContentAt,
+      runInsertion,
+    }));
 
     await store.insertAct();
 
     expect(manuscriptStructureService.createActStructure).toHaveBeenCalledWith('book-1');
+    expect(insertContentAt).toHaveBeenCalledWith(
+      { from: 0, to: 2 },
+      [
+        { type: 'actHeader', attrs: { id: 'act-new', title: '', position: 1 } },
+        { type: 'chapterHeader', attrs: { id: 'chapter-new', title: '', position: 0 } },
+        { type: 'sceneSummary', attrs: { id: 'scene-new', title: 'New Scene', summary: '', position: 1 } },
+        { type: 'paragraph' },
+      ],
+      { updateSelection: true },
+    );
     expect(runInsertion).toHaveBeenCalledOnce();
     expect(workspaceBookStore.addActStructure).toHaveBeenCalledWith(created);
+  });
+
+  it('appends an act structure when the document already contains structure', async () => {
+    manuscriptStructureService.createActStructure.mockResolvedValue({
+      act: createAct(),
+      chapter: createChapter('act-new'),
+      scene: createScene('chapter-new'),
+    });
+    store.setRouteParams('book', 'book-1');
+    store.setEditor(createEditor({ chapterId: 'chapter-a', insertContentAt, runInsertion }));
+
+    await store.insertAct();
+
+    expect(insertContentAt).toHaveBeenCalledWith(
+      10,
+      expect.any(Array),
+      { updateSelection: true },
+    );
   });
 
   it('creates and inserts a chapter structure with one service operation', async () => {
@@ -127,21 +162,37 @@ describe('ManuscriptStore structural insertion', () => {
 interface CreateEditorOptions {
   actId?: string;
   chapterId: string;
+  documentShape?: 'empty-placeholder' | 'structured';
+  insertContentAt?: (...args: unknown[]) => void;
   runInsertion: ReturnType<typeof vi.fn>;
 }
 
-function createEditor({ actId, chapterId, runInsertion }: CreateEditorOptions): Editor {
+function createEditor({
+  actId,
+  chapterId,
+  documentShape = 'structured',
+  insertContentAt = vi.fn(),
+  runInsertion,
+}: CreateEditorOptions): Editor {
   const chain = {
     focus: vi.fn(() => chain),
     command: vi.fn(() => chain),
-    insertContentAt: vi.fn(() => chain),
+    insertContentAt: vi.fn((...args: unknown[]) => {
+      insertContentAt(...args);
+      return chain;
+    }),
     run: runInsertion,
   };
+  const isEmptyPlaceholder = documentShape === 'empty-placeholder';
 
   return {
     state: {
       doc: {
-        content: { size: 10 },
+        childCount: isEmptyPlaceholder ? 1 : 4,
+        content: { size: isEmptyPlaceholder ? 2 : 10 },
+        firstChild: isEmptyPlaceholder
+          ? { type: { name: 'paragraph' }, content: { size: 0 } }
+          : { type: { name: 'actHeader' }, content: { size: 0 } },
         descendants: (visitor: (node: { type: { name: string }; attrs: Record<string, string> }) => void) => {
           if (actId) visitor({ type: { name: 'actHeader' }, attrs: { id: actId } });
           visitor({ type: { name: 'chapterHeader' }, attrs: { id: chapterId } });
