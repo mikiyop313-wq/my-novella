@@ -18,8 +18,8 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  width: 420px;
-  max-width: 90vw;
+  width: 500px;
+  max-width: calc(100vw - 32px);
   box-shadow:
     var(--color-shadow),
     0 0 0 1px inset rgba(255, 255, 255, 0.05);
@@ -48,8 +48,8 @@
   p {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 1.05rem;
-    line-height: 1.6;
+    font-size: 0.95rem;
+    line-height: 1.55;
     font-weight: 400;
   }
 }
@@ -123,9 +123,9 @@
   gap: 12px;
 
   button {
-    padding: 10px 24px;
+    padding: 9px 20px;
     border-radius: 8px;
-    font-size: 0.95rem;
+    font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
