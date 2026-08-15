@@ -7,7 +7,7 @@ import type {
   SceneDto,
 } from '../../../../shared/models/manuscript.model';
 import {
-  buildRephrasePrompt,
+  buildSelectionEditPrompt,
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
@@ -79,6 +79,22 @@ describe('Story context builder', () => {
     ['an empty hierarchy', [], 'scene-1'],
   ])('omits the Outline for %s', (_label, hierarchy, currentSceneId) => {
     expect(serializePartialOutline(hierarchy, 'Silver Key', currentSceneId)).toBe('');
+  });
+
+  it('embeds the current scene edit content when provided', () => {
+    const result = serializePartialOutline(
+      createHierarchy(),
+      'Silver Key',
+      'scene-2',
+      'Before.\n\n--- PASSAGE TO EDIT ---\nSelected.\n--- END PASSAGE ---\n\nAfter.',
+    );
+
+    expect(result).toContain('--- BEGIN SCENE 1');
+    expect(result).toContain(
+      '--- BEGIN SCENE 2 ---\n\nProse:\nBefore.\n\n' +
+      '--- PASSAGE TO EDIT ---\nSelected.\n--- END PASSAGE ---\n\nAfter.\n\n--- END SCENE 2 ---',
+    );
+    expect(result).not.toContain('Second summary.');
   });
 
   it('renders a pruned selected tree without summaries or an unnecessary novel wrapper', () => {
@@ -357,23 +373,66 @@ describe('Story context builder', () => {
     const selectedText = 'Elias would not meet her eyes.';
     const from = findTextPos(doc, selectedText);
 
-    expect(buildRephrasePrompt(doc, { from, to: from + selectedText.length })).toEqual({
+    expect(buildSelectionEditPrompt(
+      doc,
+      { from, to: from + selectedText.length },
+      'Rephrase the marked passage.',
+    )).toEqual({
       sceneId: 'scene-1',
+      sceneContent: `Mara entered the room.
+
+--- PASSAGE TO EDIT ---
+Elias would not meet her eyes.
+--- END PASSAGE ---
+
+The others waited outside.`,
+      selectedProse: 'Elias would not meet her eyes.',
       prompt: `--- STORY CONTEXT ---
 Scene: The Confrontation
 
 Mara entered the room.
 
---- PASSAGE TO REPHRASE ---
+--- PASSAGE TO EDIT ---
 Elias would not meet her eyes.
 --- END PASSAGE ---
 
 The others waited outside.
 --- END STORY CONTEXT ---
 
-Rephrase only the marked passage. Use the surrounding scene for continuity.
+Instruction: Rephrase the marked passage.
+Edit only the marked passage. Use the surrounding scene for continuity.
 Return only its replacement text.`,
     });
+  });
+
+  it('places partial outline before scene context and Codex context after it', () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-1', 'The Confrontation', 'Scene summary.'),
+      paragraph('Mara entered the room.'),
+      paragraph('Elias would not meet her eyes.'),
+      paragraph('The others waited outside.'),
+    ]);
+    const selectedText = 'Elias would not meet her eyes.';
+    const from = findTextPos(doc, selectedText);
+    const result = buildSelectionEditPrompt(
+      doc,
+      { from, to: from + selectedText.length },
+      'Expand the marked passage.',
+      {
+        partialOutline: '## Outline\n\nEarlier scene summary.',
+        codexContext: '## Codex Context\n\nMara Vale.',
+      },
+    );
+
+    expect(result?.prompt).toContain(
+      '--- STORY CONTEXT ---\n## Outline\n\nEarlier scene summary.\nScene: The Confrontation',
+    );
+    expect(result?.prompt.indexOf('--- END PASSAGE ---')).toBeLessThan(
+      result?.prompt.indexOf('## Codex Context') ?? -1,
+    );
+    expect(result?.prompt.indexOf('## Codex Context')).toBeLessThan(
+      result?.prompt.indexOf('--- END STORY CONTEXT ---') ?? -1,
+    );
   });
 
   it('rejects rephrase selections outside one scene', () => {
@@ -388,14 +447,14 @@ Return only its replacement text.`,
     const firstFrom = findTextPos(doc, 'First passage.');
     const secondFrom = findTextPos(doc, 'Second passage.');
 
-    expect(buildRephrasePrompt(doc, {
+    expect(buildSelectionEditPrompt(doc, {
       from: outsideFrom,
       to: outsideFrom + 'Outside'.length,
-    })).toBeNull();
-    expect(buildRephrasePrompt(doc, {
+    }, 'Rephrase the marked passage.')).toBeNull();
+    expect(buildSelectionEditPrompt(doc, {
       from: firstFrom,
       to: secondFrom + 'Second'.length,
-    })).toBeNull();
+    }, 'Rephrase the marked passage.')).toBeNull();
   });
 
   it('serializes only progression at or before the current active scene', () => {

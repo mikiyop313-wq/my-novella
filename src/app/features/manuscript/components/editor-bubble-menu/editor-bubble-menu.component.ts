@@ -2,7 +2,10 @@ import { Component, ElementRef, ViewChild, signal, inject, NgZone, effect } from
 import { CommonModule } from '@angular/common';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
 import { ManuscriptStore } from '../../store/manuscript.store';
-import { AiSelectionEffectComponent } from '../ai-selection-effect/ai-selection-effect.component';
+import {
+  AiSelectionEffectComponent,
+  type AiSelectionEditRequest,
+} from '../ai-selection-effect/ai-selection-effect.component';
 
 @Component({
   selector: 'app-editor-bubble-menu',
@@ -151,24 +154,45 @@ export class EditorBubbleMenuComponent {
     }
   }
 
-  rephrase(): void {
-    if (this.aiSelectionEffect.startRephrase()) this.isVisible.set(false);
+  rephrase(): boolean {
+    return this.startAiEdit({
+      category: 'rephrase',
+      instruction: 'Rephrase the marked passage.',
+      actionLabel: 'Rephrase',
+    });
   }
 
-  shorten(): void {
-    this.startAiEffect();
+  shorten(): boolean {
+    return this.startAiEdit({
+      category: 'shorten',
+      instruction: 'Shorten the marked passage.',
+      actionLabel: 'Shorten',
+    });
   }
 
-  expand(): void {
-    this.startAiEffect();
+  expand(): boolean {
+    return this.startAiEdit({
+      category: 'expand',
+      instruction: 'Expand the marked passage.',
+      actionLabel: 'Expand',
+    });
   }
 
-  other(_prompt: string): void {
-    this.startAiEffect();
+  other(prompt: string): boolean {
+    const instruction = prompt.trim();
+    if (!instruction) return false;
+
+    return this.startAiEdit({
+      category: 'rephrase',
+      instruction,
+      actionLabel: 'Other',
+    });
   }
 
-  private startAiEffect(): void {
-    if (this.aiSelectionEffect.start()) this.isVisible.set(false);
+  private startAiEdit(request: AiSelectionEditRequest): boolean {
+    const started = this.aiSelectionEffect.startEdit(request);
+    if (started) this.isVisible.set(false);
+    return started;
   }
 
   private clearBlurTimer(): void {

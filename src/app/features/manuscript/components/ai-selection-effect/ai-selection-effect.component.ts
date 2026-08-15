@@ -1,12 +1,20 @@
 import { Component, computed, effect, inject, NgZone, signal } from '@angular/core';
 import type { Editor } from '@tiptap/core';
-import { Slice } from '@tiptap/pm/model';
+import { Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { AiStreamService } from '../../../../core/services/ai-stream.service';
 import { ToastService } from '../../../../shared/services/toast.service';
-import { buildRephrasePrompt } from '../../../../shared/utils/story-context-builder';
+import {
+  buildSelectionEditPrompt,
+  serializeCodexContext,
+  serializePartialOutline,
+  type SelectionEditAdditionalContext,
+} from '../../../../shared/utils/story-context-builder';
+import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
+import { CodexService } from '../../../codex/services/codex.service';
+import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { ManuscriptStore } from '../../store/manuscript.store';
 
@@ -21,9 +29,16 @@ interface AiSelectionBounds {
 
 const EFFECT_PADDING = 10;
 const EFFECT_DRAW_DURATION_MS = 600;
-const EFFECT_RESPONSE_DURATION_MS = 5_000;
 const EFFECT_ACTIONS_HEIGHT = 48;
 const AI_SELECTION_SPACING_PLUGIN_KEY = new PluginKey('aiSelectionSpacing');
+
+export type AiSelectionEditCategory = 'rephrase' | 'expand' | 'shorten';
+
+export interface AiSelectionEditRequest {
+  category: AiSelectionEditCategory;
+  instruction: string;
+  actionLabel: 'Rephrase' | 'Expand' | 'Shorten' | 'Other';
+}
 
 @Component({
   selector: 'app-ai-selection-effect',
@@ -44,17 +59,19 @@ export class AiSelectionEffectComponent {
   private readonly workspaceStore = inject(WorkspaceStore);
   private readonly aiStreamService = inject(AiStreamService);
   private readonly toastService = inject(ToastService);
+  private readonly codexContext = inject(CodexContextTrieService);
+  private readonly codexService = inject(CodexService);
+  private readonly manuscriptStructureService = inject(ManuscriptStructureService);
   private readonly zone = inject(NgZone);
   private selection: { from: number; to: number } | null = null;
   private previewSelection: { from: number; to: number } | null = null;
   private originalSlice: Slice | null = null;
   private candidateSlice: Slice | null = null;
   private editor: Editor | null = null;
-  private mode: 'placeholder' | 'rephrase' | null = null;
+  private activeRequest: AiSelectionEditRequest | null = null;
   private streamId: string | null = null;
   private isInternalUpdate = false;
   private drawTimer: ReturnType<typeof setTimeout> | null = null;
-  private responseTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     effect((onCleanup) => {
@@ -77,55 +94,37 @@ export class AiSelectionEffectComponent {
     });
   }
 
-  /** Retains the existing placeholder effect used by unimplemented AI actions. */
-  start(): boolean {
-    if (!this.beginSelectionEffect('placeholder')) return false;
-
-    this.drawTimer = setTimeout(() => {
-      this.zone.run(() => {
-        this.drawTimer = null;
-        if (this.state() === 'drawing') this.state.set('generating');
-      });
-    }, EFFECT_DRAW_DURATION_MS);
-    this.responseTimer = setTimeout(() => {
-      this.zone.run(() => {
-        this.responseTimer = null;
-        if (this.state() !== 'idle') {
-          this.state.set('ready');
-          this.refreshSelectionSpacing();
-          this.updatePosition();
-        }
-      });
-    }, EFFECT_RESPONSE_DURATION_MS);
-
-    return true;
-  }
-
-  /** Starts a real scene-aware rephrase request for the active selection. */
-  startRephrase(): boolean {
+  /** Starts a scene-aware AI edit request for the active selection. */
+  startEdit(request: AiSelectionEditRequest): boolean {
     const currentEditor = this.store.editor();
     const bookId = this.workspaceStore.bookId();
     if (!currentEditor || this.state() !== 'idle') return false;
+    const instruction = request.instruction.trim();
+    if (!instruction) return false;
     if (!bookId) {
-      this.toastService.error('No active book is available.', 'AI Rephrase');
+      this.toastService.error('No active book is available.', `AI ${request.actionLabel}`);
       return false;
     }
 
     const { selection } = currentEditor.state;
-    const context = buildRephrasePrompt(currentEditor.state.doc, {
-      from: selection.from,
-      to: selection.to,
-    });
+    const documentSnapshot = currentEditor.state.doc;
+    const selectionSnapshot = { from: selection.from, to: selection.to };
+    const context = buildSelectionEditPrompt(
+      documentSnapshot,
+      selectionSnapshot,
+      instruction,
+    );
     if (!context) {
       this.toastService.error(
-        'Select prose contained within a single scene to rephrase it.',
-        'AI Rephrase',
+        `Select prose contained within a single scene to use ${request.actionLabel}.`,
+        `AI ${request.actionLabel}`,
       );
       return false;
     }
 
-    if (!this.beginSelectionEffect('rephrase')) return false;
+    if (!this.beginSelectionEffect()) return false;
 
+    this.activeRequest = { ...request, instruction };
     this.originalSlice = currentEditor.state.doc.slice(selection.from, selection.to);
     const requestId = crypto.randomUUID();
     this.streamId = requestId;
@@ -134,7 +133,14 @@ export class AiSelectionEffectComponent {
         this.drawTimer = null;
         if (this.streamId !== requestId || this.state() !== 'drawing') return;
         this.state.set('generating');
-        void this.generateRephrase(requestId, bookId, context.prompt);
+        void this.generateEdit(
+          requestId,
+          bookId,
+          documentSnapshot,
+          selectionSnapshot,
+          context,
+          this.activeRequest!,
+        );
       });
     }, EFFECT_DRAW_DURATION_MS);
 
@@ -147,7 +153,7 @@ export class AiSelectionEffectComponent {
   }
 
   confirm(): void {
-    if (this.mode === 'rephrase') this.commitRephrasePreview();
+    this.commitEditPreview();
     this.dismiss();
   }
 
@@ -177,7 +183,7 @@ export class AiSelectionEffectComponent {
     });
   };
 
-  private beginSelectionEffect(mode: 'placeholder' | 'rephrase'): boolean {
+  private beginSelectionEffect(): boolean {
     if (this.state() !== 'idle') return false;
 
     const currentEditor = this.store.editor();
@@ -191,7 +197,6 @@ export class AiSelectionEffectComponent {
       .trim();
     if (!selectedText) return false;
 
-    this.mode = mode;
     this.selection = { from: selection.from, to: selection.to };
     this.editor = currentEditor;
     this.addSelectionSpacing(currentEditor, this.selection, false, true);
@@ -206,18 +211,41 @@ export class AiSelectionEffectComponent {
     return true;
   }
 
-  private async generateRephrase(
+  private async generateEdit(
     requestId: string,
     bookId: string,
-    prompt: string,
+    documentSnapshot: ProseMirrorNode,
+    selectionSnapshot: { from: number; to: number },
+    context: NonNullable<ReturnType<typeof buildSelectionEditPrompt>>,
+    request: AiSelectionEditRequest,
   ): Promise<void> {
     let response = '';
 
     try {
+      let prompt = context.prompt;
+      if (request.category === 'expand' || request.category === 'shorten') {
+        const additionalContext = await this.prepareExtendedContext(
+          bookId,
+          context.sceneId,
+          context.sceneContent,
+          context.selectedProse,
+        );
+        if (this.streamId !== requestId || this.state() !== 'generating') return;
+
+        const enrichedContext = buildSelectionEditPrompt(
+          documentSnapshot,
+          selectionSnapshot,
+          request.instruction,
+          additionalContext,
+        );
+        if (!enrichedContext) throw new Error('Could not rebuild the selection edit prompt.');
+        prompt = enrichedContext.prompt;
+      }
+
       await this.aiStreamService.streamText({
         streamId: requestId,
         bookId,
-        systemPromptCategory: 'rephrase',
+        systemPromptCategory: request.category,
         prompt,
         onToken: token => response += token,
       });
@@ -226,7 +254,10 @@ export class AiSelectionEffectComponent {
 
       const replacement = response.trim();
       if (!replacement) {
-        this.toastService.error('The model returned an empty rephrase.', 'AI Rephrase');
+        this.toastService.error(
+          `The model returned an empty ${request.actionLabel.toLowerCase()} result.`,
+          `AI ${request.actionLabel}`,
+        );
         this.streamId = null;
         this.dismiss();
         return;
@@ -234,7 +265,10 @@ export class AiSelectionEffectComponent {
 
       const candidateSlice = this.parseCandidateSlice(replacement);
       if (!candidateSlice) {
-        this.toastService.error('The rephrased text could not be rendered.', 'AI Rephrase');
+        this.toastService.error(
+          `The ${request.actionLabel.toLowerCase()} result could not be rendered.`,
+          `AI ${request.actionLabel}`,
+        );
         this.streamId = null;
         this.dismiss();
         return;
@@ -245,10 +279,59 @@ export class AiSelectionEffectComponent {
       this.previewCandidate(candidateSlice);
     } catch (error) {
       if (this.streamId !== requestId) return;
-      console.error('AI rephrasing failed:', error);
+      console.error(`AI ${request.actionLabel.toLowerCase()} failed:`, error);
+      this.toastService.error(
+        `Could not complete ${request.actionLabel.toLowerCase()}.`,
+        `AI ${request.actionLabel}`,
+      );
       this.streamId = null;
       this.dismiss();
     }
+  }
+
+  private async prepareExtendedContext(
+    bookId: string,
+    sceneId: string,
+    sceneContent: string,
+    selectedProse: string,
+  ): Promise<SelectionEditAdditionalContext> {
+    if (!this.codexContext.trie() || this.codexContext.isLoading() || this.codexContext.error()) {
+      throw new Error('Codex context is not available.');
+    }
+
+    const detectedEntryIds = new Set(
+      this.codexContext.findMatches(selectedProse)
+        .filter(match =>
+          match.value.status === 'active'
+          && (
+            match.value.trackingSetting === 'include_when_detected'
+            || match.value.trackingSetting === 'always_include'
+          ),
+        )
+        .map(match => match.value.entryId),
+    );
+    const [outline, codexEntries] = await Promise.all([
+      this.manuscriptStructureService.getOutline(bookId),
+      Promise.all([...detectedEntryIds].map(entryId => this.codexService.getEntry(entryId))),
+    ]);
+    if (codexEntries.some(entry => entry === undefined)) {
+      throw new Error('A detected Codex entry could not be loaded.');
+    }
+
+    return {
+      partialOutline: serializePartialOutline(
+        outline,
+        this.workspaceStore.bookTitle(),
+        sceneId,
+        sceneContent,
+      ),
+      codexContext: serializeCodexContext(
+        codexEntries.filter(entry => entry !== undefined),
+        outline,
+        sceneId,
+      ),
+      sceneIncludedInOutline: true,
+    };
   }
 
   private parseCandidateSlice(markdown: string): Slice | null {
@@ -304,7 +387,7 @@ export class AiSelectionEffectComponent {
     this.selection = restoredSelection;
   }
 
-  private commitRephrasePreview(): void {
+  private commitEditPreview(): void {
     const editor = this.editor;
     const candidateSlice = this.candidateSlice;
     if (!editor || !candidateSlice || !this.previewSelection) return;
@@ -346,7 +429,7 @@ export class AiSelectionEffectComponent {
     this.originalSlice = null;
     this.candidateSlice = null;
     this.editor = null;
-    this.mode = null;
+    this.activeRequest = null;
     this.streamId = null;
   }
 
@@ -379,9 +462,7 @@ export class AiSelectionEffectComponent {
 
   private clearTimers(): void {
     if (this.drawTimer !== null) clearTimeout(this.drawTimer);
-    if (this.responseTimer !== null) clearTimeout(this.responseTimer);
     this.drawTimer = null;
-    this.responseTimer = null;
   }
 
   private addSelectionSpacing(

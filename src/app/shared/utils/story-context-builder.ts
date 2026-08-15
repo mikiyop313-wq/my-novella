@@ -68,17 +68,25 @@ export interface ManuscriptPromptBoundary {
   afterPromptProse: string;
 }
 
-export interface RephraseSelectionRange {
+export interface SelectionEditRange {
   from: number;
   to: number;
 }
 
-export interface RephrasePromptContext {
+export interface SelectionEditPromptContext {
   prompt: string;
   sceneId: string;
+  sceneContent: string;
+  selectedProse: string;
 }
 
-interface RephraseSceneBoundary {
+export interface SelectionEditAdditionalContext {
+  partialOutline?: string;
+  codexContext?: string;
+  sceneIncludedInOutline?: boolean;
+}
+
+interface SelectionEditSceneBoundary {
   id: string;
   title: string;
   proseFrom: number;
@@ -155,12 +163,15 @@ export function findCurrentSceneIdBeforePosition(
   return currentSceneId;
 }
 
-/** Builds the scene-local user prompt for an AI rephrase selection. */
-export function buildRephrasePrompt(
+/** Builds a scene-local user prompt for an AI edit of the selected prose. */
+export function buildSelectionEditPrompt(
   doc: ProseMirrorNode,
-  selection: RephraseSelectionRange,
-): RephrasePromptContext | null {
-  if (selection.from >= selection.to) return null;
+  selection: SelectionEditRange,
+  instruction: string,
+  additionalContext: SelectionEditAdditionalContext = {},
+): SelectionEditPromptContext | null {
+  const trimmedInstruction = instruction.trim();
+  if (selection.from >= selection.to || !trimmedInstruction) return null;
 
   const scene = findSceneAroundSelection(doc, selection);
   if (!scene) return null;
@@ -169,18 +180,28 @@ export function buildRephrasePrompt(
   const selectedProse = serializeProseRange(doc, selection.from, selection.to);
   const proseAfter = serializeProseRange(doc, selection.to, scene.proseTo);
   if (!selectedProse) return null;
+  const sceneContent = [
+    proseBefore ? `${proseBefore}\n` : '',
+    '--- PASSAGE TO EDIT ---',
+    selectedProse,
+    '--- END PASSAGE ---\n',
+    proseAfter,
+  ].filter(Boolean).join('\n');
+  const sceneIncludedInOutline = additionalContext.sceneIncludedInOutline === true;
 
   return {
     sceneId: scene.id,
+    sceneContent,
+    selectedProse,
     prompt: [
-      `--- STORY CONTEXT ---\nScene: ${scene.title}\n`,
-      proseBefore ? `${proseBefore}\n` : '',
-      '--- PASSAGE TO REPHRASE ---',
-      selectedProse,
-      '--- END PASSAGE ---\n',
-      proseAfter,
+      '--- STORY CONTEXT ---',
+      additionalContext.partialOutline?.trim() ?? '',
+      sceneIncludedInOutline ? '' : `Scene: ${scene.title}\n`,
+      sceneIncludedInOutline ? '' : sceneContent,
+      additionalContext.codexContext?.trim() ?? '',
       '--- END STORY CONTEXT ---\n',
-      'Rephrase only the marked passage. Use the surrounding scene for continuity.',
+      `Instruction: ${trimmedInstruction}`,
+      'Edit only the marked passage. Use the surrounding scene for continuity.',
       'Return only its replacement text.',
     ].filter(Boolean).join('\n'),
   };
@@ -221,13 +242,17 @@ export function serializePartialOutline(
   hierarchy: readonly ActDto[],
   bookTitle: string | undefined,
   currentSceneId: string,
+  currentSceneContent?: string,
 ): string {
   const scenes = flattenScenes(hierarchy);
   const currentSceneIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
-  if (currentSceneIndex <= 0) return '';
+  const includeCurrentScene = currentSceneContent !== undefined;
+  if (currentSceneIndex < 0 || (currentSceneIndex === 0 && !includeCurrentScene)) return '';
 
   const precedingSceneIds = new Set(
-    scenes.slice(0, currentSceneIndex).map((scene) => scene.id),
+    scenes
+      .slice(0, currentSceneIndex + (includeCurrentScene ? 1 : 0))
+      .map((scene) => scene.id),
   );
   const body = serializeHierarchy({
     hierarchy,
@@ -236,8 +261,11 @@ export function serializePartialOutline(
     includeNovel: true,
     includeParentSummaries: false,
     includeSceneSummaries: true,
+    sceneSummaryExclusions: includeCurrentScene ? new Set([currentSceneId]) : undefined,
     selectedSceneIds: precedingSceneIds,
-    sceneContent: new Map(),
+    sceneContent: includeCurrentScene
+      ? new Map([[currentSceneId, { label: PROSE_LABEL, text: currentSceneContent }]])
+      : new Map(),
   });
 
   return body ? `${OUTLINE_HEADING}\n\n${body}` : '';
@@ -351,6 +379,7 @@ interface HierarchySerializationRequest {
   includeNovel: boolean;
   includeParentSummaries: boolean;
   includeSceneSummaries: boolean;
+  sceneSummaryExclusions?: ReadonlySet<string>;
   selectedSceneIds: ReadonlySet<string>;
   sceneContent: ReadonlyMap<string, { label: string; text: string }>;
   promptBoundary?: ManuscriptPromptBoundary;
@@ -463,6 +492,9 @@ function serializeScene(
     : boundaryBeforeEntity(relation, request, state);
   const delimiter = entityDelimiter('SCENE', scene.position, scene.title);
   const content = request.sceneContent.get(scene.id);
+  const summary = request.includeSceneSummaries && !request.sceneSummaryExclusions?.has(scene.id)
+    ? summaryBlock(scene.summary)
+    : '';
 
   if (isCurrentScene && content) {
     const beforePromptProse = request.promptBoundary?.beforePromptProse.trim() ?? '';
@@ -480,7 +512,7 @@ function serializeScene(
 
     return [
       delimiter.begin,
-      request.includeSceneSummaries ? summaryBlock(scene.summary) : '',
+      summary,
       prose,
       delimiter.end,
     ]
@@ -491,7 +523,7 @@ function serializeScene(
   return [
     boundary,
     delimiter.begin,
-    request.includeSceneSummaries ? summaryBlock(scene.summary) : '',
+    summary,
     content?.text.trim() ? `${content.label}:\n${content.text.trim()}` : '',
     delimiter.end,
   ]
@@ -600,9 +632,9 @@ function serializeBlockNode(node: TiptapNode): string {
 
 function findSceneAroundSelection(
   doc: ProseMirrorNode,
-  selection: RephraseSelectionRange,
-): RephraseSceneBoundary | null {
-  let candidate: RephraseSceneBoundary | null = null;
+  selection: SelectionEditRange,
+): SelectionEditSceneBoundary | null {
+  let candidate: SelectionEditSceneBoundary | null = null;
 
   doc.forEach((node, offset) => {
     if (!STRUCTURAL_PROSE_BOUNDARY_NODES.has(node.type.name)) return;
@@ -619,7 +651,7 @@ function findSceneAroundSelection(
     }
   });
 
-  const resolvedCandidate = candidate as RephraseSceneBoundary | null;
+  const resolvedCandidate = candidate as SelectionEditSceneBoundary | null;
   if (
     !resolvedCandidate
     || selection.from < resolvedCandidate.proseFrom

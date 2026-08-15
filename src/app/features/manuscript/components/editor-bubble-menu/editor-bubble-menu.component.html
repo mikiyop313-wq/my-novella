@@ -132,7 +132,7 @@
 
 <ng-template #aiMenuTemplate let-closeMenu>
   <div class="overlay-menu">
-    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="rephrase(); closeMenu()">
+    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="rephrase() && closeMenu()">
       <svg class="sparkle-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
         fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path
@@ -141,7 +141,7 @@
       </svg>
       Rephrase
     </button>
-    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="shorten(); closeMenu()">
+    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="shorten() && closeMenu()">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 14h16"></path>
@@ -149,7 +149,7 @@
       </svg>
       Shorten
     </button>
-    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="expand(); closeMenu()">
+    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="expand() && closeMenu()">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="m15 15 6 6m0 0v-4m0 4h-4"></path>
@@ -160,7 +160,7 @@
       Expand
     </button>
     <div class="ai-menu-divider"></div>
-    <form class="ai-other-section" (submit)="$event.preventDefault(); other(otherPrompt.value); closeMenu()">
+    <form class="ai-other-section" (submit)="$event.preventDefault(); other(otherPrompt.value) && closeMenu()">
       <label for="ai-other-prompt">Other</label>
       <div class="ai-other-input">
         <input #otherPrompt id="ai-other-prompt" type="text" placeholder="Tell AI what to do..."

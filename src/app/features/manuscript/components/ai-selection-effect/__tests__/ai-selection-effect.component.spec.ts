@@ -3,6 +3,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AiStreamService } from '../../../../../core/services/ai-stream.service';
+import { ToastService } from '../../../../../shared/services/toast.service';
+import { WorkspaceStore } from '../../../../workspace/workspace.store';
+import { ManuscriptStructureService } from '../../../../workspace/services/manuscript-structure.service';
+import { CodexContextTrieService } from '../../../../codex/services/codex-context-trie.service';
+import { CodexService } from '../../../../codex/services/codex.service';
 import { ManuscriptStore } from '../../../store/manuscript.store';
 import { AiSelectionEffectComponent } from '../ai-selection-effect.component';
 
@@ -27,6 +33,23 @@ describe('AiSelectionEffectComponent', () => {
       imports: [AiSelectionEffectComponent],
       providers: [
         { provide: ManuscriptStore, useValue: { editor: signal(editor.api) } },
+        {
+          provide: WorkspaceStore,
+          useValue: { bookId: signal('book-1'), bookTitle: signal('Book One') },
+        },
+        {
+          provide: CodexContextTrieService,
+          useValue: {
+            trie: signal({}), isLoading: signal(false), error: signal(null), findMatches: vi.fn(() => []),
+          },
+        },
+        { provide: CodexService, useValue: { getEntry: vi.fn() } },
+        { provide: ManuscriptStructureService, useValue: { getOutline: vi.fn() } },
+        {
+          provide: AiStreamService,
+          useValue: { streamText: vi.fn(() => new Promise(() => undefined)), stopStream: vi.fn() },
+        },
+        { provide: ToastService, useValue: { error: vi.fn() } },
       ],
     }).compileComponents();
 
@@ -43,7 +66,7 @@ describe('AiSelectionEffectComponent', () => {
   });
 
   it('starts the visual workflow for a valid selection', () => {
-    expect(component.start()).toBe(true);
+    expect(startEdit(component)).toBe(true);
     fixture.detectChanges();
 
     expect(component.state()).toBe('drawing');
@@ -64,49 +87,27 @@ describe('AiSelectionEffectComponent', () => {
       removeAllRanges,
     } as unknown as Selection);
 
-    component.start();
+    startEdit(component);
 
     expect(removeAllRanges).toHaveBeenCalledOnce();
     getSelectionSpy.mockRestore();
   });
 
-  it('moves from drawing to generation and reveals actions after five seconds', () => {
-    component.start();
-
-    vi.advanceTimersByTime(600);
-    fixture.detectChanges();
-    expect(component.state()).toBe('generating');
-    expect(fixture.nativeElement.querySelector('.ai-selection-effect.is-generating')).not.toBeNull();
-
-    vi.advanceTimersByTime(4_400);
-    fixture.detectChanges();
-    expect(component.state()).toBe('ready');
-    expect(component.frameHeight()).toBe(116);
-    expect(fixture.nativeElement.querySelector('.cancel-button')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.confirm-button')).not.toBeNull();
-    expect(editor.registerPlugin).toHaveBeenCalledTimes(2);
-    expect(editor.unregisterPlugin).toHaveBeenCalledOnce();
-    expect(editor.dispatch).not.toHaveBeenCalled();
-  });
-
   it.each(['cancel', 'confirm'] as const)('%s dismisses the effect without changing text', action => {
-    component.start();
-    vi.advanceTimersByTime(5_000);
-    fixture.detectChanges();
-
-    const button = fixture.nativeElement.querySelector(`.${action}-button`) as HTMLButtonElement;
-    button.click();
+    startEdit(component);
+    vi.advanceTimersByTime(600);
+    component[action]();
     fixture.detectChanges();
 
     expect(component.state()).toBe('idle');
     expect(component.bounds()).toBeNull();
     expect(fixture.nativeElement.querySelector('.ai-selection-effect')).toBeNull();
-    expect(editor.unregisterPlugin).toHaveBeenCalledTimes(2);
+    expect(editor.unregisterPlugin).toHaveBeenCalledOnce();
     expect(editor.dispatch).not.toHaveBeenCalled();
   });
 
   it('stays active when the editor selection changes', () => {
-    component.start();
+    startEdit(component);
     editor.selection.from = 3;
     editor.selection.to = 7;
 
@@ -118,8 +119,9 @@ describe('AiSelectionEffectComponent', () => {
   });
 
   it('keeps ready actions visible when the user clicks outside the selection', () => {
-    component.start();
-    vi.advanceTimersByTime(5_000);
+    startEdit(component);
+    vi.advanceTimersByTime(600);
+    component.state.set('ready');
     editor.selection.empty = true;
     editor.selection.from = 20;
     editor.selection.to = 20;
@@ -134,7 +136,7 @@ describe('AiSelectionEffectComponent', () => {
   });
 
   it('stays active when the editor document changes', () => {
-    component.start();
+    startEdit(component);
 
     editor.emit('update');
     fixture.detectChanges();
@@ -145,7 +147,7 @@ describe('AiSelectionEffectComponent', () => {
   });
 
   it('repositions the frame on scroll while the selection remains unchanged', () => {
-    component.start();
+    startEdit(component);
     rangeRect = createRect(70, 140, 180, 36);
 
     window.dispatchEvent(new Event('scroll'));
@@ -160,11 +162,11 @@ describe('AiSelectionEffectComponent', () => {
   });
 
   it('rejects repeated starts and invalid selections', () => {
-    expect(component.start()).toBe(true);
+    expect(startEdit(component)).toBe(true);
     const initialBounds = component.bounds();
     rangeRect = createRect(200, 300, 100, 20);
 
-    expect(component.start()).toBe(false);
+    expect(startEdit(component)).toBe(false);
     expect(component.bounds()).toEqual(initialBounds);
 
     component.cancel();
@@ -172,13 +174,13 @@ describe('AiSelectionEffectComponent', () => {
     editor.selection.from = 5;
     editor.selection.to = 5;
 
-    expect(component.start()).toBe(false);
+    expect(startEdit(component)).toBe(false);
     expect(component.state()).toBe('idle');
     expect(component.bounds()).toBeNull();
   });
 
   it('removes editor listeners and active timers when destroyed', () => {
-    component.start();
+    startEdit(component);
     fixture.destroy();
 
     expect(editor.off).toHaveBeenCalledWith('selectionUpdate', expect.any(Function));
@@ -192,19 +194,30 @@ describe('AiSelectionEffectComponent', () => {
 
 function createEditor() {
   const handlers = new Map<string, () => void>();
-  const selection = { from: 1, to: 12, empty: false };
+  const selection = { from: 3, to: 16, empty: false };
   const textNode = document.createTextNode('Selected manuscript text');
   const dispatch = vi.fn();
   const registerPlugin = vi.fn();
   const unregisterPlugin = vi.fn();
   const on = vi.fn((event: string, handler: () => void) => handlers.set(event, handler));
   const off = vi.fn((event: string) => handlers.delete(event));
+  const doc = {
+    content: { size: 27 },
+    forEach: vi.fn((callback: (node: any, offset: number) => void) => {
+      callback({
+        type: { name: 'sceneSummary' },
+        attrs: { id: 'scene-1', title: 'Test Scene' },
+        nodeSize: 2,
+      }, 0);
+      callback({ type: { name: 'paragraph' }, attrs: {}, nodeSize: 25 }, 2);
+    }),
+    textBetween: vi.fn(() => 'Selected text'),
+    slice: vi.fn(() => ({})),
+  };
   const api = {
     state: {
       selection,
-      doc: {
-        textBetween: vi.fn(() => 'Selected text'),
-      },
+      doc,
     },
     view: {
       domAtPos: vi.fn((position: number) => ({
@@ -228,6 +241,14 @@ function createEditor() {
     selection,
     unregisterPlugin,
   };
+}
+
+function startEdit(component: AiSelectionEffectComponent): boolean {
+  return component.startEdit({
+    category: 'rephrase',
+    instruction: 'Rephrase the marked passage.',
+    actionLabel: 'Rephrase',
+  });
 }
 
 function createRect(left: number, top: number, width: number, height: number): DOMRect {

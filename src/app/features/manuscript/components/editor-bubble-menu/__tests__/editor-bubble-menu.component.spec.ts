@@ -43,36 +43,45 @@ describe('EditorBubbleMenuComponent AI actions', () => {
     TestBed.resetTestingModule();
   });
 
-  it('delegates rephrase to the real AI selection workflow and hides the menu on success', () => {
-    const startSpy = vi.spyOn(component.aiSelectionEffect, 'startRephrase').mockReturnValue(true);
-    component.isVisible.set(true);
-
-    component.rephrase();
-
-    expect(startSpy).toHaveBeenCalledOnce();
-    expect(component.isVisible()).toBe(false);
-  });
-
   it.each([
-    ['shorten', () => component.shorten()],
-    ['expand', () => component.expand()],
-    ['other', () => component.other('Make it more tense')],
-  ])('delegates %s to the AI selection effect and hides the menu on success', (_name, run) => {
-    const startSpy = vi.spyOn(component.aiSelectionEffect, 'start').mockReturnValue(true);
+    ['rephrase', () => component.rephrase(), {
+      category: 'rephrase', instruction: 'Rephrase the marked passage.', actionLabel: 'Rephrase',
+    }],
+    ['shorten', () => component.shorten(), {
+      category: 'shorten', instruction: 'Shorten the marked passage.', actionLabel: 'Shorten',
+    }],
+    ['expand', () => component.expand(), {
+      category: 'expand', instruction: 'Expand the marked passage.', actionLabel: 'Expand',
+    }],
+    ['other', () => component.other('  Make it more tense  '), {
+      category: 'rephrase', instruction: 'Make it more tense', actionLabel: 'Other',
+    }],
+  ])('delegates %s with the correct request and hides the menu on success', (_name, run, request) => {
+    const startSpy = vi.spyOn(component.aiSelectionEffect, 'startEdit').mockReturnValue(true);
     component.isVisible.set(true);
 
-    run();
+    expect(run()).toBe(true);
 
-    expect(startSpy).toHaveBeenCalledOnce();
+    expect(startSpy).toHaveBeenCalledWith(request);
     expect(component.isVisible()).toBe(false);
   });
 
   it('keeps the menu visible when the effect cannot start', () => {
-    vi.spyOn(component.aiSelectionEffect, 'startRephrase').mockReturnValue(false);
+    vi.spyOn(component.aiSelectionEffect, 'startEdit').mockReturnValue(false);
     component.isVisible.set(true);
 
-    component.rephrase();
+    expect(component.rephrase()).toBe(false);
 
+    expect(component.isVisible()).toBe(true);
+  });
+
+  it('rejects a blank Other instruction without starting the effect', () => {
+    const startSpy = vi.spyOn(component.aiSelectionEffect, 'startEdit');
+    component.isVisible.set(true);
+
+    expect(component.other('   ')).toBe(false);
+
+    expect(startSpy).not.toHaveBeenCalled();
     expect(component.isVisible()).toBe(true);
   });
 });
