@@ -13,6 +13,7 @@ import {
   EmbeddingModel,
   LocalEmbeddingModelName,
   OpenRouterEmbeddingModelName,
+  ResolvedBookEmbeddingSelection,
   VectorCloudProviderId,
 } from '../../shared/models/vector.model';
 
@@ -112,12 +113,11 @@ export class BookRepository {
       pointOfView: data.settings?.pointOfView || 'third_limited',
       synopsisAiContext: data.settings?.synopsisAiContext ?? true,
       povCharacterId: data.settings?.povCharacterId || null,
-      embeddingModel: data.settings?.embeddingModel || 'local',
-      localEmbeddingModel:
-        data.settings?.localEmbeddingModel || 'mixedbread-ai/mxbai-embed-large-v1',
+      embeddingModel: data.settings?.embeddingModel ?? null,
+      localEmbeddingModel: data.settings?.localEmbeddingModel ?? null,
       openRouterEmbeddingModel: data.settings?.openRouterEmbeddingModel ?? null,
       vectorSearchEnabled: data.settings?.vectorSearchEnabled ?? true,
-      automaticIndexingEnabled: data.settings?.automaticIndexingEnabled ?? true,
+      automaticIndexingEnabled: data.settings?.automaticIndexingEnabled ?? false,
     };
   }
 
@@ -287,20 +287,20 @@ export class BookRepository {
     });
   }
 
-  async getEmbeddingModel(bookId: string): Promise<EmbeddingModel> {
+  async getEmbeddingModel(bookId: string): Promise<EmbeddingModel | null> {
     const settings = await db.query.bookSettings.findFirst({
       where: eq(bookSettings.bookSettingId, bookId),
       columns: { embeddingModel: true },
     });
-    return settings?.embeddingModel ?? 'local';
+    return settings?.embeddingModel ?? null;
   }
 
-  async getLocalEmbeddingModel(bookId: string): Promise<LocalEmbeddingModelName> {
+  async getLocalEmbeddingModel(bookId: string): Promise<LocalEmbeddingModelName | null> {
     const settings = await db.query.bookSettings.findFirst({
       where: eq(bookSettings.bookSettingId, bookId),
       columns: { localEmbeddingModel: true },
     });
-    return settings?.localEmbeddingModel ?? 'mixedbread-ai/mxbai-embed-large-v1';
+    return settings?.localEmbeddingModel ?? null;
   }
 
   async getOpenRouterEmbeddingModel(
@@ -326,7 +326,7 @@ export class BookRepository {
       where: eq(bookSettings.bookSettingId, bookId),
       columns: { automaticIndexingEnabled: true },
     });
-    return settings?.automaticIndexingEnabled ?? true;
+    return settings?.automaticIndexingEnabled ?? false;
   }
 
   async selectLocalEmbeddingModel(
@@ -364,6 +364,30 @@ export class BookRepository {
       .where(eq(bookSettings.bookSettingId, bookId))
       .returning({ bookId: bookSettings.bookSettingId });
     if (updated.length === 0) throw new Error(`Book not found: ${bookId}`);
+  }
+
+  async setEmbeddingSelection(
+    bookId: string,
+    selection: ResolvedBookEmbeddingSelection,
+  ): Promise<void> {
+    const updated = await db
+      .update(bookSettings)
+      .set(selection)
+      .where(eq(bookSettings.bookSettingId, bookId))
+      .returning({ bookId: bookSettings.bookSettingId });
+    if (updated.length > 0) return;
+
+    const book = await db.query.books.findFirst({
+      where: eq(books.id, bookId),
+      columns: { language: true },
+    });
+    if (!book) throw new Error(`Book not found: ${bookId}`);
+
+    await db.insert(bookSettings).values({
+      bookSettingId: bookId,
+      language: book.language,
+      ...selection,
+    });
   }
 
   async countBooksUsingLocalEmbeddingModel(

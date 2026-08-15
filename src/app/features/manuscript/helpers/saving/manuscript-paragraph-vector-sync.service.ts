@@ -50,7 +50,7 @@ export class ManuscriptParagraphVectorSyncService implements OnDestroy {
 
   private readonly indexingStateSignal = signal<ManuscriptIndexingState>('updated');
   private readonly indexingAvailableSignal = signal(false);
-  private readonly automaticIndexingEnabledSignal = signal(true);
+  private readonly automaticIndexingEnabledSignal = signal(false);
 
   readonly indexingState = this.indexingStateSignal.asReadonly();
   readonly indexingAvailable = this.indexingAvailableSignal.asReadonly();

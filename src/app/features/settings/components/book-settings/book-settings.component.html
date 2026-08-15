@@ -1111,6 +1111,7 @@
           <app-book-vector-settings
             [book]="activeBook"
             (bookChange)="updateBookFromChild($event)"
+            (vectorConfigurationRequested)="selectSection('vector-search')"
           ></app-book-vector-settings>
         </div>
       }

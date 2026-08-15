@@ -101,13 +101,17 @@ function buildCloudProvider(model: DirectEmbeddingModel, apiKey: string): Embedd
  */
 export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingProvider> {
     const model = await bookRepository.getEmbeddingModel(bookId);
-    const localModelName = model === 'local'
-        ? await bookRepository.getLocalEmbeddingModel(bookId)
-        : LOCAL_EMBEDDING_MODEL_NAME;
+    if (!model) throw new Error('No embedding model is selected for this book.');
+    if (model === 'local') {
+        const localModelName = await bookRepository.getLocalEmbeddingModel(bookId);
+        if (!localModelName) {
+            throw new Error('No local embedding model is selected for this book.');
+        }
+        console.log(`[EmbeddingFactory] book=${bookId} → model=${model}:${localModelName}`);
+        return getOrCreateLocalProvider(localModelName);
+    }
 
-    console.log(`[EmbeddingFactory] book=${bookId} → model=${model}:${localModelName}`);
-
-    if (model === 'local') return getOrCreateLocalProvider(localModelName);
+    console.log(`[EmbeddingFactory] book=${bookId} → model=${model}`);
     if (model === 'openRouter') {
         const openRouterModelName = await bookRepository.getOpenRouterEmbeddingModel(bookId);
         if (!openRouterModelName) {

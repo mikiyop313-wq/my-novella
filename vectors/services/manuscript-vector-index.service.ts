@@ -31,12 +31,11 @@ import {
     getLocalEmbeddingProvider,
     getOpenRouterEmbeddingProvider,
 } from '../embeddings/factory';
-import { vectorApiKeyService } from '../../electron/domain/vector/vector-api-key.service';
-import { localEmbeddingModelManager } from '../embeddings/local-model-manager';
 import { getOpenRouterEmbeddingModelDefinition } from '../embeddings/openrouter-model-definition';
 import { assertEmbeddingDimensions, type EmbeddingProvider } from '../embeddings/types';
 import { vectorDb } from '../lancedb.connection';
 import { paragraphVectorRepository } from '../repositories/paragraph-vector.repository';
+import { embeddingSelectionResolverService } from './embedding-selection-resolver.service';
 
 const EMBEDDING_BATCH_SIZE = 32;
 
@@ -110,17 +109,9 @@ export class ManuscriptVectorIndexService {
     /** Returns whether the book preference and selected provider both permit vector work. */
     async isBookIndexingAvailable(bookId: string): Promise<boolean> {
         if (this.deletingBooks.has(bookId)) return false;
-        if (!await bookRepository.getById(bookId)) return false;
         if (!await bookRepository.getVectorSearchEnabled(bookId)) return false;
-        const model = await bookRepository.getEmbeddingModel(bookId);
-        if (model === 'local') {
-            const modelName = await bookRepository.getLocalEmbeddingModel(bookId);
-            return localEmbeddingModelManager.isInstalled(modelName);
-        }
-        const providerId = model === 'openAI'
-            ? 'openai'
-            : model === 'openRouter' ? 'openrouter' : 'voyage';
-        return await vectorApiKeyService.getApiKey(providerId) !== null;
+        const selection = await embeddingSelectionResolverService.ensureBookSelection(bookId);
+        return selection !== null && selection.embeddingModel !== null;
     }
 
     /** Selects a fixed-model cloud provider, reconciling its vector space when requested. */

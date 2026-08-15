@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     getLocalEmbeddingModel: vi.fn(),
     getBookById: vi.fn(),
     deleteBook: vi.fn(),
+    ensureBookSelection: vi.fn(),
     isInstalled: vi.fn(),
     getVectorApiKey: vi.fn(),
     getBookParagraphStates: vi.fn(),
@@ -83,6 +84,12 @@ vi.mock('../../lancedb.connection', () => ({
     },
 }));
 
+vi.mock('../embedding-selection-resolver.service', () => ({
+    embeddingSelectionResolverService: {
+        ensureBookSelection: mocks.ensureBookSelection,
+    },
+}));
+
 import { ManuscriptVectorIndexService } from '../manuscript-vector-index.service';
 
 describe('ManuscriptVectorIndexService', () => {
@@ -117,6 +124,11 @@ describe('ManuscriptVectorIndexService', () => {
         mocks.getEmbeddingModel.mockResolvedValue('local');
         mocks.getLocalEmbeddingModel.mockResolvedValue('BAAI/bge-m3');
         mocks.getBookById.mockResolvedValue({ id: 'book-1' });
+        mocks.ensureBookSelection.mockResolvedValue({
+            embeddingModel: 'local',
+            localEmbeddingModel: 'BAAI/bge-m3',
+            openRouterEmbeddingModel: null,
+        });
         mocks.deleteBook.mockResolvedValue({ success: true });
         mocks.deleteBookVectors.mockResolvedValue(undefined);
         mocks.clearBookIndex.mockResolvedValue(undefined);
@@ -365,21 +377,25 @@ describe('ManuscriptVectorIndexService', () => {
         mocks.getVectorSearchEnabled.mockResolvedValueOnce(false);
         await expect(service.searchSimilar('book-1', 'query', 3)).resolves.toEqual([]);
 
-        mocks.isInstalled.mockResolvedValueOnce(false);
+        mocks.ensureBookSelection.mockResolvedValueOnce(null);
         await expect(service.searchSimilar('book-1', 'query', 3)).resolves.toEqual([]);
 
         expect(mocks.searchSimilar).not.toHaveBeenCalled();
         expect(provider.embedQuery).not.toHaveBeenCalled();
     });
 
-    it('reports cloud indexing as unavailable when the selected provider has no key', async () => {
-        mocks.getEmbeddingModel.mockResolvedValue('openAI');
-        mocks.getVectorApiKey.mockResolvedValue(null);
-
+    it('reports indexing availability from the resolved selection', async () => {
+        mocks.ensureBookSelection.mockResolvedValueOnce({
+            embeddingModel: null,
+            localEmbeddingModel: null,
+            openRouterEmbeddingModel: null,
+        });
         await expect(service.isBookIndexingAvailable('book-1')).resolves.toBe(false);
-        expect(mocks.getVectorApiKey).toHaveBeenCalledWith('openai');
-
-        mocks.getVectorApiKey.mockResolvedValue('openai-key');
+        mocks.ensureBookSelection.mockResolvedValueOnce({
+            embeddingModel: 'openAI',
+            localEmbeddingModel: null,
+            openRouterEmbeddingModel: null,
+        });
         await expect(service.isBookIndexingAvailable('book-1')).resolves.toBe(true);
     });
 
@@ -446,6 +462,7 @@ describe('ManuscriptVectorIndexService', () => {
 
     it('rejects vector work for a missing book', async () => {
         mocks.getBookById.mockResolvedValue(undefined);
+        mocks.ensureBookSelection.mockResolvedValueOnce(null);
 
         await expect(service.runBookOperation('missing-book', async () => undefined)).rejects.toThrow(
             'Book not found: missing-book',

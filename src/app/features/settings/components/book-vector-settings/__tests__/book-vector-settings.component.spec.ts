@@ -131,6 +131,9 @@ describe('BookVectorSettingsComponent', () => {
     expect(modelOption(unavailableModel.modelName).disabled).toBe(true);
     expect(modelOption(hiddenModel.modelName, false)).toBeNull();
     expect(element.textContent).toContain('General Settings → Vector Search');
+    const settingsLink = element.querySelector<HTMLAnchorElement>('.settings-link');
+    expect(settingsLink?.getAttribute('href')).toBe('/settings');
+    expect(settingsLink?.textContent).toContain('General Settings → Vector Search');
     expect(indexingSwitch?.disabled).toBe(true);
     expect(indexingSwitch?.getAttribute('aria-checked')).toBe('false');
     expect(modelOption(unavailableModel.modelName).textContent).toContain('Index ~1.5 KB');
@@ -138,6 +141,53 @@ describe('BookVectorSettingsComponent', () => {
     expect(element.querySelector<HTMLButtonElement>(
       `[data-clear-index-button][aria-label="Clear index for ${installedModel.displayName}"]`,
     )?.disabled).toBe(true);
+  });
+
+  it('shows configuration guidance when no embedding model is available', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'vectors:local-model:get-status') return [unavailableModel, hiddenModel];
+      if (channel === 'vectors:local-model:get-book-selection') {
+        return { bookId: 'book-1', modelName: null };
+      }
+      if (channel === 'vectors:config:load') {
+        return { apiKeys: {
+          openai: { configured: false, suffix: null },
+          voyage: { configured: false, suffix: null },
+          openrouter: { configured: false, suffix: null },
+        } };
+      }
+      if (channel === 'vectors:openrouter:get-models') return [openRouterModel];
+      if (channel === 'vectors:openrouter:get-book-selection') {
+        return { bookId: 'book-1', modelName: null };
+      }
+      if (channel === 'vectors:getBookIndexSizes') return [];
+      return undefined;
+    });
+    const input = book();
+    input.settings = {
+      ...input.settings!,
+      embeddingModel: null,
+      localEmbeddingModel: null,
+      openRouterEmbeddingModel: null,
+    };
+
+    await create(input);
+
+    const element = fixture.nativeElement as HTMLElement;
+    const indexingSwitch = element.querySelector<HTMLButtonElement>('.indexing-switch');
+    expect(indexingSwitch?.disabled).toBe(true);
+    expect(indexingSwitch?.getAttribute('aria-checked')).toBe('false');
+    expect(element.textContent).toContain(
+      'No embedding model is available. Install a local model or configure a cloud provider',
+    );
+    const settingsLink = element.querySelector<HTMLAnchorElement>('.settings-link');
+    const configurationRequested = vi.fn();
+    fixture.componentInstance.vectorConfigurationRequested.subscribe(configurationRequested);
+    settingsLink?.click();
+    expect(settingsLink?.textContent).toContain('General Settings → Vector Search');
+    expect(configurationRequested).toHaveBeenCalledOnce();
+    expect(element.querySelector('.model-badge.is-selected')).toBeNull();
+    expect(fixture.componentInstance.viewedProviderId()).toBe('local');
   });
 
   it('uses the small button and disables indexing before clearing the active model', async () => {
@@ -362,12 +412,12 @@ describe('BookVectorSettingsComponent', () => {
     );
   });
 
-  it('defaults automatic indexing to on and disables it when indexing is unavailable', async () => {
+  it('defaults automatic indexing to off and disables it when indexing is unavailable', async () => {
     await create(book());
 
     const automaticSwitch = (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('.automatic-indexing-switch');
-    expect(automaticSwitch?.getAttribute('aria-checked')).toBe('true');
+    expect(automaticSwitch?.getAttribute('aria-checked')).toBe('false');
     expect(automaticSwitch?.disabled).toBe(true);
   });
 

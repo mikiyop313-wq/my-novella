@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     dispose: vi.fn(),
     localProviderConstructor: vi.fn(),
+    getEmbeddingModel: vi.fn(),
+    getLocalEmbeddingModel: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -12,7 +14,10 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../../../db/repositories/book.repository', () => ({
-    bookRepository: { getEmbeddingModel: vi.fn(), getLocalEmbeddingModel: vi.fn() },
+    bookRepository: {
+        getEmbeddingModel: mocks.getEmbeddingModel,
+        getLocalEmbeddingModel: mocks.getLocalEmbeddingModel,
+    },
 }));
 
 vi.mock('../../../db/repositories/app-settings.repository', () => ({
@@ -29,6 +34,7 @@ vi.mock('../providers/local', () => ({
 }));
 
 import {
+    getEmbeddingProvider,
     getLocalEmbeddingProvider,
     releaseLocalEmbeddingProvider,
     restoreLocalEmbeddingProviderAccess,
@@ -39,6 +45,8 @@ describe('embedding provider factory local lifecycle', () => {
         vi.clearAllMocks();
         mocks.dispose.mockResolvedValue(undefined);
         restoreLocalEmbeddingProviderAccess();
+        mocks.getEmbeddingModel.mockResolvedValue('local');
+        mocks.getLocalEmbeddingModel.mockResolvedValue('mixedbread-ai/mxbai-embed-large-v1');
     });
 
     it('invalidates and blocks local provider creation until uninstall finishes', async () => {
@@ -68,5 +76,14 @@ describe('embedding provider factory local lifecycle', () => {
         expect(() => getLocalEmbeddingProvider('BAAI/bge-m3')).toThrow('being uninstalled');
         expect(getLocalEmbeddingProvider('mixedbread-ai/mxbai-embed-large-v1')).toBe(mixedbread);
         restoreLocalEmbeddingProviderAccess('BAAI/bge-m3');
+    });
+
+    it('rejects a book without a selected model before creating a provider', async () => {
+        mocks.getEmbeddingModel.mockResolvedValue(null);
+
+        await expect(getEmbeddingProvider('book-1')).rejects.toThrow(
+            'No embedding model is selected for this book.',
+        );
+        expect(mocks.localProviderConstructor).not.toHaveBeenCalled();
     });
 });

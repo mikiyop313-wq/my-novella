@@ -1,20 +1,37 @@
 import { ipcMain } from 'electron';
 import { bookRepository } from '../../../db/repositories/book.repository';
+import type { CreateBookDto } from '../../../shared/models/book.model';
+import { embeddingSelectionResolverService } from '../../../vectors/services/embedding-selection-resolver.service';
 import { manuscriptVectorIndexService } from '../../../vectors/services/manuscript-vector-index.service';
 
 export function setupLibraryHandlers() {
     ipcMain.handle('library:get-all-books', async () => {
         try {
-            return await bookRepository.getAll();
+            const books = await bookRepository.getAll();
+            return await embeddingSelectionResolverService.resolveBooks(books);
         } catch (error) {
             console.error('Error fetching books:', error);
             throw error;
         }
     });
 
-    ipcMain.handle('library:add-book', async (event, bookData) => {
+    ipcMain.handle('library:add-book', async (event, bookData: CreateBookDto) => {
         try {
-            return await bookRepository.add(bookData);
+            const selection = bookData.settings?.embeddingModel === undefined
+                ? await embeddingSelectionResolverService.resolveForNewBook()
+                : null;
+            return await bookRepository.add(selection ? {
+                ...bookData,
+                settings: {
+                    language: bookData.settings?.language ?? bookData.language,
+                    proseTense: bookData.settings?.proseTense ?? 'past',
+                    pointOfView: bookData.settings?.pointOfView ?? 'third_limited',
+                    synopsisAiContext: bookData.settings?.synopsisAiContext
+                        ?? Boolean(bookData.synopsis?.trim()),
+                    ...bookData.settings,
+                    ...selection,
+                },
+            } : bookData);
         } catch (error) {
             console.error('Error adding book:', error);
             throw error;

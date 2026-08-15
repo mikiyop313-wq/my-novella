@@ -71,6 +71,12 @@
   color: var(--color-text-primary) !important;
 }
 
+.settings-link {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  text-underline-offset: 0.16em;
+}
+
 .indexing-switch {
   display: inline-flex;
   align-items: center;
