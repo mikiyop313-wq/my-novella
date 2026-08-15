@@ -89,6 +89,12 @@
     text-underline-offset: 0.18em;
   }
 
+  .cm-codex-keyword {
+    cursor: pointer;
+    text-decoration: underline dotted var(--color-text-secondary) 1.5px;
+    text-underline-offset: 0.18em;
+  }
+
   .cm-md-heading-1,
   .cm-md-heading-2,
   .cm-md-heading-3,

@@ -1,4 +1,4 @@
-import { Component, OnDestroy, computed, effect, input, output, signal } from '@angular/core';
+import { Component, OnDestroy, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import {
@@ -20,6 +20,13 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
 import { MarkdownEditorComponent } from '../../../../shared/components/markdown-editor/markdown-editor.component';
+import {
+  type MarkdownKeywordClick,
+  type MarkdownKeywordHighlight,
+} from '../../../../shared/components/markdown-editor/markdown-editor.extensions';
+import { buildContextHighlightSegments } from '../../../../../../shared/utils/context-highlighter';
+import { CodexMatchChooserService } from '../../highlighting/codex-match-chooser.service';
+import { CodexContextTrieService } from '../../services/codex-context-trie.service';
 
 type CodexEntryProgressionInput = CodexEntryProgressionPayload & {
   localId: string;
@@ -49,6 +56,8 @@ const UNRANKED_SCENE_RANK = Number.MAX_SAFE_INTEGER;
 })
 export class CodexEntryMenuComponent implements OnDestroy {
   readonly INFO_MESSAGES = INFO_MESSAGES;
+  private readonly codexContextTrie = inject(CodexContextTrieService);
+  private readonly codexMatchChooser = inject(CodexMatchChooserService);
 
   readonly initialType = input.required<CodexEntryType>();
   readonly existingEntry = input<CodexEntryDetailDto | null>(null);
@@ -102,6 +111,21 @@ export class CodexEntryMenuComponent implements OnDestroy {
   readonly isEditing = computed(() => this.existingEntry() !== null);
   readonly isArchived = computed(() => this.existingEntry()?.status === 'archived');
   readonly menuTitle = computed(() => this.isEditing() ? 'Edit Codex Entry' : 'New Codex Entry');
+  readonly descriptionKeywordHighlights = computed<MarkdownKeywordHighlight[]>(() => {
+    const description = this.newEntryDescription();
+    const currentEntryId = this.existingEntry()?.id ?? null;
+    const matches = this.codexContextTrie
+      .findMatches(description)
+      .filter(match => match.value.entryId !== currentEntryId);
+
+    return buildContextHighlightSegments(description, matches)
+      .filter(segment => segment.isMatch)
+      .map(segment => ({
+        startIndex: segment.startIndex,
+        endIndex: segment.endIndex,
+        entryIds: [...new Set(segment.matches.map(match => match.value.entryId))],
+      }));
+  });
   readonly sceneLookup = computed(() => {
     const scenes = new Map<string, SceneMetadata>();
     let rank = 0;
@@ -195,6 +219,10 @@ export class CodexEntryMenuComponent implements OnDestroy {
   updateEntryDescription(description: string): void {
     this.newEntryDescription.set(description);
     this.queueAutosave();
+  }
+
+  openDescriptionKeyword(event: MarkdownKeywordClick): void {
+    this.codexMatchChooser.open(event.entryIds, event.clientX, event.clientY);
   }
 
   setEntryView(view: CodexEntryMenuView): void {

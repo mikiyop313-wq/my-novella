@@ -121,8 +121,14 @@
 
       <div class="form-group description-form-group">
         <label>Description</label>
-        <app-markdown-editor [value]="newEntryDescription()" placeholder="Brief description..."
-          ariaLabel="Codex description" (valueChange)="updateEntryDescription($event)"></app-markdown-editor>
+        <app-markdown-editor
+          [value]="newEntryDescription()"
+          [keywordHighlights]="descriptionKeywordHighlights()"
+          placeholder="Brief description..."
+          ariaLabel="Codex description"
+          (valueChange)="updateEntryDescription($event)"
+          (keywordClick)="openDescriptionKeyword($event)">
+        </app-markdown-editor>
       </div>
     } @else if (activeEntryView() === 'Notes') {
       <div class="notes-view">

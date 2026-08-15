@@ -188,6 +188,60 @@ describe('MarkdownEditorComponent', () => {
     expect(destroy).toHaveBeenCalledOnce();
   });
 
+  it('highlights visible prose while excluding code and link destinations', async () => {
+    const source = 'Mara [Mara](https://mara.test) `Mara`\n\n```txt\nMara\n```';
+    await createEditor(source);
+    const ranges = [...source.matchAll(/Mara|mara/g)].map((match, index) => ({
+      startIndex: match.index,
+      endIndex: match.index + match[0].length,
+      entryIds: [`codex-${index}`],
+    }));
+
+    fixture.componentRef.setInput('keywordHighlights', ranges);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect([...queryAll('.cm-codex-keyword')].map(element => element.textContent)).toEqual([
+      'Mara',
+      'Mara',
+    ]);
+    expect(editorView().state.doc.toString()).toBe(source);
+  });
+
+  it('emits matching entry IDs for an unmodified keyword click', async () => {
+    await createEditor('Mara');
+    fixture.componentRef.setInput('keywordHighlights', [
+      { startIndex: 0, endIndex: 4, entryIds: ['codex-1', 'codex-2'] },
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const emitted = vi.fn();
+    component.keywordClick.subscribe(emitted);
+    vi.spyOn(editorView(), 'posAtCoords').mockReturnValue(2);
+    query('.cm-codex-keyword')?.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      button: 0,
+      clientX: 24,
+      clientY: 36,
+    }));
+
+    expect(emitted).toHaveBeenCalledWith({
+      entryIds: ['codex-1', 'codex-2'],
+      clientX: 24,
+      clientY: 36,
+    });
+
+    query('.cm-codex-keyword')?.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      button: 0,
+      ctrlKey: true,
+      clientX: 24,
+      clientY: 36,
+    }));
+    expect(emitted).toHaveBeenCalledTimes(1);
+  });
+
   async function createEditor(value: string): Promise<void> {
     fixture = TestBed.createComponent(MarkdownEditorComponent);
     component = fixture.componentInstance;

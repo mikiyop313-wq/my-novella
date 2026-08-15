@@ -16,6 +16,7 @@ import { ElectronService } from '../../../../core/services/electron.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { CodexEntryMenuComponent } from '../../components/codex-entry-menu/codex-entry-menu.component';
 import { CodexEntryPersistenceService } from '../../services/codex-entry-persistence.service';
+import { CodexContextTrieService } from '../../services/codex-context-trie.service';
 import { CodexService } from '../../services/codex.service';
 import { CodexWindowService } from '../../services/codex-window.service';
 import { createCodexImageUrl, revokeCodexImageUrl } from '../../utils/codex-image-url';
@@ -45,6 +46,7 @@ export class CodexDetached implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly electronService = inject(ElectronService);
   private readonly codexService = inject(CodexService);
+  private readonly codexContextTrie = inject(CodexContextTrieService);
   private readonly codexWindowService = inject(CodexWindowService);
   private readonly persistenceService = inject(CodexEntryPersistenceService);
   private readonly toastService = inject(ToastService);
@@ -81,6 +83,7 @@ export class CodexDetached implements OnInit, OnDestroy {
       this.initialView.set(session.activeView);
 
       await Promise.all([
+        this.codexContextTrie.loadForContext(session.bookId),
         this.loadBookHierarchy(session.bookId),
         this.loadExistingEntry(session),
       ]);

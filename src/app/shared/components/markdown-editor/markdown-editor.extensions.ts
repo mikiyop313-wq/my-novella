@@ -1,7 +1,15 @@
 import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands';
 import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { EditorSelection, EditorState, type Extension, type Range } from '@codemirror/state';
+import {
+  EditorSelection,
+  EditorState,
+  StateEffect,
+  StateField,
+  type Extension,
+  type Range,
+  type Transaction,
+} from '@codemirror/state';
 import {
   Decoration,
   EditorView,
@@ -17,12 +25,58 @@ import {
 
 type MarkdownSyntaxNode = ReturnType<typeof syntaxTree>['topNode'];
 
+export interface MarkdownKeywordHighlight {
+  startIndex: number;
+  endIndex: number;
+  entryIds: readonly string[];
+}
+
+export interface MarkdownKeywordClick {
+  entryIds: readonly string[];
+  clientX: number;
+  clientY: number;
+}
+
+interface MarkdownKeywordState {
+  highlights: readonly MarkdownKeywordHighlight[];
+  decorations: DecorationSet;
+}
+
+const excludedKeywordNodeNames = new Set([
+  'CodeBlock',
+  'FencedCode',
+  'Image',
+  'InlineCode',
+  'URL',
+]);
+
 const strongDecoration = Decoration.mark({ class: 'cm-md-strong' });
 const emphasisDecoration = Decoration.mark({ class: 'cm-md-emphasis' });
 const strikeDecoration = Decoration.mark({ class: 'cm-md-strike' });
 const inlineCodeDecoration = Decoration.mark({ class: 'cm-md-inline-code' });
 const linkDecoration = Decoration.mark({ class: 'cm-md-link' });
 const codeTextDecoration = Decoration.mark({ class: 'cm-md-code-text' });
+const keywordDecoration = Decoration.mark({ class: 'cm-codex-keyword' });
+
+const setMarkdownKeywordHighlights = StateEffect.define<readonly MarkdownKeywordHighlight[]>();
+
+const markdownKeywordField = StateField.define<MarkdownKeywordState>({
+  create() {
+    return { highlights: [], decorations: Decoration.none };
+  },
+  update(value, transaction) {
+    let highlights = transaction.docChanged
+      ? mapKeywordHighlights(value.highlights, transaction)
+      : value.highlights;
+
+    for (const effect of transaction.effects) {
+      if (effect.is(setMarkdownKeywordHighlights)) highlights = effect.value;
+    }
+
+    return buildMarkdownKeywordState(transaction.state, highlights);
+  },
+  provide: field => EditorView.decorations.from(field, value => value.decorations),
+});
 
 class ListMarkerWidget extends WidgetType {
   constructor(private readonly sourceMarker: string) {
@@ -55,7 +109,10 @@ class HorizontalRuleWidget extends WidgetType {
   }
 }
 
-export function createMarkdownExtensions(placeholderText: string): Extension[] {
+export function createMarkdownExtensions(
+  placeholderText: string,
+  onKeywordClick?: (event: MarkdownKeywordClick) => void,
+): Extension[] {
   return [
     markdown({
       base: markdownLanguage,
@@ -69,12 +126,141 @@ export function createMarkdownExtensions(placeholderText: string): Extension[] {
     EditorView.lineWrapping,
     placeholder(placeholderText),
     markdownLivePreview,
+    markdownKeywordField,
+    EditorView.domEventHandlers({
+      click: (event, view) => handleKeywordClick(event, view, onKeywordClick),
+    }),
     keymap.of([
       ...markdownFormattingKeymap,
       ...historyKeymap,
       ...defaultKeymap,
     ]),
   ];
+}
+
+export function updateMarkdownKeywordHighlights(
+  view: EditorView,
+  highlights: readonly MarkdownKeywordHighlight[],
+): void {
+  view.dispatch({ effects: setMarkdownKeywordHighlights.of(highlights) });
+}
+
+function buildMarkdownKeywordState(
+  state: EditorState,
+  highlights: readonly MarkdownKeywordHighlight[],
+): MarkdownKeywordState {
+  const normalized = normalizeKeywordHighlights(state, highlights);
+  return {
+    highlights: normalized,
+    decorations: Decoration.set(
+      normalized.map(highlight => keywordDecoration.range(highlight.startIndex, highlight.endIndex)),
+      true,
+    ),
+  };
+}
+
+function normalizeKeywordHighlights(
+  state: EditorState,
+  highlights: readonly MarkdownKeywordHighlight[],
+): MarkdownKeywordHighlight[] {
+  const grouped = new Map<string, MarkdownKeywordHighlight>();
+
+  for (const highlight of highlights) {
+    if (
+      !Number.isInteger(highlight.startIndex)
+      || !Number.isInteger(highlight.endIndex)
+      || highlight.startIndex < 0
+      || highlight.startIndex >= highlight.endIndex
+      || highlight.endIndex > state.doc.length
+      || isExcludedKeywordRange(state, highlight.startIndex, highlight.endIndex)
+    ) {
+      continue;
+    }
+
+    const entryIds = [...new Set(highlight.entryIds.filter(Boolean))];
+    if (entryIds.length === 0) continue;
+
+    const key = `${highlight.startIndex}:${highlight.endIndex}`;
+    const existing = grouped.get(key);
+    grouped.set(key, {
+      startIndex: highlight.startIndex,
+      endIndex: highlight.endIndex,
+      entryIds: existing
+        ? [...new Set([...existing.entryIds, ...entryIds])]
+        : entryIds,
+    });
+  }
+
+  return [...grouped.values()].sort((left, right) =>
+    left.startIndex - right.startIndex || left.endIndex - right.endIndex,
+  );
+}
+
+function isExcludedKeywordRange(state: EditorState, from: number, to: number): boolean {
+  let isExcluded = false;
+
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      if (excludedKeywordNodeNames.has(node.name) && from < node.to && to > node.from) {
+        isExcluded = true;
+        return false;
+      }
+      return undefined;
+    },
+  });
+
+  return isExcluded;
+}
+
+function mapKeywordHighlights(
+  highlights: readonly MarkdownKeywordHighlight[],
+  transaction: Transaction,
+): MarkdownKeywordHighlight[] {
+  return highlights.map(highlight => ({
+    ...highlight,
+    startIndex: transaction.changes.mapPos(highlight.startIndex, 1),
+    endIndex: transaction.changes.mapPos(highlight.endIndex, -1),
+  }));
+}
+
+function handleKeywordClick(
+  event: MouseEvent,
+  view: EditorView,
+  onKeywordClick?: (event: MarkdownKeywordClick) => void,
+): boolean {
+  if (
+    !onKeywordClick
+    || event.button !== 0
+    || event.ctrlKey
+    || event.metaKey
+    || event.altKey
+    || event.shiftKey
+    || !view.state.selection.ranges.every(range => range.empty)
+    || !(event.target instanceof Element)
+    || !event.target.closest('.cm-codex-keyword')
+  ) {
+    return false;
+  }
+
+  const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (position === null) return false;
+
+  const keywordState = view.state.field(markdownKeywordField);
+  const highlight = keywordState.highlights.find(candidate =>
+    position >= candidate.startIndex && position < candidate.endIndex,
+  ) ?? keywordState.highlights.find(candidate =>
+    position > candidate.startIndex && position <= candidate.endIndex,
+  );
+  if (!highlight) return false;
+
+  onKeywordClick({
+    entryIds: highlight.entryIds,
+    clientX: event.clientX,
+    clientY: event.clientY,
+  });
+  return true;
 }
 
 export const markdownLivePreview = ViewPlugin.fromClass(class {
