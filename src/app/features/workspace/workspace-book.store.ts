@@ -1,8 +1,8 @@
 import { inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 
-import { ElectronService } from '../../core/services/electron.service';
 import { ActDto, ManuscriptMode } from '../../../../shared/models/manuscript.model';
+import { ManuscriptStructureService } from './services/manuscript-structure.service';
 
 export interface WorkspaceBookState {
   bookHierarchy: ActDto[];
@@ -21,7 +21,7 @@ export const WorkspaceBookStore = signalStore(
 
   withState(initialState),
 
-  withMethods((store, electronService = inject(ElectronService)) => ({
+  withMethods((store, manuscriptStructureService = inject(ManuscriptStructureService)) => ({
     clearBookHierarchy(): void {
       patchState(store, {
         bookHierarchy: [],
@@ -45,7 +45,7 @@ export const WorkspaceBookStore = signalStore(
       });
 
       try {
-        const hierarchy = await electronService.invoke('manuscript:getBookHierarchy', { mode, id }) as ActDto[];
+        const hierarchy = await manuscriptStructureService.getBookHierarchy(mode, id);
         patchState(store, {
           bookHierarchy: hierarchy,
           isLoadingBookHierarchy: false,

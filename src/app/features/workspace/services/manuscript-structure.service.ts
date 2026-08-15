@@ -3,7 +3,9 @@ import { Injectable, inject } from '@angular/core';
 import { ElectronService } from '../../../core/services/electron.service';
 import {
   ActDto,
+  ArchiveOverviewDto,
   ChapterDto,
+  ManuscriptMode,
   SceneDto,
   UpdateActPayload,
   UpdateChapterPayload,
@@ -14,11 +16,22 @@ import {
 @Injectable({
   providedIn: 'root',
 })
-export class OutlineService {
+export class ManuscriptStructureService {
   private readonly electronService = inject(ElectronService);
 
   async getOutline(bookId: string): Promise<ActDto[]> {
     return await this.electronService.invoke('manuscript:getOutline', { bookId });
+  }
+
+  async getBookHierarchy(mode: ManuscriptMode, id: string): Promise<ActDto[]> {
+    return await this.electronService.invoke('manuscript:getBookHierarchy', {
+      mode,
+      id,
+    });
+  }
+
+  async getArchiveOverview(bookId: string): Promise<ArchiveOverviewDto> {
+    return await this.electronService.invoke('manuscript:getArchiveOverview', { bookId });
   }
 
   async createAct(bookId: string): Promise<ActDto> {
@@ -55,6 +68,21 @@ export class OutlineService {
 
   async archiveScene(id: string): Promise<void> {
     return await this.electronService.invoke('manuscript:archiveScene', { id });
+  }
+
+  async restoreAct(id: string): Promise<void> {
+    return await this.electronService.invoke('manuscript:restoreAct', { id });
+  }
+
+  async restoreChapter(id: string, targetActId: string): Promise<void> {
+    return await this.electronService.invoke('manuscript:restoreChapter', { id, targetActId });
+  }
+
+  async restoreScene(id: string, targetChapterId: string): Promise<void> {
+    return await this.electronService.invoke('manuscript:restoreScene', {
+      id,
+      targetChapterId,
+    });
   }
 
   async updateAct(payload: UpdateActPayload): Promise<ActDto> {

@@ -2,10 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { ElectronService } from '../../../core/services/electron.service';
-import { OutlineService } from './outline.service';
+import { ManuscriptStructureService } from './manuscript-structure.service';
 
-describe('OutlineService', () => {
-  let service: OutlineService;
+describe('ManuscriptStructureService', () => {
+  let service: ManuscriptStructureService;
   let electronService: { invoke: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
@@ -15,12 +15,12 @@ describe('OutlineService', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        OutlineService,
+        ManuscriptStructureService,
         { provide: ElectronService, useValue: electronService },
       ],
     });
 
-    service = TestBed.inject(OutlineService);
+    service = TestBed.inject(ManuscriptStructureService);
   });
 
   afterEach(() => {
@@ -33,6 +33,18 @@ describe('OutlineService', () => {
 
     await expect(service.getOutline('book-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:getOutline', { bookId: 'book-1' });
+
+    await expect(service.getBookHierarchy('book', 'book-1')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:getBookHierarchy', {
+      mode: 'book',
+      id: 'book-1',
+    });
+
+    await expect(service.getArchiveOverview('book-1')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:getArchiveOverview',
+      { bookId: 'book-1' },
+    );
 
     await expect(service.createAct('book-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:createAct', { bookId: 'book-1' });
@@ -60,6 +72,21 @@ describe('OutlineService', () => {
 
     await expect(service.archiveScene('scene-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:archiveScene', { id: 'scene-1' });
+
+    await expect(service.restoreAct('act-1')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:restoreAct', { id: 'act-1' });
+
+    await expect(service.restoreChapter('chapter-1', 'act-2')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:restoreChapter',
+      { id: 'chapter-1', targetActId: 'act-2' },
+    );
+
+    await expect(service.restoreScene('scene-1', 'chapter-2')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:restoreScene',
+      { id: 'scene-1', targetChapterId: 'chapter-2' },
+    );
 
     await expect(service.updateAct({ id: 'act-1', title: 'Updated Act' })).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith(

@@ -10,7 +10,7 @@ import {
   UpdateScenePayload,
   UpdateStructurePositionsPayload,
 } from '../../../../../shared/models/manuscript.model';
-import { OutlineService } from '../services/outline.service';
+import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
 
 // -----------------------------------------------------------------------------
 // State
@@ -123,7 +123,7 @@ export const OutlineStore = signalStore(
   // Public methods plus private helpers that mutate local state.
   withMethods((
     store,
-    outlineService = inject(OutlineService),
+    manuscriptStructureService = inject(ManuscriptStructureService),
   ) => {
     // Convert unknown errors into strings that can be stored/displayed.
     const getErrorMessage = (error: unknown, fallback: string): string =>
@@ -274,7 +274,7 @@ export const OutlineStore = signalStore(
         });
 
         try {
-          const outline = await outlineService.getOutline(bookId);
+          const outline = await manuscriptStructureService.getOutline(bookId);
           patchState(store, {
             outline,
             isLoading: false,
@@ -297,7 +297,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          const act = await outlineService.createAct(bookId);
+          const act = await manuscriptStructureService.createAct(bookId);
           appendAct(act);
         } catch (error) {
           throw error;
@@ -308,7 +308,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          const chapter = await outlineService.createChapter(actId);
+          const chapter = await manuscriptStructureService.createChapter(actId);
           appendChapter(chapter);
         } catch (error) {
           throw error;
@@ -319,7 +319,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          const scene = await outlineService.createScene(chapterId);
+          const scene = await manuscriptStructureService.createScene(chapterId);
           appendScene(scene);
         } catch (error) {
           throw error;
@@ -335,7 +335,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.deleteAct(id);
+          await manuscriptStructureService.deleteAct(id);
           removeAct(id);
         } catch (error) {
           throw error;
@@ -346,7 +346,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.deleteChapter(id);
+          await manuscriptStructureService.deleteChapter(id);
           removeChapter(id);
         } catch (error) {
           throw error;
@@ -357,7 +357,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.deleteScene(id);
+          await manuscriptStructureService.deleteScene(id);
           removeScene(id);
         } catch (error) {
           throw error;
@@ -373,7 +373,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.archiveAct(id);
+          await manuscriptStructureService.archiveAct(id);
           removeAct(id);
         } catch (error) {
           throw error;
@@ -384,7 +384,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.archiveChapter(id);
+          await manuscriptStructureService.archiveChapter(id);
           removeChapter(id);
         } catch (error) {
           throw error;
@@ -395,7 +395,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.archiveScene(id);
+          await manuscriptStructureService.archiveScene(id);
           removeScene(id);
         } catch (error) {
           throw error;
@@ -410,7 +410,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.updateAct(payload);
+          await manuscriptStructureService.updateAct(payload);
           patchActMetadata(payload);
         } catch (error) {
           throw error;
@@ -421,7 +421,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.updateChapter(payload);
+          await manuscriptStructureService.updateChapter(payload);
           patchChapterMetadata(payload);
         } catch (error) {
           throw error;
@@ -432,7 +432,7 @@ export const OutlineStore = signalStore(
         patchState(store, { error: null });
 
         try {
-          await outlineService.updateScene(payload);
+          await manuscriptStructureService.updateScene(payload);
           patchSceneMetadata(payload);
         } catch (error) {
           throw error;
@@ -452,7 +452,7 @@ export const OutlineStore = signalStore(
         });
 
         try {
-          await outlineService.updateStructurePositions(payload);
+          await manuscriptStructureService.updateStructurePositions(payload);
         } catch (error) {
           patchState(store, { outline: previousOutline });
           throw error;

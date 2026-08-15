@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { ActDto, ChapterDto, SceneDto } from '../../../../../shared/models/manuscript.model';
-import { OutlineService } from '../services/outline.service';
+import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
 import { OutlineStore } from './outline.store';
 
 function makeScene(overrides: Partial<SceneDto> = {}): SceneDto {
@@ -102,7 +102,7 @@ describe('OutlineStore', () => {
     TestBed.configureTestingModule({
       providers: [
         OutlineStore,
-        { provide: OutlineService, useValue: outlineService },
+        { provide: ManuscriptStructureService, useValue: outlineService },
       ],
     });
 
