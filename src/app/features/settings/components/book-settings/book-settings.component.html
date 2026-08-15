@@ -1046,10 +1046,12 @@
       </div>
     } @else if (activeSection() === 'book-vector-search') {
       @if (book(); as activeBook) {
-        <app-book-vector-settings
-          [book]="activeBook"
-          (bookChange)="updateBookFromChild($event)"
-        ></app-book-vector-settings>
+        <div class="settings-section-panel">
+          <app-book-vector-settings
+            [book]="activeBook"
+            (bookChange)="updateBookFromChild($event)"
+          ></app-book-vector-settings>
+        </div>
       }
     } @else if (activeSection() === 'system-prompts') {
       <app-system-prompt-settings [bookId]="activeBookId()!"></app-system-prompt-settings>

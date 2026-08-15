@@ -105,6 +105,7 @@
             @for (status of visibleLocalModels(); track status.modelName) {
               <div
                 class="model-option"
+                animate.leave="model-option-leaving"
                 [class.is-selected]="isLocalModelSelected(status)"
                 [class.is-unavailable]="!status.installed"
               >

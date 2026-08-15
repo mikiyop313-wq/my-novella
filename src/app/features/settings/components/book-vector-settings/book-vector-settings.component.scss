@@ -201,6 +201,7 @@
 }
 
 .model-list {
+  width: min(100%, 720px);
   display: grid;
   gap: 10px;
 }
@@ -226,6 +227,11 @@
     opacity: 0.68;
   }
 
+}
+
+.model-option-leaving {
+  overflow: hidden;
+  animation: model-option-leave 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .model-select-button {
@@ -432,5 +438,25 @@
 
   .indexing-switch {
     align-self: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-option-leaving {
+    animation: none;
+  }
+}
+
+@keyframes model-option-leave {
+  from {
+    max-height: 120px;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
   }
 }
