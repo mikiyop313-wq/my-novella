@@ -10,20 +10,25 @@ describe('CodexMatchChooserComponent', () => {
     await TestBed.configureTestingModule({ imports: [CodexMatchChooserComponent] }).compileComponents();
     fixture = TestBed.createComponent(CodexMatchChooserComponent);
     fixture.componentRef.setInput('entries', [
-      { id: 'codex-2', name: 'Mara Vale' },
-      { id: 'codex-1', name: 'Silver Key' },
+      { id: 'codex-2', name: 'Mara Vale', description: 'A cautious cartographer.' },
+      { id: 'codex-1', name: 'Silver Key', description: null },
     ]);
     fixture.detectChanges();
     await fixture.whenStable();
   });
 
-  it('renders entries in input order and focuses the first item', () => {
+  it('renders entry previews in input order and focuses the first item', () => {
     const buttons = [...fixture.nativeElement.querySelectorAll('button')] as HTMLButtonElement[];
 
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'Mara Vale',
-      'Silver Key',
-    ]);
+    expect(buttons[0].querySelector('.entry-title')?.textContent).toContain('Mara Vale');
+    expect(buttons[0].querySelector('.entry-description')?.textContent).toContain(
+      'A cautious cartographer.',
+    );
+    expect(buttons[1].querySelector('.entry-title')?.textContent).toContain('Silver Key');
+    expect(buttons[1].querySelector('.entry-description')?.textContent).toContain(
+      'No description available.',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Open entry');
     expect(document.activeElement).toBe(buttons[0]);
   });
 

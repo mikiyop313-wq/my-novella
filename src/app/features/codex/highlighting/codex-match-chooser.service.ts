@@ -27,11 +27,6 @@ export class CodexMatchChooserService {
     const entries = this.resolveEntries(entryIds);
     if (entries.length === 0) return;
 
-    if (entries.length === 1) {
-      void this.codexEntryOpener.open(entries[0].id);
-      return;
-    }
-
     const positionStrategy = this.overlay
       .position()
       .flexibleConnectedTo({ x, y })
@@ -44,7 +39,7 @@ export class CodexMatchChooserService {
           overlayX: 'start',
           overlayY: 'top',
           offsetX: 4,
-          offsetY: 4,
+          offsetY: 16,
         },
         {
           originX: 'end',
@@ -52,7 +47,7 @@ export class CodexMatchChooserService {
           overlayX: 'end',
           overlayY: 'top',
           offsetX: -4,
-          offsetY: 4,
+          offsetY: 16,
         },
         {
           originX: 'start',
@@ -60,7 +55,7 @@ export class CodexMatchChooserService {
           overlayX: 'start',
           overlayY: 'bottom',
           offsetX: 4,
-          offsetY: -4,
+          offsetY: -16,
         },
         {
           originX: 'end',
@@ -68,7 +63,7 @@ export class CodexMatchChooserService {
           overlayX: 'end',
           overlayY: 'bottom',
           offsetX: -4,
-          offsetY: -4,
+          offsetY: -16,
         },
       ]);
 
@@ -113,7 +108,7 @@ export class CodexMatchChooserService {
     return [...new Set(entryIds)]
       .map((entryId) => entriesById.get(entryId))
       .filter((entry): entry is NonNullable<typeof entry> => !!entry)
-      .map((entry) => ({ id: entry.id, name: entry.name }))
+      .map((entry) => ({ id: entry.id, name: entry.name, description: entry.description }))
       .sort(
         (left, right) =>
           left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) ||

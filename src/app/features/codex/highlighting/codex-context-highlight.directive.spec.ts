@@ -4,7 +4,6 @@ import { By } from '@angular/platform-browser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CodexContextTrieService } from '../services/codex-context-trie.service';
-import { CodexEntryOpenerService } from '../services/codex-entry-opener.service';
 import { CodexContextHighlightDirective } from './codex-context-highlight.directive';
 import {
   CodexContextHighlightRegistryService,
@@ -40,7 +39,6 @@ describe('CodexContextHighlightDirective', () => {
     clearRanges: vi.fn(),
     getEntryIdsAtPoint: vi.fn<() => string[]>(() => []),
   };
-  const entryOpener = { open: vi.fn(async () => undefined) };
   const chooser = { open: vi.fn() };
   const contextTrie = {
     trie: trieState.asReadonly(),
@@ -70,7 +68,6 @@ describe('CodexContextHighlightDirective', () => {
     registry.setRanges.mockClear();
     registry.clearRanges.mockClear();
     registry.getEntryIdsAtPoint.mockReset().mockReturnValue([]);
-    entryOpener.open.mockClear();
     chooser.open.mockClear();
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findMaraMatches(text));
     trieState.set({});
@@ -80,7 +77,6 @@ describe('CodexContextHighlightDirective', () => {
       providers: [
         { provide: CodexContextTrieService, useValue: contextTrie },
         { provide: CodexContextHighlightRegistryService, useValue: registry },
-        { provide: CodexEntryOpenerService, useValue: entryOpener },
         { provide: CodexMatchChooserService, useValue: chooser },
       ],
     });
@@ -199,7 +195,7 @@ describe('CodexContextHighlightDirective', () => {
     expect(registry.setRanges).toHaveBeenCalledTimes(1);
   });
 
-  it('opens unique matches and delegates duplicate matches to the chooser', () => {
+  it('opens previews for unique and duplicate matches', () => {
     flushFrames();
     vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: true } as Selection);
     const target = fixture.nativeElement.querySelector('.inline') as HTMLElement;
@@ -208,13 +204,13 @@ describe('CodexContextHighlightDirective', () => {
     target.dispatchEvent(
       new MouseEvent('click', { bubbles: true, button: 0, clientX: 12, clientY: 20 }),
     );
-    expect(entryOpener.open).toHaveBeenCalledWith('codex-1');
+    expect(chooser.open).toHaveBeenCalledWith(['codex-1'], 12, 20);
 
     registry.getEntryIdsAtPoint.mockReturnValueOnce(['codex-2', 'codex-1', 'codex-2']);
     target.dispatchEvent(
       new MouseEvent('click', { bubbles: true, button: 0, clientX: 12, clientY: 20 }),
     );
-    expect(chooser.open).toHaveBeenCalledWith(['codex-2', 'codex-1'], 12, 20);
+    expect(chooser.open).toHaveBeenLastCalledWith(['codex-2', 'codex-1'], 12, 20);
   });
 
   it('shows a pointer cursor only while hovering a highlighted keyword', () => {
@@ -279,7 +275,6 @@ describe('CodexContextHighlightDirective', () => {
     const unmatched = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
     textTarget.dispatchEvent(unmatched);
 
-    expect(entryOpener.open).not.toHaveBeenCalled();
     expect(chooser.open).not.toHaveBeenCalled();
     expect(unmatched.defaultPrevented).toBe(false);
     expect(host().innerHTML).toBe(originalHtml);
@@ -301,7 +296,6 @@ describe('CodexContextHighlightDirective', () => {
 
     expect(() => target.dispatchEvent(event)).not.toThrow();
     expect(event.defaultPrevented).toBe(false);
-    expect(entryOpener.open).not.toHaveBeenCalled();
     expect(chooser.open).not.toHaveBeenCalled();
     expect(host().innerHTML).toBe(originalHtml);
   });

@@ -41,6 +41,7 @@ interface OwnedHighlight {
   providedIn: 'root',
 })
 export class CodexContextHighlightRegistryService implements OnDestroy {
+  // Browser Highlight API dependencies
   private readonly document = inject(DOCUMENT);
   private readonly owners = new Map<object, readonly CodexEntryHighlightRange[]>();
   private readonly ownedHighlights = new Map<string, OwnedHighlight>();
@@ -48,6 +49,7 @@ export class CodexContextHighlightRegistryService implements OnDestroy {
   private readonly entryNames = new Map<string, string>();
   private readonly highlightConstructor: BrowserHighlightConstructor | null;
   private readonly registry: InteractiveHighlightRegistry | null;
+  // Service-owned DOM and identifier state
   private styleElement: HTMLStyleElement | null = null;
   private nextHighlightId = 1;
 
@@ -60,6 +62,7 @@ export class CodexContextHighlightRegistryService implements OnDestroy {
     this.isSupported = !!this.highlightConstructor && !!this.registry;
   }
 
+  /** Replaces an owner's ranges after removing duplicate entry/range pairs. */
   setRanges(owner: object, ranges: readonly CodexEntryHighlightRange[]): void {
     if (!this.isSupported) return;
 
@@ -130,6 +133,7 @@ export class CodexContextHighlightRegistryService implements OnDestroy {
 
     const rangesByEntryId = new Map<string, Set<Range>>();
 
+    // Combine all directive owners into one browser highlight per Codex entry.
     for (const ranges of this.owners.values()) {
       for (const { entryId, range } of ranges) {
         const entryRanges = rangesByEntryId.get(entryId) ?? new Set<Range>();
@@ -166,6 +170,7 @@ export class CodexContextHighlightRegistryService implements OnDestroy {
       (this.document.head ?? this.document.documentElement).append(this.styleElement);
     }
 
+    // Scope the shared styling to highlights created by this service only.
     const selectors = [...this.ownedHighlights.values()]
       .map(({ name }) => `::highlight(${name})`)
       .join(',\n');

@@ -11,14 +11,15 @@ import {
 
 import { buildContextHighlightSegments } from '../../../../../shared/utils/context-highlighter';
 import { CodexContextTrieService } from '../services/codex-context-trie.service';
-import { CodexEntryOpenerService } from '../services/codex-entry-opener.service';
 import {
   CodexContextHighlightRegistryService,
   type CodexEntryHighlightRange,
 } from './codex-context-highlight-registry.service';
 import { CodexMatchChooserService } from './codex-match-chooser.service';
 
+// Text in separate content blocks must never form a single match.
 const BLOCK_SELECTOR = 'p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,td,th';
+// Form controls and explicitly ignored content are excluded from text scanning.
 const EXCLUDED_SELECTOR = [
   'input',
   'textarea',
@@ -31,6 +32,7 @@ const EXCLUDED_SELECTOR = [
   '[contenteditable=false]',
   '[data-codex-highlight-ignore]',
 ].join(',');
+// Clickable elements retain their native interactions over highlight actions.
 const INTERACTIVE_SELECTOR = [
   'a',
   'button',
@@ -64,13 +66,15 @@ interface LogicalTextGroup {
   selector: '[codexContextHighlight]',
 })
 export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy {
+  // Dependencies
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly contextTrie = inject(CodexContextTrieService);
   private readonly registry = inject(CodexContextHighlightRegistryService);
   private readonly chooser = inject(CodexMatchChooserService);
-  private readonly entryOpener = inject(CodexEntryOpenerService);
+  // Highlight ownership and DOM state
   private readonly rangeOwner = {};
   private readonly initialCursor = this.host.style.cursor;
+  // Scan lifecycle
   private selector = '';
   private observer: MutationObserver | null = null;
   private scanFrame: number | null = null;
@@ -78,6 +82,7 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
   private destroyed = false;
   private cursorOverHighlight = false;
 
+  /** Limits scanning to the matching descendants when a selector is provided. */
   @Input()
   set codexContextHighlight(value: string | null | undefined) {
     this.selector = value?.trim() ?? '';
@@ -85,6 +90,7 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
   }
 
   constructor() {
+    // Re-scan whenever the reactive context index changes.
     effect(() => {
       this.contextTrie.trie();
       if (this.initialized) this.scheduleScan();
@@ -96,6 +102,7 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
     if (!view) return;
 
     this.initialized = true;
+    // DOM edits can invalidate Range objects, so rebuild them on the next frame.
     this.observer = new view.MutationObserver(() => this.scheduleScan());
     this.observer.observe(this.host, { subtree: true, childList: true, characterData: true });
     this.scheduleScan();
@@ -118,8 +125,7 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
     const target = event.target;
     const isInteractive = target instanceof Element && !!target.closest(INTERACTIVE_SELECTOR);
     const isHighlight =
-      !isInteractive &&
-      this.registry.getEntryIdsAtPoint(event.clientX, event.clientY).length > 0;
+      !isInteractive && this.registry.getEntryIdsAtPoint(event.clientX, event.clientY).length > 0;
 
     this.setHighlightCursor(isHighlight);
   }
@@ -149,11 +155,7 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
     if (entryIds.length === 0) return;
 
     event.preventDefault();
-    if (entryIds.length === 1) {
-      void this.entryOpener.open(entryIds[0]);
-    } else {
-      this.chooser.open(entryIds, event.clientX, event.clientY);
-    }
+    this.chooser.open(entryIds, event.clientX, event.clientY);
   }
 
   private setHighlightCursor(isHighlight: boolean): void {
@@ -215,6 +217,7 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
     const groups: LogicalTextGroup[] = [];
     let current: LogicalTextGroup | null = null;
 
+    // Preserve contiguous inline text while keeping block-level content isolated.
     const visit = (node: Node, boundary: Node): void => {
       if (node instanceof Text) {
         if (!node.data) return;

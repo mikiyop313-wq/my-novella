@@ -9,15 +9,15 @@ import { CodexMatchChooserService } from './codex-match-chooser.service';
 
 describe('CodexMatchChooserService', () => {
   let service: CodexMatchChooserService;
-  let entries: Array<{ id: string; name: string }>;
+  let entries: Array<{ id: string; name: string; description: string | null }>;
   let overlay: ReturnType<typeof createOverlay>;
   let opener: { open: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     entries = [
-      { id: 'codex-b', name: 'alpha' },
-      { id: 'codex-a', name: 'Alpha' },
-      { id: 'codex-c', name: 'Mara Vale' },
+      { id: 'codex-b', name: 'alpha', description: null },
+      { id: 'codex-a', name: 'Alpha', description: 'The first entry.' },
+      { id: 'codex-c', name: 'Mara Vale', description: 'A cautious cartographer.' },
     ];
     overlay = createOverlay();
     opener = { open: vi.fn(async () => undefined) };
@@ -39,9 +39,9 @@ describe('CodexMatchChooserService', () => {
     service.open(['codex-c', 'missing', 'codex-b', 'codex-a', 'codex-c'], 12, 20);
 
     expect(overlay.refs[0].setInput).toHaveBeenCalledWith('entries', [
-      { id: 'codex-a', name: 'Alpha' },
-      { id: 'codex-b', name: 'alpha' },
-      { id: 'codex-c', name: 'Mara Vale' },
+      { id: 'codex-a', name: 'Alpha', description: 'The first entry.' },
+      { id: 'codex-b', name: 'alpha', description: null },
+      { id: 'codex-c', name: 'Mara Vale', description: 'A cautious cartographer.' },
     ]);
   });
 
@@ -52,11 +52,14 @@ describe('CodexMatchChooserService', () => {
     expect(opener.open).not.toHaveBeenCalled();
   });
 
-  it('opens one resolved entry directly without creating an overlay', () => {
+  it('shows a preview overlay for one resolved entry', () => {
     service.open(['missing', 'codex-c', 'codex-c'], 12, 20);
 
-    expect(opener.open).toHaveBeenCalledWith('codex-c');
-    expect(overlay.api.create).not.toHaveBeenCalled();
+    expect(opener.open).not.toHaveBeenCalled();
+    expect(overlay.api.create).toHaveBeenCalledTimes(1);
+    expect(overlay.refs[0].setInput).toHaveBeenCalledWith('entries', [
+      { id: 'codex-c', name: 'Mara Vale', description: 'A cautious cartographer.' },
+    ]);
   });
 
   it('creates a coordinate-connected overlay with fallback positions and reposition scrolling', () => {
@@ -68,19 +71,19 @@ describe('CodexMatchChooserService', () => {
     expect(overlay.withPositions).toHaveBeenCalledWith([
       {
         originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top',
-        offsetX: 4, offsetY: 4,
+        offsetX: 4, offsetY: 16,
       },
       {
         originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top',
-        offsetX: -4, offsetY: 4,
+        offsetX: -4, offsetY: 16,
       },
       {
         originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom',
-        offsetX: 4, offsetY: -4,
+        offsetX: 4, offsetY: -16,
       },
       {
         originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom',
-        offsetX: -4, offsetY: -4,
+        offsetX: -4, offsetY: -16,
       },
     ]);
     expect(overlay.reposition).toHaveBeenCalledTimes(1);

@@ -1,8 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
+import { type CodexEntryDto } from '../../../../../shared/models/codex.model';
 import {
   buildCodexContextTrie,
-  type CodexContextTrieEntry,
   type CodexContextTrieValue,
 } from '../../../../../shared/utils/codex-context-trie';
 import {
@@ -20,7 +20,7 @@ export class CodexContextTrieService {
   private readonly codexService = inject(CodexService);
 
   private readonly contextIdState = signal<string | null>(null);
-  private readonly entriesState = signal<CodexContextTrieEntry[]>([]);
+  private readonly entriesState = signal<CodexEntryDto[]>([]);
   private readonly trieState = signal<ContextTrie<CodexContextTrieValue> | null>(null);
   private readonly matcherState = computed<CompiledContextMatcher<CodexContextTrieValue> | null>(
     () => {
