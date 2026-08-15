@@ -78,6 +78,13 @@
       "when": 1785283200000,
       "tag": "0010_remove_active_narrative_parent_check",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785369600000,
+      "tag": "0011_system_prompt_presets",
+      "breakpoints": true
     }
   ]
 }
