@@ -14,6 +14,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { OverlayModalDirective } from '../../directives/overlay-modal.directive';
 
 export type ImageCropFormat = 'image/png' | 'image/jpeg' | 'image/webp';
 
@@ -59,11 +60,12 @@ const LARGE_KEYBOARD_STEP = 10;
 @Component({
   selector: 'app-image-crop-modal',
   standalone: true,
-  imports: [A11yModule, CommonModule],
+  imports: [A11yModule, CommonModule, OverlayModalDirective],
   templateUrl: './image-crop-modal.component.html',
   styleUrl: './image-crop-modal.component.scss',
 })
 export class ImageCropModalComponent implements AfterViewInit, OnChanges, OnDestroy {
+  @ViewChild('modalTrigger') private modalTrigger?: OverlayModalDirective;
   @ViewChild('cropWorkspace') private cropWorkspace?: ElementRef<HTMLElement>;
   @ViewChild('sourceImage') private sourceImage?: ElementRef<HTMLImageElement>;
 
@@ -96,6 +98,8 @@ export class ImageCropModalComponent implements AfterViewInit, OnChanges, OnDest
   private entranceFrame: number | null = null;
 
   ngAfterViewInit(): void {
+    this.modalTrigger?.openModal();
+
     this.entranceFrame = requestAnimationFrame(() => {
       this.isVisible.set(true);
       this.entranceFrame = null;
@@ -222,8 +226,8 @@ export class ImageCropModalComponent implements AfterViewInit, OnChanges, OnDest
     if (!this.isCropping()) this.cancelled.emit();
   }
 
-  onBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) this.cancel();
+  onOverlayClosed(): void {
+    if (!this.isCropping()) this.cancelled.emit();
   }
 
   async cropImage(): Promise<void> {

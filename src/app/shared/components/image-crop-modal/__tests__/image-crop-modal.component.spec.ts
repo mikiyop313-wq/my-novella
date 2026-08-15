@@ -47,8 +47,15 @@ describe('ImageCropModalComponent', () => {
 
     expect(fixture.componentInstance.stageSize()).toEqual({ width: 600, height: 400 });
     expect(fixture.componentInstance.cropFrame()).toEqual({ x: 100, y: 0, width: 400, height: 400 });
-    expect(fixture.nativeElement.textContent).toContain('1.00:1');
-    expect(fixture.nativeElement.textContent).toContain('600 × 600 px');
+    expect(modalElement().textContent).toContain('1.00:1');
+    expect(modalElement().textContent).toContain('600 × 600 px');
+  });
+
+  it('mounts through the shared modal overlay so parent overlays cannot constrain it', () => {
+    createFixture();
+
+    expect(document.querySelector('.cdk-overlay-container .crop-modal')).not.toBeNull();
+    expect(document.querySelector('.cdk-overlay-backdrop')).not.toBeNull();
   });
 
   it('clamps crop dragging to the displayed image boundaries', () => {
@@ -155,24 +162,27 @@ describe('ImageCropModalComponent', () => {
   );
 
   it('emits cancellation from the button, backdrop, and Escape without cropping', () => {
+    vi.useFakeTimers();
     createFixture();
     const cancelled = vi.fn();
     const cropped = vi.fn();
     fixture.componentInstance.cancelled.subscribe(cancelled);
     fixture.componentInstance.cropped.subscribe(cropped);
 
-    const element = fixture.nativeElement as HTMLElement;
+    const element = modalElement();
     element.querySelector<HTMLButtonElement>('.crop-modal-actions button:nth-of-type(2)')?.click();
-    element.querySelector<HTMLElement>('.crop-modal-backdrop')?.click();
+    document.querySelector<HTMLElement>('.cdk-overlay-backdrop')?.click();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    vi.advanceTimersByTime(200);
 
     expect(cancelled).toHaveBeenCalledTimes(3);
     expect(cropped).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it('keeps the modal open when the image cannot be decoded', () => {
     createFixture();
-    const element = fixture.nativeElement as HTMLElement;
+    const element = modalElement();
     const image = element.querySelector<HTMLImageElement>('.source-image');
 
     image?.dispatchEvent(new Event('error'));
@@ -196,7 +206,7 @@ describe('ImageCropModalComponent', () => {
     fixture.detectChanges();
 
     expect(emitted).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain(
+    expect(modalElement().querySelector('[role="alert"]')?.textContent).toContain(
       'could not be cropped',
     );
     expect(fixture.componentInstance.imageReady()).toBe(true);
@@ -230,6 +240,7 @@ describe('ImageCropModalComponent', () => {
     fixture.destroy();
 
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:crop-source');
+    expect(document.querySelector('.cdk-overlay-container .crop-modal')).toBeNull();
   });
 
   it('revokes the previous URL and resets state when the input file changes', () => {
@@ -261,7 +272,7 @@ describe('ImageCropModalComponent', () => {
     displayWidth: number;
     displayHeight: number;
   }): void {
-    const element = fixture.nativeElement as HTMLElement;
+    const element = modalElement();
     const workspace = element.querySelector<HTMLElement>('.crop-workspace');
     const image = element.querySelector<HTMLImageElement>('.source-image');
     if (!workspace || !image) throw new Error('Expected crop workspace and source image.');
@@ -272,6 +283,12 @@ describe('ImageCropModalComponent', () => {
     Object.defineProperty(image, 'naturalHeight', { configurable: true, value: options.naturalHeight });
     image.dispatchEvent(new Event('load'));
     fixture.detectChanges();
+  }
+
+  function modalElement(): HTMLElement {
+    const element = document.querySelector<HTMLElement>('.cdk-overlay-container .crop-modal');
+    if (!element) throw new Error('Expected image crop modal overlay.');
+    return element;
   }
 
   function pointerEvent(options: PointerEventOptions = {}): PointerEvent {

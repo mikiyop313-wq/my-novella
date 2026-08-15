@@ -12,9 +12,8 @@ import { ImageCropModalComponent } from '../../../../shared/components/image-cro
 import {
   COVER_CROP_CONFIG,
   fileToDataUrl,
-  loadImageDimensions,
-  matchesCoverAspectRatio,
 } from '../../../../shared/utils/cover-image';
+import { prepareImageUpload } from '../../../../shared/utils/image-upload';
 
 @Component({
   selector: 'app-book-create',
@@ -117,16 +116,19 @@ export class BookCreate implements OnInit {
   }
 
   private async handleFile(file: File): Promise<void> {
-    if (!file.type.startsWith('image/')) return;
-
     try {
-      const dimensions = await loadImageDimensions(file);
-      if (matchesCoverAspectRatio(dimensions)) {
-        await this.setCoverFile(file);
+      const result = await prepareImageUpload({
+        file,
+        aspectRatio: COVER_CROP_CONFIG.aspectRatio,
+      });
+      if (!result) return;
+
+      if (result.kind === 'ready') {
+        this.setCoverDataUrl(result.dataUrl);
         return;
       }
 
-      this.pendingCoverFile.set(file);
+      this.pendingCoverFile.set(result.file);
     } catch (error) {
       console.error('Failed to load cover image:', error);
     }
@@ -153,11 +155,15 @@ export class BookCreate implements OnInit {
   private async setCoverFile(file: File): Promise<void> {
     try {
       const dataUrl = await fileToDataUrl(file);
-      this.coverPreview.set(dataUrl);
-      this.bookForm.patchValue({ coverImage: dataUrl });
+      this.setCoverDataUrl(dataUrl);
     } catch (error) {
       console.error('Failed to read cover image:', error);
     }
+  }
+
+  private setCoverDataUrl(dataUrl: string): void {
+    this.coverPreview.set(dataUrl);
+    this.bookForm.patchValue({ coverImage: dataUrl });
   }
 
   removeCoverImage(event: Event) {

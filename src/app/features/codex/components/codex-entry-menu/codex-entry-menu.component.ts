@@ -28,6 +28,9 @@ import { buildContextHighlightSegments } from '../../../../../../shared/utils/co
 import { CodexMatchChooserService } from '../../highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../../services/codex-context-trie.service';
 import { isSceneIncludedInContext } from '../../../../../../shared/utils/manuscript-context-inclusion';
+import { ImageCropModalComponent } from '../../../../shared/components/image-crop-modal/image-crop-modal.component';
+import { fileToDataUrl, prepareImageUpload } from '../../../../shared/utils/image-upload';
+import { CODEX_IMAGE_CROP_CONFIG } from '../../utils/codex-image-upload';
 
 type CodexEntryProgressionInput = CodexEntryProgressionPayload & {
   localId: string;
@@ -53,7 +56,14 @@ const UNRANKED_SCENE_RANK = Number.MAX_SAFE_INTEGER;
 @Component({
   selector: 'app-codex-entry-menu',
   standalone: true,
-  imports: [FormsModule, MarkdownEditorComponent, AutocompleteDropdownComponent, CdkMenuModule, InfoIconComponent],
+  imports: [
+    FormsModule,
+    MarkdownEditorComponent,
+    AutocompleteDropdownComponent,
+    CdkMenuModule,
+    InfoIconComponent,
+    ImageCropModalComponent,
+  ],
   templateUrl: './codex-entry-menu.html',
   styleUrl: './codex-entry-menu.scss'
 })
@@ -106,6 +116,9 @@ export class CodexEntryMenuComponent implements OnDestroy {
   readonly newEntryName = signal('');
   readonly newEntryAlias = signal('');
   readonly newEntryDescription = signal('');
+  readonly newEntryImage = signal<string | null | undefined>(null);
+  readonly imageActionsOpen = signal(false);
+  readonly pendingImageFile = signal<File | null>(null);
   readonly newEntryTrackingSetting = signal<CodexTrackingSetting>('include_when_detected');
   readonly newEntryNotes = signal<CodexEntryNoteInput[]>([]);
   readonly newEntryProgression = signal<CodexEntryProgressionInput[]>([]);
@@ -114,6 +127,10 @@ export class CodexEntryMenuComponent implements OnDestroy {
   readonly isEditing = computed(() => this.existingEntry() !== null);
   readonly isArchived = computed(() => this.existingEntry()?.status === 'archived');
   readonly menuTitle = computed(() => this.isEditing() ? 'Edit Codex Entry' : 'New Codex Entry');
+  readonly displayedThumbnailUrl = computed(() =>
+    this.newEntryImage() === undefined ? this.thumbnailUrl() : this.newEntryImage(),
+  );
+  readonly imageCropConfig = CODEX_IMAGE_CROP_CONFIG;
   readonly descriptionKeywordHighlights = computed<MarkdownKeywordHighlight[]>(() => {
     const description = this.newEntryDescription();
     const currentEntryId = this.existingEntry()?.id ?? null;
@@ -222,6 +239,74 @@ export class CodexEntryMenuComponent implements OnDestroy {
 
   updateEntryDescription(description: string): void {
     this.newEntryDescription.set(description);
+    this.queueAutosave();
+  }
+
+  async onImageChange(event: Event): Promise<void> {
+    this.imageActionsOpen.set(false);
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    try {
+      const result = await prepareImageUpload({
+        file,
+        aspectRatio: this.imageCropConfig.aspectRatio,
+      });
+      if (!result) return;
+
+      if (result.kind === 'ready') {
+        this.setEntryImage(result.dataUrl);
+        return;
+      }
+
+      this.pendingImageFile.set(result.file);
+    } catch (error) {
+      console.error('Failed to load Codex image:', error);
+    }
+  }
+
+  async onImageCropped(file: File): Promise<void> {
+    this.pendingImageFile.set(null);
+
+    try {
+      this.setEntryImage(await fileToDataUrl(file));
+    } catch (error) {
+      console.error('Failed to read Codex image:', error);
+    }
+  }
+
+  cancelImageCrop(): void {
+    this.pendingImageFile.set(null);
+  }
+
+  toggleImageActions(): void {
+    this.imageActionsOpen.update(isOpen => !isOpen);
+  }
+
+  closeImageActions(): void {
+    this.imageActionsOpen.set(false);
+  }
+
+  onImageActionsFocusOut(event: FocusEvent): void {
+    const nextTarget = event.relatedTarget;
+    const actionControl = event.currentTarget;
+
+    if (
+      actionControl instanceof HTMLElement
+      && nextTarget instanceof Node
+      && actionControl.contains(nextTarget)
+    ) {
+      return;
+    }
+
+    this.closeImageActions();
+  }
+
+  removeEntryImage(): void {
+    this.newEntryImage.set(null);
+    this.closeImageActions();
     this.queueAutosave();
   }
 
@@ -337,6 +422,8 @@ export class CodexEntryMenuComponent implements OnDestroy {
     this.newEntryName.set(entry.name);
     this.newEntryAlias.set(entry.alias ?? '');
     this.newEntryDescription.set(entry.description ?? '');
+    this.newEntryImage.set(undefined);
+    this.imageActionsOpen.set(false);
     this.newEntryTrackingSetting.set(entry.trackingSetting);
     this.newEntryNotes.set(entry.entryNotes.map(note => this.parseNote(note)));
     this.newEntryProgression.set(entry.entryProgression.map(item => this.parseProgression(item)));
@@ -348,6 +435,9 @@ export class CodexEntryMenuComponent implements OnDestroy {
     this.newEntryName.set('');
     this.newEntryAlias.set('');
     this.newEntryDescription.set('');
+    this.newEntryImage.set(null);
+    this.imageActionsOpen.set(false);
+    this.pendingImageFile.set(null);
     this.newEntryTrackingSetting.set('include_when_detected');
     this.newEntryNotes.set([]);
     this.newEntryProgression.set([]);
@@ -379,6 +469,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
     this.newEntryName.set(draft.name);
     this.newEntryAlias.set(draft.alias);
     this.newEntryDescription.set(draft.description);
+    this.newEntryImage.set(draft.image);
     this.newEntryTrackingSetting.set(draft.trackingSetting);
     this.newEntryNotes.set(draft.notes.map(note => ({ ...note })));
     this.newEntryProgression.set(draft.progression.map(item => ({
@@ -391,6 +482,11 @@ export class CodexEntryMenuComponent implements OnDestroy {
     this.newEntryNotes.update(notes =>
       notes.map((note, i) => (i === index ? { ...note, ...changes } : note)),
     );
+    this.queueAutosave();
+  }
+
+  private setEntryImage(dataUrl: string): void {
+    this.newEntryImage.set(dataUrl);
     this.queueAutosave();
   }
 
@@ -472,6 +568,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
       name: this.newEntryName().trim(),
       alias: this.newEntryAlias().trim(),
       description: this.newEntryDescription().trim(),
+      image: this.newEntryImage(),
       trackingSetting: this.newEntryTrackingSetting(),
       notes: this.newEntryNotes()
         .map(note => ({

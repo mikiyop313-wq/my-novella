@@ -1,6 +1,13 @@
-<div class="crop-modal-backdrop" [class.is-visible]="isVisible()" (click)="onBackdropClick($event)">
+<ng-container
+  [appOverlayModal]="cropModal"
+  #modalTrigger="appOverlayModal"
+  (closed)="onOverlayClosed()"
+></ng-container>
+
+<ng-template #cropModal>
   <section
-    class="crop-modal"
+    class="crop-modal overlay-modal"
+    [class.is-visible]="isVisible()"
     role="dialog"
     aria-modal="true"
     aria-labelledby="image-crop-title"
@@ -122,4 +129,4 @@
       </button>
     </footer>
   </section>
-</div>
+</ng-template>

@@ -531,9 +531,11 @@
   .entry-card-icon {
     flex: 0 0 66px;
     height: 66px;
+    box-sizing: border-box;
     margin: 10px 0 10px 10px;
     border: 1px solid var(--color-border);
     border-radius: 8px;
+    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;

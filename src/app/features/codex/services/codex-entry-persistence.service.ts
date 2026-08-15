@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import {
   type CodexEntryDetailDto,
   type CodexEntryDto,
+  type UpdateCodexEntryDto,
 } from '../../../../../shared/models/codex.model';
 import {
   type CodexEntryMenuPayload,
@@ -28,6 +29,7 @@ export class CodexEntryPersistenceService {
       name: entryData.name,
       alias: entryData.alias || null,
       description: entryData.description || null,
+      image: entryData.image,
       trackingSetting: entryData.trackingSetting,
     });
 
@@ -59,13 +61,15 @@ export class CodexEntryPersistenceService {
     selectedEntry: CodexEntryDetailDto,
     entryData: CodexEntryMenuPayload,
   ): Promise<CodexEntryDetailDto> {
-    const updatedEntry = await this.codexService.updateEntry(selectedEntry.id, {
+    const updateData: UpdateCodexEntryDto = {
       type: entryData.type,
       name: entryData.name,
       alias: entryData.alias || null,
       description: entryData.description || null,
       trackingSetting: entryData.trackingSetting,
-    });
+      ...(entryData.image !== undefined ? { image: entryData.image } : {}),
+    };
+    const updatedEntry = await this.codexService.updateEntry(selectedEntry.id, updateData);
 
     if (!updatedEntry) {
       throw new Error('Codex entry not found.');

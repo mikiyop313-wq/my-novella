@@ -23,6 +23,7 @@ export type CodexEntryMenuPayload = {
   name: string;
   alias: string;
   description: string;
+  image?: string | null;
   trackingSetting: CodexTrackingSetting;
   notes: CodexEntryNoteInput[];
   progression: CodexEntryProgressionPayload[];

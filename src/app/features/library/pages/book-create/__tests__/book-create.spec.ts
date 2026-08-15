@@ -82,7 +82,9 @@ describe('BookCreate cover upload', () => {
 
     expect(fixture.componentInstance.pendingCoverFile()).toBeNull();
     expect(fixture.componentInstance.bookForm.value.coverImage).toContain('data:image/png');
-    expect(fixture.nativeElement.querySelector('app-image-crop-modal')).toBeNull();
+    expect(
+      document.querySelector('.cdk-overlay-container .crop-modal'),
+    ).toBeNull();
   });
 
   it('opens the crop modal for an image outside tolerance', async () => {
@@ -94,7 +96,9 @@ describe('BookCreate cover upload', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.pendingCoverFile()).toBe(file);
-    expect(fixture.nativeElement.querySelector('app-image-crop-modal')).not.toBeNull();
+    expect(
+      document.querySelector('.cdk-overlay-container .crop-modal'),
+    ).not.toBeNull();
   });
 
   it('uses a cropped file and clears pending crop state', async () => {

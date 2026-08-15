@@ -207,7 +207,9 @@ describe('BookModalComponent lifecycle actions', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.pendingCoverFile()).toBe(file);
-    expect(fixture.nativeElement.querySelector('app-image-crop-modal')).not.toBeNull();
+    expect(
+      document.querySelector('.cdk-overlay-container .crop-modal'),
+    ).not.toBeNull();
     expect(updateBook).not.toHaveBeenCalledWith(
       'book-1',
       expect.objectContaining({ coverImage: expect.anything() }),

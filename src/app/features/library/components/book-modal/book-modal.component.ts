@@ -19,9 +19,8 @@ import { ImageCropModalComponent } from '../../../../shared/components/image-cro
 import {
   COVER_CROP_CONFIG,
   fileToDataUrl,
-  loadImageDimensions,
-  matchesCoverAspectRatio,
 } from '../../../../shared/utils/cover-image';
+import { prepareImageUpload } from '../../../../shared/utils/image-upload';
 
 
 
@@ -424,16 +423,21 @@ export class BookModalComponent {
     const file = input.files?.[0];
     input.value = '';
 
-    if (!file?.type.startsWith('image/')) return;
+    if (!file) return;
 
     try {
-      const dimensions = await loadImageDimensions(file);
-      if (matchesCoverAspectRatio(dimensions)) {
-        await this.updateCover(file);
+      const result = await prepareImageUpload({
+        file,
+        aspectRatio: COVER_CROP_CONFIG.aspectRatio,
+      });
+      if (!result) return;
+
+      if (result.kind === 'ready') {
+        await this.updateCoverDataUrl(result.dataUrl);
         return;
       }
 
-      this.pendingCoverFile.set(file);
+      this.pendingCoverFile.set(result.file);
     } catch (error) {
       console.error('Failed to load cover image:', error);
     }
@@ -451,11 +455,15 @@ export class BookModalComponent {
   private async updateCover(file: File): Promise<void> {
     try {
       const base64DataUrl = await fileToDataUrl(file);
-      const updatedBook = await this.store.updateBook(this.book().id, { coverImage: base64DataUrl });
-      this.book.set(updatedBook);
+      await this.updateCoverDataUrl(base64DataUrl);
     } catch (error) {
       console.error('Failed to update cover image:', error);
     }
+  }
+
+  private async updateCoverDataUrl(dataUrl: string): Promise<void> {
+    const updatedBook = await this.store.updateBook(this.book().id, { coverImage: dataUrl });
+    this.book.set(updatedBook);
   }
 
 }

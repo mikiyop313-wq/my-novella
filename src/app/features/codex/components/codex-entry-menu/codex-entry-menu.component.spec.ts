@@ -12,6 +12,7 @@ import type { ActDto, SceneDto } from '../../../../../../shared/models/manuscrip
 import type { CodexContextTrieValue } from '../../../../../../shared/utils/codex-context-trie';
 import type { ContextMatch } from '../../../../../../shared/utils/context-matcher';
 import { MarkdownEditorComponent } from '../../../../shared/components/markdown-editor/markdown-editor.component';
+import { CODEX_IMAGE_CROP_CONFIG } from '../../utils/codex-image-upload';
 import { CodexMatchChooserService } from '../../highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../../services/codex-context-trie.service';
 import { CodexEntryMenuComponent } from './codex-entry-menu.component';
@@ -46,6 +47,8 @@ describe('CodexEntryMenuComponent', () => {
   afterEach(() => {
     vi.useRealTimers();
     fixture.destroy();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     TestBed.resetTestingModule();
   });
 
@@ -131,6 +134,104 @@ describe('CodexEntryMenuComponent', () => {
     expect(matchChooser.open).toHaveBeenCalledWith(['codex-2', 'codex-3'], 12, 24);
   });
 
+  it('defines the Codex-specific square WebP crop output', () => {
+    expect(CODEX_IMAGE_CROP_CONFIG).toEqual({
+      aspectRatio: 1,
+      outputWidth: 520,
+      format: 'image/webp',
+      quality: 0.9,
+    });
+  });
+
+  it('includes an accepted image in the create payload', async () => {
+    stubImageLoading({ width: 130, height: 130 });
+    await render();
+    const created = vi.fn();
+    component.entryCreated.subscribe(created);
+    component.updateEntryName('Mara Vale');
+
+    await component.onImageChange(fileInputEvent(imageFile('portrait.png')));
+    component.submitEntry();
+
+    expect(component.displayedThumbnailUrl()).toContain('data:image/png');
+    expect(created).toHaveBeenCalledWith(expect.objectContaining({
+      image: expect.stringContaining('data:image/png'),
+    }));
+  });
+
+  it('opens the crop modal for an image outside the Codex ratio', async () => {
+    stubImageLoading({ width: 130, height: 180 });
+    await render();
+    const file = imageFile('square.png');
+
+    await component.onImageChange(fileInputEvent(file));
+    fixture.detectChanges();
+
+    expect(component.pendingImageFile()).toBe(file);
+    expect(
+      document.querySelector('.cdk-overlay-container .crop-modal'),
+    ).not.toBeNull();
+  });
+
+  it('uses a cropped WebP and preserves the previous image when a later crop is cancelled', async () => {
+    await render();
+    await component.onImageCropped(new File(['cropped'], 'portrait.webp', { type: 'image/webp' }));
+    const croppedImage = component.displayedThumbnailUrl();
+    component.pendingImageFile.set(imageFile('replacement.png'));
+
+    component.cancelImageCrop();
+
+    expect(component.pendingImageFile()).toBeNull();
+    expect(croppedImage).toContain('data:image/webp');
+    expect(component.displayedThumbnailUrl()).toBe(croppedImage);
+  });
+
+  it('autosaves a replacement image for an existing entry', async () => {
+    stubImageLoading({ width: 130, height: 130 });
+    fixture.componentRef.setInput('existingEntry', createEntry({ image: new Uint8Array([1, 2, 3]) }));
+    fixture.componentRef.setInput('thumbnailUrl', 'blob:existing-image');
+    await render();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+
+    await component.onImageChange(fileInputEvent(imageFile('replacement.png')));
+    component.close();
+
+    expect(component.displayedThumbnailUrl()).toContain('data:image/png');
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({
+      image: expect.stringContaining('data:image/png'),
+    }));
+  });
+
+  it('expands the edit image button and removes the existing image', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({ image: new Uint8Array([1, 2, 3]) }));
+    fixture.componentRef.setInput('thumbnailUrl', 'blob:existing-image');
+    await render();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+
+    const editButton = fixture.nativeElement.querySelector('.edit-image-btn') as HTMLButtonElement;
+    editButton.click();
+    fixture.detectChanges();
+
+    expect(component.imageActionsOpen()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.image-action-control')?.classList.contains('open')).toBe(true);
+    expect(
+      [...fixture.nativeElement.querySelectorAll('.image-action')]
+        .map((action: HTMLElement) => action.textContent?.trim()),
+    ).toEqual(['Change image', 'Remove image']);
+
+    const removeButton = fixture.nativeElement.querySelector('.image-action.remove') as HTMLButtonElement;
+    removeButton.click();
+    fixture.detectChanges();
+    component.close();
+
+    expect(component.imageActionsOpen()).toBe(false);
+    expect(component.displayedThumbnailUrl()).toBeNull();
+    expect(fixture.nativeElement.querySelector('.upload-placeholder')).not.toBeNull();
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ image: null }));
+  });
+
   it('keeps canonical scene numbers and mutes progression excluded from AI context', async () => {
     fixture.componentRef.setInput('bookHierarchy', createHierarchy());
     fixture.componentRef.setInput('existingEntry', createEntry({
@@ -212,6 +313,35 @@ describe('CodexEntryMenuComponent', () => {
     return debugElement.componentInstance as MarkdownEditorComponent;
   }
 });
+
+function stubImageLoading({ width, height }: { width: number; height: number }): void {
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:selected-codex-image');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  vi.stubGlobal(
+    'Image',
+    class {
+      naturalWidth = width;
+      naturalHeight = height;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    },
+  );
+}
+
+function imageFile(name: string): File {
+  return new File(['image'], name, { type: 'image/png' });
+}
+
+function fileInputEvent(file: File): Event {
+  const input = document.createElement('input');
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+  Object.defineProperty(input, 'value', { configurable: true, writable: true, value: 'selected' });
+  return { target: input } as unknown as Event;
+}
 
 function createHierarchy(): ActDto[] {
   const scenes = [
