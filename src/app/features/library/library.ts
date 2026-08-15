@@ -7,4 +7,8 @@ import { BookCardComponent } from './components/book-card/book-card.component';
   templateUrl: './library.html',
   styleUrl: './library.scss',
 })
-export class Library { }
+export class Library {
+
+
+
+}
