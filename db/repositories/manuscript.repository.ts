@@ -13,6 +13,7 @@ import {
   UpdateActPayload,
   UpdateChapterPayload,
   UpdateScenePayload,
+  UpdateStructurePositionsPayload,
 } from '../../shared/models/manuscript.model';
 
 export class ManuscriptRepository {
@@ -24,12 +25,14 @@ export class ManuscriptRepository {
     switch (mode) {
       case 'book': {
         const acts = await db.query.act.findMany({
-          where: eq(act.bookId, id),
+          where: and(eq(act.bookId, id), eq(act.status, 'active')),
           with: {
             chapters: {
+              where: eq(chapter.status, 'active'),
               orderBy: (chapters, { asc }) => [asc(chapters.position)],
               with: {
                 scenes: {
+                  where: eq(scene.status, 'active'),
                   orderBy: (scenes, { asc }) => [asc(scenes.position)],
                 },
               },
@@ -43,12 +46,14 @@ export class ManuscriptRepository {
 
       case 'act': {
         const actData = await db.query.act.findFirst({
-          where: eq(act.id, id),
+          where: and(eq(act.id, id), eq(act.status, 'active')),
           with: {
             chapters: {
+              where: eq(chapter.status, 'active'),
               orderBy: (chapters, { asc }) => [asc(chapters.position)],
               with: {
                 scenes: {
+                  where: eq(scene.status, 'active'),
                   orderBy: (scenes, { asc }) => [asc(scenes.position)],
                 },
               },
@@ -60,10 +65,14 @@ export class ManuscriptRepository {
       }
 
       case 'chapter': {
+        const isVisible = await this.isActiveManuscriptPath('chapter', id);
+        if (!isVisible) return undefined as unknown as ChapterDto;
+
         const chapterData = await db.query.chapter.findFirst({
-          where: eq(chapter.id, id),
+          where: and(eq(chapter.id, id), eq(chapter.status, 'active')),
           with: {
             scenes: {
+              where: eq(scene.status, 'active'),
               orderBy: (scenes, { asc }) => [asc(scenes.position)],
             },
           },
@@ -73,8 +82,11 @@ export class ManuscriptRepository {
       }
 
       case 'scene': {
+        const isVisible = await this.isActiveManuscriptPath('scene', id);
+        if (!isVisible) return undefined as unknown as SceneDto;
+
         const sceneData = await db.query.scene.findFirst({
-          where: eq(scene.id, id),
+          where: and(eq(scene.id, id), eq(scene.status, 'active')),
         });
 
         return sceneData as unknown as SceneDto;
@@ -120,14 +132,16 @@ export class ManuscriptRepository {
     }
 
     const acts = await db.query.act.findMany({
-      where: eq(act.bookId, bookId),
+      where: and(eq(act.bookId, bookId), eq(act.status, 'active')),
       columns: { summary: false },
       with: {
         chapters: {
+          where: eq(chapter.status, 'active'),
           columns: { summary: false },
           orderBy: (chapters, { asc }) => [asc(chapters.position)],
           with: {
             scenes: {
+              where: eq(scene.status, 'active'),
               columns: { prose: false, summary: false },
               orderBy: (scenes, { asc }) => [asc(scenes.position)],
             },
@@ -142,6 +156,32 @@ export class ManuscriptRepository {
     return acts as unknown as ActDto[];
   }
 
+  /**
+   * Fetches the outline tree with summaries for the outline screen, while
+   * still excluding heavy scene prose payloads.
+   */
+  async getOutline(bookId: string): Promise<ActDto[]> {
+    const acts = await db.query.act.findMany({
+      where: and(eq(act.bookId, bookId), eq(act.status, 'active')),
+      with: {
+        chapters: {
+          where: eq(chapter.status, 'active'),
+          orderBy: (chapters, { asc }) => [asc(chapters.position)],
+          with: {
+            scenes: {
+              where: eq(scene.status, 'active'),
+              columns: { prose: false },
+              orderBy: (scenes, { asc }) => [asc(scenes.position)],
+            },
+          },
+        },
+      },
+      orderBy: (acts, { asc }) => [asc(acts.position)],
+    });
+
+    return acts as unknown as ActDto[];
+  }
+
   // -----------------------------------------------------------------------
   // Create methods
   // -----------------------------------------------------------------------
@@ -150,7 +190,7 @@ export class ManuscriptRepository {
     const [maxRow] = await db
       .select({ maxPos: max(act.position) })
       .from(act)
-      .where(eq(act.bookId, bookId));
+      .where(and(eq(act.bookId, bookId), eq(act.status, 'active')));
 
     const nextPosition = (maxRow?.maxPos ?? -1) + 1;
 
@@ -167,7 +207,7 @@ export class ManuscriptRepository {
     const [maxRow] = await db
       .select({ maxPos: max(chapter.position) })
       .from(chapter)
-      .where(eq(chapter.actId, actId));
+      .where(and(eq(chapter.actId, actId), eq(chapter.status, 'active')));
 
     const nextPosition = (maxRow?.maxPos ?? -1) + 1;
 
@@ -184,7 +224,7 @@ export class ManuscriptRepository {
     const [maxRow] = await db
       .select({ maxPos: max(scene.position) })
       .from(scene)
-      .where(eq(scene.chapterId, chapterId));
+      .where(and(eq(scene.chapterId, chapterId), eq(scene.status, 'active')));
 
     const nextPosition = (maxRow?.maxPos ?? -1) + 1;
 
@@ -235,6 +275,40 @@ export class ManuscriptRepository {
   }
 
   // -----------------------------------------------------------------------
+  // Structure position methods
+  // -----------------------------------------------------------------------
+
+  async updateStructurePositions(payload: UpdateStructurePositionsPayload): Promise<void> {
+    db.transaction(tx => {
+      for (const item of payload.acts ?? []) {
+        tx
+          .update(act)
+          .set({ position: item.position })
+          .where(and(eq(act.id, item.id), eq(act.bookId, item.bookId), eq(act.status, 'active')))
+          .run();
+      }
+
+      for (const item of payload.chapters ?? []) {
+        tx
+          .update(chapter)
+          .set({ actId: item.actId, position: item.position })
+          .where(and(eq(chapter.id, item.id), eq(chapter.status, 'active')))
+          .run();
+      }
+
+      for (const item of payload.scenes ?? []) {
+        tx
+          .update(scene)
+          .set({ chapterId: item.chapterId, position: item.position })
+          .where(and(eq(scene.id, item.id), eq(scene.status, 'active')))
+          .run();
+      }
+    });
+
+    await this.touchBookAfterStructureUpdate(payload);
+  }
+
+  // -----------------------------------------------------------------------
   // Delete methods
   // Cascade rules are defined in the schema with onDelete: 'cascade'.
   // -----------------------------------------------------------------------
@@ -249,10 +323,18 @@ export class ManuscriptRepository {
     await this.touchBookLastEdited('act', id);
     await db.delete(act).where(eq(act.id, id));
 
-    await db
-      .update(act)
-      .set({ position: sql`${act.position} - 1` })
-      .where(and(eq(act.bookId, actToDelete.bookId), gt(act.position, actToDelete.position)));
+    if (actToDelete.status === 'active') {
+      await db
+        .update(act)
+        .set({ position: sql`${act.position} - 1` })
+        .where(
+          and(
+            eq(act.bookId, actToDelete.bookId),
+            eq(act.status, 'active'),
+            gt(act.position, actToDelete.position),
+          ),
+        );
+    }
   }
 
   async deleteChapter(id: string): Promise<void> {
@@ -265,15 +347,18 @@ export class ManuscriptRepository {
     await this.touchBookLastEdited('chapter', id);
     await db.delete(chapter).where(eq(chapter.id, id));
 
-    await db
-      .update(chapter)
-      .set({ position: sql`${chapter.position} - 1` })
-      .where(
-        and(
-          eq(chapter.actId, chapterToDelete.actId),
-          gt(chapter.position, chapterToDelete.position),
-        ),
-      );
+    if (chapterToDelete.status === 'active') {
+      await db
+        .update(chapter)
+        .set({ position: sql`${chapter.position} - 1` })
+        .where(
+          and(
+            eq(chapter.actId, chapterToDelete.actId),
+            eq(chapter.status, 'active'),
+            gt(chapter.position, chapterToDelete.position),
+          ),
+        );
+    }
   }
 
   async deleteScene(id: string): Promise<void> {
@@ -286,13 +371,88 @@ export class ManuscriptRepository {
     await this.touchBookLastEdited('scene', id);
     await db.delete(scene).where(eq(scene.id, id));
 
+    if (sceneToDelete.status === 'active') {
+      await db
+        .update(scene)
+        .set({ position: sql`${scene.position} - 1` })
+        .where(
+          and(
+            eq(scene.chapterId, sceneToDelete.chapterId),
+            eq(scene.status, 'active'),
+            gt(scene.position, sceneToDelete.position),
+          ),
+        );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Archive methods
+  // Archived rows are hidden from normal hierarchy/manuscript reads but kept
+  // in place so their nested data can be restored by a future UI.
+  // -----------------------------------------------------------------------
+
+  async archiveAct(id: string): Promise<void> {
+    const actToArchive = await db.query.act.findFirst({ where: eq(act.id, id) });
+
+    if (!actToArchive || actToArchive.status === 'archived') {
+      return;
+    }
+
+    await this.touchBookLastEdited('act', id);
+    await db.update(act).set({ status: 'archived' }).where(eq(act.id, id));
+
+    await db
+      .update(act)
+      .set({ position: sql`${act.position} - 1` })
+      .where(
+        and(
+          eq(act.bookId, actToArchive.bookId),
+          eq(act.status, 'active'),
+          gt(act.position, actToArchive.position),
+        ),
+      );
+  }
+
+  async archiveChapter(id: string): Promise<void> {
+    const chapterToArchive = await db.query.chapter.findFirst({ where: eq(chapter.id, id) });
+
+    if (!chapterToArchive || chapterToArchive.status === 'archived') {
+      return;
+    }
+
+    await this.touchBookLastEdited('chapter', id);
+    await db.update(chapter).set({ status: 'archived' }).where(eq(chapter.id, id));
+
+    await db
+      .update(chapter)
+      .set({ position: sql`${chapter.position} - 1` })
+      .where(
+        and(
+          eq(chapter.actId, chapterToArchive.actId),
+          eq(chapter.status, 'active'),
+          gt(chapter.position, chapterToArchive.position),
+        ),
+      );
+  }
+
+  async archiveScene(id: string): Promise<void> {
+    const sceneToArchive = await db.query.scene.findFirst({ where: eq(scene.id, id) });
+
+    if (!sceneToArchive || sceneToArchive.status === 'archived') {
+      return;
+    }
+
+    await this.touchBookLastEdited('scene', id);
+    await db.update(scene).set({ status: 'archived' }).where(eq(scene.id, id));
+
     await db
       .update(scene)
       .set({ position: sql`${scene.position} - 1` })
       .where(
         and(
-          eq(scene.chapterId, sceneToDelete.chapterId),
-          gt(scene.position, sceneToDelete.position),
+          eq(scene.chapterId, sceneToArchive.chapterId),
+          eq(scene.status, 'active'),
+          gt(scene.position, sceneToArchive.position),
         ),
       );
   }
@@ -310,7 +470,16 @@ export class ManuscriptRepository {
         const [result] = await db
           .select({ wordCount: scene.wordCount })
           .from(scene)
-          .where(eq(scene.id, id));
+          .innerJoin(chapter, eq(scene.chapterId, chapter.id))
+          .innerJoin(act, eq(chapter.actId, act.id))
+          .where(
+            and(
+              eq(scene.id, id),
+              eq(scene.status, 'active'),
+              eq(chapter.status, 'active'),
+              eq(act.status, 'active'),
+            ),
+          );
 
         return result?.wordCount ?? 0;
       }
@@ -319,7 +488,16 @@ export class ManuscriptRepository {
         const [result] = await db
           .select({ sum: sql<number>`sum(coalesce(${scene.wordCount}, 0))` })
           .from(scene)
-          .where(eq(scene.chapterId, id));
+          .innerJoin(chapter, eq(scene.chapterId, chapter.id))
+          .innerJoin(act, eq(chapter.actId, act.id))
+          .where(
+            and(
+              eq(scene.chapterId, id),
+              eq(scene.status, 'active'),
+              eq(chapter.status, 'active'),
+              eq(act.status, 'active'),
+            ),
+          );
 
         return Number(result?.sum ?? 0);
       }
@@ -329,7 +507,15 @@ export class ManuscriptRepository {
           .select({ sum: sql<number>`sum(coalesce(${scene.wordCount}, 0))` })
           .from(scene)
           .innerJoin(chapter, eq(scene.chapterId, chapter.id))
-          .where(eq(chapter.actId, id));
+          .innerJoin(act, eq(chapter.actId, act.id))
+          .where(
+            and(
+              eq(chapter.actId, id),
+              eq(scene.status, 'active'),
+              eq(chapter.status, 'active'),
+              eq(act.status, 'active'),
+            ),
+          );
 
         return Number(result?.sum ?? 0);
       }
@@ -340,7 +526,14 @@ export class ManuscriptRepository {
           .from(scene)
           .innerJoin(chapter, eq(scene.chapterId, chapter.id))
           .innerJoin(act, eq(chapter.actId, act.id))
-          .where(eq(act.bookId, id));
+          .where(
+            and(
+              eq(act.bookId, id),
+              eq(scene.status, 'active'),
+              eq(chapter.status, 'active'),
+              eq(act.status, 'active'),
+            ),
+          );
 
         return Number(result?.sum ?? 0);
       }
@@ -358,7 +551,13 @@ export class ManuscriptRepository {
       .select({ count: sql<number>`count(${chapter.id})` })
       .from(chapter)
       .innerJoin(act, eq(chapter.actId, act.id))
-      .where(eq(act.bookId, bookId));
+      .where(
+        and(
+          eq(act.bookId, bookId),
+          eq(act.status, 'active'),
+          eq(chapter.status, 'active'),
+        ),
+      );
 
     return Number(result?.count ?? 0);
   }
@@ -400,6 +599,43 @@ export class ManuscriptRepository {
     }
   }
 
+  private async isActiveManuscriptPath(mode: ManuscriptMode, id: string): Promise<boolean> {
+    switch (mode) {
+      case 'book':
+        return true;
+
+      case 'act': {
+        const actData = await db.query.act.findFirst({ where: eq(act.id, id) });
+        return actData?.status === 'active';
+      }
+
+      case 'chapter': {
+        const chapterData = await db.query.chapter.findFirst({
+          where: eq(chapter.id, id),
+          with: { act: true },
+        });
+
+        return chapterData?.status === 'active' && chapterData.act?.status === 'active';
+      }
+
+      case 'scene': {
+        const sceneData = await db.query.scene.findFirst({
+          where: eq(scene.id, id),
+          with: { chapter: { with: { act: true } } },
+        });
+
+        return (
+          sceneData?.status === 'active'
+          && sceneData.chapter?.status === 'active'
+          && sceneData.chapter?.act?.status === 'active'
+        );
+      }
+
+      default:
+        return false;
+    }
+  }
+
   private async touchBookLastEdited(mode: ManuscriptMode, id: string): Promise<void> {
     const bookId = await this.resolveBookId(mode, id);
 
@@ -408,6 +644,25 @@ export class ManuscriptRepository {
     }
 
     await db.update(books).set({ lastEditedAt: new Date() }).where(eq(books.id, bookId));
+  }
+
+  private async touchBookAfterStructureUpdate(payload: UpdateStructurePositionsPayload): Promise<void> {
+    const actUpdate = payload.acts?.[0];
+    if (actUpdate) {
+      await this.touchBookLastEdited('book', actUpdate.bookId);
+      return;
+    }
+
+    const chapterUpdate = payload.chapters?.[0];
+    if (chapterUpdate) {
+      await this.touchBookLastEdited('act', chapterUpdate.actId);
+      return;
+    }
+
+    const sceneUpdate = payload.scenes?.[0];
+    if (sceneUpdate) {
+      await this.touchBookLastEdited('chapter', sceneUpdate.chapterId);
+    }
   }
 }
 

@@ -10,6 +10,7 @@ import { books } from './book';
 // ---------------------------------------------------------------------------
 
 type PointOfView = 'first' | 'second' | 'third_limited' | 'third_omni';
+type NarrativeStatus = 'active' | 'archived';
 
 // ---------------------------------------------------------------------------
 // Narrative tables
@@ -22,6 +23,7 @@ export const act = sqliteTable('acts', {
     .notNull()
     .references(() => books.id, { onDelete: 'cascade' }),
   position: integer('position').notNull(),
+  status: text('status').$type<NarrativeStatus>().notNull().default('active'),
   summary: text('summary'),
 });
 
@@ -32,6 +34,7 @@ export const chapter = sqliteTable('chapters', {
     .notNull()
     .references(() => act.id, { onDelete: 'cascade' }),
   position: integer('position').notNull(),
+  status: text('status').$type<NarrativeStatus>().notNull().default('active'),
   summary: text('summary'),
 });
 
@@ -42,6 +45,7 @@ export const scene = sqliteTable('scenes', {
     .notNull()
     .references(() => chapter.id, { onDelete: 'cascade' }),
   position: integer('position').notNull(),
+  status: text('status').$type<NarrativeStatus>().notNull().default('active'),
   prose: text('prose', { mode: 'json' }).$type<TiptapJsonDoc | null>(),
   summary: text('summary'),
   wordCount: integer('word_count').default(0),

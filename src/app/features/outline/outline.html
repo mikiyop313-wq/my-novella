@@ -1,0 +1,409 @@
+<section class="outline-container" aria-label="Book outline" appElementAnimation #outlineAnimation="appElementAnimation"
+  appElementAnimationEnterClass="outline-item-entering" appElementAnimationLeaveClass="outline-item-leaving"
+  [appElementAnimationDurationMs]="260">
+  <div class="outline-header">
+    <div class="header-text">
+      <h1>Outline</h1>
+      <p class="header-subtitle">Structure your story with acts, chapters, and scenes</p>
+    </div>
+  </div>
+
+  @if (store.isLoading()) {
+  <div class="loading-state">
+    <p>Loading outline…</p>
+  </div>
+  } @else if (store.error()) {
+  <div class="error-state">
+    <p>{{ store.error() }}</p>
+  </div>
+  } @else {
+  <!-- Outline Tree -->
+  <div cdkDropList id="outline-acts" class="acts-list" [cdkDropListData]="store.bookHierarchy()"
+    (cdkDropListDropped)="onActDrop($event)">
+    @for (act of store.bookHierarchy(); track act.id; let actIdx = $index) {
+    <div class="act-wrapper" [attr.data-outline-item-id]="act.id" cdkDrag>
+      <div class="act-block">
+        <!-- Act controls and metadata -->
+        <div class="act-header">
+          <div class="act-header-left">
+            <button type="button" class="btn-icon btn-collapse" (click)="toggleCollapse(act.id)">
+              @if (collapsed()[act.id]) {
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+              } @else {
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              }
+            </button>
+            <div class="drag-handle" cdkDragHandle>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="12" r="1" />
+                <circle cx="9" cy="5" r="1" />
+                <circle cx="9" cy="19" r="1" />
+                <circle cx="15" cy="12" r="1" />
+                <circle cx="15" cy="5" r="1" />
+                <circle cx="15" cy="19" r="1" />
+              </svg>
+            </div>
+            @if (editing()[act.id]) {
+            <span class="act-label-editing">
+              Act {{ actIdx + 1 }}:
+              <input type="text" class="act-title-input" [value]="act.title || ''" placeholder="Act Title"
+                (click)="$event.stopPropagation()" (blur)="updateActTitle(act.id, $any($event.target).value)"
+                (keyup.enter)="updateActTitle(act.id, $any($event.target).value)" />
+            </span>
+            } @else {
+            <span class="act-label" (click)="openManuscript('act', act.id)">
+              Act {{ actIdx + 1 }}{{ act.title ? ': ' + act.title : '' }}
+            </span>
+            }
+            <span class="word-count-badge">{{ getActWordCount(act) | number }} words</span>
+          </div>
+          <div class="act-header-right">
+            <button type="button" class="btn-icon btn-more" [cdkMenuTriggerFor]="actOptionsMenu"
+              [cdkMenuTriggerData]="{ itemId: act.id, itemType: 'act' }">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1" />
+                <circle cx="12" cy="5" r="1" />
+                <circle cx="12" cy="19" r="1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chapters in this act -->
+        <div class="collapse-wrapper" [class.collapsed]="collapsed()[act.id]">
+          <div class="collapse-content">
+            <div cdkDropList class="chapters-list" [id]="chapterDropListId(act.id)"
+              [cdkDropListData]="act.chapters || []" [cdkDropListConnectedTo]="chapterDropListIds()"
+              (cdkDropListDropped)="onChapterDrop($event, act.id)">
+              @for (chapter of act.chapters || []; track chapter.id; let chIdx = $index) {
+              <div class="chapter-wrapper" [attr.data-outline-item-id]="chapter.id" cdkDrag>
+                <div class="chapter-block">
+                  <!-- Chapter controls and metadata -->
+                  <div class="chapter-row">
+                    <div class="chapter-row-left">
+                      <button type="button" class="btn-icon btn-collapse" (click)="toggleCollapse(chapter.id)">
+                        @if (collapsed()[chapter.id]) {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                        } @else {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                        }
+                      </button>
+                      <div class="drag-handle" cdkDragHandle>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="9" cy="12" r="1" />
+                          <circle cx="9" cy="5" r="1" />
+                          <circle cx="9" cy="19" r="1" />
+                          <circle cx="15" cy="12" r="1" />
+                          <circle cx="15" cy="5" r="1" />
+                          <circle cx="15" cy="19" r="1" />
+                        </svg>
+                      </div>
+                      @if (editing()[chapter.id]) {
+                      <span class="chapter-label-editing">
+                        Chapter {{ chapter.position + 1 }}:
+                        <input type="text" class="chapter-title-input" [value]="chapter.title || ''"
+                          placeholder="Chapter Title" (click)="$event.stopPropagation()"
+                          (blur)="updateChapterTitle(chapter.id, $any($event.target).value)" (keyup.enter)="
+                                    updateChapterTitle(chapter.id, $any($event.target).value)
+                                  " />
+                      </span>
+                      } @else {
+                      <span class="chapter-label" (click)="openManuscript('chapter', chapter.id)">
+                        Chapter {{ chapter.position + 1
+                        }}{{ chapter.title ? ': ' + chapter.title : '' }}
+                      </span>
+                      }
+                      <span class="word-count-badge">{{ getChapterWordCount(chapter) | number }} words</span>
+                    </div>
+                    <div class="chapter-row-right">
+                      <button type="button" class="btn-icon btn-more" [cdkMenuTriggerFor]="chapterOptionsMenu"
+                        [cdkMenuTriggerData]="{ itemId: chapter.id, itemType: 'chapter' }">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="1" />
+                          <circle cx="12" cy="5" r="1" />
+                          <circle cx="12" cy="19" r="1" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Scene cards in this chapter -->
+                  <div class="collapse-wrapper" [class.collapsed]="collapsed()[chapter.id]">
+                    <div class="collapse-content">
+                      <div cdkDropList cdkDropListOrientation="mixed" class="scenes-grid"
+                        [id]="sceneDropListId(chapter.id)" [cdkDropListData]="chapter.scenes || []"
+                        [cdkDropListConnectedTo]="sceneDropListIds()"
+                        (cdkDropListDropped)="onSceneDrop($event, chapter.id)">
+                        @for (
+                        scene of chapter.scenes || [];
+                        track scene.id;
+                        let scIdx = $index
+                        ) {
+                        <div class="scene-wrapper" [attr.data-outline-item-id]="scene.id" cdkDrag>
+                          <div class="scene-card-row">
+                            <div class="drag-handle scene-drag" cdkDragHandle (click)="$event.stopPropagation()">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <circle cx="9" cy="12" r="1" />
+                                <circle cx="9" cy="5" r="1" />
+                                <circle cx="9" cy="19" r="1" />
+                                <circle cx="15" cy="12" r="1" />
+                                <circle cx="15" cy="5" r="1" />
+                                <circle cx="15" cy="19" r="1" />
+                              </svg>
+                            </div>
+                            <div class="scene-card" (click)="openManuscript('scene', scene.id)">
+                              <!-- Card Top: Badge + Title + Menu -->
+                              <div class="scene-card-top">
+                                <div class="scene-title-group">
+                                  <span class="scene-badge">Scene {{ scIdx + 1 }}:</span>
+                                  @if (editing()[scene.id]) {
+                                  <input type="text" class="scene-title-input" [value]="scene.title || ''"
+                                    placeholder="Untitled Scene" (click)="$event.stopPropagation()" (blur)="
+                                                updateSceneTitle(
+                                                  scene.id,
+                                                  $any($event.target).value,
+                                                  $any($event)
+                                                )
+                                              " (keyup.enter)="
+                                                updateSceneTitle(
+                                                  scene.id,
+                                                  $any($event.target).value
+                                                )
+                                              " />
+                                  } @else {
+                                  <span class="scene-title-display">
+                                    {{ scene.title || 'Untitled Scene' }}
+                                  </span>
+                                  }
+                                </div>
+                                <button type="button" class="btn-icon btn-more scene-more"
+                                  [cdkMenuTriggerFor]="sceneOptionsMenu" [cdkMenuTriggerData]="{
+                                            itemId: scene.id,
+                                            itemType: 'scene',
+                                          }" (click)="$event.stopPropagation()">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="1" />
+                                    <circle cx="12" cy="5" r="1" />
+                                    <circle cx="12" cy="19" r="1" />
+                                  </svg>
+                                </button>
+                              </div>
+
+                              <!-- Comments section -->
+                              @if (editing()[scene.id]) {
+                              <div class="scene-comments">
+                                <span class="scene-comments-label">Comments</span>
+                                <textarea class="scene-comments-input" rows="3" placeholder="Add outline comments..."
+                                  aria-label="Scene comments" (click)="$event.stopPropagation()" (blur)="
+                                              updateSceneSummary(
+                                                scene.id,
+                                                $any($event.target).value,
+                                                $any($event)
+                                              )
+                                            ">{{ scene.summary || '' }}</textarea>
+                              </div>
+                              } @else {
+                              <div class="scene-comments">
+                                <span class="scene-comments-label">Comments</span>
+                                <p class="scene-comments-body">
+                                  {{ scene.summary || 'No comments yet...' }}
+                                </p>
+                              </div>
+                              }
+
+                              <!-- Card Footer -->
+                              <div class="scene-card-footer">
+                                <span class="scene-word-count">{{ scene.wordCount }} words</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        }
+
+                        <!-- Insert scene action -->
+                        <div class="scene-wrapper" [style.view-transition-name]="'outline-add-scene-' + chapter.id">
+                          <div class="scene-card-row">
+                            <!-- Keeps the add-card aligned with draggable scene cards. -->
+                            <div class="drag-handle scene-drag"
+                              style="opacity: 0; pointer-events: none; visibility: hidden">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <circle cx="9" cy="12" r="1" />
+                                <circle cx="9" cy="5" r="1" />
+                                <circle cx="9" cy="19" r="1" />
+                                <circle cx="15" cy="12" r="1" />
+                                <circle cx="15" cy="5" r="1" />
+                                <circle cx="15" cy="19" r="1" />
+                              </svg>
+                            </div>
+                            <button type="button" class="insert-scene-card" (click)="createScene(chapter.id)">
+                              <div class="insert-scene-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                  stroke-linejoin="round">
+                                  <path d="M5 12h14" />
+                                  <path d="M12 5v14" />
+                                </svg>
+                              </div>
+                              <span class="insert-scene-label">Insert Scene</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              }
+
+              <!-- Add chapter action -->
+              <button type="button" class="btn-add-chapter"
+                [style.view-transition-name]="'outline-add-chapter-' + act.id" (click)="createChapter(act.id)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </svg>
+                <span>Add Chapter</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    }
+  </div>
+
+  <!-- Add act action -->
+  @if (store.bookId(); as bookId) {
+  <button type="button" class="btn-add-act" (click)="createAct(bookId)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </svg>
+    <span>Add Act</span>
+  </button>
+  }
+  }
+</section>
+
+<!-- Act options menu -->
+<ng-template #actOptionsMenu let-itemId="itemId">
+  <div class="overlay-menu" cdkMenu>
+    <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M12 20h9"></path>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+      </svg>
+      Edit
+    </button>
+    <button class="menu-item" cdkMenuItem (click)="archiveAct(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <rect x="2" y="4" width="20" height="5" rx="2" ry="2"></rect>
+        <path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path>
+        <path d="M10 13h4"></path>
+      </svg>
+      Archive
+    </button>
+    <button class="menu-item delete" cdkMenuItem (click)="deleteAct(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M3 6h18"></path>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+      Delete
+    </button>
+  </div>
+</ng-template>
+
+<!-- Chapter options menu -->
+<ng-template #chapterOptionsMenu let-itemId="itemId">
+  <div class="overlay-menu" cdkMenu>
+    <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M12 20h9"></path>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+      </svg>
+      Edit
+    </button>
+    <button class="menu-item" cdkMenuItem (click)="archiveChapter(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <rect x="2" y="4" width="20" height="5" rx="2" ry="2"></rect>
+        <path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path>
+        <path d="M10 13h4"></path>
+      </svg>
+      Archive
+    </button>
+    <button class="menu-item delete" cdkMenuItem (click)="deleteChapter(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M3 6h18"></path>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+      Delete
+    </button>
+  </div>
+</ng-template>
+
+<!-- Scene options menu -->
+<ng-template #sceneOptionsMenu let-itemId="itemId">
+  <div class="overlay-menu" cdkMenu>
+    <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M12 20h9"></path>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+      </svg>
+      Edit
+    </button>
+    <button class="menu-item" cdkMenuItem (click)="archiveScene(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <rect x="2" y="4" width="20" height="5" rx="2" ry="2"></rect>
+        <path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path>
+        <path d="M10 13h4"></path>
+      </svg>
+      Archive
+    </button>
+    <button class="menu-item delete" cdkMenuItem (click)="deleteScene(itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M3 6h18"></path>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+      Delete
+    </button>
+  </div>
+</ng-template>

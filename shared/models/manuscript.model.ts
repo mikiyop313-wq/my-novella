@@ -25,11 +25,14 @@ export interface TiptapJsonDoc {
   content: TiptapNode[];
 }
 
+export type ManuscriptEntityStatus = 'active' | 'archived';
+
 export interface SceneDto {
   id: string;
   title: string;
   chapterId: string;
   position: number;
+  status: ManuscriptEntityStatus;
   prose: TiptapJsonDoc | null;
   summary: string | null;
   wordCount: number | null;
@@ -42,6 +45,7 @@ export interface ChapterDto {
   title: string;
   actId: string;
   position: number;
+  status: ManuscriptEntityStatus;
   summary: string | null;
   scenes?: SceneDto[];
 }
@@ -51,6 +55,7 @@ export interface ActDto {
   title: string;
   bookId: string;
   position: number;
+  status: ManuscriptEntityStatus;
   summary: string | null;
   chapters?: ChapterDto[];
 }
@@ -74,6 +79,22 @@ export interface CreateScenePayload   { chapterId: string; }
 export interface DeleteActPayload     { id: string; }
 export interface DeleteChapterPayload { id: string; }
 export interface DeleteScenePayload   { id: string; }
+
+// Payloads for the manuscript:archive* IPC channels
+export interface ArchiveActPayload     { id: string; }
+export interface ArchiveChapterPayload { id: string; }
+export interface ArchiveScenePayload   { id: string; }
+
+// Payloads for manuscript structure position updates.
+export interface ActPositionUpdate     { id: string; bookId: string; position: number; }
+export interface ChapterPositionUpdate { id: string; actId: string; position: number; }
+export interface ScenePositionUpdate   { id: string; chapterId: string; position: number; }
+
+export interface UpdateStructurePositionsPayload {
+  acts?: ActPositionUpdate[];
+  chapters?: ChapterPositionUpdate[];
+  scenes?: ScenePositionUpdate[];
+}
 
 // Payloads for the manuscript:update* IPC channels
 export interface UpdateActPayload     { id: string; title?: string; summary?: string; }

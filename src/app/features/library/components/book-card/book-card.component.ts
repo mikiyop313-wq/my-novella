@@ -18,11 +18,7 @@ export class BookCardComponent {
 
   constructor(private router: Router) { }
 
-  /**
-   * TEMPORARY NAVIGATION TO MANUSCRIPT.
-   */
-
   onBookClicked() {
-    this.router.navigate(['/workspace', this.book().id]);
+    this.router.navigate(['/workspace', this.book().id, 'outline']);
   }
 }

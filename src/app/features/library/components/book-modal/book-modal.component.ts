@@ -283,9 +283,9 @@ export class BookModalComponent {
     this.close.emit();
   }
 
-  openManuscript() {
+  openWorkspaceOutline() {
     this.close.emit();
-    this.router.navigate(['/workspace', this.book().id]);
+    this.router.navigate(['/workspace', this.book().id, 'outline']);
   }
 
   // Edit Methods
