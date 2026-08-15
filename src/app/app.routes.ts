@@ -7,6 +7,7 @@ export const routes: Routes = [
   { path: 'chat-detached/:sessionId', loadComponent: () => import('./features/chat/chat').then(m => m.Chat) },
   { path: 'library/create', loadComponent: () => import('./features/library/pages/book-create/book-create').then(m => m.BookCreate), data: { animation: 'CreatePage' } },
   { path: 'library', loadComponent: () => import('./features/library/library').then(m => m.Library), data: { animation: 'LibraryPage' } },
+  { path: 'settings', loadComponent: () => import('./features/settings/components/book-settings/book-settings.component').then(m => m.BookSettingsComponent), data: { animation: 'SettingsPage' } },
   {
     path: 'workspace/:bookId',
     loadComponent: () => import('./features/workspace/workspace').then(m => m.Workspace),

@@ -36,6 +36,10 @@ export class Library implements OnInit {
     this.router.navigate(['/library/create']);
   }
 
+  openSettings() {
+    this.router.navigate(['/settings']);
+  }
+
   scrollToSection(label: string) {
     const element = document.getElementById(`section-${label}`);
     if (element) {

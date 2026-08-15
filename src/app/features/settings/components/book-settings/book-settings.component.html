@@ -24,124 +24,163 @@
       </button>
 
       <div class="sidebar-heading">
-        <span class="sidebar-kicker">Book Configuration</span>
+        <span class="sidebar-kicker">
+          {{ activeView() === 'book' ? 'Book Configuration' : 'Application Configuration' }}
+        </span>
         <h2 class="sidebar-title">Settings</h2>
       </div>
     </header>
 
-    <nav class="section-nav" aria-label="Book settings sections">
-      <button
-        class="nav-item section-item"
-        type="button"
-        [class.is-active]="activeSection() === 'general'"
-        [attr.aria-current]="activeSection() === 'general' ? 'page' : null"
-        (click)="selectSection('general')"
+    @if (activeBookId()) {
+      <div
+        class="settings-view-switcher"
+        [class.is-general]="activeView() === 'general'"
+        role="tablist"
+        aria-label="Settings type"
       >
-        <span class="nav-icon-wrapper" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path
-              d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
-            ></path>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg>
-        </span>
-        <span class="nav-text">
-          <span class="nav-label">General</span>
-          <span class="nav-sub">Metadata &amp; prose</span>
-        </span>
-        <span class="active-indicator" aria-hidden="true"></span>
-      </button>
+        <button
+          class="settings-view-pill"
+          type="button"
+          role="tab"
+          [class.is-active]="activeView() === 'book'"
+          [attr.aria-selected]="activeView() === 'book'"
+          (click)="selectView('book')"
+        >
+          Book settings
+        </button>
+        <button
+          class="settings-view-pill"
+          type="button"
+          role="tab"
+          [class.is-active]="activeView() === 'general'"
+          [attr.aria-selected]="activeView() === 'general'"
+          (click)="selectView('general')"
+        >
+          General settings
+        </button>
+      </div>
+    }
 
-      <button
-        class="nav-item section-item"
-        type="button"
-        [class.is-active]="activeSection() === 'system-prompts'"
-        [attr.aria-current]="activeSection() === 'system-prompts' ? 'page' : null"
-        (click)="selectSection('system-prompts')"
-      >
-        <span class="nav-icon-wrapper" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-            <path d="m16 3 1.2 2.8L20 7l-2.8 1.2L16 11l-1.2-2.8L12 7l2.8-1.2L16 3z"></path>
-            <path d="M7 12h6"></path>
-            <path d="M7 16h10"></path>
-          </svg>
-        </span>
-        <span class="nav-text">
-          <span class="nav-label">System Prompts</span>
-          <span class="nav-sub">Presets &amp; generation</span>
-        </span>
-        <span class="active-indicator" aria-hidden="true"></span>
-      </button>
+    <nav
+      class="section-nav"
+      [attr.aria-label]="
+        activeView() === 'book' ? 'Book settings sections' : 'General settings sections'
+      "
+    >
+      @if (activeView() === 'book') {
+        <button
+          class="nav-item section-item"
+          type="button"
+          [class.is-active]="activeSection() === 'general'"
+          [attr.aria-current]="activeSection() === 'general' ? 'page' : null"
+          (click)="selectSection('general')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+              ></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">General</span>
+            <span class="nav-sub">Metadata &amp; prose</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
 
-      <button
-        class="nav-item section-item"
-        type="button"
-        [class.is-active]="activeSection() === 'editor-display'"
-        [attr.aria-current]="activeSection() === 'editor-display' ? 'page' : null"
-        (click)="selectSection('editor-display')"
-      >
-        <span class="nav-icon-wrapper" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M12 20h9"></path>
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-          </svg>
-        </span>
-        <span class="nav-text">
-          <span class="nav-label">Editor &amp; Display</span>
-          <span class="nav-sub">Typography, layout &amp; theme</span>
-        </span>
-        <span class="active-indicator" aria-hidden="true"></span>
-      </button>
+        <button
+          class="nav-item section-item"
+          type="button"
+          [class.is-active]="activeSection() === 'system-prompts'"
+          [attr.aria-current]="activeSection() === 'system-prompts' ? 'page' : null"
+          (click)="selectSection('system-prompts')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="m16 3 1.2 2.8L20 7l-2.8 1.2L16 11l-1.2-2.8L12 7l2.8-1.2L16 3z"></path>
+              <path d="M7 12h6"></path>
+              <path d="M7 16h10"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">System Prompts</span>
+            <span class="nav-sub">Presets &amp; generation</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
 
-      <button
-        class="nav-item section-item"
-        type="button"
-        [class.is-active]="activeSection() === 'archive'"
-        [attr.aria-current]="activeSection() === 'archive' ? 'page' : null"
-        (click)="selectSection('archive')"
-      >
-        <span class="nav-icon-wrapper" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M21 8v13H3V8"></path>
-            <path d="M1 3h22v5H1z"></path>
-            <path d="M10 12h4"></path>
-          </svg>
-        </span>
-        <span class="nav-text">
-          <span class="nav-label">Archive</span>
-          <span class="nav-sub">Archived content</span>
-        </span>
-        <span class="active-indicator" aria-hidden="true"></span>
-      </button>
+        <button
+          class="nav-item section-item"
+          type="button"
+          [class.is-active]="activeSection() === 'archive'"
+          [attr.aria-current]="activeSection() === 'archive' ? 'page' : null"
+          (click)="selectSection('archive')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 8v13H3V8"></path>
+              <path d="M1 3h22v5H1z"></path>
+              <path d="M10 12h4"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">Archive</span>
+            <span class="nav-sub">Archived content</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
+      } @else {
+        <button
+          class="nav-item section-item"
+          type="button"
+          [class.is-active]="activeSection() === 'editor-display'"
+          [attr.aria-current]="activeSection() === 'editor-display' ? 'page' : null"
+          (click)="selectSection('editor-display')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">Editor &amp; Display</span>
+            <span class="nav-sub">Typography, layout &amp; theme</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
+      }
     </nav>
   </aside>
 

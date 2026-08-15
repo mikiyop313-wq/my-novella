@@ -42,6 +42,7 @@ type EditableField =
   | 'tropes';
 
 type SettingsSection = 'general' | 'system-prompts' | 'editor-display' | 'archive';
+type SettingsView = 'book' | 'general';
 
 @Component({
   selector: 'app-book-settings',
@@ -59,8 +60,14 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   readonly themeService = inject(ThemeService);
   readonly config = inject(ConfigStore);
 
-  readonly activeSection = signal<SettingsSection>('general');
-  readonly activeBookId = computed(() => this.workspaceStore.bookId());
+  readonly isBookContext = this.router.url.startsWith('/workspace/');
+  readonly activeSection = signal<SettingsSection>(
+    this.isBookContext ? 'general' : 'editor-display',
+  );
+  readonly activeView = signal<SettingsView>(this.isBookContext ? 'book' : 'general');
+  readonly activeBookId = computed(() =>
+    this.isBookContext ? this.workspaceStore.bookId() : null,
+  );
   readonly book = signal<BookDto | null>(null);
   readonly isLoading = signal(true);
   readonly loadError = signal<string | null>(null);
@@ -97,7 +104,11 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   private backButton?: ElementRef<HTMLButtonElement>;
 
   ngOnInit(): void {
-    void this.loadSettings();
+    if (this.isBookContext) {
+      void this.loadSettings();
+    } else {
+      this.isLoading.set(false);
+    }
   }
 
   ngAfterViewInit(): void {
@@ -246,7 +257,16 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     if (section === this.activeSection()) return;
 
     this.cancelEditing();
+    this.activeView.set(section === 'editor-display' ? 'general' : 'book');
     this.activeSection.set(section);
+  }
+
+  selectView(view: SettingsView): void {
+    if (view === this.activeView()) return;
+
+    this.cancelEditing();
+    this.activeView.set(view);
+    this.activeSection.set(view === 'book' ? 'general' : 'editor-display');
   }
 
   setTheme(theme: Theme): void {
@@ -282,7 +302,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   }
 
   closeSettings(): void {
-    const bookId = this.workspaceStore.bookId();
+    const bookId = this.activeBookId();
     if (!bookId) {
       void this.router.navigateByUrl('/library');
       return;
