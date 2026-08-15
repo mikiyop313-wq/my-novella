@@ -279,4 +279,29 @@ describe('Outline', () => {
 
     expect(toastService.error).toHaveBeenCalledWith('Scene exploded', 'Outline');
   });
+
+  it('closes all open menus on scroll', () => {
+    const mockTrigger1 = {
+      isOpen: vi.fn().mockReturnValue(true),
+      close: vi.fn(),
+    };
+    const mockTrigger2 = {
+      isOpen: vi.fn().mockReturnValue(false),
+      close: vi.fn(),
+    };
+
+    const queryList = {
+      forEach: (callback: any) => [mockTrigger1, mockTrigger2].forEach(callback),
+      some: (callback: any) => [mockTrigger1, mockTrigger2].some(callback),
+    } as any;
+    (component as any).menuTriggers = queryList;
+
+    const scrollEvent = new Event('scroll');
+    window.dispatchEvent(scrollEvent);
+
+    expect(mockTrigger1.isOpen).toHaveBeenCalled();
+    expect(mockTrigger1.close).toHaveBeenCalled();
+    expect(mockTrigger2.isOpen).toHaveBeenCalled();
+    expect(mockTrigger2.close).not.toHaveBeenCalled();
+  });
 });

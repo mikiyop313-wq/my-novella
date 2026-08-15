@@ -6,46 +6,46 @@
 
 
 :root {
-    --title-font: 'Playfair Display', serif;
-    --body-font: 'Inter', sans-serif;
-    --manuscript-font: 'Cormorant Garamond', serif;
+  --title-font: 'Playfair Display', serif;
+  --body-font: 'Inter', sans-serif;
+  --manuscript-font: 'Cormorant Garamond', serif;
 
 }
 
 html,
 body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    min-height: 100vh;
-    font-family: var(--body-font);
-    background-color: var(--color-background);
-    background-size: cover;
-    background-position: center;
-    color: var(--color-text);
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  font-family: var(--body-font);
+  background-color: var(--color-background);
+  background-size: cover;
+  background-position: center;
+  color: var(--color-text);
 }
 
 * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  width: 8px;
+  height: 8px;
 }
 
 *::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 10px;
+  background: var(--color-border);
+  border-radius: 10px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-secondary);
+  background: var(--color-text-secondary);
 }
 
 /* Theme View Transition */
