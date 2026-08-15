@@ -1,4 +1,4 @@
-import { ManuscriptMode, ActDto, ChapterDto, SceneDto, TiptapJsonDoc, TiptapNode, ManuscriptDataDto } from '../../../../../shared/models/manuscript.model';
+import { ManuscriptMode, ActDto, ChapterDto, SceneDto, TiptapJsonDoc, TiptapNode, ManuscriptDataDto } from '../../../../../../shared/models/manuscript.model';
 import { Editor } from '@tiptap/core';
 
 /**

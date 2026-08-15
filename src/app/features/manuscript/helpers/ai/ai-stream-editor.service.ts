@@ -1,7 +1,7 @@
 import { Injectable, WritableSignal, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
-import { AIStateService } from '../../../core/services/ai-state.service';
-import { ManuscriptProseSaverService } from './manuscript-prose-saver.service';
+import { AIStateService } from '../../../../core/services/ai-state.service';
+import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 
 @Injectable({ providedIn: 'root' })
 export class AiStreamEditorService {
@@ -179,13 +179,13 @@ export class AiStreamEditorService {
       // To ensure fluid animation without falling behind:
       // Process at least 2 characters per frame, or 20% of the queue if it's large.
       const charsToProcess = Math.max(2, Math.ceil(queue.length / 5));
-      
+
       let textToInsert = '';
       let isNewline = false;
 
       for (let i = 0; i < charsToProcess; i++) {
         if (queue.length === 0) break;
-        
+
         if (queue[0] === '\n') {
           if (textToInsert.length > 0) {
             break; // Insert text first, handle newline next frame
@@ -238,7 +238,7 @@ export class AiStreamEditorService {
           if (loadingSig && loadingSig() !== 'generating') {
             loadingSig.set('generating');
           }
-          
+
           for (let i = 0; i < token.length; i++) {
             const char = token[i];
             if (char === '\n' || char === '\r') {

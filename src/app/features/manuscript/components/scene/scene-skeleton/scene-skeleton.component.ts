@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal, NgZone, ElementRef, OnDestroy } from '@angular/core';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
-import { ManuscriptStore } from '../../store/manuscript.store';
+import { ManuscriptStore } from '../../../store/manuscript.store';
 
 /**
  * Renders an animated skeleton placeholder for a deferred scene.

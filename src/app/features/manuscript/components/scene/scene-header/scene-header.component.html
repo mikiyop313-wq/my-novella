@@ -1,0 +1,7 @@
+<div class="scene-title-header">
+  @if (store.sceneNumber(); as num) {
+  <div class="scene-number">Scene {{ num }}</div>
+  }
+  <input type="text" class="scene-title-input" spellcheck="false" [value]="sceneTitle()"
+    (input)="onSceneChange($event)" placeholder="Scene Title" />
+</div>

@@ -5,7 +5,7 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AiStore } from '../../store/ai.store';
-import { AiStreamEditorService } from '../../helpers/ai-stream-editor.service';
+import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 
 @Component({
   selector: 'app-ai-prompt',
