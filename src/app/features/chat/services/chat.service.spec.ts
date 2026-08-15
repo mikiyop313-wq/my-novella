@@ -84,5 +84,12 @@ describe('ChatService', () => {
 
     await expect(service.deleteMessage('message-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('chat:delete-message', { id: 'message-1' });
+
+    await expect(service.selectBranch('thread-1', 'branch-1', 'message-2')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith('chat:select-branch', {
+      threadId: 'thread-1',
+      branchGroupId: 'branch-1',
+      selectedMessageId: 'message-2',
+    });
   });
 });

@@ -1,5 +1,8 @@
 import { AiProvider } from './ai-provider.interface';
 import { AiPromptRequest, AiPromptResponse } from '../models';
+import { promptBuilderService } from '../prompt-builder.service';
+
+const DEFAULT_OPENROUTER_MODEL_ID = 'minimax/minimax-m2.5:free';
 
 export class OpenRouterProvider implements AiProvider {
     readonly id = 'openrouter';
@@ -14,9 +17,14 @@ export class OpenRouterProvider implements AiProvider {
             console.warn('[OpenRouter] Warning: OPENROUTER_API_KEY is not set in environment variables.');
         }
 
-        console.log(`[OpenRouter] Generating prompt: ${request.prompt.substring(0, 50)}...`);
+        console.log(`[OpenRouter] Generating prompt: ${this.getPromptPreview(request).substring(0, 50)}...`);
 
         try {
+            const payload = promptBuilderService.buildChatCompletionPayload(
+                request,
+                DEFAULT_OPENROUTER_MODEL_ID,
+            );
+
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 signal: request.abortSignal,
@@ -26,17 +34,7 @@ export class OpenRouterProvider implements AiProvider {
                     'X-Title': 'My Novella', // Required by OpenRouter for ranking
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    model: request.modelId || 'minimax/minimax-m2.5:free',
-                    messages: [
-                        ...(request.systemMessage ? [{ role: 'system', content: request.systemMessage }] : []),
-                        { role: 'user', content: request.prompt }
-                    ],
-                    temperature: request.temperature ?? 0.5,
-                    max_tokens: request.maxTokens,
-                    stream: true,
-                    ...(request.reasoningMode ? { reasoning: { enabled: true, effort: 'medium' } } : {})
-                })
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
@@ -84,12 +82,22 @@ export class OpenRouterProvider implements AiProvider {
 
             return {
                 text: fullText,
-                modelUsed: request.modelId || 'minimax/minimax-m2.5:free'
+                modelUsed: payload.model
             };
         } catch (error) {
             console.error('[OpenRouter] Generation failed:', error);
             throw error;
         }
+    }
+
+    private getPromptPreview(request: AiPromptRequest): string {
+        const prompt = request.prompt?.trim();
+
+        if (prompt) {
+            return prompt;
+        }
+
+        return request.messages?.find((message) => message.content?.trim())?.content.trim() ?? '';
     }
 
     async getAvailableModels(): Promise<any[]> {

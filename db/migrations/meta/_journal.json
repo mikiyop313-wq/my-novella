@@ -43,6 +43,13 @@
       "when": 1781737142270,
       "tag": "0005_chat_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1782172800000,
+      "tag": "0006_chat_branches",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { ElectronService } from '../../../core/services/electron.service';
 import {
   ChatMessageDetailDto,
+  ChatBranchSelectionDto,
   ChatThreadDetailDto,
   ChatThreadDto,
   CreateChatMessageDto,
@@ -57,5 +58,17 @@ export class ChatService {
 
   async deleteMessage(id: string): Promise<{ success: boolean }> {
     return await this.electronService.invoke('chat:delete-message', { id });
+  }
+
+  async selectBranch(
+    threadId: string,
+    branchGroupId: string,
+    selectedMessageId: string,
+  ): Promise<ChatBranchSelectionDto> {
+    return await this.electronService.invoke('chat:select-branch', {
+      threadId,
+      branchGroupId,
+      selectedMessageId,
+    });
   }
 }

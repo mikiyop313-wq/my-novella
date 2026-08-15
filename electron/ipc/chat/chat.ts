@@ -8,6 +8,7 @@ import {
   DeleteChatThreadPayload,
   GetChatThreadPayload,
   GetChatThreadsPayload,
+  SelectChatBranchPayload,
   UpdateChatMessagePayload,
   UpdateChatThreadPayload,
 } from '../../../shared/models/chat.model';
@@ -96,4 +97,16 @@ export function setupChatHandlers() {
       throw error;
     }
   });
+
+  ipcMain.handle(
+    'chat:select-branch',
+    async (_, { threadId, branchGroupId, selectedMessageId }: SelectChatBranchPayload) => {
+      try {
+        return await chatRepository.selectBranch(threadId, branchGroupId, selectedMessageId);
+      } catch (error) {
+        console.error('Failed to select chat branch:', error);
+        throw error;
+      }
+    },
+  );
 }

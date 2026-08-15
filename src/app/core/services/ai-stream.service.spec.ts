@@ -64,7 +64,24 @@ describe('AiStreamService', () => {
     });
 
     expect(tokens.join('')).toBe('Hello\nthere');
-    expect(generate).toHaveBeenCalledWith('Write', 'openrouter', 'model-1', undefined);
+    expect(generate).toHaveBeenCalledWith('Write', 'openrouter', 'model-1', undefined, undefined);
+  });
+
+  it('passes structured chat messages to AIStateService', async () => {
+    const messages = [
+      { role: 'user' as const, content: 'Hello' },
+      { role: 'assistant' as const, content: 'Hi there' },
+      { role: 'user' as const, content: 'Continue' },
+    ];
+
+    await service.streamText({
+      streamId: 'stream-1',
+      prompt: 'Continue',
+      provider: 'openrouter',
+      messages,
+    });
+
+    expect(generate).toHaveBeenCalledWith('Continue', 'openrouter', undefined, undefined, messages);
   });
 
   it('switches status to generating when content tokens arrive', async () => {
@@ -82,8 +99,8 @@ describe('AiStreamService', () => {
       onStatusChange: status => statuses.push(status),
     });
 
-    expect(statuses).toEqual(['loading', 'generating']);
-    expect(service.getLoadingSignal('stream-1')()).toBe('generating');
+    expect(statuses).toEqual(['loading', 'generating', 'idle']);
+    expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 
   it('switches status to thinking when reasoning tokens arrive', async () => {
@@ -102,8 +119,8 @@ describe('AiStreamService', () => {
       onStatusChange: status => statuses.push(status),
     });
 
-    expect(statuses).toEqual(['loading', 'thinking']);
-    expect(service.getLoadingSignal('stream-1')()).toBe('thinking');
+    expect(statuses).toEqual(['loading', 'thinking', 'idle']);
+    expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 
   it('emits throttled reasoning updates', async () => {
@@ -128,7 +145,7 @@ describe('AiStreamService', () => {
       onReasoningUpdate: reasoning => updates.push(reasoning),
     });
 
-    expect(updates).toEqual(['ab', 'abc']);
+    expect(updates).toEqual(['a', 'ab', 'abc']);
   });
 
   it('calls AIStateService.abort when stopped', async () => {

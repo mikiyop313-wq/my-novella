@@ -1,14 +1,17 @@
+import { randomUUID } from 'crypto';
 import { and, asc, desc, eq, max } from 'drizzle-orm';
 
 import { db } from '../index';
 import {
   books,
+  chatBranchSelections,
   chatMessageCodexRefs,
   chatMessages,
   chatMessageSceneRefs,
   chatThreads,
 } from '../schema';
 import {
+  ChatBranchSelectionDto,
   ChatMessageCodexRefDto,
   CreateChatMessageDto,
   CreateChatThreadDto,
@@ -29,6 +32,7 @@ type ChatMessageInsert = typeof chatMessages.$inferInsert;
 type ChatMessageUpdate = Partial<Omit<ChatMessageInsert, 'id' | 'threadId' | 'createdAt'>>;
 type ChatMessageSceneRefEntity = typeof chatMessageSceneRefs.$inferSelect;
 type ChatMessageCodexRefEntity = typeof chatMessageCodexRefs.$inferSelect;
+type ChatBranchSelectionEntity = typeof chatBranchSelections.$inferSelect;
 type ChatMessageWithRefs = ChatMessageEntity & {
   sceneRefs?: ChatMessageSceneRefEntity[];
   codexRefs?: ChatMessageCodexRefEntity[];
@@ -59,6 +63,9 @@ export class ChatRepository {
     return {
       id: message.id,
       threadId: message.threadId,
+      parentMessageId: message.parentMessageId,
+      branchGroupId: message.branchGroupId,
+      branchOrder: message.branchOrder,
       role: message.role,
       content: message.content,
       status: message.status,
@@ -96,6 +103,14 @@ export class ChatRepository {
     };
   }
 
+  private mapBranchSelectionToDto(selection: ChatBranchSelectionEntity): ChatBranchSelectionDto {
+    return {
+      threadId: selection.threadId,
+      branchGroupId: selection.branchGroupId,
+      selectedMessageId: selection.selectedMessageId,
+    };
+  }
+
   private dateToIso(value: Date | null): string {
     return (value ?? new Date(0)).toISOString();
   }
@@ -122,9 +137,14 @@ export class ChatRepository {
   private createMessageInsert(
     data: CreateChatMessageData,
     position: number,
+    branchGroupId: string,
+    branchOrder: number,
   ): ChatMessageInsert {
     return {
       threadId: data.threadId,
+      parentMessageId: data.parentMessageId ?? null,
+      branchGroupId,
+      branchOrder,
       role: data.role,
       content: data.content ?? '',
       status: data.status ?? 'complete',
@@ -144,6 +164,13 @@ export class ChatRepository {
     };
 
     if (data.role !== undefined) updatePayload.role = data.role;
+    if (data.parentMessageId !== undefined) updatePayload.parentMessageId = data.parentMessageId;
+    if (data.branchGroupId !== undefined && data.branchGroupId !== null) {
+      updatePayload.branchGroupId = data.branchGroupId;
+    }
+    if (data.branchOrder !== undefined && data.branchOrder !== null) {
+      updatePayload.branchOrder = data.branchOrder;
+    }
     if (data.content !== undefined) updatePayload.content = data.content;
     if (data.status !== undefined) updatePayload.status = data.status;
     if (data.position !== undefined) updatePayload.position = data.position;
@@ -190,13 +217,14 @@ export class ChatRepository {
     return {
       ...this.mapThreadToDto(thread),
       messages: await this.getMessages(id),
+      branchSelections: await this.getBranchSelections(id),
     };
   }
 
   async getMessages(threadId: string): Promise<ChatMessageDetailDto[]> {
     const messages = await db.query.chatMessages.findMany({
       where: eq(chatMessages.threadId, threadId),
-      orderBy: [asc(chatMessages.position), asc(chatMessages.createdAt)],
+      orderBy: [asc(chatMessages.position), asc(chatMessages.branchOrder), asc(chatMessages.createdAt)],
       with: {
         sceneRefs: true,
         codexRefs: true,
@@ -204,6 +232,14 @@ export class ChatRepository {
     });
 
     return messages.map((message) => this.mapMessageDetailToDto(message));
+  }
+
+  async getBranchSelections(threadId: string): Promise<ChatBranchSelectionDto[]> {
+    const selections = await db.query.chatBranchSelections.findMany({
+      where: eq(chatBranchSelections.threadId, threadId),
+    });
+
+    return selections.map((selection) => this.mapBranchSelectionToDto(selection));
   }
 
   // -----------------------------------------------------------------------
@@ -261,12 +297,15 @@ export class ChatRepository {
     await this.ensureThreadExists(data.threadId);
 
     const position = data.position ?? (await this.getNextMessagePosition(data.threadId));
+    const branchGroupId = data.branchGroupId ?? randomUUID();
+    const branchOrder = data.branchOrder ?? (await this.getNextBranchOrder(data.threadId, branchGroupId));
     const [created] = await db
       .insert(chatMessages)
-      .values(this.createMessageInsert(data, position))
+      .values(this.createMessageInsert(data, position, branchGroupId, branchOrder))
       .returning();
 
     await this.replaceMessageRefs(created.id, data.sceneIds, data.codexEntryIds);
+    await this.ensureDefaultBranchSelection(created.threadId, created.branchGroupId, created.id);
     await this.touchThreadLastEdited(created.threadId);
 
     const detail = await this.getMessage(created.id);
@@ -276,6 +315,37 @@ export class ChatRepository {
     }
 
     return detail;
+  }
+
+  async selectBranch(
+    threadId: string,
+    branchGroupId: string,
+    selectedMessageId: string,
+  ): Promise<ChatBranchSelectionDto> {
+    const selectedMessage = await db.query.chatMessages.findFirst({
+      where: and(
+        eq(chatMessages.id, selectedMessageId),
+        eq(chatMessages.threadId, threadId),
+        eq(chatMessages.branchGroupId, branchGroupId),
+      ),
+      columns: { id: true },
+    });
+
+    if (!selectedMessage) {
+      throw new Error('Selected branch message was not found.');
+    }
+
+    const [selection] = await db
+      .insert(chatBranchSelections)
+      .values({ threadId, branchGroupId, selectedMessageId })
+      .onConflictDoUpdate({
+        target: [chatBranchSelections.threadId, chatBranchSelections.branchGroupId],
+        set: { selectedMessageId },
+      })
+      .returning();
+
+    await this.touchThreadLastEdited(threadId);
+    return this.mapBranchSelectionToDto(selection);
   }
 
   async updateMessage(
@@ -349,6 +419,29 @@ export class ChatRepository {
       .where(eq(chatMessages.threadId, threadId));
 
     return (maxRow?.maxPos ?? -1) + 1;
+  }
+
+  private async getNextBranchOrder(threadId: string, branchGroupId: string): Promise<number> {
+    const [maxRow] = await db
+      .select({ maxOrder: max(chatMessages.branchOrder) })
+      .from(chatMessages)
+      .where(and(
+        eq(chatMessages.threadId, threadId),
+        eq(chatMessages.branchGroupId, branchGroupId),
+      ));
+
+    return (maxRow?.maxOrder ?? -1) + 1;
+  }
+
+  private async ensureDefaultBranchSelection(
+    threadId: string,
+    branchGroupId: string,
+    selectedMessageId: string,
+  ): Promise<void> {
+    await db
+      .insert(chatBranchSelections)
+      .values({ threadId, branchGroupId, selectedMessageId })
+      .onConflictDoNothing();
   }
 
   private async replaceMessageRefs(
