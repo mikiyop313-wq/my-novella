@@ -96,6 +96,26 @@
     padding: 8px 12px;
     background: transparent;
 
+    .summary-menu-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+
+      &:hover,
+      &[aria-expanded='true'] {
+        color: var(--color-text-primary);
+        background: var(--color-hover-bg);
+      }
+    }
+
     .summary-title {
       display: flex;
       align-items: center;

@@ -123,12 +123,21 @@ function getLastNodeId(editor: Editor, typeName: string): string | null {
  * detects the missing node and commits the physical DB delete after navigation
  * or application close, keeping undo/redo safe.
  */
-function deleteNodeRangeInDoc(
-  editor: Editor,
-  targetType: string,
-  id: string,
-  stopTypes: string[]
-): void {
+interface DeleteNodeRangeRequest {
+  editor: Editor;
+  targetType: string;
+  id: string;
+  stopTypes: string[];
+  skipSaver?: boolean;
+}
+
+function deleteNodeRangeInDoc({
+  editor,
+  targetType,
+  id,
+  stopTypes,
+  skipSaver = false,
+}: DeleteNodeRangeRequest): void {
   const children: Array<{ node: any; from: number; to: number }> = [];
 
   editor.state.doc.forEach((node, offset) => {
@@ -153,6 +162,7 @@ function deleteNodeRangeInDoc(
 
   let tr = editor.state.tr.delete(from, to);
   tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+  if (skipSaver) tr.setMeta('skipSaver', true);
 
   if (targetType === ACT_HEADER_NODE) {
     tr = decrementFollowingActPositions(tr, from);
@@ -585,21 +595,45 @@ export const ManuscriptStore = signalStore(
       const editor = store.editor();
       if (!editor) return;
 
-      deleteNodeRangeInDoc(editor, ACT_HEADER_NODE, id, [ACT_HEADER_NODE]);
+      deleteNodeRangeInDoc({ editor, targetType: ACT_HEADER_NODE, id, stopTypes: [ACT_HEADER_NODE] });
     },
 
     deleteChapter(id: string): void {
       const editor = store.editor();
       if (!editor) return;
 
-      deleteNodeRangeInDoc(editor, CHAPTER_HEADER_NODE, id, [CHAPTER_HEADER_NODE, ACT_HEADER_NODE]);
+      deleteNodeRangeInDoc({
+        editor,
+        targetType: CHAPTER_HEADER_NODE,
+        id,
+        stopTypes: [CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
+      });
     },
 
     deleteScene(id: string): void {
       const editor = store.editor();
       if (!editor) return;
 
-      deleteNodeRangeInDoc(editor, SCENE_SUMMARY_NODE, id, [SCENE_SUMMARY_NODE, CHAPTER_HEADER_NODE, ACT_HEADER_NODE]);
+      deleteNodeRangeInDoc({
+        editor,
+        targetType: SCENE_SUMMARY_NODE,
+        id,
+        stopTypes: [SCENE_SUMMARY_NODE, CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
+      });
+    },
+
+    async archiveScene(id: string): Promise<void> {
+      const editor = store.editor();
+      if (!editor) return;
+
+      await manuscriptStructureService.archiveScene(id);
+      deleteNodeRangeInDoc({
+        editor,
+        targetType: SCENE_SUMMARY_NODE,
+        id,
+        stopTypes: [SCENE_SUMMARY_NODE, CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
+        skipSaver: true,
+      });
     },
   }))
 );

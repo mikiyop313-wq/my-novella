@@ -286,12 +286,12 @@
       </button>
       }
       @if (store.mode() === 'book' || store.mode() === 'act') {
-      <button class="menu-item" (click)="insertChapter()" cdkMenuItem>
+      <button class="menu-item" (click)="insertChapter()" [disabled]="!canInsertChapter()" cdkMenuItem>
         <span class="item-label">Chapter</span>
       </button>
       }
       @if (store.mode() === 'book' || store.mode() === 'act' || store.mode() === 'chapter') {
-      <button class="menu-item" (click)="insertScene()" cdkMenuItem>
+      <button class="menu-item" (click)="insertScene()" [disabled]="!canInsertScene()" cdkMenuItem>
         <span class="item-label">Scene</span>
       </button>
       }

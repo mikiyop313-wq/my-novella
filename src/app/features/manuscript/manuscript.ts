@@ -87,9 +87,13 @@ export class Manuscript implements OnInit, OnDestroy {
 
   indexItems = signal<ManuscriptIndexItem[]>([]);
   hasLoadedContent = signal(false);
+  hasActNodes = signal(false);
+  hasChapterNodes = signal(false);
   hasSceneNodes = signal(false);
 
   showCreateSceneHint = computed(() => this.hasLoadedContent() && !this.hasSceneNodes());
+  canInsertChapter = computed(() => this.hasActNodes());
+  canInsertScene = computed(() => this.hasChapterNodes());
 
   currentScopeLabel = computed<string>(() => {
     const mode = this.store.mode();
@@ -238,7 +242,7 @@ export class Manuscript implements OnInit, OnDestroy {
       ],
 
       onUpdate: ({ transaction }) => {
-        this.refreshSceneAvailability();
+        this.refreshStructureAvailability();
         this.refreshIndexItems();
 
         if (transaction.docChanged && !transaction.getMeta('skipSaver')) {
@@ -270,11 +274,11 @@ export class Manuscript implements OnInit, OnDestroy {
       this.saver.seedCleanSnapshots(this.editor!);
       this.aiStreamEditor.syncActiveGenerations(this.editor!);
       this.hasLoadedContent.set(true);
-      this.refreshSceneAvailability();
+      this.refreshStructureAvailability();
       this.refreshIndexItems();
     } catch (error) {
       this.hasLoadedContent.set(true);
-      this.refreshSceneAvailability();
+      this.refreshStructureAvailability();
       console.error('Failed to load manuscript content:', error);
     }
   }
@@ -426,13 +430,19 @@ export class Manuscript implements OnInit, OnDestroy {
     this.indexItems.set(items);
   }
 
-  private refreshSceneAvailability(): void {
+  private refreshStructureAvailability(): void {
+    let hasAct = false;
+    let hasChapter = false;
     let hasScene = false;
 
     this.editor?.state.doc.forEach(node => {
+      if (node.type.name === 'actHeader') hasAct = true;
+      if (node.type.name === 'chapterHeader') hasChapter = true;
       if (node.type.name === 'sceneSummary') hasScene = true;
     });
 
+    this.hasActNodes.set(hasAct);
+    this.hasChapterNodes.set(hasChapter);
     this.hasSceneNodes.set(hasScene);
   }
 

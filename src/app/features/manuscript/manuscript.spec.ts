@@ -173,6 +173,27 @@ describe('Manuscript', () => {
     expect(fixture.nativeElement.querySelector('.manuscript-empty-hint')).toBeNull();
   });
 
+  it('enables hierarchy creation only when the required parent exists', () => {
+    expect(component.canInsertChapter()).toBe(false);
+    expect(component.canInsertScene()).toBe(false);
+
+    const editor = component.editor!;
+    const actHeader = editor.schema.nodes['actHeader'].create({ id: 'act-1' });
+    let tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, actHeader);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+
+    expect(component.canInsertChapter()).toBe(true);
+    expect(component.canInsertScene()).toBe(false);
+
+    const chapterHeader = editor.schema.nodes['chapterHeader'].create({ id: 'chapter-1' });
+    tr = editor.state.tr.insert(editor.state.doc.content.size, chapterHeader);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+
+    expect(component.canInsertScene()).toBe(true);
+  });
+
   it('renders pending, active, and updated indexing states', async () => {
     const vectorSync = TestBed.inject(ManuscriptParagraphVectorSyncService);
     await vectorSync.refreshIndexingConfiguration('book-1');
