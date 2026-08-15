@@ -392,6 +392,7 @@ describe('Outline', () => {
 
     expect(document.querySelector('.scene-ai-menu')).not.toBeNull();
     expect(document.querySelector('.scene-summary-spinner')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.scene-summary-label-spinner')).not.toBeNull();
     expect(document.querySelector('.scene-summary-generate')?.textContent).toContain('Generating...');
     expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
 
@@ -405,6 +406,7 @@ describe('Outline', () => {
     fixture.detectChanges();
 
     expect(component.generatingSummarySceneId()).toBeNull();
+    expect(fixture.nativeElement.querySelector('.scene-summary-label-spinner')).toBeNull();
     expect(document.querySelector('.scene-ai-menu')).toBeNull();
   });
 

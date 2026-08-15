@@ -687,6 +687,9 @@
   }
 
   .scene-summary-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     margin-bottom: 0.35rem;
     color: var(--color-text-secondary);
     font-size: 0.62rem;
@@ -694,6 +697,15 @@
     letter-spacing: 0.1em;
     opacity: 0.55;
     text-transform: uppercase;
+  }
+
+  .scene-summary-label-spinner {
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: scene-summary-spinner-rotate 700ms linear infinite;
   }
 
   .scene-summary-input {

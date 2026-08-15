@@ -243,7 +243,12 @@
                               <!-- Summary section -->
                               @if (editing()[scene.id]) {
                               <div class="scene-summary">
-                                <span class="scene-summary-label">Summary</span>
+                                <span class="scene-summary-label">
+                                  Summary
+                                  @if (isGeneratingSceneSummary(scene.id)) {
+                                  <span class="scene-summary-label-spinner" aria-hidden="true"></span>
+                                  }
+                                </span>
                                 <app-markdown-editor class="scene-summary-input"
                                   [value]="sceneSummaryValue(scene)" placeholder="Add a summary..."
                                   ariaLabel="Scene summary" (click)="$event.stopPropagation()"
@@ -258,7 +263,12 @@
                               </div>
                               } @else {
                               <div class="scene-summary">
-                                <span class="scene-summary-label">Summary</span>
+                                <span class="scene-summary-label">
+                                  Summary
+                                  @if (isGeneratingSceneSummary(scene.id)) {
+                                  <span class="scene-summary-label-spinner" aria-hidden="true"></span>
+                                  }
+                                </span>
                                 <div class="scene-summary-body">
                                   @if (scene.summary?.trim()) {
                                   <markdown class="scene-summary-markdown" [data]="scene.summary || ''"
