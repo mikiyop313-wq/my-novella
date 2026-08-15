@@ -9,8 +9,15 @@
         title="Back to workspace"
         (click)="closeSettings()"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
           <path d="M19 12H5"></path>
           <path d="M12 19l-7-7 7-7"></path>
         </svg>
@@ -23,25 +30,51 @@
     </header>
 
     <nav class="section-nav" aria-label="Book settings sections">
-      <button class="nav-item section-item is-active" type="button" aria-current="page">
+      <button
+        class="nav-item section-item"
+        type="button"
+        [class.is-active]="activeSection() === 'general'"
+        [attr.aria-current]="activeSection() === 'general' ? 'page' : null"
+        (click)="selectSection('general')"
+      >
         <span class="nav-icon-wrapper" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+            ></path>
             <circle cx="12" cy="12" r="3"></circle>
           </svg>
         </span>
         <span class="nav-text">
           <span class="nav-label">General</span>
-          <span class="nav-sub">Title, author &amp; language</span>
+          <span class="nav-sub">Metadata &amp; prose</span>
         </span>
         <span class="active-indicator" aria-hidden="true"></span>
       </button>
 
-      <button class="nav-item section-item" type="button">
+      <button
+        class="nav-item section-item"
+        type="button"
+        [class.is-active]="activeSection() === 'editor-display'"
+        [attr.aria-current]="activeSection() === 'editor-display' ? 'page' : null"
+        (click)="selectSection('editor-display')"
+      >
         <span class="nav-icon-wrapper" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M12 20h9"></path>
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
           </svg>
@@ -61,21 +94,814 @@
   </div>
 
   <main class="settings-content">
-    <header class="content-header">
-      <h1 class="content-title">General Settings</h1>
-      <p class="content-subtitle">
-        Manage your book's primary metadata, language settings, and core workflow preferences.
-      </p>
-    </header>
+    @if (activeSection() === 'general') {
+      <div class="settings-section-panel">
+        <header class="content-header">
+          <h1 class="content-title">General Settings</h1>
+          <p class="content-subtitle">
+            Manage your book's identity, story details, and prose conventions.
+          </p>
+        </header>
 
-    <div class="placeholder-panel">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9"></circle>
-        <path d="M12 8v4"></path>
-        <path d="M12 16h.01"></path>
-      </svg>
-      <span>Settings will appear here soon.</span>
-    </div>
+        @if (isLoading()) {
+          <div class="settings-state" role="status" aria-live="polite">
+            <span class="state-spinner" aria-hidden="true"></span>
+            <div>
+              <strong>Loading book settings</strong>
+              <p>Preparing your metadata and classification options.</p>
+            </div>
+          </div>
+        } @else if (loadError()) {
+          <div class="settings-state is-error" role="alert">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 8v4"></path>
+              <path d="M12 16h.01"></path>
+            </svg>
+            <div>
+              <strong>Settings unavailable</strong>
+              <p>{{ loadError() }}</p>
+            </div>
+            <button class="secondary-button" type="button" (click)="loadSettings()">Retry</button>
+          </div>
+        } @else if (book(); as activeBook) {
+          <div class="settings-sections">
+            <section class="setting-card" aria-labelledby="book-identity-heading">
+              <header class="card-header">
+                <div class="card-icon" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.9"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 id="book-identity-heading">Book Identity</h2>
+                  <p>The primary details readers use to identify your work.</p>
+                </div>
+              </header>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Title</h3>
+                  <p>Book title</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'title'">
+                  @if (editingField() === 'title') {
+                    <div class="editor-panel">
+                      <label class="sr-only" for="book-title-input">Book title</label>
+                      <input
+                        #activeEditor
+                        id="book-title-input"
+                        type="text"
+                        [value]="editValue()"
+                        [disabled]="isSaving()"
+                        [class.is-invalid]="validationError()"
+                        (input)="updateEditValue($event)"
+                        (keyup.enter)="saveEditing()"
+                        autofocus
+                      />
+                      @if (validationError()) {
+                        <span class="validation-message" role="alert">{{ validationError() }}</span>
+                      }
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span class="field-value">{{ activeBook.title }}</span>
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit title"
+                      (click)="startEditing('title')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Author</h3>
+                  <p>Book author name</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'author'">
+                  @if (editingField() === 'author') {
+                    <div class="editor-panel">
+                      <label class="sr-only" for="book-author-input">Author name</label>
+                      <input
+                        id="book-author-input"
+                        type="text"
+                        [value]="editValue()"
+                        [disabled]="isSaving()"
+                        [class.is-invalid]="validationError()"
+                        (input)="updateEditValue($event)"
+                        (keyup.enter)="saveEditing()"
+                        autofocus
+                      />
+                      @if (validationError()) {
+                        <span class="validation-message" role="alert">{{ validationError() }}</span>
+                      }
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span class="field-value">{{ activeBook.author }}</span>
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit author"
+                      (click)="startEditing('author')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+            </section>
+
+            <section class="setting-card" aria-labelledby="prose-heading">
+              <header class="card-header">
+                <div class="card-icon" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.9"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 id="prose-heading">Prose</h2>
+                  <p>Set the language and narrative perspective used throughout the manuscript.</p>
+                </div>
+              </header>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Language</h3>
+                  <p>The language used to write the book.</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'language'">
+                  @if (editingField() === 'language') {
+                    <div class="editor-panel dropdown-editor">
+                      <app-autocomplete-dropdown
+                        [options]="config.languages()"
+                        [selectedValue]="editValue()"
+                        [grouped]="true"
+                        placeholder="Select a language..."
+                        (selectionChange)="updateEditSelection($event)"
+                      ></app-autocomplete-dropdown>
+                      @if (validationError()) {
+                        <span class="validation-message" role="alert">{{ validationError() }}</span>
+                      }
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span class="field-value">{{ languageLabel(activeBook.language) }}</span>
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit language"
+                      (click)="startEditing('language')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Prose Tense</h3>
+                  <p>The default tense for the book's narration.</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'proseTense'">
+                  @if (editingField() === 'proseTense') {
+                    <div class="editor-panel dropdown-editor">
+                      <app-autocomplete-dropdown
+                        [options]="tenses"
+                        [selectedValue]="editValue()"
+                        [showSearchBar]="false"
+                        (selectionChange)="updateEditSelection($event)"
+                      ></app-autocomplete-dropdown>
+                      @if (validationError()) {
+                        <span class="validation-message" role="alert">{{ validationError() }}</span>
+                      }
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span class="field-value">
+                      {{ proseTenseLabel(activeBook.settings?.proseTense) }}
+                    </span>
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit prose tense"
+                      (click)="startEditing('proseTense')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Point of View</h3>
+                  <p>The default perspective used to tell the story.</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'pointOfView'">
+                  @if (editingField() === 'pointOfView') {
+                    <div class="editor-panel dropdown-editor">
+                      <app-autocomplete-dropdown
+                        [options]="pointsOfView"
+                        [selectedValue]="editValue()"
+                        [showSearchBar]="false"
+                        (selectionChange)="updateEditSelection($event)"
+                      ></app-autocomplete-dropdown>
+                      @if (validationError()) {
+                        <span class="validation-message" role="alert">{{ validationError() }}</span>
+                      }
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span class="field-value">
+                      {{ pointOfViewLabel(activeBook.settings?.pointOfView) }}
+                    </span>
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit point of view"
+                      (click)="startEditing('pointOfView')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>POV Character</h3>
+                  <p>The default character whose perspective anchors the narration.</p>
+                </div>
+                <div
+                  class="setting-control"
+                  [class.is-editing]="editingField() === 'povCharacterId'"
+                >
+                  @if (editingField() === 'povCharacterId') {
+                    <div class="editor-panel dropdown-editor">
+                      <app-autocomplete-dropdown
+                        [options]="povCharacterOptions()"
+                        [selectedValue]="editValue()"
+                        placeholder="Select a character..."
+                        (selectionChange)="updateEditSelection($event)"
+                      ></app-autocomplete-dropdown>
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span
+                      class="field-value"
+                      [class.is-empty]="!activeBook.settings?.povCharacterId"
+                    >
+                      {{ povCharacterLabel(activeBook.settings?.povCharacterId) }}
+                    </span>
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit POV character"
+                      (click)="startEditing('povCharacterId')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+            </section>
+
+            <section class="setting-card" aria-labelledby="story-details-heading">
+              <header class="card-header">
+                <div class="card-icon" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.9"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 id="story-details-heading">Story Details</h2>
+                  <p>Describe and classify the story for discovery and creative context.</p>
+                </div>
+              </header>
+
+              <div class="setting-row synopsis-row">
+                <div class="setting-copy">
+                  <h3>Synopsis</h3>
+                  <p>A concise overview of the premise, characters, and central conflict.</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'synopsis'">
+                  @if (editingField() === 'synopsis') {
+                    <div class="editor-panel">
+                      <label class="sr-only" for="book-synopsis-input">Book synopsis</label>
+                      <textarea
+                        id="book-synopsis-input"
+                        rows="7"
+                        [value]="editValue()"
+                        [disabled]="isSaving()"
+                        placeholder="What is your story about?"
+                        (input)="updateEditValue($event)"
+                        autofocus
+                      ></textarea>
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span
+                      class="field-value synopsis-value"
+                      [class.is-empty]="!activeBook.synopsis"
+                    >
+                      {{ activeBook.synopsis || 'No synopsis has been added yet.' }}
+                    </span>
+                    <button
+                      class="edit-button synopsis-edit-button"
+                      type="button"
+                      aria-label="Edit synopsis"
+                      (click)="startEditing('synopsis')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Genres</h3>
+                  <p>Select the genres and subgenres that best describe the book.</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'genres'">
+                  @if (editingField() === 'genres') {
+                    <div class="editor-panel dropdown-editor">
+                      <app-autocomplete-dropdown
+                        [options]="config.genres()"
+                        [selectedValue]="editArrayValue()"
+                        [multi]="true"
+                        [allowCustom]="false"
+                        placeholder="Select genres..."
+                        (selectionChange)="updateEditArrayValue($event)"
+                      ></app-autocomplete-dropdown>
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    @if (genres().length) {
+                      <div class="category-chips" aria-label="Selected genres">
+                        @for (genre of genres(); track genre.id) {
+                          <span class="category-chip">{{ genre.name }}</span>
+                        }
+                      </div>
+                    } @else {
+                      <span class="field-value is-empty">No genres selected.</span>
+                    }
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit genres"
+                      (click)="startEditing('genres')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
+                  <h3>Tropes</h3>
+                  <p>Choose existing tropes or add custom story patterns.</p>
+                </div>
+                <div class="setting-control" [class.is-editing]="editingField() === 'tropes'">
+                  @if (editingField() === 'tropes') {
+                    <div class="editor-panel dropdown-editor">
+                      <app-autocomplete-dropdown
+                        [options]="config.tropes()"
+                        [selectedValue]="editArrayValue()"
+                        [multi]="true"
+                        [allowCustom]="true"
+                        placeholder="Select or add tropes..."
+                        customAddPlaceholder="Write a custom trope and press Enter..."
+                        (selectionChange)="updateEditArrayValue($event)"
+                      ></app-autocomplete-dropdown>
+                      <div class="edit-actions">
+                        <button
+                          class="save-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="saveEditing()"
+                        >
+                          {{ isSaving() ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button
+                          class="cancel-button"
+                          type="button"
+                          [disabled]="isSaving()"
+                          (click)="cancelEditing()"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    @if (tropes().length) {
+                      <div class="category-chips" aria-label="Selected tropes">
+                        @for (trope of tropes(); track trope.id) {
+                          <span class="category-chip">{{ trope.name }}</span>
+                        }
+                      </div>
+                    } @else {
+                      <span class="field-value is-empty">No tropes selected.</span>
+                    }
+                    <button
+                      class="edit-button"
+                      type="button"
+                      aria-label="Edit tropes"
+                      (click)="startEditing('tropes')"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+                      </svg>
+                    </button>
+                  }
+                </div>
+              </div>
+            </section>
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="settings-section-panel">
+        <header class="content-header">
+          <h1 class="content-title">Editor &amp; Display</h1>
+          <p class="content-subtitle">
+            Personalize the writing environment to suit your workspace.
+          </p>
+        </header>
+
+        <div class="settings-sections">
+          <section class="setting-card" aria-labelledby="appearance-heading">
+            <header class="card-header">
+              <div class="card-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="4"></circle>
+                  <path d="M12 2v2"></path>
+                  <path d="M12 20v2"></path>
+                  <path d="m4.93 4.93 1.42 1.42"></path>
+                  <path d="m17.66 17.66 1.41 1.41"></path>
+                  <path d="M2 12h2"></path>
+                  <path d="M20 12h2"></path>
+                  <path d="m6.34 17.66-1.41 1.41"></path>
+                  <path d="m19.07 4.93-1.41 1.41"></path>
+                </svg>
+              </div>
+              <div>
+                <h2 id="appearance-heading">Appearance</h2>
+                <p>Choose the color scheme used throughout My Novella.</p>
+              </div>
+            </header>
+
+            <div class="setting-row theme-setting-row">
+              <div class="setting-copy">
+                <h3>Theme</h3>
+                <p>Switch between a bright workspace and a low-light writing mode.</p>
+              </div>
+              <div class="theme-options" role="radiogroup" aria-label="Application theme">
+                <button
+                  class="theme-option is-light"
+                  type="button"
+                  role="radio"
+                  [class.is-selected]="themeService.currentTheme() === 'light'"
+                  [attr.aria-checked]="themeService.currentTheme() === 'light'"
+                  (click)="setTheme('light')"
+                >
+                  <span class="theme-preview" aria-hidden="true">
+                    <span class="theme-preview-sidebar"></span>
+                    <span class="theme-preview-content">
+                      <span></span><span></span><span></span>
+                    </span>
+                  </span>
+                  <span class="theme-option-footer">
+                    <span>Light</span>
+                    <span class="theme-check" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m3 8 3 3 7-7"></path>
+                      </svg>
+                    </span>
+                  </span>
+                </button>
+
+                <button
+                  class="theme-option is-dark"
+                  type="button"
+                  role="radio"
+                  [class.is-selected]="themeService.currentTheme() === 'dark'"
+                  [attr.aria-checked]="themeService.currentTheme() === 'dark'"
+                  (click)="setTheme('dark')"
+                >
+                  <span class="theme-preview" aria-hidden="true">
+                    <span class="theme-preview-sidebar"></span>
+                    <span class="theme-preview-content">
+                      <span></span><span></span><span></span>
+                    </span>
+                  </span>
+                  <span class="theme-option-footer">
+                    <span>Dark</span>
+                    <span class="theme-check" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m3 8 3 3 7-7"></path>
+                      </svg>
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    }
   </main>
 </div>

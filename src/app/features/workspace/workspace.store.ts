@@ -59,6 +59,10 @@ export const WorkspaceStore = signalStore(
       patchState(store, { activeView });
     },
 
+    setBookTitle(bookTitle: string): void {
+      patchState(store, { bookTitle });
+    },
+
     setLastWorkspaceUrl(lastWorkspaceUrl: string): void {
       patchState(store, { lastWorkspaceUrl });
     },
