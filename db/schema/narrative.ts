@@ -11,7 +11,6 @@ export const act = sqliteTable('acts', {
     title: text('title').notNull(),
     bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(), // Order of the act in the book
-    prose: text('prose'),
     summary: text('summary'),
 });
 
@@ -20,7 +19,6 @@ export const chapter = sqliteTable('chapters', { // Fixed table name collision
     title: text('title').notNull(),
     actId: text('act_id').notNull().references(() => act.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(), // Order of the chapter in the act
-    prose: text('prose'),
     summary: text('summary'),
 });
 
@@ -29,7 +27,7 @@ export const scene = sqliteTable('scenes', { // Fixed table name collision
     title: text('title').notNull(),
     chapterId: text('chapter_id').notNull().references(() => chapter.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(), // Order of the scene in the chapter
-    prose: text('prose'),
+    prose: text('prose', { mode: 'json' }).$type<Record<string, any> | null>(),
     summary: text('summary'),
     wordCount: integer('word_count').default(0),
 
