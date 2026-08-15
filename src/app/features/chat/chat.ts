@@ -22,10 +22,7 @@ import { MarkdownComponent } from 'ngx-markdown';
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { buildContextHighlightSegments } from '../../../../shared/utils/context-highlighter';
 import { AiStore } from '../../core/store/ai.store';
-import {
-  AutocompleteDropdownComponent,
-  type DropdownOption,
-} from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { AutocompleteDropdownComponent } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import type { AiManuscriptContextRef } from '../../shared/models/ai-context.model';
 import {
@@ -43,7 +40,9 @@ import {
 } from '../manuscript/components/ai-prompt/ai-prompt-codex-context';
 import {
   type AiContextSelection,
+  type AiPromptModel,
   buildContextDropdownSections,
+  buildModelDropdownSections,
   contextSelectionToValues,
   dropdownValuesToContextSelection,
 } from '../manuscript/components/ai-prompt/ai-prompt-dropdown-options';
@@ -164,11 +163,8 @@ export class Chat implements OnInit, OnDestroy {
     this.hasActiveConversation && !this.isAutoScrollEnabled() && !this.isChatAtBottom()
   ));
 
-  readonly modelOptions = computed<DropdownOption[]>(() => (
-    this.aiStore.models().map((model) => ({
-      value: model.id,
-      label: model.name || model.id,
-    }))
+  readonly modelDropdownSections = computed(() => (
+    buildModelDropdownSections(this.aiStore.models() as AiPromptModel[])
   ));
 
   readonly supportsReasoning = computed(() => {

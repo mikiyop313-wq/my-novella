@@ -13,6 +13,7 @@ import {
 } from '../../../../shared/models/chat.model';
 import { AiStreamService } from '../../core/services/ai-stream.service';
 import { AiStore } from '../../core/store/ai.store';
+import { AutocompleteDropdownComponent } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { CodexContextHighlightRegistryService } from '../codex/highlighting/codex-context-highlight-registry.service';
@@ -574,6 +575,54 @@ describe('Chat', () => {
     await Promise.resolve();
 
     expect(component.selectedModelId()).toBe('openrouter/test-model');
+  });
+
+  it('uses the provider-grouped model menu and updates nested model selection', async () => {
+    aiStore.models.mockReturnValue([
+      {
+        id: 'openai/gpt-5',
+        name: 'GPT-5',
+        provider: 'openai',
+        providerName: 'OpenAI',
+        source: 'direct',
+      },
+      {
+        id: 'anthropic/claude',
+        name: 'Claude',
+        provider: 'openrouter',
+        providerName: 'OpenRouter: Anthropic',
+        source: 'openrouter',
+      },
+    ]);
+
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: {
+        snapshot: {
+          paramMap: convertToParamMap({ bookId: 'book-1' }),
+        },
+      },
+    });
+
+    const dropdownDebug = fixture.debugElement.query(
+      By.css('.chat-input-footer app-autocomplete-dropdown'),
+    );
+    const dropdown = dropdownDebug.componentInstance as AutocompleteDropdownComponent;
+    const providers = dropdown.sections()[0].options;
+
+    expect(providers.map((provider) => provider.label)).toEqual(['OpenAI (Direct)', 'OpenRouter']);
+    expect(providers[0].submenu?.sections[0].options[0].value).toBe('openai/gpt-5');
+    expect(providers[1].submenu?.sections[0].title).toBe('Anthropic');
+    expect(providers[1].submenu?.sections[0].options[0].value).toBe('anthropic/claude');
+
+    dropdown.selectionChange.emit('anthropic/claude');
+
+    expect(component.selectedModelId()).toBe('anthropic/claude');
   });
 
   it('starts an unsaved new chat without creating a thread', async () => {

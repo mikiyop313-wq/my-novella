@@ -19,7 +19,7 @@ export interface AiPromptModel {
   id: string;
   name: string;
   provider: string;
-  providerName: string;
+  providerName?: string;
   source: 'direct' | 'openrouter' | string;
 }
 
@@ -317,7 +317,8 @@ export function buildModelDropdownSections(models: readonly AiPromptModel[]): Dr
   if (openRouterModels.length > 0) {
     const groups = new Map<string, AiPromptModel[]>();
     for (const model of openRouterModels) {
-      const providerName = model.providerName.replace(/^OpenRouter:\s*/, '');
+      const providerName = (model.providerName || model.provider || 'Other')
+        .replace(/^OpenRouter:\s*/, '');
       const providerModels = groups.get(providerName) ?? [];
       providerModels.push(model);
       groups.set(providerName, providerModels);
@@ -348,7 +349,9 @@ function modelOption(model: AiPromptModel, searchTerms: readonly string[]): Drop
   return {
     value: model.id,
     label: model.name,
-    searchTerms: [...new Set([model.providerName, ...searchTerms])],
+    searchTerms: [...new Set([model.providerName, ...searchTerms].filter(
+      (term): term is string => !!term,
+    ))],
   };
 }
 

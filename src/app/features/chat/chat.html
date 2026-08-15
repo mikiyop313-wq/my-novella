@@ -302,9 +302,9 @@
           </app-markdown-editor>
 
           <div class="chat-input-footer">
-            <app-autocomplete-dropdown [options]="modelOptions()" [selectedValue]="selectedModelId()"
-              placeholder="Select model" (selectionChange)="selectedModelId.set($event)"
-              customDropdownClass="chat-model-minimal">
+            <app-autocomplete-dropdown [sections]="modelDropdownSections()" [selectedValue]="selectedModelId()"
+              placeholder="Select model" searchPlaceholder="Search models..." [closeOnOutsideScroll]="true"
+              (selectionChange)="selectedModelId.set($event)" customDropdownClass="chat-model-minimal">
             </app-autocomplete-dropdown>
 
             <button class="reasoning-toggle" [class.is-enabled]="reasoningMode()" [disabled]="!supportsReasoning()"
