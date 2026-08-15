@@ -2,7 +2,7 @@ import { Injectable, WritableSignal, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
 
 import { AiStreamService, LoadingStatus } from '../../../../core/services/ai-stream.service';
-import type { AiChatMessage } from '../../../../core/services/ai-state.service';
+import type { BuiltAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 
 type GeneratedBlockAttrs = Record<string, any>;
 
@@ -49,17 +49,16 @@ export class AiStreamEditorService {
   async generateNewBlock(
     editor: Editor,
     insertPos: number,
-    promptText: string,
+    aiPrompt: BuiltAiPrompt,
     provider: string,
     modelId: string,
     reasoningMode: boolean,
     bookId: string,
     blockId?: string,
-    messages?: AiChatMessage[],
   ): Promise<void> {
     const blockAttrs = this.createGeneratingBlockAttrs({
       id: blockId || crypto.randomUUID(),
-      promptText,
+      promptText: aiPrompt.prompt,
       provider,
       modelId,
       reasoningMode,
@@ -71,12 +70,11 @@ export class AiStreamEditorService {
       editor,
       startInsertPos,
       blockAttrs,
-      promptText,
+      aiPrompt,
       provider,
       modelId,
       reasoningMode,
       bookId,
-      messages,
     );
   }
 
@@ -88,7 +86,7 @@ export class AiStreamEditorService {
     editor: Editor,
     blockPos: number,
     currentAttrs: GeneratedBlockAttrs,
-    newPrompt: string,
+    aiPrompt: BuiltAiPrompt,
     provider: string,
     modelId: string,
     reasoningMode: boolean,
@@ -112,7 +110,7 @@ export class AiStreamEditorService {
       editor,
       startInsertPos,
       blockAttrs,
-      newPrompt,
+      aiPrompt,
       provider,
       modelId,
       reasoningMode,
@@ -211,12 +209,11 @@ export class AiStreamEditorService {
     editor: Editor,
     startInsertPos: number,
     blockAttrs: GeneratedBlockAttrs,
-    promptText: string,
+    aiPrompt: BuiltAiPrompt,
     provider: string,
     modelId: string | undefined,
     reasoningMode: boolean,
     bookId: string,
-    messages?: AiChatMessage[],
   ): Promise<void> {
     let currentInsertPos = startInsertPos;
     let hasError = false;
@@ -263,12 +260,10 @@ export class AiStreamEditorService {
       await this.aiStreamService.streamText({
         streamId: blockAttrs['id'],
         bookId,
-        systemPromptCategory: 'sceneBeat',
-        prompt: promptText,
+        aiPrompt,
         provider,
         modelId,
         reasoningMode,
-        messages,
         onToken: token => {
           if (!token) return;
 

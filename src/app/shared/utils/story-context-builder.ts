@@ -30,8 +30,7 @@ const STRUCTURAL_PROSE_BOUNDARY_NODES = new Set([
 
 const FULL_OUTLINE_HEADING = '## Full Outline';
 const OUTLINE_HEADING = '## Outline';
-const SELECTED_MANUSCRIPT_HEADING = '## Selected Manuscript Context';
-const AUTOMATIC_MANUSCRIPT_HEADING = '## Automatic Manuscript Context';
+const MANUSCRIPT_CONTEXT_HEADING = '## Manuscript Context';
 const NARRATIVE_GUIDANCE_HEADING = '## Narrative Guidance';
 const CODEX_CONTEXT_HEADING = '## Codex Context';
 
@@ -39,15 +38,13 @@ const PROSE_LABEL = 'Prose';
 const POINT_OF_VIEW_LABEL = 'Point of View';
 const MINIMUM_LENGTH_LABEL = 'Minimum Length';
 const POV_CHARACTER_LABEL = 'POV Character';
-const CODEX_TYPE_LABEL = 'Type';
-const CODEX_NAME_LABEL = 'Name';
 const CODEX_ALIASES_LABEL = 'Aliases';
 const CODEX_DESCRIPTION_LABEL = 'Description';
 const CODEX_PROGRESSION_LABEL = 'Progression';
 const SUMMARY_LABEL = 'Summary';
 
-const CODEX_ENTRY_BEGIN_MARKER = '--- BEGIN CODEX ENTRY ---';
-const CODEX_ENTRY_END_MARKER = '--- END CODEX ENTRY ---';
+const CODEX_CONTEXT_BEGIN_MARKER = '--- BEGIN CODEX CONTEXT ---';
+const CODEX_CONTEXT_END_MARKER = '--- END CODEX CONTEXT ---';
 const ENTITY_BEGIN_MARKER = '--- BEGIN';
 const ENTITY_END_MARKER = '--- END';
 const ENTITY_MARKER_SUFFIX = '---';
@@ -57,9 +54,14 @@ const FUTURE_PROSE_GUIDANCE =
 const FUTURE_MANUSCRIPT_GUIDANCE =
   '[THE FOLLOWING MANUSCRIPT CONTEXT OCCURS AFTER THE INSERTION POINT. USE IT ONLY AS FUTURE CONTEXT.]';
 
-export interface AutomaticSceneContent {
-  label: 'Full prose' | 'Prose';
-  text: string;
+export interface PartialOutlineContent {
+  currentSceneProse?: string;
+  previousScene?: {
+    sceneId: string;
+    prose: string;
+  };
+  selectedSceneProse?: ReadonlyMap<string, string>;
+  promptBoundary?: ManuscriptPromptBoundary;
 }
 
 export interface ManuscriptPromptBoundary {
@@ -73,11 +75,11 @@ export interface SelectionEditRange {
   to: number;
 }
 
-export interface SelectionEditPromptContext {
-  prompt: string;
+export interface SelectionEditContext {
   sceneId: string;
   sceneContent: string;
   selectedProse: string;
+  storyContext: string;
 }
 
 export interface SelectionEditAdditionalContext {
@@ -163,15 +165,13 @@ export function findCurrentSceneIdBeforePosition(
   return currentSceneId;
 }
 
-/** Builds a scene-local user prompt for an AI edit of the selected prose. */
-export function buildSelectionEditPrompt(
+/** Extracts scene-local story context for an AI edit of the selected prose. */
+export function buildSelectionEditContext(
   doc: ProseMirrorNode,
   selection: SelectionEditRange,
-  instruction: string,
   additionalContext: SelectionEditAdditionalContext = {},
-): SelectionEditPromptContext | null {
-  const trimmedInstruction = instruction.trim();
-  if (selection.from >= selection.to || !trimmedInstruction) return null;
+): SelectionEditContext | null {
+  if (selection.from >= selection.to) return null;
 
   const scene = findSceneAroundSelection(doc, selection);
   if (!scene) return null;
@@ -193,16 +193,11 @@ export function buildSelectionEditPrompt(
     sceneId: scene.id,
     sceneContent,
     selectedProse,
-    prompt: [
-      '--- STORY CONTEXT ---',
+    storyContext: [
       additionalContext.partialOutline?.trim() ?? '',
       sceneIncludedInOutline ? '' : `Scene: ${scene.title}\n`,
       sceneIncludedInOutline ? '' : sceneContent,
       additionalContext.codexContext?.trim() ?? '',
-      '--- END STORY CONTEXT ---\n',
-      `Instruction: ${trimmedInstruction}`,
-      'Edit only the marked passage. Use the surrounding scene for continuity.',
-      'Return only its replacement text.',
     ].filter(Boolean).join('\n'),
   };
 }
@@ -242,11 +237,12 @@ export function serializePartialOutline(
   hierarchy: readonly ActDto[],
   bookTitle: string | undefined,
   currentSceneId: string,
-  currentSceneContent?: string,
+  content: PartialOutlineContent = {},
 ): string {
   const scenes = flattenScenes(hierarchy);
   const currentSceneIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
-  const includeCurrentScene = currentSceneContent !== undefined;
+  const includeCurrentScene = content.currentSceneProse !== undefined
+    || content.selectedSceneProse?.has(currentSceneId) === true;
   if (currentSceneIndex < 0 || (currentSceneIndex === 0 && !includeCurrentScene)) return '';
 
   const precedingSceneIds = new Set(
@@ -254,6 +250,20 @@ export function serializePartialOutline(
       .slice(0, currentSceneIndex + (includeCurrentScene ? 1 : 0))
       .map((scene) => scene.id),
   );
+  const sceneContent = new Map<string, { label: string; text: string }>();
+  for (const [sceneId, prose] of content.selectedSceneProse ?? []) {
+    precedingSceneIds.add(sceneId);
+    sceneContent.set(sceneId, { label: PROSE_LABEL, text: prose });
+  }
+  if (content.previousScene) {
+    sceneContent.set(content.previousScene.sceneId, {
+      label: 'Full prose',
+      text: content.previousScene.prose,
+    });
+  }
+  if (content.currentSceneProse !== undefined) {
+    sceneContent.set(currentSceneId, { label: PROSE_LABEL, text: content.currentSceneProse });
+  }
   const body = serializeHierarchy({
     hierarchy,
     bookTitle,
@@ -261,11 +271,10 @@ export function serializePartialOutline(
     includeNovel: true,
     includeParentSummaries: false,
     includeSceneSummaries: true,
-    sceneSummaryExclusions: includeCurrentScene ? new Set([currentSceneId]) : undefined,
+    sceneSummaryExclusions: new Set(sceneContent.keys()),
     selectedSceneIds: precedingSceneIds,
-    sceneContent: includeCurrentScene
-      ? new Map([[currentSceneId, { label: PROSE_LABEL, text: currentSceneContent }]])
-      : new Map(),
+    sceneContent,
+    promptBoundary: content.promptBoundary,
   });
 
   return body ? `${OUTLINE_HEADING}\n\n${body}` : '';
@@ -274,7 +283,6 @@ export function serializePartialOutline(
 export function serializeSelectedManuscript(
   hierarchy: readonly ActDto[],
   bookTitle: string | undefined,
-  refs: readonly AiManuscriptContextRef[],
   selectedSceneIds: ReadonlySet<string>,
   proseBySceneId: ReadonlyMap<string, string>,
   promptBoundary?: ManuscriptPromptBoundary,
@@ -283,7 +291,7 @@ export function serializeSelectedManuscript(
     hierarchy,
     bookTitle,
     includeAll: false,
-    includeNovel: refs.includes('novel'),
+    includeNovel: true,
     includeParentSummaries: false,
     includeSceneSummaries: false,
     selectedSceneIds,
@@ -293,24 +301,7 @@ export function serializeSelectedManuscript(
     promptBoundary,
   });
 
-  return body ? `${SELECTED_MANUSCRIPT_HEADING}\n\n${body}` : '';
-}
-
-export function serializeAutomaticManuscript(
-  hierarchy: readonly ActDto[],
-  sceneContent: ReadonlyMap<string, AutomaticSceneContent>,
-): string {
-  const body = serializeHierarchy({
-    hierarchy,
-    includeAll: false,
-    includeNovel: false,
-    includeParentSummaries: false,
-    includeSceneSummaries: false,
-    selectedSceneIds: new Set(sceneContent.keys()),
-    sceneContent,
-  });
-
-  return body ? `${AUTOMATIC_MANUSCRIPT_HEADING}\n\n${body}` : '';
+  return body ? `${MANUSCRIPT_CONTEXT_HEADING}\n\n${body}` : '';
 }
 
 export function serializeNarrativeGuidance(
@@ -336,13 +327,18 @@ export function serializeCodexContext(
   const sceneRanks = new Map(flattenScenes(hierarchy).map((scene, index) => [scene.id, index]));
   const sceneLocations = progressionLocations(hierarchy);
   const currentRank = currentSceneId ? sceneRanks.get(currentSceneId) : undefined;
-  const serializedEntries = entries
-    .filter((entry) => entry.status === 'active' && entry.trackingSetting !== 'never_include')
-    .map((entry) => {
+  const entriesByType = new Map<CodexEntryDetailDto['type'], CodexEntryDetailDto[]>();
+  for (const entry of entries) {
+    if (entry.status === 'active' && entry.trackingSetting !== 'never_include') {
+      const groupedEntries = entriesByType.get(entry.type) ?? [];
+      groupedEntries.push(entry);
+      entriesByType.set(entry.type, groupedEntries);
+    }
+  }
+  const serializedGroups = [...entriesByType].map(([type, groupedEntries]) => {
+    const serializedEntries = groupedEntries.map((entry) => {
       const fields = [
-        CODEX_ENTRY_BEGIN_MARKER,
-        `${CODEX_TYPE_LABEL}: ${displayCodexType(entry.type)}`,
-        `${CODEX_NAME_LABEL}: ${entry.name.trim()}`,
+        `### ${entry.name.trim()}`,
       ];
       const aliases = entry.alias
         ?.split(',')
@@ -362,13 +358,21 @@ export function serializeCodexContext(
             .join('\n')}`,
         );
       }
-
-      fields.push(CODEX_ENTRY_END_MARKER);
       return fields.join('\n\n');
     });
+    return [
+      `--- ${displayCodexType(type).toUpperCase()} ---`,
+      serializedEntries.join('\n\n'),
+    ].join('\n\n');
+  });
 
-  return serializedEntries.length > 0
-    ? `${CODEX_CONTEXT_HEADING}\n\n${serializedEntries.join('\n\n')}`
+  return serializedGroups.length > 0
+    ? [
+      CODEX_CONTEXT_HEADING,
+      CODEX_CONTEXT_BEGIN_MARKER,
+      serializedGroups.join('\n\n'),
+      CODEX_CONTEXT_END_MARKER,
+    ].join('\n\n')
     : '';
 }
 
@@ -401,7 +405,7 @@ function serializeHierarchy(request: HierarchySerializationRequest): string {
   const acts = request.hierarchy
     .map((act, actIndex) => serializeAct(act, actIndex, request, state))
     .filter(Boolean);
-  if (acts.length === 0 && !request.includeNovel) return '';
+  if (acts.length === 0) return '';
 
   const body = acts.join('\n\n');
   if (!request.includeNovel) return body;

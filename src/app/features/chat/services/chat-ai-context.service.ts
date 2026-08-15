@@ -7,9 +7,7 @@ import type {
   SceneDto,
   TiptapJsonDoc,
 } from '../../../../../shared/models/manuscript.model';
-import type { AiChatMessage } from '../../../core/services/ai-state.service';
 import { ElectronService } from '../../../core/services/electron.service';
-import type { AiManuscriptContextRef } from '../../../shared/models/ai-context.model';
 import {
   flattenScenes,
   serializeCodexContext,
@@ -33,7 +31,7 @@ export class ChatAiContextService {
   private readonly codexService = inject(CodexService);
   private readonly manuscriptStructureService = inject(ManuscriptStructureService);
 
-  async buildContextMessage(request: ChatAiContextRequest): Promise<AiChatMessage | null> {
+  async buildContext(request: ChatAiContextRequest): Promise<string | null> {
     const sceneIds = uniqueStrings(request.userMessage.sceneRefs.map((ref) => ref.sceneId));
     const codexEntryIds = uniqueStrings(
       request.userMessage.codexRefs.map((ref) => ref.codexEntryId),
@@ -66,9 +64,6 @@ export class ChatAiContextService {
         serializeTiptapDocument(sceneProse[sceneId]),
       ]),
     );
-    const manuscriptRefs = sceneIds.map(
-      (sceneId): AiManuscriptContextRef => `scene:${sceneId}`,
-    );
     const manuscriptContext = request.userMessage.includeFullOutline
       ? serializeFullOutline(
           outlineHierarchy ?? [],
@@ -78,7 +73,6 @@ export class ChatAiContextService {
       : serializeSelectedManuscript(
           request.hierarchy,
           request.bookTitle,
-          manuscriptRefs,
           selectedSceneIds,
           proseBySceneId,
         );
@@ -101,14 +95,7 @@ export class ChatAiContextService {
 
     if (!content) return null;
 
-    return {
-      role: 'user',
-      content: [
-        '--- BEGIN STORY CONTEXT ---',
-        content,
-        '--- END STORY CONTEXT ---',
-      ].join('\n\n'),
-    };
+    return content;
   }
 
   private resolveProgressionSceneId(

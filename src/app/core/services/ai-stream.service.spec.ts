@@ -6,6 +6,7 @@ import { ToastService } from '../../shared/services/toast.service';
 import { AIStateService } from './ai-state.service';
 import { AiStreamService } from './ai-stream.service';
 import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
+import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
 
 describe('AiStreamService', () => {
   let service: AiStreamService;
@@ -80,41 +81,37 @@ describe('AiStreamService', () => {
     await service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Write',
+      aiPrompt: textPrompt('chat', 'Write'),
       provider: 'openrouter',
       modelId: 'model-1',
       onToken: token => tokens.push(token),
     });
 
     expect(tokens.join('')).toBe('Hello\n\nthere');
-    expect(generate).toHaveBeenCalledWith(
-      'Write',
-      'openrouter',
-      'model-1',
-      undefined,
-      undefined,
-      { category: 'chat', presetId: 'chat-preset' },
-    );
+    expect(generate).toHaveBeenCalledWith({
+      aiPrompt: textPrompt('chat', 'Write'),
+      model: 'openrouter',
+      modelId: 'model-1',
+      reasoningMode: undefined,
+      systemPromptPreset: { category: 'chat', presetId: 'chat-preset' },
+    });
   });
 
   it('uses the active prompt preset model when the caller does not supply one', async () => {
     await service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'summary',
-      prompt: 'Summarize',
+      aiPrompt: textPrompt('summary', 'Summarize'),
     });
 
     expect(resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
-    expect(generate).toHaveBeenCalledWith(
-      'Summarize',
-      'openai',
-      'gpt-5',
-      undefined,
-      undefined,
-      { category: 'summary', presetId: 'chat-preset' },
-    );
+    expect(generate).toHaveBeenCalledWith({
+      aiPrompt: textPrompt('summary', 'Summarize'),
+      model: 'openai',
+      modelId: 'gpt-5',
+      reasoningMode: undefined,
+      systemPromptPreset: { category: 'summary', presetId: 'chat-preset' },
+    });
   });
 
   it('passes structured chat messages to AIStateService', async () => {
@@ -124,23 +121,28 @@ describe('AiStreamService', () => {
       { role: 'user' as const, content: 'Continue' },
     ];
 
+    const aiPrompt = buildAiPrompt({
+      requestType: 'chat',
+      messages: messages.map(message => ({
+        role: message.role,
+        parts: [{ type: 'text' as const, content: message.content }],
+      })),
+    });
+
     await service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Continue',
+      aiPrompt,
       provider: 'openrouter',
-      messages,
     });
 
-    expect(generate).toHaveBeenCalledWith(
-      'Continue',
-      'openrouter',
-      undefined,
-      undefined,
-      messages,
-      { category: 'chat', presetId: 'chat-preset' },
-    );
+    expect(generate).toHaveBeenCalledWith({
+      aiPrompt,
+      model: 'openrouter',
+      modelId: undefined,
+      reasoningMode: undefined,
+      systemPromptPreset: { category: 'chat', presetId: 'chat-preset' },
+    });
   });
 
   it('switches status to generating when content tokens arrive', async () => {
@@ -154,8 +156,7 @@ describe('AiStreamService', () => {
     await service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Write',
+      aiPrompt: textPrompt('chat', 'Write'),
       onToken: vi.fn(),
       onStatusChange: status => statuses.push(status),
     });
@@ -175,8 +176,7 @@ describe('AiStreamService', () => {
     await service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Write',
+      aiPrompt: textPrompt('chat', 'Write'),
       reasoningMode: true,
       onReasoningUpdate: vi.fn(),
       onStatusChange: status => statuses.push(status),
@@ -204,8 +204,7 @@ describe('AiStreamService', () => {
     await service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Think',
+      aiPrompt: textPrompt('chat', 'Think'),
       reasoningMode: true,
       onReasoningUpdate: reasoning => updates.push(reasoning),
     });
@@ -228,8 +227,7 @@ describe('AiStreamService', () => {
     await service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Write',
+      aiPrompt: textPrompt('chat', 'Write'),
       reasoningMode: true,
       onToken: vi.fn(),
       onReasoningUpdate: vi.fn(),
@@ -247,8 +245,7 @@ describe('AiStreamService', () => {
     await expect(service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Write',
+      aiPrompt: textPrompt('chat', 'Write'),
       reasoningMode: true,
       onToken: vi.fn(),
       onReasoningUpdate: vi.fn(),
@@ -267,8 +264,7 @@ describe('AiStreamService', () => {
     await expect(service.streamText({
       streamId: 'stream-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
-      prompt: 'Write',
+      aiPrompt: textPrompt('chat', 'Write'),
       onToken: vi.fn(),
       onStatusChange: status => statuses.push(status),
     })).rejects.toBe(error);
@@ -284,3 +280,16 @@ describe('AiStreamService', () => {
     expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 });
+
+function textPrompt(
+  requestType: 'chat' | 'summary',
+  content: string,
+) {
+  return buildAiPrompt({
+    requestType,
+    messages: [{
+      role: 'user',
+      parts: [{ type: 'text', content }],
+    }],
+  });
+}

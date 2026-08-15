@@ -6,6 +6,7 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 
 // ---------------------------------------------------------------------------
@@ -245,7 +246,13 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
       this.editor(),
       pos,
       { ...this.node().attrs },
-      prompt,
+      buildAiPrompt({
+        requestType: 'sceneBeat',
+        messages: [{
+          role: 'user',
+          parts: [{ type: 'text', content: prompt }],
+        }],
+      }),
       this.provider(),
       this.modelId(),
       this.reasoningMode(),

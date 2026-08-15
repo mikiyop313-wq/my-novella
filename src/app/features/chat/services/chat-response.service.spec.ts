@@ -79,7 +79,7 @@ describe('ChatResponseService', () => {
     stopStream: ReturnType<typeof vi.fn>;
   };
   let chatAiContext: {
-    buildContextMessage: ReturnType<typeof vi.fn>;
+    buildContext: ReturnType<typeof vi.fn>;
   };
   let toastService: Pick<ToastService, 'error'>;
 
@@ -153,7 +153,7 @@ describe('ChatResponseService', () => {
       stopStream: vi.fn(async () => undefined),
     };
     chatAiContext = {
-      buildContextMessage: vi.fn(async () => null),
+      buildContext: vi.fn(async () => null),
     };
     toastService = { error: vi.fn() };
 
@@ -191,11 +191,14 @@ describe('ChatResponseService', () => {
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'pending-user-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
       reasoningMode: true,
-      messages: [{ role: 'user', content: 'Write a scene' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Write a scene',
+        messages: [{ role: 'user', content: 'Write a scene' }],
+      },
     }));
     expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
       content: 'Draft reply',
@@ -234,29 +237,30 @@ describe('ChatResponseService', () => {
       makeMessage({ id: 'assistant-previous', role: 'assistant', content: 'Previous reply' }),
       messages[0],
     ];
-    chatAiContext.buildContextMessage.mockResolvedValueOnce({
-      role: 'user',
-      content: '--- BEGIN STORY CONTEXT ---\nCodex context\n--- END STORY CONTEXT ---',
-    });
+    chatAiContext.buildContext.mockResolvedValueOnce('Codex context');
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
 
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      messages: [
-        { role: 'user', content: 'Previous Mara mention' },
-        { role: 'assistant', content: 'Previous reply' },
-        {
-          role: 'user',
-          content: '--- BEGIN STORY CONTEXT ---\nCodex context\n--- END STORY CONTEXT ---',
-        },
-        { role: 'user', content: 'Write a scene' },
-      ],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Write a scene',
+        messages: [
+          { role: 'user', content: 'Previous Mara mention' },
+          { role: 'assistant', content: 'Previous reply' },
+          {
+            role: 'user',
+            content: '--- BEGIN STORY CONTEXT ---\n\nCodex context\n\n--- END STORY CONTEXT ---',
+          },
+          { role: 'user', content: 'Write a scene' },
+        ],
+      },
     }));
-    expect(chatAiContext.buildContextMessage).toHaveBeenCalledTimes(1);
+    expect(chatAiContext.buildContext).toHaveBeenCalledTimes(1);
   });
 
   it('does not start a stream when the saved message context cannot be prepared', async () => {
-    chatAiContext.buildContextMessage.mockRejectedValueOnce(new Error('Context read failed'));
+    chatAiContext.buildContext.mockRejectedValueOnce(new Error('Context read failed'));
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
 
@@ -273,7 +277,7 @@ describe('ChatResponseService', () => {
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
 
-    expect(chatAiContext.buildContextMessage).not.toHaveBeenCalled();
+    expect(chatAiContext.buildContext).not.toHaveBeenCalled();
     expect(aiStreamService.streamText).not.toHaveBeenCalled();
     expect(toastService.error).toHaveBeenCalledWith(
       'No active book is available.',
@@ -303,8 +307,11 @@ describe('ChatResponseService', () => {
     expect(titleRequest).toEqual(expect.objectContaining({
       streamId: 'title-user-1',
       bookId: 'thread-book',
-      systemPromptCategory: 'title',
-      prompt: 'Write a scene',
+      aiPrompt: {
+        systemPromptCategory: 'title',
+        prompt: 'Write a scene',
+        messages: [{ role: 'user', content: 'Write a scene' }],
+      },
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
       reasoningMode: false,

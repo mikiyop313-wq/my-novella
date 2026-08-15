@@ -161,7 +161,7 @@ describe('Chat', () => {
     enterBook: vi.fn(async () => undefined),
   };
   const chatAiContext = {
-    buildContextMessage: vi.fn(async () => null),
+    buildContext: vi.fn(async () => null),
   };
   const highlightRegistry = {
     setRanges: vi.fn(),
@@ -241,7 +241,7 @@ describe('Chat', () => {
     contextTrie.loadForContext.mockClear();
     workspaceBookStore.loadBookHierarchy.mockClear();
     workspaceStore.enterBook.mockClear();
-    chatAiContext.buildContextMessage.mockClear();
+    chatAiContext.buildContext.mockClear();
     highlightRegistry.setRanges.mockClear();
     highlightRegistry.clearRanges.mockClear();
     chatStore = {
@@ -919,10 +919,13 @@ describe('Chat', () => {
     }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'pending-message-1',
-      prompt: 'Start here',
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
-      messages: [{ role: 'user', content: 'Start here' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Start here',
+        messages: [{ role: 'user', content: 'Start here' }],
+      },
     }));
     expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
       content: 'AI reply',
@@ -1329,7 +1332,7 @@ describe('Chat', () => {
     expect(chatStore.createMessageBranch).toHaveBeenCalledWith('user-1', 'Edited prompt');
     expect(chatStore.selectMessageBranch).toHaveBeenCalledWith('user-2');
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Edited prompt',
+      aiPrompt: expect.objectContaining({ prompt: 'Edited prompt' }),
     }));
   });
 
@@ -1363,8 +1366,11 @@ describe('Chat', () => {
       threadId: 'thread-1',
     }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Keep this prompt',
-      messages: [{ role: 'user', content: 'Keep this prompt' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Keep this prompt',
+        messages: [{ role: 'user', content: 'Keep this prompt' }],
+      },
     }));
   });
 
@@ -1393,8 +1399,11 @@ describe('Chat', () => {
       branchGroupId: 'assistant-group',
     }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Prompt',
-      messages: [{ role: 'user', content: 'Prompt' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Prompt',
+        messages: [{ role: 'user', content: 'Prompt' }],
+      },
     }));
   });
 

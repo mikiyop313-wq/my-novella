@@ -20,16 +20,23 @@ describe('Codex detection prompt', () => {
       },
     ] satisfies CodexEntryDto[];
 
-    expect(buildCodexDetectionPrompt({
+    const aiPrompt = buildCodexDetectionPrompt({
       prose: 'Elara entered the harbor.',
       existingEntries,
-    })).toBe([
+    });
+    const expectedPrompt = [
       '--- BEGIN EXISTING CODEX NAMES AND ALIASES ---',
       '[{"name":"Elara Voss","alias":"Elara"}]',
       '--- END EXISTING CODEX NAMES AND ALIASES ---',
       '--- BEGIN SCENE PROSE ---',
       'Elara entered the harbor.',
       '--- END SCENE PROSE ---',
-    ].join('\n\n'));
+    ].join('\n\n');
+
+    expect(aiPrompt).toEqual({
+      systemPromptCategory: 'codexDetection',
+      prompt: expectedPrompt,
+      messages: [{ role: 'user', content: expectedPrompt }],
+    });
   });
 });

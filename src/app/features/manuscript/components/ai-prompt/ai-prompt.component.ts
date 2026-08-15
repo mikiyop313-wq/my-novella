@@ -16,7 +16,6 @@ import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { CodexContextHighlightDirective } from '../../../codex/highlighting/codex-context-highlight.directive';
 import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
-import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
@@ -26,6 +25,7 @@ import {
 } from '../../../../shared/models/vector-search.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { resolveAiModelTarget } from '../../../../shared/utils/ai-model-selection';
+import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 import {
   findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
@@ -415,9 +415,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       return;
     }
 
-    let messages: AiChatMessage[];
+    let storyContext: string;
     try {
-      messages = await this.manuscriptAiContext.buildMessages({
+      storyContext = await this.manuscriptAiContext.buildContext({
         editor: this.editor(),
         promptPos: pos,
         promptId: blockId,
@@ -452,13 +452,24 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       await this.aiStreamEditor.generateNewBlock(
         this.editor(),
         latestPos + this.node().nodeSize,
-        text,
+        buildAiPrompt({
+          requestType: 'sceneBeat',
+          messages: [
+            {
+              role: 'user',
+              parts: [{ type: 'section', name: 'STORY CONTEXT', content: storyContext }],
+            },
+            {
+              role: 'user',
+              parts: [{ type: 'text', content: text }],
+            },
+          ],
+        }),
         provider,
         modelId,
         this.reasoningMode(),
         bookId,
         blockId,
-        messages,
       );
     } finally {
       loadingSig?.set('idle');

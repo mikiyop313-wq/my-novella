@@ -32,7 +32,7 @@ describe('ChatAiContextService', () => {
   });
 
   it('returns no context without refs or Full Outline', async () => {
-    await expect(service.buildContextMessage({
+    await expect(service.buildContext({
       userMessage: makeMessage(),
       bookId: 'book-1',
       hierarchy: hierarchy(),
@@ -53,7 +53,7 @@ describe('ChatAiContextService', () => {
     electronService.invoke.mockResolvedValueOnce({ 'scene-1': prose });
     codexService.getEntry.mockResolvedValueOnce(codexEntry());
 
-    const result = await service.buildContextMessage({
+    const result = await service.buildContext({
       userMessage: makeMessage({
         sceneRefs: [{ messageId: 'user-1', sceneId: 'scene-1' }],
         codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
@@ -67,17 +67,43 @@ describe('ChatAiContextService', () => {
       'manuscript:getScenesProse',
       { sceneIds: ['scene-1'] },
     );
-    expect(result?.content).toContain('## Selected Manuscript Context');
-    expect(result?.content).toContain('Mara enters the observatory.');
-    expect(result?.content).toContain('## Codex Context');
-    expect(result?.content).toContain('Name: Mara Vale');
-    expect(result?.content).toContain('Arrival: Enters the observatory.');
+    expect(result).toContain('## Manuscript Context');
+    expect(result).not.toContain('## Outline');
+    expect(result).not.toContain('## Full Outline');
+    expect(result).toContain('Mara enters the observatory.');
+    expect(result).toContain('## Codex Context');
+    expect(result).toContain('### Mara Vale');
+    expect(result).toContain('Arrival: Enters the observatory.');
+  });
+
+  it('serializes Codex-only context without manuscript structure', async () => {
+    codexService.getEntry.mockResolvedValueOnce(codexEntry());
+
+    const result = await service.buildContext({
+      userMessage: makeMessage({
+        codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
+      }),
+      bookId: 'book-1',
+      bookTitle: 'Night Draft',
+      hierarchy: hierarchy(),
+    });
+
+    expect(electronService.invoke).not.toHaveBeenCalled();
+    expect(codexService.getEntry).toHaveBeenCalledWith('codex-1');
+    expect(result).toContain('## Codex Context');
+    expect(result).not.toContain('## Manuscript Context');
+    expect(result).not.toContain('## Outline');
+    expect(result).not.toContain('## Full Outline');
+    expect(result).not.toContain('BEGIN NOVEL');
+    expect(result).not.toContain('BEGIN ACT');
+    expect(result).not.toContain('BEGIN CHAPTER');
+    expect(result).not.toContain('BEGIN SCENE');
   });
 
   it('loads and serializes Full Outline independently from selected scenes', async () => {
     electronService.invoke.mockResolvedValueOnce(hierarchy());
 
-    const result = await service.buildContextMessage({
+    const result = await service.buildContext({
       userMessage: makeMessage({ includeFullOutline: true }),
       bookId: 'book-1',
       bookTitle: 'Night Draft',
@@ -88,8 +114,8 @@ describe('ChatAiContextService', () => {
       'manuscript:getOutline',
       { bookId: 'book-1' },
     );
-    expect(result?.content).toContain('## Full Outline');
-    expect(result?.content).toContain('Opening summary.');
+    expect(result).toContain('## Full Outline');
+    expect(result).toContain('Opening summary.');
   });
 });
 

@@ -1,7 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import type { Editor } from '@tiptap/core';
 
-import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryStore } from '../../../library/store/book.store';
@@ -16,17 +15,15 @@ import type { AiManuscriptContextRef } from '../../../../shared/models/ai-contex
 import type { VectorSearchSetting } from '../../../../shared/models/vector-search.model';
 import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
 import {
-  type AutomaticSceneContent,
   type ManuscriptPromptBoundary,
+  type PartialOutlineContent,
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
-  serializeAutomaticManuscript,
   serializeCodexContext,
   serializeFullOutline,
   serializeNarrativeGuidance,
   serializePartialOutline,
-  serializeSelectedManuscript,
   serializeTiptapDocument,
   serializeTiptapNodes,
 } from '../../../../shared/utils/story-context-builder';
@@ -67,7 +64,7 @@ export class ManuscriptAiContextService {
   private readonly toastService = inject(ToastService);
   private readonly paragraphVectorService = inject(ParagraphVectorService);
 
-  async buildMessages(request: ManuscriptAiContextRequest): Promise<AiChatMessage[]> {
+  async buildContext(request: ManuscriptAiContextRequest): Promise<string> {
     if (!request.bookId) throw new Error('No active book is available for AI context.');
 
     const editorDoc = request.editor.state.doc;
@@ -83,15 +80,25 @@ export class ManuscriptAiContextService {
       : undefined;
     const currentProseBeforePrompt = promptBoundary?.beforePromptProse ?? '';
     const selectedSceneIds = expandManuscriptRefs(request.hierarchy, request.manuscriptRefs);
-    const usesAutomaticFallback = !request.includeFullOutline && request.manuscriptRefs.length === 0;
+    const usesAutomaticProse = request.manuscriptRefs.length === 0;
     const precedingSceneId = currentSceneId
       ? findPreviousSceneId(request.hierarchy, currentSceneId)
       : null;
-    const hasPartialOutline = !request.includeFullOutline
-      && precedingSceneId !== null;
-    const previousSceneId = usesAutomaticFallback ? precedingSceneId : null;
+    const hasOutlineContext = !request.includeFullOutline
+      && currentSceneId !== null
+      && (
+        request.manuscriptRefs.length > 0
+        || precedingSceneId !== null
+        || (usesAutomaticProse && currentProseBeforePrompt.length > 0)
+      );
+    const previousSceneId = usesAutomaticProse && !currentProseBeforePrompt
+      ? precedingSceneId
+      : null;
     const proseSceneIds = new Set(selectedSceneIds);
     if (previousSceneId) proseSceneIds.add(previousSceneId);
+    if (request.includeFullOutline && usesAutomaticProse && currentSceneId) {
+      proseSceneIds.add(currentSceneId);
+    }
 
     const proseBySceneId = new Map<string, string>();
     const unloadedSceneIds: string[] = [];
@@ -109,7 +116,7 @@ export class ManuscriptAiContextService {
     if (unloadedSceneIds.length > 0) await this.saver.flushDirtySections();
 
     const [outlineHierarchy, databaseProse] = await Promise.all([
-      request.includeFullOutline || hasPartialOutline
+      request.includeFullOutline || hasOutlineContext
         ? this.manuscriptStructureService.getOutline(request.bookId)
         : Promise.resolve(null),
       unloadedSceneIds.length > 0
@@ -125,27 +132,37 @@ export class ManuscriptAiContextService {
       ? serializeFullOutline(
         outlineHierarchy ?? [],
         request.bookTitle,
-        proseForScenes(proseBySceneId, selectedSceneIds),
+        proseForScenes(
+          proseBySceneId,
+          usesAutomaticProse ? proseSceneIds : selectedSceneIds,
+        ),
         promptBoundary,
       )
-      : request.manuscriptRefs.length > 0
-        ? serializeSelectedManuscript(
-          request.hierarchy,
-          request.bookTitle,
-          request.manuscriptRefs,
-          selectedSceneIds,
-          proseForScenes(proseBySceneId, selectedSceneIds),
-          promptBoundary,
-        )
-        : this.buildAutomaticContext(
-          request.hierarchy,
-          currentSceneId,
-          currentProseBeforePrompt,
-          previousSceneId,
-          proseBySceneId,
-        );
-    const partialOutline = hasPartialOutline && currentSceneId
-      ? serializePartialOutline(outlineHierarchy ?? [], request.bookTitle, currentSceneId)
+      : '';
+    const partialOutlineContent: PartialOutlineContent = {};
+    if (usesAutomaticProse && currentProseBeforePrompt) {
+      partialOutlineContent.currentSceneProse = currentProseBeforePrompt;
+    }
+    if (usesAutomaticProse && previousSceneId) {
+      partialOutlineContent.previousScene = {
+        sceneId: previousSceneId,
+        prose: proseBySceneId.get(previousSceneId) ?? '',
+      };
+    }
+    if (request.manuscriptRefs.length > 0) {
+      partialOutlineContent.selectedSceneProse = proseForScenes(
+        proseBySceneId,
+        selectedSceneIds,
+      );
+      partialOutlineContent.promptBoundary = promptBoundary;
+    }
+    const partialOutline = hasOutlineContext && currentSceneId
+      ? serializePartialOutline(
+        outlineHierarchy ?? [],
+        request.bookTitle,
+        currentSceneId,
+        partialOutlineContent,
+      )
       : '';
 
     const pointOfView = request.pointOfView === 'global'
@@ -176,46 +193,13 @@ export class ManuscriptAiContextService {
     );
     const vectorContext = await this.buildVectorContext(request);
 
-    const messages: AiChatMessage[] = [];
-    if (narrativeGuidance || manuscriptContext || codexContext || vectorContext) {
-      messages.push({
-        role: 'user',
-        content: [
-          '--- BEGIN STORY CONTEXT ---',
-          narrativeGuidance,
-          partialOutline,
-          manuscriptContext,
-          codexContext,
-          vectorContext,
-          '--- END STORY CONTEXT ---',
-        ].filter(Boolean).join('\n\n'),
-      });
-    }
-    messages.push({ role: 'user', content: request.promptText });
-    return messages;
-  }
-
-  private buildAutomaticContext(
-    hierarchy: readonly ActDto[],
-    currentSceneId: string | null,
-    currentProseBeforePrompt: string,
-    previousSceneId: string | null,
-    proseBySceneId: ReadonlyMap<string, string>,
-  ): string {
-    if (!currentSceneId) return '';
-
-    const sceneContent = new Map<string, AutomaticSceneContent>();
-    if (previousSceneId) {
-      sceneContent.set(previousSceneId, {
-        label: 'Full prose',
-        text: proseBySceneId.get(previousSceneId) ?? '',
-      });
-    }
-    sceneContent.set(currentSceneId, {
-      label: 'Prose',
-      text: currentProseBeforePrompt,
-    });
-    return serializeAutomaticManuscript(hierarchy, sceneContent);
+    return [
+      narrativeGuidance,
+      partialOutline,
+      manuscriptContext,
+      codexContext,
+      vectorContext,
+    ].filter(Boolean).join('\n\n');
   }
 
   private resolveCodexEntryIds(

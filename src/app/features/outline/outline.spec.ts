@@ -182,12 +182,22 @@ describe('Outline', () => {
     expect(aiStreamService.streamText).toHaveBeenCalledWith({
       streamId: 'outline-scene-summary:scene-1',
       bookId: 'book-1',
-      systemPromptCategory: 'summary',
-      prompt: [
-        '--- BEGIN SCENE PROSE ---',
-        'Scene prose.',
-        '--- END SCENE PROSE ---',
-      ].join('\n\n'),
+      aiPrompt: {
+        systemPromptCategory: 'summary',
+        prompt: [
+          '--- BEGIN SCENE PROSE ---',
+          'Scene prose.',
+          '--- END SCENE PROSE ---',
+        ].join('\n\n'),
+        messages: [{
+          role: 'user',
+          content: [
+            '--- BEGIN SCENE PROSE ---',
+            'Scene prose.',
+            '--- END SCENE PROSE ---',
+          ].join('\n\n'),
+        }],
+      },
       provider: 'openai',
       modelId: 'gpt-5',
     });
@@ -239,7 +249,7 @@ describe('Outline', () => {
     expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('Elara Voss');
     expect(codexService.getEntries).toHaveBeenCalledWith('book-1', { includeArchived: true });
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      systemPromptCategory: 'codexDetection',
+      aiPrompt: expect.objectContaining({ systemPromptCategory: 'codexDetection' }),
       provider: 'openai',
       modelId: 'gpt-5',
     }));

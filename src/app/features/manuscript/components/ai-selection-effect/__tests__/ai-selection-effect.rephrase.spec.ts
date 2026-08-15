@@ -129,8 +129,10 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     expect(editor.getText()).not.toContain('Elias lowered his gaze.');
     expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
       bookId: 'book-1',
-      systemPromptCategory: 'rephrase',
-      prompt: expect.stringContaining('--- PASSAGE TO EDIT ---\nElias looked away.'),
+      aiPrompt: expect.objectContaining({
+        systemPromptCategory: 'rephrase',
+        prompt: expect.stringContaining('--- PASSAGE TO EDIT ---\nElias looked away.'),
+      }),
     }));
 
     finishStream();
@@ -259,8 +261,10 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     await vi.runAllTimersAsync();
 
     expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
-      systemPromptCategory: category,
-      prompt: expect.stringContaining(`Instruction: ${instruction}`),
+      aiPrompt: expect.objectContaining({
+        systemPromptCategory: category,
+        prompt: expect.stringContaining(`Instruction: ${instruction}`),
+      }),
     }));
   });
 
@@ -295,13 +299,13 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
 
     expect(findMatches).toHaveBeenCalledWith('Elias looked away.');
     expect(getEntry.mock.calls).toEqual([['eligible-1'], ['eligible-2']]);
-    const prompt = streamText.mock.calls[0][0].prompt as string;
+    const prompt = streamText.mock.calls[0][0].aiPrompt.prompt as string;
     expect(prompt).toContain('## Outline');
     expect(prompt).toContain('Mara arrives at the estate.');
     expect(prompt).not.toContain('Mara confronts Elias.');
     expect(prompt).toContain('## Codex Context');
-    expect(prompt).toContain('Name: Elias');
-    expect(prompt).toContain('Name: The Watcher');
+    expect(prompt).toContain('### Elias');
+    expect(prompt).toContain('### The Watcher');
     expect(prompt).not.toContain('Scene: The Confrontation');
     expect(prompt).toContain('--- BEGIN SCENE 2');
     expect(prompt).toContain('The Confrontation ---');
@@ -330,8 +334,8 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
 
     expect(getOutline).toHaveBeenCalledWith('book-1');
     expect(getEntry).not.toHaveBeenCalled();
-    expect(streamText.mock.calls[0][0].prompt).toContain('## Outline');
-    expect(streamText.mock.calls[0][0].prompt).not.toContain('## Codex Context');
+    expect(streamText.mock.calls[0][0].aiPrompt.prompt).toContain('## Outline');
+    expect(streamText.mock.calls[0][0].aiPrompt.prompt).not.toContain('## Codex Context');
   });
 
   it.each([
@@ -350,8 +354,8 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     expect(getOutline).not.toHaveBeenCalled();
     expect(findMatches).not.toHaveBeenCalled();
     expect(getEntry).not.toHaveBeenCalled();
-    expect(streamText.mock.calls[0][0].prompt).not.toContain('## Outline');
-    expect(streamText.mock.calls[0][0].prompt).not.toContain('## Codex Context');
+    expect(streamText.mock.calls[0][0].aiPrompt.prompt).not.toContain('## Outline');
+    expect(streamText.mock.calls[0][0].aiPrompt.prompt).not.toContain('## Codex Context');
   });
 
   it('does not stream when required context preparation fails', async () => {

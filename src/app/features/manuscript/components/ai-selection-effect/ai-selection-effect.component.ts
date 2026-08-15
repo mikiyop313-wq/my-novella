@@ -7,9 +7,14 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { AiStreamService } from '../../../../core/services/ai-stream.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import {
-  buildSelectionEditPrompt,
+  buildAiPrompt,
+  type BuiltAiPrompt,
+} from '../../../../shared/utils/ai-prompt-builder';
+import {
+  buildSelectionEditContext,
   serializeCodexContext,
   serializePartialOutline,
+  type SelectionEditContext,
   type SelectionEditAdditionalContext,
 } from '../../../../shared/utils/story-context-builder';
 import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
@@ -109,10 +114,9 @@ export class AiSelectionEffectComponent {
     const { selection } = currentEditor.state;
     const documentSnapshot = currentEditor.state.doc;
     const selectionSnapshot = { from: selection.from, to: selection.to };
-    const context = buildSelectionEditPrompt(
+    const context = buildSelectionEditContext(
       documentSnapshot,
       selectionSnapshot,
-      instruction,
     );
     if (!context) {
       this.toastService.error(
@@ -216,13 +220,13 @@ export class AiSelectionEffectComponent {
     bookId: string,
     documentSnapshot: ProseMirrorNode,
     selectionSnapshot: { from: number; to: number },
-    context: NonNullable<ReturnType<typeof buildSelectionEditPrompt>>,
+    context: SelectionEditContext,
     request: AiSelectionEditRequest,
   ): Promise<void> {
     let response = '';
 
     try {
-      let prompt = context.prompt;
+      let currentContext = context;
       if (request.category === 'expand' || request.category === 'shorten') {
         const additionalContext = await this.prepareExtendedContext(
           bookId,
@@ -232,21 +236,19 @@ export class AiSelectionEffectComponent {
         );
         if (this.streamId !== requestId || this.state() !== 'generating') return;
 
-        const enrichedContext = buildSelectionEditPrompt(
+        const enrichedContext = buildSelectionEditContext(
           documentSnapshot,
           selectionSnapshot,
-          request.instruction,
           additionalContext,
         );
         if (!enrichedContext) throw new Error('Could not rebuild the selection edit prompt.');
-        prompt = enrichedContext.prompt;
+        currentContext = enrichedContext;
       }
 
       await this.aiStreamService.streamText({
         streamId: requestId,
         bookId,
-        systemPromptCategory: request.category,
-        prompt,
+        aiPrompt: buildSelectionEditAiPrompt({ context: currentContext, request }),
         onToken: token => response += token,
       });
 
@@ -323,7 +325,7 @@ export class AiSelectionEffectComponent {
         outline,
         this.workspaceStore.bookTitle(),
         sceneId,
-        sceneContent,
+        { currentSceneProse: sceneContent },
       ),
       codexContext: serializeCodexContext(
         codexEntries.filter(entry => entry !== undefined),
@@ -511,6 +513,33 @@ export class AiSelectionEffectComponent {
   private removeSelectionSpacing(): void {
     this.editor?.unregisterPlugin(AI_SELECTION_SPACING_PLUGIN_KEY);
   }
+}
+
+function buildSelectionEditAiPrompt(options: {
+  context: SelectionEditContext;
+  request: AiSelectionEditRequest;
+}): BuiltAiPrompt {
+  return buildAiPrompt({
+    requestType: options.request.category,
+    messages: [{
+      role: 'user',
+      parts: [
+        {
+          type: 'section',
+          name: 'STORY CONTEXT',
+          content: options.context.storyContext,
+        },
+        {
+          type: 'text',
+          content: [
+            `Instruction: ${options.request.instruction}`,
+            'Edit only the marked passage. Use the surrounding scene for continuity.',
+            'Return only its replacement text.',
+          ].join('\n'),
+        },
+      ],
+    }],
+  });
 }
 
 function mapSelection(

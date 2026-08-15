@@ -1,9 +1,9 @@
 import { Injectable, WritableSignal, inject, signal } from '@angular/core';
 
-import type { SystemPromptCategory } from '../../../../shared/models/system-prompt.model';
 import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
 import { ToastService } from '../../shared/services/toast.service';
-import { AIStateService, type AiChatMessage } from './ai-state.service';
+import type { BuiltAiPrompt } from '../../shared/utils/ai-prompt-builder';
+import { AIStateService } from './ai-state.service';
 import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 
 export type LoadingStatus = 'idle' | 'loading' | 'thinking' | 'generating';
@@ -11,9 +11,7 @@ export type LoadingStatus = 'idle' | 'loading' | 'thinking' | 'generating';
 export interface AiStreamRequest {
   streamId: string;
   bookId: string;
-  systemPromptCategory: SystemPromptCategory;
-  prompt: string;
-  messages?: AiChatMessage[];
+  aiPrompt: BuiltAiPrompt;
   provider?: string;
   modelId?: string;
   reasoningMode?: boolean;
@@ -74,7 +72,7 @@ export class AiStreamService {
       try {
         presetId = await this.systemPromptSelectionService.getActivePresetId(
           request.bookId,
-          request.systemPromptCategory,
+          request.aiPrompt.systemPromptCategory,
         );
       } catch (error) {
         this.toastService.error(
@@ -114,7 +112,7 @@ export class AiStreamService {
       if (provider === undefined && modelId === undefined) {
         const model = await this.systemPromptModelService.resolveActiveModel(
           request.bookId,
-          request.systemPromptCategory,
+          request.aiPrompt.systemPromptCategory,
         );
         if (model.status !== 'ready') {
           this.toastService.error(
@@ -129,14 +127,16 @@ export class AiStreamService {
         modelId = model.modelId;
       }
 
-      return await this.aiStateService.generate(
-        request.prompt,
-        provider,
+      return await this.aiStateService.generate({
+        aiPrompt: request.aiPrompt,
+        model: provider,
         modelId,
-        request.reasoningMode,
-        request.messages,
-        { category: request.systemPromptCategory, presetId },
-      );
+        reasoningMode: request.reasoningMode,
+        systemPromptPreset: {
+          category: request.aiPrompt.systemPromptCategory,
+          presetId,
+        },
+      });
     } finally {
       cleanupToken?.();
       cleanupReasoning?.();

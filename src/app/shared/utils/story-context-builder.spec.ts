@@ -7,11 +7,10 @@ import type {
   SceneDto,
 } from '../../../../shared/models/manuscript.model';
 import {
-  buildSelectionEditPrompt,
+  buildSelectionEditContext,
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
-  serializeAutomaticManuscript,
   serializeCodexContext,
   serializeFullOutline,
   serializeNarrativeGuidance,
@@ -86,7 +85,10 @@ describe('Story context builder', () => {
       createHierarchy(),
       'Silver Key',
       'scene-2',
-      'Before.\n\n--- PASSAGE TO EDIT ---\nSelected.\n--- END PASSAGE ---\n\nAfter.',
+      {
+        currentSceneProse:
+          'Before.\n\n--- PASSAGE TO EDIT ---\nSelected.\n--- END PASSAGE ---\n\nAfter.',
+      },
     );
 
     expect(result).toContain('--- BEGIN SCENE 1');
@@ -97,24 +99,76 @@ describe('Story context builder', () => {
     expect(result).not.toContain('Second summary.');
   });
 
-  it('renders a pruned selected tree without summaries or an unnecessary novel wrapper', () => {
+  it('renders selected prose as manuscript context with only its parent structure', () => {
     const hierarchy = createHierarchy();
     const selected = new Set(['scene-2']);
     const result = serializeSelectedManuscript(
       hierarchy,
       'Silver Key',
-      ['scene:scene-2'],
       selected,
       new Map([['scene-2', 'Only this scene.']]),
     );
 
-    expect(result).toContain('## Selected Manuscript Context');
+    expect(result).toContain('## Manuscript Context');
+    expect(result).not.toContain('## Outline');
+    expect(result).not.toContain('## Full Outline');
     expect(result).toContain('--- BEGIN ACT 1 — Act One ---');
     expect(result).toContain('--- BEGIN CHAPTER 1 — Chapter One ---');
     expect(result).toContain('--- BEGIN SCENE 2 ---');
-    expect(result).not.toContain('BEGIN NOVEL');
+    expect(result).toContain('BEGIN NOVEL');
     expect(result).not.toContain('SCENE 1');
     expect(result).not.toContain('Summary:');
+  });
+
+  it('groups selected scenes from one chapter without duplicating parent delimiters', () => {
+    const result = serializeSelectedManuscript(
+      createHierarchy(),
+      'Silver Key',
+      new Set(['scene-2', 'scene-1']),
+      new Map([
+        ['scene-2', 'Second selected scene.'],
+        ['scene-1', 'First selected scene.'],
+      ]),
+    );
+
+    expect(result.match(/--- BEGIN NOVEL/g)).toHaveLength(1);
+    expect(result.match(/--- BEGIN ACT 1/g)).toHaveLength(1);
+    expect(result.match(/--- BEGIN CHAPTER 1/g)).toHaveLength(1);
+    expect(result.match(/--- END CHAPTER 1/g)).toHaveLength(1);
+    expect(result.match(/--- END ACT 1/g)).toHaveLength(1);
+    expect(result.indexOf('First selected scene.')).toBeLessThan(
+      result.indexOf('Second selected scene.'),
+    );
+  });
+
+  it('keeps only applicable parents for selected scenes across acts', () => {
+    const result = serializeSelectedManuscript(
+      createHierarchy(),
+      'Silver Key',
+      new Set(['scene-3', 'scene-2']),
+      new Map([
+        ['scene-3', 'Later act scene.'],
+        ['scene-2', 'Earlier act scene.'],
+      ]),
+    );
+
+    expect(result.match(/--- BEGIN ACT 1/g)).toHaveLength(1);
+    expect(result.match(/--- BEGIN ACT 2/g)).toHaveLength(1);
+    expect(result.match(/--- BEGIN CHAPTER 1 — Chapter One/g)).toHaveLength(1);
+    expect(result.match(/--- BEGIN CHAPTER 1 ---/g)).toHaveLength(1);
+    expect(result).not.toContain('SCENE 1 — Opening');
+    expect(result.indexOf('Earlier act scene.')).toBeLessThan(
+      result.indexOf('Later act scene.'),
+    );
+  });
+
+  it('omits manuscript context when selected scene references are unavailable', () => {
+    expect(serializeSelectedManuscript(
+      createHierarchy(),
+      'Silver Key',
+      new Set(['missing-scene']),
+      new Map([['missing-scene', 'Unavailable scene prose.']]),
+    )).toBe('');
   });
 
   it('places one prompt boundary inside a selected current scene with remaining prose', () => {
@@ -122,7 +176,6 @@ describe('Story context builder', () => {
     const result = serializeSelectedManuscript(
       hierarchy,
       'Silver Key',
-      ['scene:scene-2', 'scene:scene-3'],
       new Set(['scene-2', 'scene-3']),
       new Map([
         ['scene-2', 'Before. After.'],
@@ -145,7 +198,6 @@ describe('Story context builder', () => {
     const result = serializeSelectedManuscript(
       hierarchy,
       'Silver Key',
-      ['scene:scene-1', 'act:act-2'],
       new Set(['scene-1', 'scene-3']),
       new Map([
         ['scene-1', 'Earlier act prose.'],
@@ -176,7 +228,6 @@ describe('Story context builder', () => {
     const result = serializeSelectedManuscript(
       hierarchy,
       'Silver Key',
-      ['scene:scene-1', 'chapter:chapter-later'],
       new Set(['scene-1', 'scene-later']),
       new Map([
         ['scene-1', 'Earlier chapter prose.'],
@@ -206,7 +257,6 @@ describe('Story context builder', () => {
     const result = serializeSelectedManuscript(
       hierarchy,
       'Silver Key',
-      ['scene:scene-1', 'scene:scene-later'],
       new Set(['scene-1', 'scene-later']),
       new Map([
         ['scene-1', 'Earlier scene prose.'],
@@ -233,7 +283,6 @@ describe('Story context builder', () => {
     const result = serializeSelectedManuscript(
       hierarchy,
       'Silver Key',
-      ['scene:scene-1', 'scene:scene-2'],
       new Set(['scene-1', 'scene-2']),
       new Map([
         ['scene-1', 'Earlier prose.'],
@@ -285,15 +334,20 @@ describe('Story context builder', () => {
     expect(result.match(/FOLLOWING PROSE AND ANY SUBSEQUENT/g)).toHaveLength(1);
   });
 
-  it('renders automatic scenes in hierarchy order with their distinct labels', () => {
-    const result = serializeAutomaticManuscript(
+  it('merges previous and current prose into one partial outline hierarchy', () => {
+    const result = serializePartialOutline(
       createHierarchy(),
-      new Map([
-        ['scene-3', { label: 'Prose', text: 'Current.' }],
-        ['scene-2', { label: 'Full prose', text: 'Previous.' }],
-      ]),
+      'Silver Key',
+      'scene-3',
+      {
+        previousScene: { sceneId: 'scene-2', prose: 'Previous.' },
+        currentSceneProse: 'Current.',
+      },
     );
 
+    expect(result).toContain('## Outline');
+    expect(result).not.toContain('Automatic Manuscript Context');
+    expect(result.match(/--- BEGIN ACT 1/g)).toHaveLength(1);
     expect(result.indexOf('Previous.')).toBeLessThan(result.indexOf('Current.'));
     expect(result).toContain('Full prose:\nPrevious.');
     expect(result).toContain('Prose:\nCurrent.');
@@ -361,7 +415,7 @@ describe('Story context builder', () => {
     ).toBe('Keep.\n\nLine one\nLine two');
   });
 
-  it('builds an exact scene-local rephrase prompt without the scene summary', () => {
+  it('builds exact scene-local edit context without the scene summary', () => {
     const doc = schema.node('doc', null, [
       sceneSummary('scene-1', 'The Confrontation', 'This summary must not be included.'),
       paragraph('Mara entered the room.'),
@@ -373,10 +427,9 @@ describe('Story context builder', () => {
     const selectedText = 'Elias would not meet her eyes.';
     const from = findTextPos(doc, selectedText);
 
-    expect(buildSelectionEditPrompt(
+    expect(buildSelectionEditContext(
       doc,
       { from, to: from + selectedText.length },
-      'Rephrase the marked passage.',
     )).toEqual({
       sceneId: 'scene-1',
       sceneContent: `Mara entered the room.
@@ -387,8 +440,7 @@ Elias would not meet her eyes.
 
 The others waited outside.`,
       selectedProse: 'Elias would not meet her eyes.',
-      prompt: `--- STORY CONTEXT ---
-Scene: The Confrontation
+      storyContext: `Scene: The Confrontation
 
 Mara entered the room.
 
@@ -396,12 +448,7 @@ Mara entered the room.
 Elias would not meet her eyes.
 --- END PASSAGE ---
 
-The others waited outside.
---- END STORY CONTEXT ---
-
-Instruction: Rephrase the marked passage.
-Edit only the marked passage. Use the surrounding scene for continuity.
-Return only its replacement text.`,
+The others waited outside.`,
     });
   });
 
@@ -414,25 +461,22 @@ Return only its replacement text.`,
     ]);
     const selectedText = 'Elias would not meet her eyes.';
     const from = findTextPos(doc, selectedText);
-    const result = buildSelectionEditPrompt(
+    const result = buildSelectionEditContext(
       doc,
       { from, to: from + selectedText.length },
-      'Expand the marked passage.',
       {
         partialOutline: '## Outline\n\nEarlier scene summary.',
         codexContext: '## Codex Context\n\nMara Vale.',
       },
     );
 
-    expect(result?.prompt).toContain(
-      '--- STORY CONTEXT ---\n## Outline\n\nEarlier scene summary.\nScene: The Confrontation',
+    expect(result?.storyContext).toContain(
+      '## Outline\n\nEarlier scene summary.\nScene: The Confrontation',
     );
-    expect(result?.prompt.indexOf('--- END PASSAGE ---')).toBeLessThan(
-      result?.prompt.indexOf('## Codex Context') ?? -1,
+    expect(result?.storyContext.indexOf('--- END PASSAGE ---')).toBeLessThan(
+      result?.storyContext.indexOf('## Codex Context') ?? -1,
     );
-    expect(result?.prompt.indexOf('## Codex Context')).toBeLessThan(
-      result?.prompt.indexOf('--- END STORY CONTEXT ---') ?? -1,
-    );
+    expect(result?.storyContext).toContain('## Codex Context');
   });
 
   it('rejects rephrase selections outside one scene', () => {
@@ -447,21 +491,23 @@ Return only its replacement text.`,
     const firstFrom = findTextPos(doc, 'First passage.');
     const secondFrom = findTextPos(doc, 'Second passage.');
 
-    expect(buildSelectionEditPrompt(doc, {
+    expect(buildSelectionEditContext(doc, {
       from: outsideFrom,
       to: outsideFrom + 'Outside'.length,
-    }, 'Rephrase the marked passage.')).toBeNull();
-    expect(buildSelectionEditPrompt(doc, {
+    })).toBeNull();
+    expect(buildSelectionEditContext(doc, {
       from: firstFrom,
       to: secondFrom + 'Second'.length,
-    }, 'Rephrase the marked passage.')).toBeNull();
+    })).toBeNull();
   });
 
   it('serializes only progression at or before the current active scene', () => {
     const entry = createCodexEntry();
     const result = serializeCodexContext([entry], createHierarchy(), 'scene-2');
 
-    expect(result).toContain('Type: Character');
+    expect(result).toContain('--- BEGIN CODEX CONTEXT ---');
+    expect(result).toContain('--- CHARACTER ---');
+    expect(result).toContain('--- END CODEX CONTEXT ---');
     expect(result).toContain('Aliases: Mara, The Courier');
     expect(result).toContain(
       '- [Act 1 — Act One > Chapter 1 — Chapter One > Scene 1 — Opening] Introduced: She finds the key.',
@@ -473,6 +519,33 @@ Return only its replacement text.`,
     expect(result).not.toContain('Future');
     expect(result).not.toContain('Unlinked');
     expect(result).not.toContain('Private note');
+  });
+
+  it('groups Codex entries by type inside one context wrapper', () => {
+    const character = createCodexEntry();
+    const location: CodexEntryDetailDto = {
+      ...createCodexEntry(),
+      id: 'codex-location',
+      type: 'location',
+      name: 'Nocturne Academy',
+      alias: null,
+      description: 'An isolated academy.',
+      entryProgression: [],
+    };
+    const result = serializeCodexContext(
+      [character, location],
+      createHierarchy(),
+      'scene-2',
+    );
+
+    expect(result.match(/--- BEGIN CODEX CONTEXT ---/g)).toHaveLength(1);
+    expect(result.match(/--- END CODEX CONTEXT ---/g)).toHaveLength(1);
+    expect(result.match(/--- CHARACTER ---/g)).toHaveLength(1);
+    expect(result.match(/--- LOCATION ---/g)).toHaveLength(1);
+    expect(result.indexOf('### Mara')).toBeLessThan(result.indexOf('--- LOCATION ---'));
+    expect(result).toContain('### Nocturne Academy');
+    expect(result).not.toContain('Name:');
+    expect(result).not.toContain('BEGIN CODEX ENTRY');
   });
 });
 

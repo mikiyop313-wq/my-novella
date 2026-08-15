@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { vi } from 'vitest';
 
 import { AiStreamService } from '../../../../core/services/ai-stream.service';
+import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 import { AiStreamEditorService } from './ai-stream-editor.service';
 
 const AiGeneratedBlock = Node.create({
@@ -32,12 +33,13 @@ describe('AiStreamEditorService', () => {
     });
     const service = TestBed.inject(AiStreamEditorService);
     vi.spyOn(service as any, 'finalizeGeneratingBlock').mockImplementation(() => undefined);
+    const aiPrompt = textPrompt('Continue.');
 
     await (service as any).streamToBlock(
       {} as Editor,
       10,
       { id: 'block-1' },
-      'Continue.',
+      aiPrompt,
       'openrouter',
       'model-1',
       false,
@@ -47,8 +49,7 @@ describe('AiStreamEditorService', () => {
     expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'block-1',
       bookId: 'book-1',
-      systemPromptCategory: 'sceneBeat',
-      prompt: 'Continue.',
+      aiPrompt,
     }));
 
     TestBed.resetTestingModule();
@@ -68,18 +69,24 @@ describe('AiStreamEditorService', () => {
       { role: 'system' as const, content: 'Reference data.' },
       { role: 'user' as const, content: 'Continue.' },
     ];
+    const aiPrompt = buildAiPrompt({
+      requestType: 'sceneBeat',
+      messages: messages.map(message => ({
+        role: message.role,
+        parts: [{ type: 'text' as const, content: message.content }],
+      })),
+    });
     const editor = {} as Editor;
 
     await service.generateNewBlock(
       editor,
       10,
-      'Continue.',
+      aiPrompt,
       'openrouter',
       'model-1',
       false,
       'book-1',
       'block-1',
-      messages,
     );
 
     expect(insertInitialBlock).toHaveBeenCalled();
@@ -87,12 +94,11 @@ describe('AiStreamEditorService', () => {
       editor,
       12,
       expect.objectContaining({ id: 'block-1' }),
-      'Continue.',
+      aiPrompt,
       'openrouter',
       'model-1',
       false,
       'book-1',
-      messages,
     );
 
     TestBed.resetTestingModule();
@@ -110,12 +116,13 @@ describe('AiStreamEditorService', () => {
     vi.spyOn(service as any, 'resetBlockContent').mockReturnValue(21);
     const streamToBlock = vi.spyOn(service as any, 'streamToBlock').mockResolvedValue(undefined);
     const editor = {} as Editor;
+    const aiPrompt = textPrompt('Try again');
 
     await service.regenerateExistingBlock(
       editor,
       20,
       { id: 'block-1', promptText: 'Original prompt' },
-      'Try again',
+      aiPrompt,
       'openrouter',
       'model-1',
       false,
@@ -126,7 +133,7 @@ describe('AiStreamEditorService', () => {
       editor,
       21,
       expect.objectContaining({ id: 'block-1' }),
-      'Try again',
+      aiPrompt,
       'openrouter',
       'model-1',
       false,
@@ -238,6 +245,16 @@ describe('AiStreamEditorService', () => {
     TestBed.resetTestingModule();
   });
 });
+
+function textPrompt(content: string) {
+  return buildAiPrompt({
+    requestType: 'sceneBeat',
+    messages: [{
+      role: 'user',
+      parts: [{ type: 'text', content }],
+    }],
+  });
+}
 
 function createGeneratingEditor(): Editor {
   return new Editor({

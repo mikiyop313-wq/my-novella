@@ -46,14 +46,17 @@ describe('AIStateService', () => {
     ];
 
     await expect(
-      service.generate(
-        'Continue',
-        'openrouter',
-        'model-1',
-        true,
-        messages,
-        { category: 'chat', presetId: 'custom-chat' },
-      ),
+      service.generate({
+        aiPrompt: {
+          systemPromptCategory: 'chat',
+          prompt: 'Continue',
+          messages,
+        },
+        model: 'openrouter',
+        modelId: 'model-1',
+        reasoningMode: true,
+        systemPromptPreset: { category: 'chat', presetId: 'custom-chat' },
+      }),
     ).resolves.toBe('Done');
 
     expect(invoke).toHaveBeenCalledWith('ai:generate', {

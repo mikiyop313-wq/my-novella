@@ -5,9 +5,13 @@ import {
   type ChatThreadDetailDto,
 } from '../../../../../shared/models/chat.model';
 import { AiStore } from '../../../core/store/ai.store';
-import { type AiChatMessage } from '../../../core/services/ai-state.service';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
 import { ToastService } from '../../../shared/services/toast.service';
+import {
+  buildAiPrompt,
+  type AiPromptMessageInput,
+  type BuiltAiPrompt,
+} from '../../../shared/utils/ai-prompt-builder';
 import { resolveAiModelTarget } from '../../../shared/utils/ai-model-selection';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
 import { WorkspaceStore } from '../../workspace/workspace.store';
@@ -78,9 +82,9 @@ export class ChatResponseService {
     }
 
     const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
-    let messages: AiChatMessage[];
+    let aiPrompt: BuiltAiPrompt;
     try {
-      messages = await this.buildAiMessages(userMessage);
+      aiPrompt = await this.buildChatAiPrompt(userMessage, prompt);
     } catch (error) {
       console.error('[ChatResponseService] AI context preparation failed:', error);
       this.toastService.error(
@@ -156,9 +160,7 @@ export class ChatResponseService {
       const generatedText = await this.aiStreamService.streamText({
         streamId,
         bookId,
-        systemPromptCategory: 'chat',
-        prompt,
-        messages,
+        aiPrompt,
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: settings.reasoningMode,
@@ -321,7 +323,10 @@ export class ChatResponseService {
   // Private Helpers
   // ---------------------------------------------------------------------------
 
-  private async buildAiMessages(userMessage: ChatMessageDetailDto): Promise<AiChatMessage[]> {
+  private async buildChatAiPrompt(
+    userMessage: ChatMessageDetailDto,
+    prompt: string,
+  ): Promise<BuiltAiPrompt> {
     const threadMessages = this.chatStore.visibleMessages();
     const userMessageIndex = threadMessages.findIndex((message) => message.id === userMessage.id);
     const messages =
@@ -338,8 +343,8 @@ export class ChatResponseService {
           message.content.trim().length > 0,
       );
     const bookId = this.chatStore.bookId();
-    const contextMessage = bookId
-      ? await this.chatAiContext.buildContextMessage({
+    const context = bookId
+      ? await this.chatAiContext.buildContext({
           userMessage,
           bookId,
           bookTitle: this.workspaceStore.bookId() === bookId
@@ -349,12 +354,25 @@ export class ChatResponseService {
         })
       : null;
 
-    return includedMessages.flatMap((message) => {
-      const aiMessage = { role: message.role, content: message.content };
-      return contextMessage && message.id === userMessage.id
+    const promptMessages: AiPromptMessageInput[] = includedMessages.flatMap((message) => {
+      const aiMessage: AiPromptMessageInput = {
+        role: message.role,
+        parts: [{
+          type: 'text',
+          content: message.id === userMessage.id ? prompt : message.content,
+        }],
+      };
+      const contextMessage: AiPromptMessageInput = {
+        role: 'user',
+        parts: [{ type: 'section', name: 'STORY CONTEXT', content: context ?? '' }],
+      };
+
+      return context && message.id === userMessage.id
         ? [contextMessage, aiMessage]
         : [aiMessage];
     });
+
+    return buildAiPrompt({ requestType: 'chat', messages: promptMessages });
   }
 
   private async generateThreadTitle(
@@ -367,8 +385,13 @@ export class ChatResponseService {
       const rawTitle = await this.aiStreamService.streamText({
         streamId: `title-${userMessage.id}`,
         bookId,
-        systemPromptCategory: 'title',
-        prompt: userMessage.content,
+        aiPrompt: buildAiPrompt({
+          requestType: 'title',
+          messages: [{
+            role: 'user',
+            parts: [{ type: 'text', content: userMessage.content }],
+          }],
+        }),
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: false,

@@ -24,7 +24,7 @@ import { ElectronService } from '../../core/services/electron.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
 import { OverlayModalDirective } from '../../shared/directives/overlay-modal.directive';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
-import { buildPromptSection } from '../../shared/utils/ai-prompt-builder';
+import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
 import { AutocompleteKeepOpenMenuItemDirective } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import {
@@ -713,8 +713,7 @@ export class Outline implements OnInit {
       const response = await this.aiStreamService.streamText({
         streamId: `outline-codex-detection:${sceneId}`,
         bookId,
-        systemPromptCategory: 'codexDetection',
-        prompt: buildCodexDetectionPrompt({ prose, existingEntries }),
+        aiPrompt: buildCodexDetectionPrompt({ prose, existingEntries }),
         provider: selectedModel.provider,
         modelId: selectedModel.modelId,
       });
@@ -809,8 +808,13 @@ export class Outline implements OnInit {
         generatedSummary = await this.aiStreamService.streamText({
           streamId: `outline-scene-summary:${sceneId}`,
           bookId,
-          systemPromptCategory: 'summary',
-          prompt: buildPromptSection({ name: 'SCENE PROSE', content: prose }),
+          aiPrompt: buildAiPrompt({
+            requestType: 'summary',
+            messages: [{
+              role: 'user',
+              parts: [{ type: 'section', name: 'SCENE PROSE', content: prose }],
+            }],
+          }),
           provider: selectedModel.provider,
           modelId: selectedModel.modelId,
         });

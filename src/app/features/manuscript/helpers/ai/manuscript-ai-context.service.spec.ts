@@ -11,6 +11,7 @@ import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/mode
 import { ManuscriptAiContextService } from './manuscript-ai-context.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
+import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 
 const AFTER_PROSE_NOTE = '[THE FOLLOWING PROSE AND ANY SUBSEQUENT SCENES, CHAPTERS, OR ACTS OCCUR AFTER THE INSERTION POINT. USE THEM ONLY AS FUTURE CONTEXT.]';
 
@@ -55,12 +56,11 @@ describe('ManuscriptAiContextService', () => {
 
   afterEach(() => TestBed.resetTestingModule());
 
-  it('loads the previous skeletonized scene and places the author prompt last', async () => {
+  it('loads the previous scene when there is no current prose before the prompt', async () => {
     const doc = schema.node('doc', null, [
       sceneSummary('scene-1'),
       schema.node('sceneSkeleton'),
       sceneSummary('scene-2'),
-      paragraph('Current before prompt.'),
       schema.node('aiPrompt'),
       paragraph('Current after prompt.'),
     ]);
@@ -71,15 +71,46 @@ describe('ManuscriptAiContextService', () => {
       };
     });
 
-    const messages = await service.buildMessages(baseRequest(doc, findNodePos(doc, 'aiPrompt')));
+    const messages = await buildContextMessages(
+      service,
+      baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+    );
 
     expect(flushDirtySections).toHaveBeenCalledOnce();
     expect(invoke).toHaveBeenCalledWith('manuscript:getScenesProse', { sceneIds: ['scene-1'] });
     expect(messages.map(message => message.role)).toEqual(['user', 'user']);
+    expect(messages[0].content).toContain('## Outline');
+    expect(messages[0].content).not.toContain('Automatic Manuscript Context');
+    expect(messages[0].content.match(/--- BEGIN ACT 1/g)).toHaveLength(1);
     expect(messages[0].content).toContain('Full prose:\nPersisted previous prose.');
-    expect(messages[0].content).toContain('Prose:\nCurrent before prompt.');
     expect(messages[0].content).not.toContain('Current after prompt.');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('uses current prose without loading the previous scene', async () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-1'),
+      schema.node('sceneSkeleton'),
+      sceneSummary('scene-2'),
+      paragraph('Current before prompt.'),
+      schema.node('aiPrompt'),
+    ]);
+    invoke.mockResolvedValue(createHierarchy());
+
+    const messages = await buildContextMessages(
+      service,
+      baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+    );
+
+    expect(flushDirtySections).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith(
+      'manuscript:getScenesProse',
+      expect.anything(),
+    );
+    expect(messages[0].content).toContain('Prose:\nCurrent before prompt.');
+    expect(messages[0].content).not.toContain('Full prose:');
+    expect(messages[0].content).not.toContain('Automatic Manuscript Context');
+    expect(messages[0].content.match(/--- BEGIN ACT 1/g)).toHaveLength(1);
   });
 
   it('loads an Outline with persisted summaries for scenes before the current prompt scene', async () => {
@@ -87,6 +118,7 @@ describe('ManuscriptAiContextService', () => {
       sceneSummary('scene-1'),
       paragraph('Earlier scene prose.'),
       sceneSummary('scene-2'),
+      paragraph('Current scene prose.'),
       schema.node('aiPrompt'),
     ]);
 
@@ -94,7 +126,7 @@ describe('ManuscriptAiContextService', () => {
     request.hierarchy[0].chapters![0].scenes![0].summary = null;
     invoke.mockResolvedValue(createHierarchy());
 
-    const messages = await service.buildMessages(request);
+    const messages = await buildContextMessages(service, request);
 
     expect(invoke).toHaveBeenCalledWith('manuscript:getOutline', { bookId: 'book-1' });
     expect(messages[0].content).toContain('## Outline');
@@ -109,14 +141,22 @@ describe('ManuscriptAiContextService', () => {
       schema.node('aiPrompt'),
       paragraph('Prose after prompt.'),
     ]);
+    invoke.mockResolvedValue(createHierarchy());
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       manuscriptRefs: ['scene:scene-1'],
     });
 
     expect(flushDirtySections).not.toHaveBeenCalled();
-    expect(invoke).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith('manuscript:getOutline', { bookId: 'book-1' });
+    expect(invoke).not.toHaveBeenCalledWith(
+      'manuscript:getScenesProse',
+      expect.anything(),
+    );
+    expect(messages[0].content).toContain('## Outline');
+    expect(messages[0].content).not.toContain('Selected Manuscript Context');
+    expect(messages[0].content.match(/--- BEGIN ACT 1/g)).toHaveLength(1);
     expect(messages[0].content).toContain(
       `Prose:\nUnsaved editor prose.\n\n${AFTER_PROSE_NOTE}\n\nProse after prompt.`,
     );
@@ -132,8 +172,9 @@ describe('ManuscriptAiContextService', () => {
       sceneSummary('scene-2'),
       paragraph('Later selected scene.'),
     ]);
+    invoke.mockResolvedValue(createHierarchy());
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       manuscriptRefs: ['chapter:chapter-1'],
     });
@@ -150,19 +191,56 @@ describe('ManuscriptAiContextService', () => {
     expect(context.match(/FOLLOWING PROSE AND ANY SUBSEQUENT/g)).toHaveLength(1);
   });
 
-  it('loads the outline without flushing prose when no unloaded scene prose is requested', async () => {
-    const doc = schema.node('doc', null, [sceneSummary('scene-1'), schema.node('aiPrompt')]);
+  it('keeps current prose alongside the full outline without loading the previous scene', async () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-1'),
+      schema.node('sceneSkeleton'),
+      sceneSummary('scene-2'),
+      paragraph('Current before prompt.'),
+      schema.node('aiPrompt'),
+      paragraph('Current after prompt.'),
+    ]);
     invoke.mockResolvedValue(createHierarchy());
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       includeFullOutline: true,
     });
 
     expect(flushDirtySections).not.toHaveBeenCalled();
     expect(invoke).toHaveBeenCalledWith('manuscript:getOutline', { bookId: 'book-1' });
+    expect(invoke).not.toHaveBeenCalledWith(
+      'manuscript:getScenesProse',
+      expect.anything(),
+    );
     expect(messages[0].content).toContain('## Full Outline');
-    expect(messages[0].content).not.toContain('\nProse:');
+    expect(messages[0].content).not.toContain('Persisted previous prose.');
+    expect(messages[0].content).toContain(
+      `Prose:\nCurrent before prompt.\n\n${AFTER_PROSE_NOTE}\n\nCurrent after prompt.`,
+    );
+  });
+
+  it('loads previous prose alongside the full outline when the prompt has no preceding prose', async () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-1'),
+      schema.node('sceneSkeleton'),
+      sceneSummary('scene-2'),
+      schema.node('aiPrompt'),
+    ]);
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'manuscript:getOutline') return createHierarchy();
+      return { 'scene-1': proseDocument('Persisted previous prose.') };
+    });
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      includeFullOutline: true,
+    });
+
+    expect(flushDirtySections).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith('manuscript:getScenesProse', { sceneIds: ['scene-1'] });
+    expect(messages[0].content).toContain('## Full Outline');
+    expect(messages[0].content).toContain('Prose:\nPersisted previous prose.');
   });
 
   it('loads selected prose from the database alongside the full outline', async () => {
@@ -180,7 +258,7 @@ describe('ManuscriptAiContextService', () => {
       return undefined;
     });
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       includeFullOutline: true,
       manuscriptRefs: ['scene:scene-1'],
@@ -206,7 +284,7 @@ describe('ManuscriptAiContextService', () => {
       entryProgression: [],
     }));
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       manualCodexEntryIds: ['codex-1'],
       automaticCodexEntryIds: new Set(['codex-1', 'codex-2']),
@@ -220,14 +298,20 @@ describe('ManuscriptAiContextService', () => {
     expect(getEntry).toHaveBeenCalledTimes(2);
     expect(getEntry).toHaveBeenNthCalledWith(1, 'codex-1');
     expect(getEntry).toHaveBeenNthCalledWith(2, 'codex-2');
-    expect(messages[0].content.match(/--- BEGIN CODEX ENTRY ---/g)).toHaveLength(2);
+    expect(messages[0].content.match(/--- BEGIN CODEX CONTEXT ---/g)).toHaveLength(1);
+    expect(messages[0].content.match(/--- CHARACTER ---/g)).toHaveLength(1);
+    expect(messages[0].content).toContain('### Mara');
+    expect(messages[0].content).toContain('### The Silver Key');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
   });
 
   it('uses the book POV for global prompts and omits a null POV character', async () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
 
-    const messages = await service.buildMessages(baseRequest(doc, findNodePos(doc, 'aiPrompt')));
+    const messages = await buildContextMessages(
+      service,
+      baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+    );
 
     expect(messages[0].content).toContain('## Narrative Guidance');
     expect(messages[0].content).toContain('Point of View: Third Person Omniscient');
@@ -239,7 +323,7 @@ describe('ManuscriptAiContextService', () => {
   it('includes the requested minimum word count in narrative guidance', async () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       wordCount: 1250,
     });
@@ -250,7 +334,7 @@ describe('ManuscriptAiContextService', () => {
   it('lets the model choose the length when word count is automatic', async () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       wordCount: 0,
     });
@@ -262,14 +346,14 @@ describe('ManuscriptAiContextService', () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
     const promptPos = findNodePos(doc, 'aiPrompt');
 
-    const overridden = await service.buildMessages({
+    const overridden = await buildContextMessages(service, {
       ...baseRequest(doc, promptPos),
       pointOfView: 'first',
     });
     expect(overridden[0].content).toContain('Point of View: First Person');
 
     books.mockReturnValue([]);
-    const defaulted = await service.buildMessages(baseRequest(doc, promptPos));
+    const defaulted = await buildContextMessages(service, baseRequest(doc, promptPos));
     expect(defaulted[0].content).toContain('Point of View: Third Person Limited');
   });
 
@@ -282,7 +366,7 @@ describe('ManuscriptAiContextService', () => {
       entryProgression: [],
     });
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       pointOfView: 'first',
       povCharacterId: 'codex-1',
@@ -295,20 +379,21 @@ describe('ManuscriptAiContextService', () => {
     expect(messages[0].content).toContain('Point of View: First Person');
     expect(messages[0].content).toContain('POV Character: Mara');
     expect(messages[0].content).toContain('Description:\nCarries the silver key.');
-    expect(messages[0].content.match(/--- BEGIN CODEX ENTRY ---/g)).toHaveLength(1);
+    expect(messages[0].content.match(/--- BEGIN CODEX CONTEXT ---/g)).toHaveLength(1);
+    expect(messages[0].content.match(/--- END CODEX CONTEXT ---/g)).toHaveLength(1);
   });
 
   it('omits an unresolved character and withholds never-include character details', async () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
     const promptPos = findNodePos(doc, 'aiPrompt');
 
-    const unresolved = await service.buildMessages({
+    const unresolved = await buildContextMessages(service, {
       ...baseRequest(doc, promptPos),
       povCharacterId: 'missing-character',
     });
     expect(unresolved[0].content).not.toContain('POV Character:');
 
-    const neverIncluded = await service.buildMessages({
+    const neverIncluded = await buildContextMessages(service, {
       ...baseRequest(doc, promptPos),
       povCharacterId: 'codex-1',
       codexEntries: [cachedCodexEntry({ trackingSetting: 'never_include' })],
@@ -326,13 +411,13 @@ describe('ManuscriptAiContextService', () => {
       codexEntries: [cachedCodexEntry()],
     };
 
-    const messages = await service.buildMessages(request);
+    const messages = await buildContextMessages(service, request);
     expect(messages).toHaveLength(2);
     expect(messages[0].content).toContain('Point of View: Third Person Omniscient');
     expect(messages.at(-1)?.content).toBe('Continue the scene.');
 
     getEntry.mockRejectedValueOnce(new Error('Codex unavailable'));
-    await expect(service.buildMessages(request)).rejects.toThrow('Codex unavailable');
+    await expect(buildContextMessages(service, request)).rejects.toThrow('Codex unavailable');
   });
 
   it('adds the top similar manuscript paragraphs before the author prompt', async () => {
@@ -346,7 +431,7 @@ describe('ManuscriptAiContextService', () => {
       distance: 0.12,
     }]);
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       vectorSearch: 'enabled',
     });
@@ -383,7 +468,7 @@ describe('ManuscriptAiContextService', () => {
       distance: 0.12,
     }]);
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       hierarchy,
       vectorSearch: 'enabled',
@@ -398,7 +483,7 @@ describe('ManuscriptAiContextService', () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
     searchSimilarParagraphs.mockRejectedValue(new Error('Embedding provider unavailable'));
 
-    const messages = await service.buildMessages({
+    const messages = await buildContextMessages(service, {
       ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
       vectorSearch: 'enabled',
     });
@@ -419,14 +504,14 @@ describe('ManuscriptAiContextService', () => {
       id: 'book-1',
       settings: { pointOfView: 'third_omni', vectorSearchEnabled: false },
     }]);
-    await service.buildMessages(request);
+    await buildContextMessages(service, request);
     expect(searchSimilarParagraphs).not.toHaveBeenCalled();
 
     books.mockReturnValue([{
       id: 'book-1',
       settings: { pointOfView: 'third_omni', vectorSearchEnabled: true },
     }]);
-    await service.buildMessages(request);
+    await buildContextMessages(service, request);
     expect(searchSimilarParagraphs).toHaveBeenCalledWith({
       bookId: 'book-1',
       query: 'Continue the scene.',
@@ -445,6 +530,26 @@ const schema = new Schema({
     aiPrompt: { group: 'block', atom: true, attrs: { id: { default: 'prompt-1' } } },
   },
 });
+
+async function buildContextMessages(
+  service: ManuscriptAiContextService,
+  request: Parameters<ManuscriptAiContextService['buildContext']>[0],
+) {
+  const storyContext = await service.buildContext(request);
+  return buildAiPrompt({
+    requestType: 'sceneBeat',
+    messages: [
+      {
+        role: 'user',
+        parts: [{ type: 'section', name: 'STORY CONTEXT', content: storyContext }],
+      },
+      {
+        role: 'user',
+        parts: [{ type: 'text', content: request.promptText }],
+      },
+    ],
+  }).messages;
+}
 
 function baseRequest(doc: ProseMirrorNode, promptPos: number) {
   return {

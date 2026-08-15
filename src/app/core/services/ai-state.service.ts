@@ -1,12 +1,16 @@
 import { Injectable, inject } from '@angular/core';
 import type { AiSystemPromptPresetSelection } from '../../../../shared/models/system-prompt.model';
+import type { BuiltAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import { ToastService } from '../../shared/services/toast.service';
 
-export type AiChatMessageRole = 'system' | 'user' | 'assistant';
+export type { AiChatMessage } from '../../../../shared/models/ai.model';
 
-export interface AiChatMessage {
-    role: AiChatMessageRole;
-    content: string;
+export interface AiGenerationRequest {
+    aiPrompt: BuiltAiPrompt;
+    model?: string;
+    modelId?: string;
+    reasoningMode?: boolean;
+    systemPromptPreset?: AiSystemPromptPresetSelection;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -22,25 +26,20 @@ export class AIStateService {
         return window.electronAPI.abortAiGeneration?.() ?? Promise.resolve();
     }
 
-    async generate(
-        promptText: string,
-        model?: string,
-        modelId?: string,
-        reasoningMode?: boolean,
-        messages?: AiChatMessage[],
-        systemPromptPreset?: AiSystemPromptPresetSelection,
-    ) {
+    async generate(request: AiGenerationRequest) {
         // Default to openai if the user hasn't selected one yet
-        const providerToUse = model || this.model || 'openrouter';
+        const providerToUse = request.model || this.model || 'openrouter';
 
         try {
             const response = await window.electronAPI.invoke('ai:generate', {
                 model: providerToUse,
-                modelId: modelId,
-                prompt: promptText,
-                reasoningMode: reasoningMode ?? false,
-                ...(messages !== undefined ? { messages } : {}),
-                ...(systemPromptPreset !== undefined ? { systemPromptPreset } : {}),
+                modelId: request.modelId,
+                prompt: request.aiPrompt.prompt,
+                reasoningMode: request.reasoningMode ?? false,
+                messages: request.aiPrompt.messages,
+                ...(request.systemPromptPreset !== undefined
+                    ? { systemPromptPreset: request.systemPromptPreset }
+                    : {}),
             });
 
             return response.text;
