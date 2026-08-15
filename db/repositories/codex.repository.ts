@@ -225,7 +225,7 @@ export class CodexRepository {
       .select()
       .from(codexEntries)
       .where(this.createListWhere(bookId, filters))
-      .orderBy(desc(codexEntries.lastEditedAt), desc(codexEntries.createdAt));
+      .orderBy(asc(codexEntries.name));
 
     return results.map((entry) => this.mapToDto(entry));
   }
