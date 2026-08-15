@@ -104,4 +104,22 @@ describe('AIStateService', () => {
     expect(toastError).not.toHaveBeenCalled();
     expect(toastWarning).not.toHaveBeenCalled();
   });
+
+  it('suppresses provider failure toasts when requested', async () => {
+    invoke.mockRejectedValue(new Error('401 Unauthorized'));
+
+    await expect(service.generate({
+      streamId: 'stream-1',
+      aiPrompt: {
+        systemPromptCategory: 'rephrase',
+        prompt: 'Rewrite',
+        messages: [{ role: 'user', content: 'Rewrite' }],
+      },
+      model: 'openrouter',
+      suppressErrorToasts: true,
+    })).rejects.toThrow('401 Unauthorized');
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastWarning).not.toHaveBeenCalled();
+  });
 });

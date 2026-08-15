@@ -331,6 +331,20 @@ describe('AiStreamService', () => {
     );
     expect(statuses).toEqual(['loading', 'idle']);
   });
+
+  it('suppresses preset lookup error toasts when requested', async () => {
+    const error = new Error('Selection unavailable');
+    getActivePresetId.mockRejectedValue(error);
+
+    await expect(service.streamText({
+      streamId: 'stream-1',
+      bookId: 'book-1',
+      aiPrompt: textPrompt('chat', 'Write'),
+      suppressErrorToasts: true,
+    })).rejects.toBe(error);
+
+    expect(toastError).not.toHaveBeenCalled();
+  });
 });
 
 function textPrompt(

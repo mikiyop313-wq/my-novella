@@ -4,12 +4,12 @@ import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AiStreamService } from '../../../../../core/services/ai-stream.service';
-import { ToastService } from '../../../../../shared/services/toast.service';
 import { WorkspaceStore } from '../../../../workspace/workspace.store';
 import { ManuscriptStructureService } from '../../../../workspace/services/manuscript-structure.service';
 import { CodexContextTrieService } from '../../../../codex/services/codex-context-trie.service';
 import { CodexService } from '../../../../codex/services/codex.service';
 import { ManuscriptStore } from '../../../store/manuscript.store';
+import { AiStreamEditorService } from '../../../helpers/ai/ai-stream-editor.service';
 import { AiSelectionEffectComponent } from '../ai-selection-effect.component';
 
 describe('AiSelectionEffectComponent', () => {
@@ -50,10 +50,16 @@ describe('AiSelectionEffectComponent', () => {
         { provide: CodexService, useValue: { getEntry: vi.fn() } },
         { provide: ManuscriptStructureService, useValue: { getOutline: vi.fn() } },
         {
+          provide: AiStreamEditorService,
+          useValue: {
+            acquireSceneGeneration: vi.fn(() => true),
+            releaseSceneGeneration: vi.fn(),
+          },
+        },
+        {
           provide: AiStreamService,
           useValue: { streamText: vi.fn(() => new Promise(() => undefined)), stopStream: vi.fn() },
         },
-        { provide: ToastService, useValue: { error: vi.fn() } },
       ],
     }).compileComponents();
 

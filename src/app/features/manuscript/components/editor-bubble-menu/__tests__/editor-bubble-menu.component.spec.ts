@@ -81,13 +81,10 @@ describe('EditorBubbleMenuComponent AI actions', () => {
     expect(component.isVisible()).toBe(true);
   });
 
-  it('keeps the menu hidden while the AI selection response is active', () => {
-    component.aiSelectionEffect.state.set('ready');
-    component.isVisible.set(true);
+  it('does not globally disable Ask AI while another scene has an active edit', () => {
+    component.aiSelectionEffect.activeEditCount.set(1);
 
-    component['updateMenuPosition']();
-
-    expect(component.isVisible()).toBe(false);
+    expect(component.isAskAiDisabled()).toBe(false);
   });
 
   it('rejects a blank Other instruction without starting the effect', () => {

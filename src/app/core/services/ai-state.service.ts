@@ -11,6 +11,7 @@ export interface AiGenerationRequest {
     model?: string;
     modelId?: string;
     reasoningMode?: boolean;
+    suppressErrorToasts?: boolean;
     systemPromptPreset?: AiSystemPromptPresetSelection;
 }
 
@@ -55,7 +56,7 @@ export class AIStateService {
             if (e instanceof Error && e.name === 'AbortError') throw e;
 
             console.error("Failed to generate text:", e);
-            if (e instanceof Error) {
+            if (e instanceof Error && !request.suppressErrorToasts) {
                 if (e.message.includes('429')) {
                     this.toastService.warning('The model is temporarily rate-limited. Please retry shortly.');
                 } else if (e.message.includes('401')) {

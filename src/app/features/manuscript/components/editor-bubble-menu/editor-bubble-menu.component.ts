@@ -2,27 +2,25 @@ import { Component, ElementRef, ViewChild, signal, inject, NgZone, effect } from
 import { CommonModule } from '@angular/common';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
 import { ManuscriptStore } from '../../store/manuscript.store';
-import { AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
 import { findCurrentSceneIdBeforePosition } from '../../../../shared/utils/story-context-builder';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 import {
-  AiSelectionEffectComponent,
   type AiSelectionEditRequest,
 } from '../ai-selection-effect/ai-selection-effect.component';
+import { AiSelectionEffectHostComponent } from '../ai-selection-effect/ai-selection-effect-host.component';
 
 @Component({
   selector: 'app-editor-bubble-menu',
   standalone: true,
-  imports: [CommonModule, OverlayMenuDirective, AiSelectionEffectComponent],
+  imports: [CommonModule, OverlayMenuDirective, AiSelectionEffectHostComponent],
   templateUrl: './editor-bubble-menu.component.html',
   styleUrl: './editor-bubble-menu.component.scss'
 })
 export class EditorBubbleMenuComponent {
   @ViewChild('menuRef') menuRef!: ElementRef<HTMLDivElement>;
-  @ViewChild(AiSelectionEffectComponent) aiSelectionEffect!: AiSelectionEffectComponent;
+  @ViewChild(AiSelectionEffectHostComponent) aiSelectionEffect!: AiSelectionEffectHostComponent;
 
   readonly store = inject(ManuscriptStore);
-  readonly generationSessions = inject(AiGenerationSessionService);
   readonly aiStreamEditor = inject(AiStreamEditorService);
   private zone = inject(NgZone);
 
@@ -82,11 +80,6 @@ export class EditorBubbleMenuComponent {
   };
 
   private updateMenuPosition(): void {
-    if (this.aiSelectionEffect?.state() !== 'idle') {
-      this.isVisible.set(false);
-      return;
-    }
-
     const currentEditor = this.store.editor();
     if (!currentEditor) {
       this.isVisible.set(false);
@@ -200,8 +193,6 @@ export class EditorBubbleMenuComponent {
   }
 
   isAskAiDisabled(): boolean {
-    if (this.generationSessions.hasActiveSession('manuscript-selection')) return true;
-
     const currentEditor = this.store.editor();
     if (!currentEditor) return false;
 

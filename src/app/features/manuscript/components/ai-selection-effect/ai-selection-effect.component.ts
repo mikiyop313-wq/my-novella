@@ -1,11 +1,10 @@
-import { Component, computed, effect, inject, NgZone, signal } from '@angular/core';
+import { Component, computed, effect, EventEmitter, inject, NgZone, Output, signal } from '@angular/core';
 import type { Editor } from '@tiptap/core';
 import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
-import { ToastService } from '../../../../shared/services/toast.service';
 import {
   buildAiPrompt,
   type BuiltAiPrompt,
@@ -21,6 +20,7 @@ import { CodexContextTrieService } from '../../../codex/services/codex-context-t
 import { CodexService } from '../../../codex/services/codex.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import {
   buildAiSelectionDiff,
@@ -40,7 +40,6 @@ const EFFECT_PADDING = 10;
 const EFFECT_DRAW_DURATION_MS = 600;
 const EFFECT_ACTIONS_HEIGHT = 48;
 const EFFECT_READY_MIN_WIDTH = 280;
-const AI_SELECTION_SPACING_PLUGIN_KEY = new PluginKey('aiSelectionSpacing');
 
 export type AiSelectionEditCategory = 'rephrase' | 'expand' | 'shorten';
 
@@ -57,6 +56,8 @@ export interface AiSelectionEditRequest {
   styleUrl: './ai-selection-effect.component.scss',
 })
 export class AiSelectionEffectComponent {
+  @Output() readonly dismissed = new EventEmitter<void>();
+
   readonly state = signal<AiSelectionEffectState>('idle');
   readonly bounds = signal<AiSelectionBounds | null>(null);
   readonly clipPath = signal<string | null>(null);
@@ -75,7 +76,7 @@ export class AiSelectionEffectComponent {
   private readonly store = inject(ManuscriptStore);
   private readonly workspaceStore = inject(WorkspaceStore);
   private readonly generationSessions = inject(AiGenerationSessionService);
-  private readonly toastService = inject(ToastService);
+  private readonly aiStreamEditor = inject(AiStreamEditorService);
   private readonly codexContext = inject(CodexContextTrieService);
   private readonly codexService = inject(CodexService);
   private readonly manuscriptStructureService = inject(ManuscriptStructureService);
@@ -87,8 +88,12 @@ export class AiSelectionEffectComponent {
   private editor: Editor | null = null;
   private activeRequest: AiSelectionEditRequest | null = null;
   private streamId: string | null = null;
+  private sceneId: string | null = null;
+  private ownerId: string | null = null;
   private isInternalUpdate = false;
+  private isDismissing = false;
   private drawTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly spacingPluginKey = new PluginKey('aiSelectionSpacing');
 
   constructor() {
     effect((onCleanup) => {
@@ -106,7 +111,13 @@ export class AiSelectionEffectComponent {
         window.removeEventListener('resize', this.onViewportChange);
         window.removeEventListener('scroll', this.onViewportChange, true);
         this.restoreOriginalPreview();
-        this.dismiss();
+        this.clearTimers();
+        this.removeSelectionSpacing();
+        void this.stopStreamAndReleaseScene();
+        this.resetSelectionState();
+        this.bounds.set(null);
+        this.clipPath.set(null);
+        this.state.set('idle');
       });
     });
   }
@@ -118,14 +129,10 @@ export class AiSelectionEffectComponent {
     if (
       !currentEditor
       || this.state() !== 'idle'
-      || this.generationSessions.hasActiveSession('manuscript-selection')
     ) return false;
     const instruction = request.instruction.trim();
     if (!instruction) return false;
-    if (!bookId) {
-      this.toastService.error('No active book is available.', `AI ${request.actionLabel}`);
-      return false;
-    }
+    if (!bookId) return false;
 
     const { selection } = currentEditor.state;
     const documentSnapshot = currentEditor.state.doc;
@@ -134,20 +141,27 @@ export class AiSelectionEffectComponent {
       documentSnapshot,
       selectionSnapshot,
     );
-    if (!context) {
-      this.toastService.error(
-        `Select prose contained within a single scene to use ${request.actionLabel}.`,
-        `AI ${request.actionLabel}`,
-      );
+    if (!context) return false;
+
+    const requestId = crypto.randomUUID();
+    if (!this.aiStreamEditor.acquireSceneGeneration({
+      sceneId: context.sceneId,
+      ownerId: requestId,
+    })) return false;
+
+    this.sceneId = context.sceneId;
+    this.ownerId = requestId;
+    this.streamId = requestId;
+    if (!this.beginSelectionEffect()) {
+      this.aiStreamEditor.releaseSceneGeneration({
+        sceneId: context.sceneId,
+        ownerId: requestId,
+      });
       return false;
     }
 
-    if (!this.beginSelectionEffect()) return false;
-
     this.activeRequest = { ...request, instruction };
     this.originalSlice = currentEditor.state.doc.slice(selection.from, selection.to);
-    const requestId = crypto.randomUUID();
-    this.streamId = requestId;
     this.drawTimer = setTimeout(() => {
       this.zone.run(() => {
         this.drawTimer = null;
@@ -169,12 +183,12 @@ export class AiSelectionEffectComponent {
 
   cancel(): void {
     this.restoreOriginalPreview();
-    this.dismiss();
+    void this.dismiss();
   }
 
   confirm(): void {
     this.commitEditPreview();
-    this.dismiss();
+    void this.dismiss();
   }
 
   toggleComparison(): void {
@@ -271,12 +285,13 @@ export class AiSelectionEffectComponent {
       const session = this.generationSessions.start({
         streamId: requestId,
         source: 'manuscript-selection',
+        scopeId: context.sceneId,
         bookId,
+        suppressErrorToasts: true,
         aiPrompt: buildSelectionEditAiPrompt({ context: currentContext, request }),
       });
       if (!session) {
-        this.streamId = null;
-        this.dismiss();
+        await this.dismiss();
         return;
       }
 
@@ -284,28 +299,19 @@ export class AiSelectionEffectComponent {
       if (result.status === 'failed') {
         throw result.error ?? new Error('AI selection edit failed.');
       }
+      if (result.status === 'stopped' || this.isDismissing) return;
 
       if (this.streamId !== requestId || this.state() !== 'generating') return;
 
       const replacement = result.content.trim();
       if (!replacement) {
-        this.toastService.error(
-          `The model returned an empty ${request.actionLabel.toLowerCase()} result.`,
-          `AI ${request.actionLabel}`,
-        );
-        this.streamId = null;
-        this.dismiss();
+        await this.dismiss();
         return;
       }
 
       const candidateSlice = this.parseCandidateSlice(replacement);
       if (!candidateSlice) {
-        this.toastService.error(
-          `The ${request.actionLabel.toLowerCase()} result could not be rendered.`,
-          `AI ${request.actionLabel}`,
-        );
-        this.streamId = null;
-        this.dismiss();
+        await this.dismiss();
         return;
       }
 
@@ -321,12 +327,7 @@ export class AiSelectionEffectComponent {
     } catch (error) {
       if (this.streamId !== requestId) return;
       console.error(`AI ${request.actionLabel.toLowerCase()} failed:`, error);
-      this.toastService.error(
-        `Could not complete ${request.actionLabel.toLowerCase()}.`,
-        `AI ${request.actionLabel}`,
-      );
-      this.streamId = null;
-      this.dismiss();
+      await this.dismiss();
     } finally {
       this.generationSessions.release(requestId);
     }
@@ -512,15 +513,18 @@ export class AiSelectionEffectComponent {
     }
   }
 
-  private dismiss(): void {
-    const activeStreamId = this.streamId;
+  private async dismiss(): Promise<void> {
+    if (this.isDismissing) return;
+    this.isDismissing = true;
     this.clearTimers();
     this.removeSelectionSpacing();
+    const releaseScene = this.stopStreamAndReleaseScene();
     this.resetSelectionState();
     this.bounds.set(null);
     this.clipPath.set(null);
     this.state.set('idle');
-    if (activeStreamId) void this.generationSessions.stop(activeStreamId);
+    this.dismissed.emit();
+    await releaseScene;
   }
 
   private resetSelectionState(): void {
@@ -531,6 +535,8 @@ export class AiSelectionEffectComponent {
     this.editor = null;
     this.activeRequest = null;
     this.streamId = null;
+    this.sceneId = null;
+    this.ownerId = null;
     this.comparisonSegments.set([]);
     this.isComparisonVisible.set(false);
   }
@@ -597,7 +603,7 @@ export class AiSelectionEffectComponent {
     } = {},
   ): void {
     editor.registerPlugin(new Plugin({
-      key: AI_SELECTION_SPACING_PLUGIN_KEY,
+      key: this.spacingPluginKey,
       filterTransaction: transaction => (
         this.isInternalUpdate || !transactionTouchesSelection(transaction, selection)
       ),
@@ -632,7 +638,7 @@ export class AiSelectionEffectComponent {
     const editor = this.editor;
     const selection = this.selection;
     if (!editor || !selection) return;
-    editor.unregisterPlugin(AI_SELECTION_SPACING_PLUGIN_KEY);
+    editor.unregisterPlugin(this.spacingPluginKey);
     this.addSelectionSpacing(
       editor,
       selection,
@@ -649,7 +655,23 @@ export class AiSelectionEffectComponent {
   }
 
   private removeSelectionSpacing(): void {
-    this.editor?.unregisterPlugin(AI_SELECTION_SPACING_PLUGIN_KEY);
+    this.editor?.unregisterPlugin(this.spacingPluginKey);
+  }
+
+  private async stopStreamAndReleaseScene(): Promise<void> {
+    const activeStreamId = this.streamId;
+    const sceneId = this.sceneId;
+    const ownerId = this.ownerId;
+    const activeSession = activeStreamId
+      ? this.generationSessions.getSession(activeStreamId)
+      : null;
+    if (activeStreamId) {
+      await this.generationSessions.stop(activeStreamId);
+      await activeSession?.completion;
+    }
+    if (sceneId && ownerId) {
+      this.aiStreamEditor.releaseSceneGeneration({ sceneId, ownerId });
+    }
   }
 }
 

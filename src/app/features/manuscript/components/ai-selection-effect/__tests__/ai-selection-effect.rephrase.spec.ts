@@ -8,13 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodexEntryDetailDto, CodexTrackingSetting } from '../../../../../../../shared/models/codex.model';
 import type { ActDto } from '../../../../../../../shared/models/manuscript.model';
+import { AiGenerationSessionService } from '../../../../../core/services/ai-generation-session.service';
 import { AiStreamService, type AiStreamRequest } from '../../../../../core/services/ai-stream.service';
-import { ToastService } from '../../../../../shared/services/toast.service';
 import { CodexContextTrieService } from '../../../../codex/services/codex-context-trie.service';
 import { CodexService } from '../../../../codex/services/codex.service';
 import { ManuscriptStructureService } from '../../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../../workspace/workspace.store';
 import { ManuscriptStore } from '../../../store/manuscript.store';
+import { AiStreamEditorService } from '../../../helpers/ai/ai-stream-editor.service';
 import { AiSelectionEffectComponent } from '../ai-selection-effect.component';
 
 const SceneSummary = Node.create({
@@ -38,7 +39,8 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
   let getOutline: ReturnType<typeof vi.fn>;
   let getEntry: ReturnType<typeof vi.fn>;
   let findMatches: ReturnType<typeof vi.fn>;
-  let toastService: { error: ReturnType<typeof vi.fn> };
+  let acquireSceneGeneration: ReturnType<typeof vi.fn>;
+  let releaseSceneGeneration: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -79,7 +81,8 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     getOutline = vi.fn().mockResolvedValue(createOutline());
     getEntry = vi.fn();
     findMatches = vi.fn((_text: string): any[] => []);
-    toastService = { error: vi.fn() };
+    acquireSceneGeneration = vi.fn(() => true);
+    releaseSceneGeneration = vi.fn();
     await TestBed.configureTestingModule({
       imports: [AiSelectionEffectComponent],
       providers: [
@@ -96,8 +99,14 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
         },
         { provide: CodexService, useValue: { getEntry } },
         { provide: ManuscriptStructureService, useValue: { getOutline } },
+        {
+          provide: AiStreamEditorService,
+          useValue: {
+            acquireSceneGeneration,
+            releaseSceneGeneration,
+          },
+        },
         { provide: AiStreamService, useValue: { streamText, stopStream: vi.fn() } },
-        { provide: ToastService, useValue: toastService },
       ],
     }).compileComponents();
 
@@ -141,6 +150,60 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     expect(component.state()).toBe('ready');
     expect(editor.getText()).toContain('Elias lowered his gaze.');
     expect(editor.getText()).not.toContain('Elias looked away.');
+  });
+
+  it('scopes the stream by scene and retains the scene lock until confirmation', async () => {
+    streamText.mockResolvedValue('Elias lowered his gaze.');
+    const sessionStart = vi.spyOn(TestBed.inject(AiGenerationSessionService), 'start');
+
+    expect(startEdit(component)).toBe(true);
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.runAllTimersAsync();
+
+    expect(acquireSceneGeneration).toHaveBeenCalledWith({
+      sceneId: 'scene-1',
+      ownerId: expect.any(String),
+    });
+    expect(sessionStart).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'manuscript-selection',
+      scopeId: 'scene-1',
+      suppressErrorToasts: true,
+    }));
+    expect(component.state()).toBe('ready');
+    expect(releaseSceneGeneration).not.toHaveBeenCalled();
+
+    component.confirm();
+
+    expect(releaseSceneGeneration).toHaveBeenCalledWith({
+      sceneId: 'scene-1',
+      ownerId: expect.any(String),
+    });
+  });
+
+  it('retains the scene lock until an in-flight cancellation completes', async () => {
+    let rejectStream!: (error: Error) => void;
+    const abortCompletion = deferred<void>();
+    streamText.mockReturnValue(new Promise<string>((_resolve, reject) => rejectStream = reject));
+    const aiStream = TestBed.inject(AiStreamService);
+    vi.mocked(aiStream.stopStream).mockImplementation(async () => {
+      await abortCompletion.promise;
+      rejectStream(new Error('aborted'));
+    });
+
+    startEdit(component);
+    await vi.advanceTimersByTimeAsync(600);
+    component.cancel();
+
+    expect(component.state()).toBe('idle');
+    expect(releaseSceneGeneration).not.toHaveBeenCalled();
+
+    abortCompletion.resolve();
+    await vi.runAllTimersAsync();
+
+    expect(releaseSceneGeneration).toHaveBeenCalledWith({
+      sceneId: 'scene-1',
+      ownerId: expect.any(String),
+    });
   });
 
   it.each([
@@ -314,10 +377,6 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
 
     expect(editor.getJSON()).toEqual(originalDocument);
     expect(component.state()).toBe('idle');
-    expect(toastService.error).toHaveBeenCalledWith(
-      'The model returned an empty rephrase result.',
-      'AI Rephrase',
-    );
   });
 
   it.each([
@@ -445,7 +504,6 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
 
     expect(streamText).not.toHaveBeenCalled();
     expect(component.state()).toBe('idle');
-    expect(toastService.error).toHaveBeenCalledWith('Could not complete shorten.', 'AI Shorten');
   });
 
   it('does not stream when cancelled during context preparation', async () => {

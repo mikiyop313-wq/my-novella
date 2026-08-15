@@ -16,6 +16,7 @@ export interface AiStreamRequest {
   provider?: string;
   modelId?: string;
   reasoningMode?: boolean;
+  suppressErrorToasts?: boolean;
   onToken?: (token: string) => void;
   onReasoningUpdate?: (reasoningText: string) => void;
   onStatusChange?: (status: LoadingStatus) => void;
@@ -62,10 +63,12 @@ export class AiStreamService {
           request.aiPrompt.systemPromptCategory,
         );
       } catch (error) {
-        this.toastService.error(
-          'Unable to load the active system prompt preset.',
-          'AI Generation',
-        );
+        if (!request.suppressErrorToasts) {
+          this.toastService.error(
+            'Unable to load the active system prompt preset.',
+            'AI Generation',
+          );
+        }
         throw error;
       }
 
@@ -102,12 +105,14 @@ export class AiStreamService {
           request.aiPrompt.systemPromptCategory,
         );
         if (model.status !== 'ready') {
-          this.toastService.error(
-            model.reason === 'openrouter-unconfigured'
-              ? 'Configure OpenRouter in Settings before using this action.'
-              : 'Choose an available default model in System Prompts.',
-            'AI Generation',
-          );
+          if (!request.suppressErrorToasts) {
+            this.toastService.error(
+              model.reason === 'openrouter-unconfigured'
+                ? 'Configure OpenRouter in Settings before using this action.'
+                : 'Choose an available default model in System Prompts.',
+              'AI Generation',
+            );
+          }
           throw new Error('The active system prompt model is unavailable.');
         }
         provider = model.provider;
@@ -120,6 +125,7 @@ export class AiStreamService {
         model: provider,
         modelId,
         reasoningMode: request.reasoningMode,
+        suppressErrorToasts: request.suppressErrorToasts,
         systemPromptPreset: {
           category: request.aiPrompt.systemPromptCategory,
           presetId,
