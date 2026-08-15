@@ -73,6 +73,12 @@ export interface DeleteParagraphsPayload {
     deletes: ParagraphDelete[];
 }
 
+/** Per-book configuration used by manuscript paragraph-vector synchronization. */
+export interface BookIndexingConfiguration {
+    available: boolean;
+    automaticIndexingEnabled: boolean;
+}
+
 export interface SearchSimilarParagraphsPayload {
     bookId: string;
     query: string;

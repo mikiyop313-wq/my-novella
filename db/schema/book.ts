@@ -56,6 +56,9 @@ export const bookSettings = sqliteTable('book_settings', {
     .notNull()
     .default('mixedbread-ai/mxbai-embed-large-v1'),
   vectorSearchEnabled: integer('vector_search_enabled', { mode: 'boolean' }).notNull().default(true),
+  automaticIndexingEnabled: integer('automatic_indexing_enabled', { mode: 'boolean' })
+    .notNull()
+    .default(true),
 });
 
 // ---------------------------------------------------------------------------

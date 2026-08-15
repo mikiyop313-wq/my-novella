@@ -6,7 +6,9 @@ import {
     DeleteParagraphsPayload,
     ManuscriptVectorRecord,
     SearchSimilarParagraphsPayload,
+    BookIndexingConfiguration,
 } from '../../../shared/models/vector.model';
+import { bookRepository } from '../../../db/repositories/book.repository';
 import { db } from '../../../db';
 import { inArray } from 'drizzle-orm';
 import { scene } from '../../../db/schema';
@@ -138,6 +140,17 @@ async function handleDeleteParagraphsNow(
 // ---------------------------------------------------------------------------
 
 export function setupVectorHandlers() {
+    ipcMain.handle(
+        'vectors:getBookIndexingConfiguration',
+        async (_, payload: { bookId: string }): Promise<BookIndexingConfiguration> => {
+            const [available, automaticIndexingEnabled] = await Promise.all([
+                manuscriptVectorIndexService.isBookIndexingAvailable(payload.bookId),
+                bookRepository.getAutomaticIndexingEnabled(payload.bookId),
+            ]);
+            return { available, automaticIndexingEnabled };
+        },
+    );
+
     /**
      * vectors:upsertParagraphs
      *

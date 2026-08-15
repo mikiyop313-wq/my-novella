@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => unknown>(),
   isBookIndexingAvailable: vi.fn(),
+  getAutomaticIndexingEnabled: vi.fn(),
   runBookOperation: vi.fn(),
   searchSimilar: vi.fn(),
 }));
@@ -27,6 +28,12 @@ vi.mock('../../../../vectors/repositories/paragraph-vector.repository', () => ({
   paragraphVectorRepository: {},
 }));
 
+vi.mock('../../../../db/repositories/book.repository', () => ({
+  bookRepository: {
+    getAutomaticIndexingEnabled: mocks.getAutomaticIndexingEnabled,
+  },
+}));
+
 vi.mock('../../../../vectors/embeddings/factory', () => ({
   getEmbeddingProvider: vi.fn(),
 }));
@@ -42,6 +49,7 @@ describe('paragraph vector IPC availability gate', () => {
     mocks.handlers.clear();
     vi.clearAllMocks();
     mocks.isBookIndexingAvailable.mockResolvedValue(false);
+    mocks.getAutomaticIndexingEnabled.mockResolvedValue(true);
     mocks.searchSimilar.mockResolvedValue([]);
     setupVectorHandlers();
   });
@@ -70,5 +78,18 @@ describe('paragraph vector IPC availability gate', () => {
 
     expect(mocks.isBookIndexingAvailable).toHaveBeenCalledWith('book-1');
     expect(mocks.runBookOperation).not.toHaveBeenCalled();
+  });
+
+  it('reports indexing availability and the automatic preference for a book', async () => {
+    mocks.isBookIndexingAvailable.mockResolvedValueOnce(true);
+    mocks.getAutomaticIndexingEnabled.mockResolvedValueOnce(false);
+
+    await expect(mocks.handlers.get('vectors:getBookIndexingConfiguration')?.(
+      {},
+      { bookId: 'book-1' },
+    )).resolves.toEqual({ available: true, automaticIndexingEnabled: false });
+
+    expect(mocks.isBookIndexingAvailable).toHaveBeenCalledWith('book-1');
+    expect(mocks.getAutomaticIndexingEnabled).toHaveBeenCalledWith('book-1');
   });
 });

@@ -45,6 +45,26 @@
         </button>
       </section>
 
+      <section class="vector-card" aria-labelledby="automatic-indexing-heading">
+        <div class="vector-card-copy">
+          <h2 id="automatic-indexing-heading">Automatic indexing</h2>
+          <p>Update paragraph embeddings after 10 seconds without manuscript edits.</p>
+        </div>
+
+        <button
+          class="indexing-switch automatic-indexing-switch"
+          type="button"
+          role="switch"
+          [class.is-active]="automaticIndexingEnabled()"
+          [attr.aria-checked]="automaticIndexingEnabled()"
+          [disabled]="operation() !== null || !effectiveIndexingEnabled()"
+          (click)="toggleAutomaticIndexing()"
+        >
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>{{ automaticIndexingEnabled() ? 'On' : 'Off' }}</span>
+        </button>
+      </section>
+
       <section class="vector-card model-section" aria-labelledby="embedding-model-heading">
         <div class="vector-card-copy">
           <h2 id="embedding-model-heading">Embedding model</h2>

@@ -24,6 +24,8 @@ export interface BookSettingsDto {
   localEmbeddingModel?: LocalEmbeddingModelName;
   /** Global default inherited by inline manuscript prompts. */
   vectorSearchEnabled?: boolean;
+  /** Flush queued manuscript vectors after an idle delay. */
+  automaticIndexingEnabled?: boolean;
 }
 
 export interface BookDto {

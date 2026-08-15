@@ -68,6 +68,7 @@ export class BookRepository {
       embeddingModel: settings.embeddingModel,
       localEmbeddingModel: settings.localEmbeddingModel,
       vectorSearchEnabled: settings.vectorSearchEnabled,
+      automaticIndexingEnabled: settings.automaticIndexingEnabled,
     };
   }
 
@@ -112,6 +113,7 @@ export class BookRepository {
       localEmbeddingModel:
         data.settings?.localEmbeddingModel || 'mixedbread-ai/mxbai-embed-large-v1',
       vectorSearchEnabled: data.settings?.vectorSearchEnabled ?? true,
+      automaticIndexingEnabled: data.settings?.automaticIndexingEnabled ?? true,
     };
   }
 
@@ -131,6 +133,8 @@ export class BookRepository {
       updatePayload.localEmbeddingModel = settings.localEmbeddingModel;
     if (settings.vectorSearchEnabled !== undefined)
       updatePayload.vectorSearchEnabled = settings.vectorSearchEnabled;
+    if (settings.automaticIndexingEnabled !== undefined)
+      updatePayload.automaticIndexingEnabled = settings.automaticIndexingEnabled;
 
     return updatePayload;
   }
@@ -299,6 +303,14 @@ export class BookRepository {
       columns: { vectorSearchEnabled: true },
     });
     return settings?.vectorSearchEnabled ?? true;
+  }
+
+  async getAutomaticIndexingEnabled(bookId: string): Promise<boolean> {
+    const settings = await db.query.bookSettings.findFirst({
+      where: eq(bookSettings.bookSettingId, bookId),
+      columns: { automaticIndexingEnabled: true },
+    });
+    return settings?.automaticIndexingEnabled ?? true;
   }
 
   async selectLocalEmbeddingModel(

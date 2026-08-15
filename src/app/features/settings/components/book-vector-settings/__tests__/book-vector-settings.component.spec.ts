@@ -155,6 +155,40 @@ describe('BookVectorSettingsComponent', () => {
     );
   });
 
+  it('defaults automatic indexing to on and disables it when indexing is unavailable', async () => {
+    await create(book());
+
+    const automaticSwitch = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.automatic-indexing-switch');
+    expect(automaticSwitch?.getAttribute('aria-checked')).toBe('true');
+    expect(automaticSwitch?.disabled).toBe(true);
+  });
+
+  it('persists automatic indexing without selecting or rebuilding a model', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'vectors:local-model:get-status') return [installedModel];
+      if (channel === 'vectors:local-model:get-book-selection') {
+        return { bookId: 'book-1', modelName: installedModel.modelName };
+      }
+      return undefined;
+    });
+    await create(book(true, installedModel.modelName, true));
+    invoke.mockClear();
+
+    await fixture.componentInstance.toggleAutomaticIndexing();
+
+    expect(updateBook).toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({ automaticIndexingEnabled: false }),
+      }),
+    );
+    expect(invoke).not.toHaveBeenCalledWith(
+      'vectors:local-model:select-for-book',
+      expect.anything(),
+    );
+  });
+
   async function create(inputBook: BookDto): Promise<void> {
     fixture = TestBed.createComponent(BookVectorSettingsComponent);
     fixture.componentRef.setInput('book', inputBook);
@@ -183,6 +217,7 @@ describe('BookVectorSettingsComponent', () => {
 function book(
   vectorSearchEnabled = true,
   localEmbeddingModel: LocalEmbeddingModelName = 'mixedbread-ai/mxbai-embed-large-v1',
+  automaticIndexingEnabled?: boolean,
 ): BookDto {
   return {
     id: 'book-1',
@@ -203,6 +238,7 @@ function book(
       embeddingModel: 'local',
       localEmbeddingModel,
       vectorSearchEnabled,
+      ...(automaticIndexingEnabled === undefined ? {} : { automaticIndexingEnabled }),
     },
   };
 }

@@ -41,6 +41,7 @@ export const UniqueIdExtension = Extension.create({
 
           const tr = newState.tr;
           let modified = false;
+          const seenIds = new Set<string>();
 
           // Iterate through all nodes to check if they need an ID
           newState.doc.descendants((node, pos) => {
@@ -50,11 +51,14 @@ export const UniqueIdExtension = Extension.create({
 
             // Only add IDs to paragraphs and headings
             if (node.type.name === 'paragraph' || node.type.name === 'heading') {
-              if (!node.attrs['id']) {
-                // Generate a unique ID (using crypto.randomUUID if available)
+              const currentId = node.attrs['id'] as string | null;
+              if (!currentId || seenIds.has(currentId)) {
                 const id = crypto.randomUUID();
                 tr.setNodeMarkup(pos, undefined, { ...node.attrs, id });
+                seenIds.add(id);
                 modified = true;
+              } else {
+                seenIds.add(currentId);
               }
             }
             return true;

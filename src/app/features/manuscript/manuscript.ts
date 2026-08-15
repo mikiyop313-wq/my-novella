@@ -29,6 +29,7 @@ import {
   extractTextFromManuscriptData,
 } from './helpers/content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
+import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
 import { AiStore } from '../../core/store/ai.store';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { ManuscriptStore } from './store/manuscript.store';
@@ -59,6 +60,7 @@ export class Manuscript implements OnInit, OnDestroy {
   readonly aiStore = inject(AiStore);
   readonly themeService = inject(ThemeService);
   readonly electronService = inject(ElectronService);
+  readonly paragraphVectorSync = inject(ManuscriptParagraphVectorSyncService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -185,6 +187,13 @@ export class Manuscript implements OnInit, OnDestroy {
       const id = params['id'];
       this.store.setRouteParams(mode, id);
 
+      const bookId = this.getWorkspaceBookId();
+      if (bookId) {
+        void this.paragraphVectorSync.refreshIndexingConfiguration(bookId).catch(error => {
+          console.error('Failed to load manuscript indexing configuration:', error);
+        });
+      }
+
       if (mode && id && this.editor) {
         await this.loadEditorContent(mode, id);
       }
@@ -301,6 +310,14 @@ export class Manuscript implements OnInit, OnDestroy {
     if (!bookId) return;
 
     this.router.navigate(['/workspace', bookId, 'manuscript', mode, id], { replaceUrl: true });
+  }
+
+  retryIndexing(): void {
+    void this.paragraphVectorSync.retryParagraphVectorChanges();
+  }
+
+  updateIndex(): void {
+    void this.paragraphVectorSync.flushParagraphVectorChanges();
   }
 
 

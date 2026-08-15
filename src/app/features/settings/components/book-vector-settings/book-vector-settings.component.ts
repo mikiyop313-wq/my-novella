@@ -21,7 +21,7 @@ import { ElectronService } from '../../../../core/services/electron.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { LocalEmbeddingModelStateService } from '../../services/local-embedding-model-state.service';
 
-type BookVectorOperation = 'select' | 'enable' | 'disable';
+type BookVectorOperation = 'select' | 'enable' | 'disable' | 'automatic';
 
 @Component({
   selector: 'app-book-vector-settings',
@@ -71,6 +71,10 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
 
   readonly effectiveIndexingEnabled = computed(
     () => this.savedIndexingEnabled() && !this.selectedModelUnavailable(),
+  );
+
+  readonly automaticIndexingEnabled = computed(
+    () => this.book().settings?.automaticIndexingEnabled ?? true,
   );
 
   readonly reindexPercentage = computed(() => {
@@ -166,6 +170,24 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     }
   }
 
+  async toggleAutomaticIndexing(): Promise<void> {
+    if (this.operation() || !this.effectiveIndexingEnabled()) return;
+
+    const modelName = this.selectedModelName();
+    if (!modelName) return;
+
+    this.beginOperation('automatic', modelName);
+    try {
+      await this.saveSettingsUpdate({
+        automaticIndexingEnabled: !this.automaticIndexingEnabled(),
+      });
+    } catch {
+      // The persisted preference is unchanged and the error is rendered in the section.
+    } finally {
+      this.finishOperation();
+    }
+  }
+
   isSelected(status: LocalEmbeddingModelStatus): boolean {
     return status.modelName === this.selectedModelName();
   }
@@ -183,11 +205,15 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   }
 
   private async saveIndexingPreference(vectorSearchEnabled: boolean): Promise<void> {
+    await this.saveSettingsUpdate({ vectorSearchEnabled });
+  }
+
+  private async saveSettingsUpdate(update: Partial<BookSettingsDto>): Promise<void> {
     this.operationError.set(null);
     try {
       const book = this.book();
       const updatedBook = await this.libraryService.updateBook(book.id, {
-        settings: this.mergeSettings(book, { vectorSearchEnabled }),
+        settings: this.mergeSettings(book, update),
       });
       this.bookChange.emit(updatedBook);
     } catch (error) {

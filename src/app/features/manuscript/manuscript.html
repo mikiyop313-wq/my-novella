@@ -553,5 +553,50 @@
   @if (indexItems().length > 0) {
   <app-manuscript-index-scroll [items]="indexItems()" (select)="scrollToSection($event)"></app-manuscript-index-scroll>
   }
+
+  @if (paragraphVectorSync.indexingAvailable()) {
+  <div class="indexing-status" [class.is-error]="paragraphVectorSync.indexingState() === 'error'"
+    role="status" aria-live="polite">
+    @switch (paragraphVectorSync.indexingState()) {
+      @case ('pending') {
+      @if (paragraphVectorSync.automaticIndexingEnabled()) {
+      <span class="indexing-spinner" aria-hidden="true"></span>
+      <span>Waiting to index…</span>
+      } @else {
+      <button class="indexing-update-button" type="button" aria-label="Update index" title="Update index"
+        (click)="updateIndex()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 11a8.1 8.1 0 1 0 2 5"></path>
+          <polyline points="20 4 20 11 13 11"></polyline>
+        </svg>
+        <span>Manual indexing</span>
+      </button>
+      }
+      }
+      @case ('indexing') {
+      <span class="indexing-spinner" aria-hidden="true"></span>
+      <span>Indexing…</span>
+      }
+      @case ('error') {
+      <svg class="indexing-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"></circle>
+        <line x1="12" y1="8" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      <span>Indexing failed</span>
+      <button type="button" (click)="retryIndexing()">Retry</button>
+      }
+      @default {
+      <svg class="indexing-check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+      <span>Index up to date</span>
+      }
+    }
+  </div>
+  }
 </div>
 }
