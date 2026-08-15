@@ -2,16 +2,18 @@ import { Component, ElementRef, ViewChild, signal, inject, NgZone, effect } from
 import { CommonModule } from '@angular/common';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
 import { ManuscriptStore } from '../../store/manuscript.store';
+import { AiSelectionEffectComponent } from '../ai-selection-effect/ai-selection-effect.component';
 
 @Component({
   selector: 'app-editor-bubble-menu',
   standalone: true,
-  imports: [CommonModule, OverlayMenuDirective],
+  imports: [CommonModule, OverlayMenuDirective, AiSelectionEffectComponent],
   templateUrl: './editor-bubble-menu.component.html',
   styleUrl: './editor-bubble-menu.component.scss'
 })
 export class EditorBubbleMenuComponent {
   @ViewChild('menuRef') menuRef!: ElementRef<HTMLDivElement>;
+  @ViewChild(AiSelectionEffectComponent) aiSelectionEffect!: AiSelectionEffectComponent;
 
   readonly store = inject(ManuscriptStore);
   private zone = inject(NgZone);
@@ -22,6 +24,7 @@ export class EditorBubbleMenuComponent {
   top = signal(0);
   left = signal(0);
   wordCount = signal(0);
+  private blurTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     effect((onCleanup) => {
@@ -43,6 +46,7 @@ export class EditorBubbleMenuComponent {
 
           window.removeEventListener('resize', this.onSelectionUpdate);
           window.removeEventListener('scroll', this.onSelectionUpdate, true);
+          this.clearBlurTimer();
         });
       }
     });
@@ -56,8 +60,10 @@ export class EditorBubbleMenuComponent {
 
   private onBlur = () => {
     // Delay hiding slightly to allow clicks on formatting buttons inside the menu
-    setTimeout(() => {
+    this.clearBlurTimer();
+    this.blurTimer = setTimeout(() => {
       this.zone.run(() => {
+        this.blurTimer = null;
         const activeEl = document.activeElement;
         if (this.menuRef?.nativeElement && activeEl && this.menuRef.nativeElement.contains(activeEl)) {
           return;
@@ -145,28 +151,28 @@ export class EditorBubbleMenuComponent {
     }
   }
 
-  // AI assistant stubs as requested (empty methods for now)
   rephrase(): void {
-    const text = this.getSelectedText();
-    console.log('AI Action - Rephrase triggered for: ', text);
+    this.startAiEffect();
   }
 
   shorten(): void {
-    const text = this.getSelectedText();
-    console.log('AI Action - Shorten triggered for: ', text);
+    this.startAiEffect();
   }
 
   expand(): void {
-    const text = this.getSelectedText();
-    console.log('AI Action - Expand triggered for: ', text);
+    this.startAiEffect();
   }
 
-  other(_prompt: string): void {}
+  other(_prompt: string): void {
+    this.startAiEffect();
+  }
 
-  private getSelectedText(): string {
-    const currentEditor = this.store.editor();
-    if (!currentEditor) return '';
-    const { state } = currentEditor;
-    return state.doc.textBetween(state.selection.from, state.selection.to, ' ');
+  private startAiEffect(): void {
+    if (this.aiSelectionEffect.start()) this.isVisible.set(false);
+  }
+
+  private clearBlurTimer(): void {
+    if (this.blurTimer !== null) clearTimeout(this.blurTimer);
+    this.blurTimer = null;
   }
 }
