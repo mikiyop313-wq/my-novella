@@ -536,11 +536,18 @@ export class Outline implements OnInit {
   async deleteScene(sceneId: string): Promise<void> {
     try {
       const element = this.findOutlineItemElement(sceneId);
+      const scenesGrid = element?.closest<HTMLElement>('.scenes-grid');
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+        ? this.outlineAnimation.animateBeforeDeleteAndReflow({
+          target: element,
+          layoutTargets: () => Array.from(
+            scenesGrid?.querySelectorAll<HTMLElement>(':scope > .scene-wrapper') ?? [],
+          ),
+          action: async () => {
             await this.store.deleteScene(sceneId);
             this.cdr.detectChanges();
-          })
+          },
+        })
         : this.store.deleteScene(sceneId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete scene.';

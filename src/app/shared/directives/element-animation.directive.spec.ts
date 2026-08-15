@@ -121,6 +121,42 @@ describe('ElementAnimationDirective', () => {
     expect(second.classList.contains('entering')).toBe(false);
   });
 
+  it('animates surviving elements into their new positions after deletion', async () => {
+    const deleted = document.createElement('div');
+    const survivor = document.createElement('div');
+    let survivorTop = 100;
+    const animate = vi.fn().mockReturnValue({ finished: Promise.resolve() });
+
+    vi.spyOn(survivor, 'getBoundingClientRect').mockImplementation(
+      () => ({ left: 0, top: survivorTop } as DOMRect),
+    );
+    Object.defineProperty(survivor, 'animate', { configurable: true, value: animate });
+
+    const layoutTargets = [deleted, survivor];
+    const animation = component.animation.animateBeforeDeleteAndReflow({
+      target: deleted,
+      layoutTargets: () => layoutTargets,
+      action: () => {
+        layoutTargets.splice(0, 1);
+        survivorTop = 20;
+      },
+    });
+
+    await vi.runAllTimersAsync();
+    await animation;
+
+    expect(animate).toHaveBeenCalledWith(
+      [
+        { transform: 'translate(0px, 80px)' },
+        { transform: 'translate(0, 0)' },
+      ],
+      {
+        duration: 10,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
+    );
+  });
+
   it('runs the action when targets are missing', async () => {
     const action = vi.fn();
 
