@@ -162,7 +162,6 @@ describe('AiStreamService', () => {
     });
 
     expect(statuses).toEqual(['loading', 'generating', 'idle']);
-    expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 
   it('switches status to thinking when reasoning tokens arrive', async () => {
@@ -183,7 +182,6 @@ describe('AiStreamService', () => {
     });
 
     expect(statuses).toEqual(['loading', 'thinking', 'idle']);
-    expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 
   it('emits throttled reasoning updates', async () => {
@@ -213,12 +211,9 @@ describe('AiStreamService', () => {
   });
 
   it('calls AIStateService.abort when stopped', async () => {
-    service.getLoadingSignal('stream-1').set('generating');
-
     await service.stopStream('stream-1');
 
     expect(abort).toHaveBeenCalledOnce();
-    expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 
   it('cleans up listeners after success', async () => {
@@ -277,7 +272,6 @@ describe('AiStreamService', () => {
       'AI Generation',
     );
     expect(statuses).toEqual(['loading', 'idle']);
-    expect(service.getLoadingSignal('stream-1')()).toBe('idle');
   });
 });
 

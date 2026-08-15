@@ -38,6 +38,9 @@ import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscrip
 import { AiStore } from '../../core/store/ai.store';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { ManuscriptStore } from './store/manuscript.store';
+import { AiStreamEditorService } from './helpers/ai/ai-stream-editor.service';
+import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
+import { ToastService } from '../../shared/services/toast.service';
 
 @Component({
   selector: 'app-manuscript',
@@ -71,6 +74,9 @@ export class Manuscript implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   private readonly saver = inject(ManuscriptProseSaverService);
+  private readonly aiStreamEditor = inject(AiStreamEditorService);
+  private readonly generationSessions = inject(AiGenerationSessionService);
+  private readonly toastService = inject(ToastService);
 
 
   // ---------------------------------------------------------------------------
@@ -155,6 +161,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.editor = this.createEditor();
+    this.aiStreamEditor.attachEditor(this.editor);
 
     this.store.setEditor(this.editor);
     void this.aiStore.refreshModels();
@@ -162,24 +169,30 @@ export class Manuscript implements OnInit, OnDestroy {
     this.electronService.onBeforeClose(this.closeHandler);
 
     this.route.params.subscribe(async params => {
-      // Route changes reuse this component, so flush vector updates before
-      // replacing the editor document with the next manuscript context.
-      await this.saver.flushParagraphVectorChanges();
+      this.aiStreamEditor.beginViewChange();
+      try {
+        // Route changes reuse this component, so flush pending prose and vector
+        // updates before replacing the editor document.
+        await this.saver.flushDirtySections();
+        await this.saver.flushParagraphVectorChanges();
 
-      const mode = params['mode'] as ManuscriptMode;
-      const id = params['id'];
-      this.hasLoadedContent.set(false);
-      this.store.setRouteParams(mode, id);
+        const mode = params['mode'] as ManuscriptMode;
+        const id = params['id'];
+        this.hasLoadedContent.set(false);
+        this.store.setRouteParams(mode, id);
 
-      const bookId = this.getWorkspaceBookId();
-      if (bookId) {
-        void this.paragraphVectorSync.refreshIndexingConfiguration(bookId).catch(error => {
-          console.error('Failed to load manuscript indexing configuration:', error);
-        });
-      }
+        const bookId = this.getWorkspaceBookId();
+        if (bookId) {
+          void this.paragraphVectorSync.refreshIndexingConfiguration(bookId).catch(error => {
+            console.error('Failed to load manuscript indexing configuration:', error);
+          });
+        }
 
-      if (mode && id && this.editor) {
-        await this.loadEditorContent(mode, id);
+        if (mode && id && this.editor) {
+          await this.loadEditorContent(mode, id);
+        }
+      } finally {
+        this.aiStreamEditor.endViewChange();
       }
     });
   }
@@ -188,6 +201,7 @@ export class Manuscript implements OnInit, OnDestroy {
     this.electronService.removeBeforeCloseHandler(this.closeHandler);
     this.closeHandler();
 
+    if (this.editor) this.aiStreamEditor.detachEditor(this.editor);
     this.editor?.destroy();
     this.store.setEditor(null);
   }
@@ -254,6 +268,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
       this.editor!.view.dispatch(tr);
       this.saver.seedCleanSnapshots(this.editor!);
+      this.aiStreamEditor.syncActiveGenerations(this.editor!);
       this.hasLoadedContent.set(true);
       this.refreshSceneAvailability();
       this.refreshIndexItems();
@@ -299,10 +314,27 @@ export class Manuscript implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   switchViewMode(mode: ManuscriptMode, id: string): void {
+    if (this.hasActiveSelectionGeneration()) {
+      this.toastService.warning(
+        'Finish or cancel the active Ask AI selection before changing views.',
+        'AI Generation',
+      );
+      return;
+    }
+
     const bookId = this.getWorkspaceBookId();
     if (!bookId) return;
 
     this.router.navigate(['/workspace', bookId, 'manuscript', mode, id], { replaceUrl: true });
+  }
+
+  private hasActiveSelectionGeneration(): boolean {
+    return this.generationSessions.sessions().some(session => (
+      session.source === 'manuscript-selection'
+      && session.status() !== 'complete'
+      && session.status() !== 'stopped'
+      && session.status() !== 'failed'
+    ));
   }
 
   retryIndexing(): void {

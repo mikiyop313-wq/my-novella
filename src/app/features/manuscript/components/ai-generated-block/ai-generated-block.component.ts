@@ -11,6 +11,7 @@ import {
 } from '../../helpers/ai/manuscript-ai-request.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { findCurrentSceneIdBeforePosition } from '../../../../shared/utils/story-context-builder';
 
 // ---------------------------------------------------------------------------
 //  Local Types
@@ -63,9 +64,6 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
 
   modelId = computed(() => this.node().attrs['modelId'] || '');
   reasoningText = computed(() => this.node().attrs['reasoningText'] || '');
-
-  /** True only while the AI is actively streaming; false once the block is finalized. */
-  isGenerating = computed(() => this.node().attrs['isGenerating'] === true);
 
   /** Live word count. Recomputes on every token inserted by the stream. */
   wordCount = computed(() => {
@@ -261,6 +259,8 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
 
     const blockPos = this.currentNodePosition();
     if (blockPos === null) return;
+    const sceneId = findCurrentSceneIdBeforePosition(editor.state.doc, blockPos);
+    if (!sceneId) return;
 
     if (requestedChange) {
       this.isModifying.set(false);
@@ -277,6 +277,7 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
       reasoningMode: prepared.reasoningMode,
       bookId: prepared.bookId,
       promptText: prepared.promptText,
+      sceneId,
     });
   }
 }

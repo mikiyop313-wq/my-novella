@@ -16,6 +16,7 @@ import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
+import { findCurrentSceneIdBeforePosition } from '../../../../shared/utils/story-context-builder';
 import {
   isVectorSearchSetting,
   type VectorSearchSetting,
@@ -113,7 +114,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   selectedModel = signal<string | null>(null);
   private readonly modelSelectionInitialized = signal(false);
   private readonly requiresModelReselection = signal(false);
-  private activeResponseId: string | null = null;
 
   // Per-prompt generation settings persisted on the Tiptap node.
   wordCount = signal(DEFAULT_PROMPT_SETTINGS.wordCount);
@@ -276,7 +276,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   ngOnDestroy(): void {
     this.contextTrackingDestroyed = true;
     this.editor().off('transaction', this.onEditorTransaction);
-    this.aiStreamEditor.loadingState.delete(this.blockId());
+    const blockId = this.blockId();
+    if (!this.aiStreamEditor.hasActivePromptGeneration(blockId)) {
+      this.aiStreamEditor.loadingState.delete(blockId);
+    }
   }
 
 
@@ -420,7 +423,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       if (latestPos === null) return;
 
       const responseId = crypto.randomUUID();
-      this.activeResponseId = responseId;
+      const sceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, latestPos);
+      if (!sceneId) return;
+
       await this.aiStreamEditor.generateNewBlock({
         editor: this.editor(),
         insertPos: latestPos + this.node().nodeSize,
@@ -431,9 +436,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         bookId: prepared.bookId,
         responseId,
         sourcePromptId: blockId,
+        sceneId,
       });
     } finally {
-      this.activeResponseId = null;
       loadingSig?.set('idle');
     }
   }
@@ -442,9 +447,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const blockId = this.blockId();
     const loadingSig = this.loadingSignal(blockId);
 
-    if (this.activeResponseId) {
-      await this.aiStreamEditor.stopGeneration(this.activeResponseId);
-    }
+    await this.aiStreamEditor.stopPromptGeneration(blockId);
 
     loadingSig?.set('idle');
   }
@@ -502,9 +505,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       });
     }
 
-    if (!this.aiStreamEditor.loadingState.has(blockId)) {
-      this.aiStreamEditor.loadingState.set(blockId, signal('idle'));
-    }
+    this.aiStreamEditor.ensurePromptLoadingState(blockId);
   }
 
   /** Returns the stable ID used to connect this prompt with its loading state. */

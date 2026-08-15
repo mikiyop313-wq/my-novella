@@ -28,7 +28,7 @@
   }
 
   <!-- Generated manuscript content -->
-  <div class="ai-generated-content" [class.is-generating]="isGenerating()" #contentDOM data-node-view-content></div>
+  <div class="ai-generated-content" #contentDOM data-node-view-content></div>
 
   <!-- Live word count -->
   @if(wordCount() > 0){

@@ -5,7 +5,11 @@ import StarterKit from '@tiptap/starter-kit';
 import { vi } from 'vitest';
 
 import { AiStreamService } from '../../../../core/services/ai-stream.service';
+import { ElectronService } from '../../../../core/services/electron.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
+import { ManuscriptStore } from '../../store/manuscript.store';
+import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 import { AiStreamEditorService } from './ai-stream-editor.service';
 
 const AiGeneratedBlock = Node.create({
@@ -25,6 +29,43 @@ const AiGeneratedBlock = Node.create({
 });
 
 describe('AiStreamEditorService', () => {
+  it('keeps an active prompt stoppable after its view is recreated', async () => {
+    let rejectStream!: (error: Error) => void;
+    const streamText = vi.fn(() => new Promise<string>((_, reject) => {
+      rejectStream = reject;
+    }));
+    const stopStream = vi.fn(async () => rejectStream(new Error('aborted')));
+    TestBed.configureTestingModule({
+      providers: [
+        AiStreamEditorService,
+        { provide: AiStreamService, useValue: { streamText, stopStream } },
+        { provide: ToastService, useValue: { error: vi.fn(), warning: vi.fn() } },
+      ],
+    });
+    const service = TestBed.inject(AiStreamEditorService);
+    vi.spyOn(service as any, 'persistCompletedGeneration').mockResolvedValue(undefined);
+
+    const generation = (service as any).streamToBlock(
+      { id: 'response-1', sourcePromptId: 'prompt-1' },
+      textPrompt('Continue.'),
+      'openrouter',
+      'model-1',
+      false,
+      'book-1',
+      'scene-1',
+    );
+
+    expect(service.ensurePromptLoadingState('prompt-1')()).toBe('loading');
+    expect(service.hasActivePromptGeneration('prompt-1')).toBe(true);
+
+    await service.stopPromptGeneration('prompt-1');
+    await generation;
+
+    expect(stopStream).toHaveBeenCalledWith('response-1');
+    expect(service.ensurePromptLoadingState('prompt-1')()).toBe('idle');
+    TestBed.resetTestingModule();
+  });
+
   it('streams manuscript work with the scene-beat preset category', async () => {
     const streamText = vi.fn().mockResolvedValue('');
     TestBed.configureTestingModule({
@@ -34,18 +75,17 @@ describe('AiStreamEditorService', () => {
       ],
     });
     const service = TestBed.inject(AiStreamEditorService);
-    vi.spyOn(service as any, 'finalizeGeneratingBlock').mockImplementation(() => undefined);
+    vi.spyOn(service as any, 'persistCompletedGeneration').mockResolvedValue(undefined);
     const aiPrompt = textPrompt('Continue.');
 
     await (service as any).streamToBlock(
-      {} as Editor,
-      10,
       { id: 'block-1' },
       aiPrompt,
       'openrouter',
       'model-1',
       false,
       'book-1',
+      'scene-1',
     );
 
     expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
@@ -90,18 +130,18 @@ describe('AiStreamEditorService', () => {
       bookId: 'book-1',
       responseId: 'response-1',
       sourcePromptId: 'prompt-1',
+      sceneId: 'scene-1',
     });
 
     expect(insertInitialBlock).toHaveBeenCalled();
     expect(streamToBlock).toHaveBeenCalledWith(
-      editor,
-      12,
       expect.objectContaining({ id: 'response-1', sourcePromptId: 'prompt-1' }),
       aiPrompt,
       'openrouter',
       'model-1',
       false,
       'book-1',
+      'scene-1',
     );
 
     TestBed.resetTestingModule();
@@ -135,17 +175,17 @@ describe('AiStreamEditorService', () => {
       reasoningMode: false,
       bookId: 'book-1',
       promptText: 'Updated prompt',
+      sceneId: 'scene-1',
     });
 
     expect(streamToBlock).toHaveBeenCalledWith(
-      editor,
-      21,
       expect.objectContaining({ id: 'response-1', sourcePromptId: 'prompt-1' }),
       aiPrompt,
       'openrouter',
       'model-1',
       false,
       'book-1',
+      'scene-1',
     );
     expect((service as any).markBlockAsGenerating).toHaveBeenCalledWith(
       editor,
@@ -295,6 +335,64 @@ describe('AiStreamEditorService', () => {
     expect(editor.state.doc.textContent).toBe('Plain text with **unfinished');
 
     editor.destroy();
+    TestBed.resetTestingModule();
+  });
+
+  it('merges a completed response into the latest source-scene prose by block ID', async () => {
+    const updateScene = vi.fn().mockResolvedValue(undefined);
+    const flushDirtySections = vi.fn().mockResolvedValue(undefined);
+    const invoke = vi.fn().mockResolvedValue({
+      'scene-1': {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'User edit' }] },
+          {
+            type: 'aiGeneratedBlock',
+            attrs: { id: 'response-1', isGenerating: true },
+            content: [{ type: 'paragraph' }],
+          },
+        ],
+      },
+    });
+
+    TestBed.configureTestingModule({
+      providers: [
+        AiStreamEditorService,
+        { provide: AiStreamService, useValue: { loadingState: new Map() } },
+        { provide: ElectronService, useValue: { invoke } },
+        { provide: ManuscriptStore, useValue: { updateScene } },
+        { provide: ManuscriptProseSaverService, useValue: { flushDirtySections } },
+        { provide: ToastService, useValue: { error: vi.fn(), warning: vi.fn() } },
+      ],
+    });
+    const service = TestBed.inject(AiStreamEditorService);
+
+    await (service as any).persistCompletedGeneration({
+      sceneId: 'scene-1',
+      blockId: 'response-1',
+      blockAttrs: { id: 'response-1', sourcePromptId: 'prompt-1' },
+      content: '**Generated** prose',
+      reasoning: 'Reasoning',
+      removeBlock: false,
+    });
+
+    expect(updateScene).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'scene-1',
+      prose: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'User edit' }] },
+          expect.objectContaining({
+            type: 'aiGeneratedBlock',
+            attrs: expect.objectContaining({
+              id: 'response-1',
+              isGenerating: false,
+              reasoningText: 'Reasoning',
+            }),
+          }),
+        ],
+      },
+    }));
     TestBed.resetTestingModule();
   });
 });

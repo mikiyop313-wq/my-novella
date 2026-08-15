@@ -1,4 +1,4 @@
-import { Injectable, WritableSignal, inject, signal } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
 import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
 import { ToastService } from '../../shared/services/toast.service';
@@ -29,22 +29,8 @@ export class AiStreamService {
   private readonly toastService = inject(ToastService);
   private readonly systemPromptModelService = inject(SystemPromptModelService);
 
-  public readonly loadingState = new Map<string, WritableSignal<LoadingStatus>>();
-
-  getLoadingSignal(streamId: string): WritableSignal<LoadingStatus> {
-    let loadingSig = this.loadingState.get(streamId);
-
-    if (!loadingSig) {
-      loadingSig = signal<LoadingStatus>('idle');
-      this.loadingState.set(streamId, loadingSig);
-    }
-
-    return loadingSig;
-  }
-
-  async stopStream(streamId: string): Promise<void> {
+  async stopStream(_streamId: string): Promise<void> {
     await this.aiStateService.abort();
-    this.setLoadingStatus(streamId, 'idle');
   }
 
   async streamText(request: AiStreamRequest): Promise<string> {
@@ -65,7 +51,7 @@ export class AiStreamService {
       lastReasoningUpdate = now;
     };
 
-    this.setLoadingStatus(request.streamId, 'loading', request.onStatusChange);
+    this.setLoadingStatus('loading', request.onStatusChange);
 
     try {
       let presetId: string;
@@ -86,7 +72,7 @@ export class AiStreamService {
         cleanupToken = window.electronAPI.onMessage('ai:generate-stream', (token: string) => {
           if (!token) return;
 
-          this.setLoadingStatus(request.streamId, 'generating', request.onStatusChange);
+          this.setLoadingStatus('generating', request.onStatusChange);
 
           for (const char of token) {
             if (char !== '\r') request.onToken?.(char);
@@ -100,7 +86,7 @@ export class AiStreamService {
           (token: string) => {
             if (!token) return;
 
-            this.setLoadingStatus(request.streamId, 'thinking', request.onStatusChange);
+            this.setLoadingStatus('thinking', request.onStatusChange);
             reasoningBuffer += token;
             emitReasoningUpdate();
           },
@@ -141,20 +127,14 @@ export class AiStreamService {
       cleanupToken?.();
       cleanupReasoning?.();
       emitReasoningUpdate(true);
-      this.setLoadingStatus(request.streamId, 'idle', request.onStatusChange);
+      this.setLoadingStatus('idle', request.onStatusChange);
     }
   }
 
   private setLoadingStatus(
-    streamId: string,
     status: LoadingStatus,
     onStatusChange?: (status: LoadingStatus) => void
   ): void {
-    const loadingSig = this.getLoadingSignal(streamId);
-
-    if (loadingSig() === status) return;
-
-    loadingSig.set(status);
     onStatusChange?.(status);
   }
 }

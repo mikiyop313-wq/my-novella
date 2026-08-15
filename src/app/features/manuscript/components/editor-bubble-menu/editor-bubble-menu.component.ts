@@ -2,6 +2,7 @@ import { Component, ElementRef, ViewChild, signal, inject, NgZone, effect } from
 import { CommonModule } from '@angular/common';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
 import { ManuscriptStore } from '../../store/manuscript.store';
+import { AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
 import {
   AiSelectionEffectComponent,
   type AiSelectionEditRequest,
@@ -19,6 +20,7 @@ export class EditorBubbleMenuComponent {
   @ViewChild(AiSelectionEffectComponent) aiSelectionEffect!: AiSelectionEffectComponent;
 
   readonly store = inject(ManuscriptStore);
+  readonly generationSessions = inject(AiGenerationSessionService);
   private zone = inject(NgZone);
 
   // Responsive signals for UI
@@ -195,6 +197,8 @@ export class EditorBubbleMenuComponent {
   }
 
   private startAiEdit(request: AiSelectionEditRequest): boolean {
+    if (this.generationSessions.hasActiveSession()) return false;
+
     const started = this.aiSelectionEffect.startEdit(request);
     if (started) this.isVisible.set(false);
     return started;

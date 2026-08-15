@@ -1,8 +1,17 @@
-import { Injectable, WritableSignal, inject } from '@angular/core';
+import { Injectable, WritableSignal, inject, signal } from '@angular/core';
 import { Editor } from '@tiptap/core';
+import { Markdown } from '@tiptap/markdown';
+import StarterKit from '@tiptap/starter-kit';
 
-import { AiStreamService, LoadingStatus } from '../../../../core/services/ai-stream.service';
+import { AiGenerationSession, AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
+import { LoadingStatus } from '../../../../core/services/ai-stream.service';
+import { ElectronService } from '../../../../core/services/electron.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 import type { BuiltAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
+import type { TiptapJsonDoc, TiptapNode } from '../../../../../../shared/models/manuscript.model';
+import { extractTextFromJsonNode } from '../content/manuscript-content.utils';
+import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
+import { ManuscriptStore } from '../../store/manuscript.store';
 
 type GeneratedBlockAttrs = Record<string, any>;
 
@@ -16,6 +25,7 @@ export interface GenerateNewBlockRequest {
   bookId: string;
   responseId: string;
   sourcePromptId: string;
+  sceneId: string;
 }
 
 export interface RegenerateExistingBlockRequest {
@@ -28,6 +38,23 @@ export interface RegenerateExistingBlockRequest {
   reasoningMode: boolean;
   bookId: string;
   promptText: string;
+  sceneId: string;
+}
+
+interface ActiveManuscriptGeneration {
+  blockId: string;
+  sceneId: string;
+  blockAttrs: GeneratedBlockAttrs;
+  session: AiGenerationSession;
+}
+
+interface PersistCompletedGenerationRequest {
+  sceneId: string;
+  blockId: string;
+  blockAttrs: GeneratedBlockAttrs;
+  content: string;
+  reasoning: string;
+  removeBlock: boolean;
 }
 
 const AI_GENERATED_BLOCK_NODE = 'aiGeneratedBlock';
@@ -40,17 +67,21 @@ export class AiStreamEditorService {
   // Dependencies
   // ---------------------------------------------------------------------------
 
-  private readonly aiStreamService = inject(AiStreamService);
+  private readonly generationSessions = inject(AiGenerationSessionService);
+  private readonly electronService = inject(ElectronService);
+  private readonly saver = inject(ManuscriptProseSaverService);
+  private readonly manuscriptStore = inject(ManuscriptStore);
+  private readonly toastService = inject(ToastService);
 
 
   // ---------------------------------------------------------------------------
   // Shared Stream State
   // ---------------------------------------------------------------------------
 
-  public readonly loadingState: Map<string, WritableSignal<LoadingStatus>> = this.aiStreamService.loadingState;
-
-  /** Tracks blocks whose in-flight network request was explicitly aborted. */
-  private readonly stoppedBlocks = new Set<string>();
+  public readonly loadingState = new Map<string, WritableSignal<LoadingStatus>>();
+  private readonly activeGenerations = new Map<string, ActiveManuscriptGeneration>();
+  private currentEditor: Editor | null = null;
+  private viewChangeInProgress = false;
 
 
   // ---------------------------------------------------------------------------
@@ -62,13 +93,87 @@ export class AiStreamEditorService {
    * Partial text already inserted into the editor is preserved and finalized.
    */
   async stopGeneration(blockId: string): Promise<void> {
-    this.stoppedBlocks.add(blockId);
-    await this.aiStreamService.stopStream(blockId);
+    await this.generationSessions.stop(blockId);
+  }
+
+  async stopPromptGeneration(promptId: string): Promise<void> {
+    const generation = [...this.activeGenerations.values()].find(activeGeneration => (
+      activeGeneration.blockAttrs['sourcePromptId'] === promptId
+      && this.isSessionActive(activeGeneration.session)
+    ));
+    if (!generation) return;
+
+    await this.stopGeneration(generation.blockId);
+  }
+
+  hasActivePromptGeneration(promptId: string): boolean {
+    return [...this.activeGenerations.values()].some(activeGeneration => (
+      activeGeneration.blockAttrs['sourcePromptId'] === promptId
+      && this.isSessionActive(activeGeneration.session)
+    ));
+  }
+
+  ensurePromptLoadingState(promptId: string): WritableSignal<LoadingStatus> {
+    const loadingSignal = this.loadingState.get(promptId) ?? signal<LoadingStatus>('idle');
+    const generation = [...this.activeGenerations.values()].find(activeGeneration => (
+      activeGeneration.blockAttrs['sourcePromptId'] === promptId
+      && this.isSessionActive(activeGeneration.session)
+    ));
+
+    if (generation) loadingSignal.set(this.toLoadingStatus(generation.session.status()));
+    this.loadingState.set(promptId, loadingSignal);
+    return loadingSignal;
   }
 
   /** The shared AI transport currently supports one active generation at a time. */
   hasActiveGeneration(): boolean {
-    return [...this.loadingState.values()].some(status => status() !== 'idle');
+    return this.generationSessions.hasActiveSession();
+  }
+
+  attachEditor(editor: Editor): void {
+    this.currentEditor = editor;
+    this.syncActiveGenerations(editor);
+  }
+
+  detachEditor(editor: Editor): void {
+    if (this.currentEditor === editor) this.currentEditor = null;
+  }
+
+  beginViewChange(): void {
+    this.viewChangeInProgress = true;
+  }
+
+  endViewChange(): void {
+    this.viewChangeInProgress = false;
+  }
+
+  syncActiveGenerations(editor: Editor): void {
+    for (const generation of this.activeGenerations.values()) {
+      const status = generation.session.status();
+      const isTerminal = status === 'complete' || status === 'stopped' || status === 'failed';
+      const blockPos = this.findGeneratingBlockPos(editor, generation.blockId);
+      if (isTerminal) {
+        if (blockPos !== null) {
+          if (status === 'failed' && !generation.session.content()) {
+            this.removeGeneratingBlock(editor, generation.blockId);
+          } else {
+            this.renderGeneratedMarkdown(editor, generation.session.content(), generation.blockId);
+            this.finalizeGeneratingBlock(
+              editor,
+              generation.session.reasoning(),
+              generation.blockId,
+            );
+          }
+          this.activeGenerations.delete(generation.blockId);
+        } else if (this.hasScene(editor, generation.sceneId)) {
+          this.activeGenerations.delete(generation.blockId);
+        }
+        continue;
+      }
+
+      this.renderGeneratedMarkdown(editor, generation.session.content(), generation.blockId);
+      this.updateReasoningText(editor, generation.blockAttrs, generation.session.reasoning());
+    }
   }
 
   /**
@@ -85,6 +190,7 @@ export class AiStreamEditorService {
     bookId,
     responseId,
     sourcePromptId,
+    sceneId,
   }: GenerateNewBlockRequest): Promise<void> {
     const blockAttrs = this.createGeneratingBlockAttrs({
       id: responseId,
@@ -95,17 +201,17 @@ export class AiStreamEditorService {
       reasoningMode,
     });
 
-    const startInsertPos = this.insertInitialBlock(editor, insertPos, blockAttrs);
+    this.insertInitialBlock(editor, insertPos, blockAttrs);
 
+    await this.saver.flushDirtySections();
     await this.streamToBlock(
-      editor,
-      startInsertPos,
       blockAttrs,
       aiPrompt,
       provider,
       modelId,
       reasoningMode,
       bookId,
+      sceneId,
     );
   }
 
@@ -123,6 +229,7 @@ export class AiStreamEditorService {
     reasoningMode,
     bookId,
     promptText,
+    sceneId,
   }: RegenerateExistingBlockRequest): Promise<void> {
     const blockAttrs = this.createGeneratingBlockAttrs({
       id: currentAttrs['id'],
@@ -136,18 +243,17 @@ export class AiStreamEditorService {
 
     this.markBlockAsGenerating(editor, blockPos, blockAttrs);
 
-    const startInsertPos = this.resetBlockContent(editor, blockPos);
-    if (startInsertPos === null) return;
+    if (this.resetBlockContent(editor, blockPos) === null) return;
 
+    await this.saver.flushDirtySections();
     await this.streamToBlock(
-      editor,
-      startInsertPos,
       blockAttrs,
       aiPrompt,
       provider,
       modelId,
       reasoningMode,
       bookId,
+      sceneId,
     );
   }
 
@@ -233,151 +339,192 @@ export class AiStreamEditorService {
   // Streaming
   // ---------------------------------------------------------------------------
 
-  /**
-   * Streams generated text into the editor a few characters per animation
-   * frame. Reasoning tokens are stored as node attrs and throttled because each
-   * attr write re-renders the Angular NodeView.
-   */
   private async streamToBlock(
-    editor: Editor,
-    startInsertPos: number,
     blockAttrs: GeneratedBlockAttrs,
     aiPrompt: BuiltAiPrompt,
     provider: string,
     modelId: string | undefined,
     reasoningMode: boolean,
     bookId: string,
+    sceneId: string,
   ): Promise<void> {
-    let currentInsertPos = startInsertPos;
-    let hasError = false;
-    let hasWrittenContent = false;
-    let reasoningBuffer = '';
-    let markdownSource = '';
-    let isNewlineSequence = false;
+    const blockId = String(blockAttrs['id']);
+    const sourcePromptId = String(blockAttrs['sourcePromptId'] ?? '');
+    const loadingSignal = this.loadingState.get(blockId) ?? signal<LoadingStatus>('idle');
+    const promptLoadingSignal = sourcePromptId
+      ? this.ensurePromptLoadingState(sourcePromptId)
+      : null;
+    this.loadingState.set(blockId, loadingSignal);
+    let animationFrame: number | null = null;
+    let latestContent = '';
 
-    const queue: string[] = [];
-    let isAnimating = false;
-    let streamFinished = false;
-    let resolveDrain!: () => void;
-    const drainPromise = new Promise<void>(resolve => resolveDrain = resolve);
+    const scheduleVisibleRender = (content: string): void => {
+      latestContent = content;
+      if (animationFrame !== null) return;
 
-    const processQueue = () => {
-      if (queue.length === 0) {
-        isAnimating = false;
-        if (streamFinished) resolveDrain();
-        return;
-      }
-
-      const nextChunk = this.takeNextTextChunk(queue);
-
-      if (nextChunk.text.length > 0) {
-        hasWrittenContent = true;
-        currentInsertPos = this.insertText(editor, currentInsertPos, nextChunk.text);
-      } else if (nextChunk.isNewline) {
-        currentInsertPos = this.splitParagraph(editor, currentInsertPos);
-      }
-
-      requestAnimationFrame(processQueue);
-    };
-
-    const enqueue = (char: string) => {
-      queue.push(char);
-
-      if (!isAnimating) {
-        isAnimating = true;
-        requestAnimationFrame(processQueue);
-      }
-    };
-
-    try {
-      await this.aiStreamService.streamText({
-        streamId: blockAttrs['id'],
-        bookId,
-        aiPrompt,
-        provider,
-        modelId,
-        reasoningMode,
-        onToken: token => {
-          if (!token) return;
-
-          markdownSource += token;
-
-          if (token === '\n') {
-            if (!isNewlineSequence) enqueue('\n');
-            isNewlineSequence = true;
-          } else {
-            isNewlineSequence = false;
-            enqueue(token);
-          }
-        },
-        onReasoningUpdate: reasoningText => {
-          reasoningBuffer = reasoningText;
-          this.updateReasoningText(editor, blockAttrs, reasoningText);
+      animationFrame = requestAnimationFrame(() => {
+        animationFrame = null;
+        const editor = this.currentEditor;
+        if (editor && !editor.isDestroyed) {
+          this.renderGeneratedMarkdown(editor, latestContent, blockId);
         }
       });
-    } catch (error) {
-      hasError = true;
-      console.error('AI Generation failed:', error);
-    } finally {
-      streamFinished = true;
+    };
 
-      if (!hasError || hasWrittenContent) {
-        if (!isAnimating) {
-          isAnimating = true;
-          processQueue();
+    const session = this.generationSessions.start({
+      streamId: blockId,
+      source: 'manuscript-prose',
+      bookId,
+      aiPrompt,
+      provider,
+      modelId,
+      reasoningMode,
+      onContentChange: scheduleVisibleRender,
+      onReasoningChange: reasoningText => {
+        const editor = this.currentEditor;
+        if (editor && !editor.isDestroyed) {
+          this.updateReasoningText(editor, blockAttrs, reasoningText);
         }
+      },
+      onStatusChange: status => {
+        const loadingStatus = this.toLoadingStatus(status);
+        loadingSignal.set(loadingStatus);
+        promptLoadingSignal?.set(loadingStatus);
+      },
+    });
 
-        await drainPromise;
-      }
+    if (!session) {
+      const editor = this.currentEditor;
+      if (editor && !editor.isDestroyed) this.removeGeneratingBlock(editor, blockId);
+      return;
+    }
 
-      if (hasError && !hasWrittenContent) {
-        this.removeGeneratingBlock(editor, blockAttrs['id']);
-      } else {
-        this.renderGeneratedMarkdown(editor, markdownSource, blockAttrs['id']);
-        this.finalizeGeneratingBlock(editor, reasoningBuffer, blockAttrs['id']);
-        this.stoppedBlocks.delete(blockAttrs['id']);
+    this.activeGenerations.set(blockId, { blockId, sceneId, blockAttrs, session });
+
+    try {
+      const result = await session.completion;
+      if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+
+      await this.persistCompletedGeneration({
+        sceneId,
+        blockId,
+        blockAttrs,
+        content: result.content,
+        reasoning: result.reasoning,
+        removeBlock: result.status === 'failed' && !result.content,
+      });
+
+      if (result.status === 'failed') {
+        console.error('AI Generation failed:', result.error);
       }
+    } catch (error) {
+      console.error('Failed to finalize AI generation:', error);
+      this.toastService.error(
+        'The generated prose could not be saved.',
+        'AI Generation',
+      );
+    } finally {
+      loadingSignal.set('idle');
+      promptLoadingSignal?.set('idle');
+      if (!this.viewChangeInProgress) this.activeGenerations.delete(blockId);
+      this.generationSessions.release(blockId);
     }
   }
 
-  private takeNextTextChunk(queue: string[]): { text: string; isNewline: boolean } {
-    const charsToProcess = Math.max(2, Math.ceil(queue.length / 5));
-    let text = '';
+  private isSessionActive(session: AiGenerationSession): boolean {
+    const status = session.status();
+    return status !== 'complete' && status !== 'stopped' && status !== 'failed';
+  }
 
-    for (let i = 0; i < charsToProcess; i++) {
-      if (queue.length === 0) break;
+  private toLoadingStatus(status: string): LoadingStatus {
+    return status === 'loading' || status === 'thinking' || status === 'generating'
+      ? status
+      : 'idle';
+  }
 
-      if (queue[0] === '\n') {
-        if (text.length > 0) break;
+  private async persistCompletedGeneration({
+    sceneId,
+    blockId,
+    blockAttrs,
+    content,
+    reasoning,
+    removeBlock,
+  }: PersistCompletedGenerationRequest): Promise<void> {
+    await this.saver.flushDirtySections();
 
-        queue.shift();
-        return { text: '', isNewline: true };
+    const proseBySceneId = await this.electronService.invoke(
+      'manuscript:getScenesProse',
+      { sceneIds: [sceneId] },
+    ) as Record<string, TiptapJsonDoc | null>;
+    const prose = proseBySceneId[sceneId] ?? { type: 'doc', content: [] };
+    const replacementContent = this.parseGeneratedMarkdown(content);
+    let foundBlock = false;
+    const nextContent = (prose.content ?? []).flatMap(node => {
+      if (node.type !== AI_GENERATED_BLOCK_NODE || node.attrs?.['id'] !== blockId) {
+        return [node];
       }
 
-      text += queue.shift();
+      foundBlock = true;
+      if (removeBlock) return [];
+
+      return [{
+        type: AI_GENERATED_BLOCK_NODE,
+        attrs: {
+          ...blockAttrs,
+          isGenerating: false,
+          reasoningText: reasoning,
+        },
+        content: replacementContent,
+      } satisfies TiptapNode];
+    });
+
+    if (!foundBlock) {
+      this.toastService.error(
+        'The original AI response block could not be found.',
+        'AI Generation',
+      );
+      const editor = this.currentEditor;
+      if (editor && !editor.isDestroyed) this.removeGeneratingBlock(editor, blockId);
+      return;
     }
 
-    return { text, isNewline: false };
+    const nextProse: TiptapJsonDoc = { type: 'doc', content: nextContent };
+    const wordCount = this.countWords(nextProse);
+    await this.manuscriptStore.updateScene({ id: sceneId, prose: nextProse, wordCount });
+
+    const editor = this.currentEditor;
+    if (!editor || editor.isDestroyed) return;
+
+    if (removeBlock) {
+      this.removeGeneratingBlock(editor, blockId);
+      return;
+    }
+
+    this.renderGeneratedMarkdown(editor, content, blockId);
+    this.finalizeGeneratingBlock(editor, reasoning, blockId);
   }
 
-  private insertText(editor: Editor, insertPos: number, text: string): number {
-    const beforeSize = editor.state.doc.content.size;
-    const tr = editor.state.tr.insertText(text, insertPos);
+  private parseGeneratedMarkdown(markdown: string): TiptapNode[] {
+    if (!markdown) return [{ type: PARAGRAPH_NODE }];
 
-    tr.setMeta('addToHistory', false);
-    editor.view.dispatch(tr);
+    const parser = new Editor({ extensions: [StarterKit, Markdown] });
+    try {
+      const markdownManager = parser.markdown;
+      if (!markdownManager) return [{ type: PARAGRAPH_NODE }];
 
-    return insertPos + (editor.state.doc.content.size - beforeSize);
+      const parsedDocument = markdownManager.parse(markdown);
+      const content = parsedDocument.content ?? [];
+      return content.length > 0
+        ? content as TiptapNode[]
+        : [{ type: PARAGRAPH_NODE }];
+    } finally {
+      parser.destroy();
+    }
   }
 
-  private splitParagraph(editor: Editor, insertPos: number): number {
-    const beforeSize = editor.state.doc.content.size;
-    const tr = editor.state.tr.split(insertPos);
-
-    tr.setMeta('addToHistory', false);
-    editor.view.dispatch(tr);
-
-    return insertPos + (editor.state.doc.content.size - beforeSize);
+  private countWords(prose: TiptapJsonDoc): number {
+    const text = (prose.content ?? []).map(extractTextFromJsonNode).join(' ');
+    return text.trim().split(/\s+/).filter(Boolean).length;
   }
 
 
@@ -502,6 +649,18 @@ export class AiStreamEditorService {
     });
 
     return blockPos;
+  }
+
+  private hasScene(editor: Editor, sceneId: string): boolean {
+    let found = false;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'sceneSummary' && node.attrs['id'] === sceneId) {
+        found = true;
+        return false;
+      }
+      return true;
+    });
+    return found;
   }
 
 }

@@ -4,7 +4,7 @@ import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-import { AiStreamService } from '../../../../core/services/ai-stream.service';
+import { AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import {
   buildAiPrompt,
@@ -74,7 +74,7 @@ export class AiSelectionEffectComponent {
 
   private readonly store = inject(ManuscriptStore);
   private readonly workspaceStore = inject(WorkspaceStore);
-  private readonly aiStreamService = inject(AiStreamService);
+  private readonly generationSessions = inject(AiGenerationSessionService);
   private readonly toastService = inject(ToastService);
   private readonly codexContext = inject(CodexContextTrieService);
   private readonly codexService = inject(CodexService);
@@ -115,7 +115,11 @@ export class AiSelectionEffectComponent {
   startEdit(request: AiSelectionEditRequest): boolean {
     const currentEditor = this.store.editor();
     const bookId = this.workspaceStore.bookId();
-    if (!currentEditor || this.state() !== 'idle') return false;
+    if (
+      !currentEditor
+      || this.state() !== 'idle'
+      || this.generationSessions.hasActiveSession()
+    ) return false;
     const instruction = request.instruction.trim();
     if (!instruction) return false;
     if (!bookId) {
@@ -244,8 +248,6 @@ export class AiSelectionEffectComponent {
     context: SelectionEditContext,
     request: AiSelectionEditRequest,
   ): Promise<void> {
-    let response = '';
-
     try {
       let currentContext = context;
       if (request.category === 'expand' || request.category === 'shorten') {
@@ -266,16 +268,26 @@ export class AiSelectionEffectComponent {
         currentContext = enrichedContext;
       }
 
-      await this.aiStreamService.streamText({
+      const session = this.generationSessions.start({
         streamId: requestId,
+        source: 'manuscript-selection',
         bookId,
         aiPrompt: buildSelectionEditAiPrompt({ context: currentContext, request }),
-        onToken: token => response += token,
       });
+      if (!session) {
+        this.streamId = null;
+        this.dismiss();
+        return;
+      }
+
+      const result = await session.completion;
+      if (result.status === 'failed') {
+        throw result.error ?? new Error('AI selection edit failed.');
+      }
 
       if (this.streamId !== requestId || this.state() !== 'generating') return;
 
-      const replacement = response.trim();
+      const replacement = result.content.trim();
       if (!replacement) {
         this.toastService.error(
           `The model returned an empty ${request.actionLabel.toLowerCase()} result.`,
@@ -315,6 +327,8 @@ export class AiSelectionEffectComponent {
       );
       this.streamId = null;
       this.dismiss();
+    } finally {
+      this.generationSessions.release(requestId);
     }
   }
 
@@ -506,7 +520,7 @@ export class AiSelectionEffectComponent {
     this.bounds.set(null);
     this.clipPath.set(null);
     this.state.set('idle');
-    if (activeStreamId) void this.aiStreamService.stopStream(activeStreamId);
+    if (activeStreamId) void this.generationSessions.stop(activeStreamId);
   }
 
   private resetSelectionState(): void {

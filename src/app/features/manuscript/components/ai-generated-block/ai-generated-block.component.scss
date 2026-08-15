@@ -127,15 +127,7 @@
     /* Override standard p tag color if Tiptap injects it. */
     ::ng-deep p {
       color: var(--color-text-secondary) !important;
-      /* No animation by default — only active during streaming (see .is-generating below). */
       animation: none;
-    }
-  }
-
-  /* Streaming text reveal */
-  .ai-generated-content.is-generating {
-    ::ng-deep p {
-      animation: fadeInText 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
   }
 
@@ -339,22 +331,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-/** Paragraph reveal: each new <p> Tiptap inserts sweeps in left-to-right,
-    mimicking the feeling of text being typed across the line. */
-@keyframes fadeInText {
-  from {
-    opacity: 0.2;
-    clip-path: inset(0 100% 0 0 round 2px);
-    transform: translateX(-6px);
-  }
-
-  to {
-    opacity: 1;
-    clip-path: inset(0 0% 0 0 round 2px);
-    transform: translateX(0);
   }
 }
 
