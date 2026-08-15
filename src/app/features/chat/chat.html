@@ -116,9 +116,7 @@
           </header>
 
           <div class="message-list"
-            [codexContextHighlight]="isDetachedMode
-              ? '[data-codex-highlight-disabled]'
-              : 'article.from-user markdown.message-text, article.from-assistant markdown.message-text'">
+            codexContextHighlight="article.from-user markdown.message-text, article.from-assistant markdown.message-text">
             @for (message of chatStore.visibleMessages(); track message.id) {
             <article class="message-row" [class.from-user]="message.role === 'user'"
               [class.from-assistant]="message.role === 'assistant'" [class.from-system]="message.role === 'system'"
@@ -299,7 +297,8 @@
         <div class="chat-input-wrapper">
           <app-markdown-editor class="chat-input" [value]="composerValue()" placeholder="Type a message..."
             ariaLabel="Type a message" [readOnly]="isAiResponseActive()" [submitOnEnter]="true"
-            (valueChange)="composerValue.set($event)" (submitRequested)="sendPrompt()">
+            [keywordHighlights]="composerKeywordHighlights()" (valueChange)="composerValue.set($event)"
+            (submitRequested)="sendPrompt()" (keywordClick)="openComposerKeyword($event)">
           </app-markdown-editor>
 
           <div class="chat-input-footer">

@@ -19,14 +19,21 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { MarkdownComponent } from 'ngx-markdown';
 
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
+import { buildContextHighlightSegments } from '../../../../shared/utils/context-highlighter';
 import { AiStore } from '../../core/store/ai.store';
 import {
   AutocompleteDropdownComponent,
   type DropdownOption,
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import {
+  type MarkdownKeywordClick,
+  type MarkdownKeywordHighlight,
+} from '../../shared/components/markdown-editor/markdown-editor.extensions';
 import { ToastService } from '../../shared/services/toast.service';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
+import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
+import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { ChatThreads } from './components/chat-threads/chat-threads';
 import { ChatResponseService } from './services/chat-response.service';
 import { ChatWindowService } from './services/chat-window.service';
@@ -64,6 +71,8 @@ export class Chat implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly chatWindowService = inject(ChatWindowService);
   private readonly toastService = inject(ToastService);
+  private readonly codexContextTrie = inject(CodexContextTrieService);
+  private readonly codexMatchChooser = inject(CodexMatchChooserService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
 
@@ -135,6 +144,23 @@ export class Chat implements OnInit, OnDestroy {
     const modelId = this.selectedModelId();
     return !!modelId && this.aiStore.models()
       .find((model) => model.id === modelId)?.supportsReasoning === true;
+  });
+
+  readonly composerKeywordHighlights = computed<MarkdownKeywordHighlight[]>(() => {
+    const content = this.composerValue();
+    if (!content) return [];
+
+    // Keep this computed reactive to Codex index refreshes as well as composer edits.
+    this.codexContextTrie.trie();
+    const matches = this.codexContextTrie.findMatches(content);
+
+    return buildContextHighlightSegments(content, matches)
+      .filter(segment => segment.isMatch)
+      .map(segment => ({
+        startIndex: segment.startIndex,
+        endIndex: segment.endIndex,
+        entryIds: [...new Set(segment.matches.map(match => match.value.entryId))],
+      }));
   });
 
   get showDetachedSidebar(): boolean {
@@ -426,6 +452,10 @@ export class Chat implements OnInit, OnDestroy {
     if (this.supportsReasoning()) {
       this.reasoningMode.update((enabled) => !enabled);
     }
+  }
+
+  openComposerKeyword(event: MarkdownKeywordClick): void {
+    this.codexMatchChooser.open(event.entryIds, event.clientX, event.clientY);
   }
 
   async sendPrompt(): Promise<void> {
@@ -731,6 +761,7 @@ export class Chat implements OnInit, OnDestroy {
         throw new Error('Detached chat session could not be found.');
       }
 
+      void this.codexContextTrie.loadForContext(session.bookId);
       await this.chatStore.enterBook(session.bookId);
       if (session.selectedThreadId) {
         await this.selectThread(session.selectedThreadId);

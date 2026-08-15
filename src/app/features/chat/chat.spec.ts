@@ -122,6 +122,7 @@ describe('Chat', () => {
     isBookDetached: ReturnType<typeof vi.fn>;
   };
   let toastService: Pick<ToastService, 'error'>;
+  let matchChooser: { open: ReturnType<typeof vi.fn> };
   let detachedWindowClosedCallback: ((event: { bookId: string; sessionId: string }) => void) | null;
   let detachedBookIds: Set<string>;
   const trieState = signal<object | null>({});
@@ -149,7 +150,7 @@ describe('Chat', () => {
         { provide: ToastService, useValue: toastService },
         { provide: CodexContextTrieService, useValue: contextTrie },
         { provide: CodexContextHighlightRegistryService, useValue: highlightRegistry },
-        { provide: CodexMatchChooserService, useValue: { open: vi.fn() } },
+        { provide: CodexMatchChooserService, useValue: matchChooser },
         { provide: CodexEntryOpenerService, useValue: { open: vi.fn() } },
         ...provideMarkdown(),
       ],
@@ -338,6 +339,7 @@ describe('Chat', () => {
       isBookDetached: vi.fn((bookId: string | null) => !!bookId && detachedBookIds.has(bookId)),
     };
     toastService = { error: vi.fn() };
+    matchChooser = { open: vi.fn() };
   });
 
   afterEach(() => {
@@ -720,6 +722,49 @@ describe('Chat', () => {
     expect(assistantMessage.querySelector('script')).toBeNull();
   });
 
+  it('highlights Codex keywords live in the workspace chat composer', async () => {
+    await createComponent(workspaceThreadRoute());
+
+    const editor = setComposerValue('Mara Vale `Silver Key` [key](<Silver Key>)');
+    expect([...editor.editorView()!.contentDOM.querySelectorAll('.cm-codex-keyword')]
+      .map(element => element.textContent)).toEqual(['Mara Vale']);
+
+    setComposerValue('Mara');
+    expect(editor.editorView()!.contentDOM.querySelector('.cm-codex-keyword')).toBeNull();
+
+    setComposerValue('Silver Key');
+    expect(editor.editorView()!.contentDOM.querySelector('.cm-codex-keyword')?.textContent)
+      .toBe('Silver Key');
+
+    setComposerValue('');
+    expect(editor.editorView()!.contentDOM.querySelector('.cm-codex-keyword')).toBeNull();
+  });
+
+  it('preserves overlapping Codex entry IDs and opens the composer keyword chooser', async () => {
+    contextTrie.findMatches.mockImplementation((text: string) => {
+      const match = findCodexMatches(text)[0];
+      return match
+        ? [match, { ...match, value: { ...match.value, entryId: 'codex-3' } }]
+        : [];
+    });
+    await createComponent(workspaceThreadRoute());
+    const editor = setComposerValue('Mara Vale');
+
+    expect(component.composerKeywordHighlights()).toEqual([{
+      startIndex: 0,
+      endIndex: 9,
+      entryIds: ['codex-1', 'codex-3'],
+    }]);
+
+    editor.keywordClick.emit({
+      entryIds: ['codex-1', 'codex-3'],
+      clientX: 12,
+      clientY: 24,
+    });
+
+    expect(matchChooser.open).toHaveBeenCalledWith(['codex-1', 'codex-3'], 12, 24);
+  });
+
   it('highlights only workspace user and assistant Markdown without changing rendered DOM', async () => {
     selectedThread = makeThreadDetail({
       title: 'Title Codex',
@@ -799,7 +844,7 @@ describe('Chat', () => {
       .map((item: { range: Range }) => item.range.toString())).toEqual(['Mara Vale']);
   });
 
-  it('keeps detached chat highlighting disabled', async () => {
+  it('highlights sent messages and composer keywords in detached chat', async () => {
     chatWindowService.getDetachedSession.mockResolvedValueOnce({
       sessionId: 'session-1',
       bookId: 'book-1',
@@ -816,12 +861,20 @@ describe('Chat', () => {
     fixture.changeDetectorRef.markForCheck();
     fixture.detectChanges(false);
     await waitForHighlightScan();
+    const editor = setComposerValue('Mara Vale');
 
     expect(component.isDetachedMode).toBe(true);
     expect(fixture.nativeElement.querySelector('.message-row.from-user')).not.toBeNull();
-    expect(highlightRegistry.setRanges.mock.calls.every((call) => call[1].length === 0)).toBe(true);
-    expect(contextTrie.findMatches).not.toHaveBeenCalled();
-    expect(contextTrie.loadForContext).not.toHaveBeenCalled();
+    expect(component.composerKeywordHighlights()).toEqual([{
+      startIndex: 0,
+      endIndex: 9,
+      entryIds: ['codex-1'],
+    }]);
+    expect(editor.editorView()!.contentDOM.querySelector('.cm-codex-keyword')?.textContent)
+      .toBe('Mara Vale');
+    expect(highlightRegistry.setRanges.mock.calls.at(-1)?.[1]
+      .map((item: { range: Range }) => item.range.toString())).toEqual(['Mara Vale']);
+    expect(contextTrie.loadForContext).toHaveBeenCalledWith('book-1');
   });
 
   it('renders assistant single newlines as paragraph breaks without changing user newlines', async () => {
@@ -1516,6 +1569,7 @@ describe('Chat', () => {
     expect(component.isDetachedMode).toBe(true);
     expect(chatWindowService.getDetachedSession).toHaveBeenCalledWith('session-1');
     expect(chatStore.enterBook).toHaveBeenCalledWith('book-1');
+    expect(contextTrie.loadForContext).toHaveBeenCalledWith('book-1');
     expect(chatStore.openThread).toHaveBeenCalledWith('thread-1');
     expect(fixture.nativeElement.querySelector('.detach-btn')).toBeNull();
   });
