@@ -9,10 +9,14 @@ export interface OutlineAiSummaryTarget extends OutlineAiTarget {
   streamId: string;
 }
 
+export interface OutlineAiCodexDetectionTarget extends OutlineAiTarget {
+  streamId: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class OutlineAiGenerationService {
   readonly summaryTargets = signal<ReadonlyMap<string, OutlineAiSummaryTarget>>(new Map());
-  readonly codexDetectionTarget = signal<OutlineAiTarget | null>(null);
+  readonly codexDetectionTargets = signal<ReadonlyMap<string, OutlineAiCodexDetectionTarget>>(new Map());
 
   isSummaryTargetActive({
     bookId,
@@ -40,7 +44,40 @@ export class OutlineAiGenerationService {
     });
   }
 
+  isCodexDetectionTargetActive({
+    bookId,
+    sceneId,
+  }: Pick<OutlineAiTarget, 'bookId' | 'sceneId'>): boolean {
+    return this.codexDetectionTargets().has(this.targetKey({ bookId, sceneId }));
+  }
+
+  addCodexDetectionTarget(target: OutlineAiCodexDetectionTarget): boolean {
+    const key = this.targetKey(target);
+    if (this.codexDetectionTargets().has(key)) return false;
+
+    this.codexDetectionTargets.update(targets => new Map(targets).set(key, target));
+    return true;
+  }
+
+  removeCodexDetectionTarget(target: OutlineAiCodexDetectionTarget): void {
+    const key = this.targetKey(target);
+    if (this.codexDetectionTargets().get(key)?.streamId !== target.streamId) return;
+
+    this.codexDetectionTargets.update(targets => {
+      const nextTargets = new Map(targets);
+      nextTargets.delete(key);
+      return nextTargets;
+    });
+  }
+
   private summaryTargetKey({
+    bookId,
+    sceneId,
+  }: Pick<OutlineAiTarget, 'bookId' | 'sceneId'>): string {
+    return this.targetKey({ bookId, sceneId });
+  }
+
+  private targetKey({
     bookId,
     sceneId,
   }: Pick<OutlineAiTarget, 'bookId' | 'sceneId'>): string {

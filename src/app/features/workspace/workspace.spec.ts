@@ -2,7 +2,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, ChildrenOutletContexts, Router, convertToParamMap } from '@angular/router';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { NEVER, of } from 'rxjs';
-import { signal } from '@angular/core';
 
 import type { ChatThreadDetailDto } from '../../../../shared/models/chat.model';
 import { ChatStore } from '../chat/store/chat.store';
@@ -10,6 +9,7 @@ import { CodexContextTrieService } from '../codex/services/codex-context-trie.se
 import { CodexDetectionStateService } from '../codex/services/codex-detection-state.service';
 import { CodexService } from '../codex/services/codex.service';
 import { CodexStore } from '../codex/store/codex.store';
+import { ToastService } from '../../shared/services/toast.service';
 import { Workspace } from './workspace';
 import { WorkspaceBookStore } from './workspace-book.store';
 import { WorkspaceStore } from './workspace.store';
@@ -36,8 +36,11 @@ describe('Workspace', () => {
   let selectedThread: ChatThreadDetailDto | null;
   let lastManuscriptRoutes: Record<string, { mode: 'book' | 'act' | 'chapter' | 'scene'; id: string }>;
   let routerUrl: string;
-  let pendingCodexDetection: ReturnType<typeof signal<any>>;
-  let codexService: { createEntry: ReturnType<typeof vi.fn> };
+  let codexDetectionState: CodexDetectionStateService;
+  let codexService: {
+    createEntry: ReturnType<typeof vi.fn>;
+    getEntries: ReturnType<typeof vi.fn>;
+  };
   let codexStore: {
     activeType: ReturnType<typeof vi.fn>;
     searchQuery: ReturnType<typeof vi.fn>;
@@ -50,8 +53,10 @@ describe('Workspace', () => {
     selectedThread = null;
     lastManuscriptRoutes = {};
     routerUrl = '/workspace/book-1/outline';
-    pendingCodexDetection = signal(null);
-    codexService = { createEntry: vi.fn().mockResolvedValue(undefined) };
+    codexService = {
+      createEntry: vi.fn().mockResolvedValue(undefined),
+      getEntries: vi.fn().mockResolvedValue([]),
+    };
     codexStore = {
       activeType: vi.fn(() => 'character'),
       searchQuery: vi.fn(() => ''),
@@ -97,13 +102,6 @@ describe('Workspace', () => {
         { provide: CodexService, useValue: codexService },
         { provide: CodexStore, useValue: codexStore },
         {
-          provide: CodexDetectionStateService,
-          useValue: {
-            pendingDetection: pendingCodexDetection,
-            clearPendingDetection: vi.fn(() => pendingCodexDetection.set(null)),
-          },
-        },
-        {
           provide: ActivatedRoute,
           useValue: { paramMap: of(convertToParamMap({ bookId: 'book-1' })) },
         },
@@ -122,11 +120,12 @@ describe('Workspace', () => {
         set: {
           template: `
             <ng-container [appOverlayModal]="codexDetectionModal"
-              #codexDetectionModalTrigger="appOverlayModal"></ng-container>
+              #codexDetectionModalTrigger="appOverlayModal"
+              (closed)="onCodexDetectionModalClosed()"></ng-container>
             <ng-template #codexDetectionModal let-closeModal>
               <app-codex-detection-modal [detectedEntries]="detectedCodexEntries()"
                 [saveEntry]="saveDetectedCodexEntry"
-                (close)="codexDetectionState.clearPendingDetection(); closeModal()">
+                (close)="closeModal()">
               </app-codex-detection-modal>
             </ng-template>
           `,
@@ -136,6 +135,7 @@ describe('Workspace', () => {
 
     fixture = TestBed.createComponent(Workspace);
     component = fixture.componentInstance;
+    codexDetectionState = TestBed.inject(CodexDetectionStateService);
   });
 
   it('loads Codex context trie when entering the workspace book', () => {
@@ -258,6 +258,7 @@ describe('Workspace', () => {
       type: 'location' as const,
       description: 'A storm-battered port.',
     };
+    codexDetectionState.enqueue({ bookId: 'book-1', sceneId: 'scene-1', entries: [entry] });
 
     await expect(component.saveDetectedCodexEntry(entry)).resolves.toEqual({ success: true });
 
@@ -273,20 +274,24 @@ describe('Workspace', () => {
   it('returns a detected Codex entry save error', async () => {
     const error = new Error('Entry name already exists.');
     codexService.createEntry.mockRejectedValueOnce(error);
-
-    await expect(component.saveDetectedCodexEntry({
+    const entry = {
       name: 'The Glass Harbor',
-      type: 'location',
+      type: 'location' as const,
       description: 'A storm-battered port.',
-    })).resolves.toEqual({ success: false, error: error.message });
+    };
+    codexDetectionState.enqueue({ bookId: 'book-1', sceneId: 'scene-1', entries: [entry] });
+
+    await expect(component.saveDetectedCodexEntry(entry))
+      .resolves.toEqual({ success: false, error: error.message });
 
     expect(codexStore.loadEntries).not.toHaveBeenCalled();
   });
 
   it('keeps detection navigation, discard, and accept active after changing views', async () => {
     fixture.detectChanges();
-    pendingCodexDetection.set({
+    codexDetectionState.enqueue({
       bookId: 'book-1',
+      sceneId: 'scene-1',
       entries: [
         { name: 'Elara Voss', type: 'character', description: 'A cartographer.' },
         { name: 'The Glass Harbor', type: 'location', description: 'A port.' },
@@ -311,12 +316,131 @@ describe('Workspace', () => {
 
     document.querySelector<HTMLButtonElement>('.codex-detection-modal .add-button')!.click();
     await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 250));
     fixture.detectChanges();
 
     expect(codexService.createEntry).toHaveBeenCalledWith(expect.objectContaining({
       bookId: 'book-1',
       name: 'Elara Voss',
     }));
-    expect(pendingCodexDetection()).toBeNull();
+    expect(codexDetectionState.activeDetection('book-1')).toBeNull();
+  });
+
+  it('keeps the open batch stable and filters the next queued batch against the latest Codex', async () => {
+    fixture.detectChanges();
+    codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-1',
+      entries: [{ name: 'First result', type: 'other', description: 'First.' }],
+    });
+    codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-2',
+      entries: [
+        { name: 'Elara', type: 'character', description: 'Existing.' },
+        { name: 'Glass Harbor', type: 'location', description: 'New.' },
+      ],
+    });
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve));
+    fixture.detectChanges();
+
+    expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('First result');
+    expect(document.querySelector('.codex-detection-modal')?.textContent).not.toContain('Glass Harbor');
+
+    codexService.getEntries.mockResolvedValueOnce([existingCodexEntry('Elara', 'The Cartographer')]);
+    document.querySelector<HTMLElement>('.cdk-overlay-backdrop')!.click();
+    await new Promise(resolve => setTimeout(resolve, 250));
+    fixture.detectChanges();
+
+    expect(codexService.getEntries).toHaveBeenCalledWith('book-1', { includeArchived: true });
+    expect(codexDetectionState.activeDetection('book-1')).toEqual({
+      bookId: 'book-1',
+      sceneId: 'scene-2',
+      entries: [{ name: 'Glass Harbor', type: 'location', description: 'New.' }],
+    });
+  });
+
+  it('preserves a queued batch and retries its Codex refresh from the error notification', async () => {
+    const toastService = TestBed.inject(ToastService);
+    fixture.detectChanges();
+    codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-1',
+      entries: [{ name: 'First result', type: 'other', description: 'First.' }],
+    });
+    const queued = {
+      bookId: 'book-1',
+      sceneId: 'scene-2',
+      entries: [{ name: 'Glass Harbor', type: 'location' as const, description: 'New.' }],
+    };
+    codexDetectionState.enqueue(queued);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve));
+    fixture.detectChanges();
+
+    codexService.getEntries.mockRejectedValueOnce(new Error('Database unavailable'));
+    document.querySelector<HTMLButtonElement>('.codex-detection-modal .close-button')!.click();
+    await new Promise(resolve => setTimeout(resolve, 250));
+
+    const retryToast = toastService.toasts().find(toast => toast.action?.label === 'Retry');
+    expect(retryToast?.timeout).toBe(0);
+    expect(codexDetectionState.activeDetection('book-1')).toBeNull();
+    expect(codexDetectionState.nextQueued('book-1')).toBe(queued);
+
+    codexService.getEntries.mockResolvedValueOnce([]);
+    await retryToast!.action!.handler();
+
+    expect(codexDetectionState.activeDetection('book-1')).toEqual(queued);
+    expect(codexDetectionState.nextQueued('book-1')).toBeNull();
+  });
+
+  it('skips a queued batch that becomes empty and prepares the following result', async () => {
+    const toastService = TestBed.inject(ToastService);
+    fixture.detectChanges();
+    codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-1',
+      entries: [{ name: 'First result', type: 'other', description: 'First.' }],
+    });
+    codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-2',
+      entries: [{ name: 'Elara', type: 'character', description: 'Existing.' }],
+    });
+    codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-3',
+      entries: [{ name: 'Glass Harbor', type: 'location', description: 'New.' }],
+    });
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve));
+    fixture.detectChanges();
+
+    codexService.getEntries.mockResolvedValue([existingCodexEntry('Elara', null)]);
+    document.querySelector<HTMLButtonElement>('.codex-detection-modal .close-button')!.click();
+    await new Promise(resolve => setTimeout(resolve, 250));
+
+    expect(codexDetectionState.activeDetection('book-1')?.sceneId).toBe('scene-3');
+    expect(toastService.toasts()).toContainEqual(expect.objectContaining({
+      type: 'info',
+      message: 'No new Codex entries were detected.',
+    }));
   });
 });
+
+function existingCodexEntry(name: string, alias: string | null) {
+  return {
+    id: `codex-${name}`,
+    bookId: 'book-1',
+    type: 'character' as const,
+    name,
+    alias,
+    description: null,
+    image: null,
+    status: 'active' as const,
+    trackingSetting: 'include_when_detected' as const,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastEditedAt: '2026-01-01T00:00:00.000Z',
+  };
+}

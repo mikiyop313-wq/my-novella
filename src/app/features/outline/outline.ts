@@ -147,9 +147,6 @@ export class Outline implements OnInit {
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
   resolvingSummaryModel = signal(false);
-  generatingCodexDetectionSceneId = computed(
-    () => this.outlineAiGeneration.codexDetectionTarget()?.sceneId ?? null,
-  );
   private readonly activeSceneAiMenuId = signal<string | null>(null);
   readonly sceneAiMenuPositions: ConnectedPosition[] = [
     { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
@@ -763,15 +760,21 @@ export class Outline implements OnInit {
   }
 
   isGeneratingCodexDetection(sceneId: string): boolean {
-    return this.generatingCodexDetectionSceneId() === sceneId;
+    const bookId = this.store.bookId();
+    return !!bookId && this.outlineAiGeneration.isCodexDetectionTargetActive({ bookId, sceneId });
   }
 
   isCodexDetectionDisabled(sceneId: string): boolean {
     return !this.hasSceneProse(sceneId)
       || this.resolvingSummaryModel()
       || this.codexDetectionModelResolution()?.status !== 'ready'
-      || this.generationSessions.hasActiveSession('codex-detection')
-      || this.generatingCodexDetectionSceneId() !== null;
+      || this.isGeneratingCodexDetection(sceneId)
+      || this.hasPendingCodexDetection(sceneId);
+  }
+
+  private hasPendingCodexDetection(sceneId: string): boolean {
+    const bookId = this.store.bookId();
+    return !!bookId && this.codexDetectionState.hasPendingDetection({ bookId, sceneId });
   }
 
   codexDetectionModelGuidance(): string {
@@ -803,7 +806,9 @@ export class Outline implements OnInit {
     if (!bookId || selectedModel?.status !== 'ready') return;
 
     const streamId = `outline-codex-detection:${sceneId}`;
-    this.outlineAiGeneration.codexDetectionTarget.set({ bookId, sceneId });
+    const target = { bookId, sceneId, streamId };
+    if (!this.outlineAiGeneration.addCodexDetectionTarget(target)) return;
+
     try {
       const [proseBySceneId, existingEntries] = await Promise.all([
         this.electronService.invoke(
@@ -821,6 +826,7 @@ export class Outline implements OnInit {
       const session = this.generationSessions.start({
         streamId,
         source: 'codex-detection',
+        scopeId: sceneId,
         bookId,
         aiPrompt: buildCodexDetectionPrompt({ prose, existingEntries }),
         provider: selectedModel.provider,
@@ -843,14 +849,14 @@ export class Outline implements OnInit {
         return;
       }
 
-      this.codexDetectionState.pendingDetection.set({ bookId, entries });
+      this.codexDetectionState.enqueue({ bookId, sceneId, entries });
       this.closeAllMenus();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Codex detection failed.';
       this.toastService.error(message, 'Codex Detection');
     } finally {
       this.generationSessions.release(streamId);
-      this.outlineAiGeneration.codexDetectionTarget.set(null);
+      this.outlineAiGeneration.removeCodexDetectionTarget(target);
       this.closeSceneAiMenu(sceneId);
     }
   }

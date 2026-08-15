@@ -656,8 +656,9 @@ describe('Outline', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(component.codexDetectionState.pendingDetection()).toEqual({
+    expect(component.codexDetectionState.activeDetection('book-1')).toEqual({
       bookId: 'book-1',
+      sceneId: 'scene-1',
       entries: [
         { name: 'Elara Voss', type: 'character', description: 'A cartographer.' },
         { name: 'The Glass Harbor', type: 'location', description: 'A port.' },
@@ -672,6 +673,87 @@ describe('Outline', () => {
 
   });
 
+  it('detects Codex entries for different scenes concurrently and queues results by completion', async () => {
+    showScenes([
+      { id: 'scene-1', summary: '', wordCount: 12 },
+      { id: 'scene-2', summary: '', wordCount: 18 },
+    ]);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    electronService.invoke.mockImplementation((channel: string, payload: { sceneIds: string[] }) => {
+      if (channel !== 'manuscript:getScenesProse') return Promise.resolve(null);
+
+      const sceneId = payload.sceneIds[0];
+      return Promise.resolve({ [sceneId]: proseDocument(`${sceneId} prose.`) });
+    });
+    const first = createDeferred<string>();
+    const second = createDeferred<string>();
+    aiStreamService.streamText.mockImplementation((request: { streamId: string }) => (
+      request.streamId === 'outline-codex-detection:scene-1' ? first.promise : second.promise
+    ));
+
+    const firstDetection = component.detectCodexEntries('scene-1');
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalledTimes(1));
+    const secondDetection = component.detectCodexEntries('scene-2');
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalledTimes(2));
+
+    expect(component.isGeneratingCodexDetection('scene-1')).toBe(true);
+    expect(component.isGeneratingCodexDetection('scene-2')).toBe(true);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'codex-detection',
+      scopeId: 'scene-1',
+    })).toBe(true);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'codex-detection',
+      scopeId: 'scene-2',
+    })).toBe(true);
+
+    second.resolve(JSON.stringify({
+      entries: [{ name: 'Second result', type: 'location', description: 'Finished first.' }],
+    }));
+    await secondDetection;
+
+    expect(component.codexDetectionState.activeDetection('book-1')?.sceneId).toBe('scene-2');
+    expect(component.isGeneratingCodexDetection('scene-1')).toBe(true);
+    expect(component.isGeneratingCodexDetection('scene-2')).toBe(false);
+
+    first.resolve(JSON.stringify({
+      entries: [{ name: 'First result', type: 'character', description: 'Finished second.' }],
+    }));
+    await firstDetection;
+
+    expect(component.codexDetectionState.nextQueued('book-1')?.sceneId).toBe('scene-1');
+    expect(component.isGeneratingCodexDetection('scene-1')).toBe(false);
+  });
+
+  it('ignores another Codex detection request for the same active scene', async () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    const deferred = createDeferred<string>();
+    aiStreamService.streamText.mockReturnValueOnce(deferred.promise);
+
+    const detection = component.detectCodexEntries('scene-1');
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalledOnce());
+    await component.detectCodexEntries('scene-1');
+
+    expect(electronService.invoke).toHaveBeenCalledTimes(1);
+    expect(aiStreamService.streamText).toHaveBeenCalledTimes(1);
+
+    deferred.resolve('{"entries":[]}');
+    await detection;
+  });
+
+  it('disables another Codex detection while that scene has an unreviewed result', () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    component.codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-1',
+      entries: [{ name: 'Elara', type: 'character', description: 'A cartographer.' }],
+    });
+
+    expect(component.isCodexDetectionDisabled('scene-1')).toBe(true);
+  });
+
   it('rejects an invalid Codex detection response without opening the modal', async () => {
     showScene('', 12);
     component.codexDetectionModelResolution.set(readySummaryModel());
@@ -683,7 +765,7 @@ describe('Outline', () => {
       'AI returned invalid JSON for Codex detection.',
       'Codex Detection',
     );
-    expect(component.codexDetectionState.pendingDetection()).toBeNull();
+    expect(component.codexDetectionState.activeDetection('book-1')).toBeNull();
     expect(document.querySelector('.codex-detection-modal')).toBeNull();
   });
 
@@ -703,7 +785,7 @@ describe('Outline', () => {
       'No new Codex entries were detected.',
       'Codex Detection',
     );
-    expect(component.codexDetectionState.pendingDetection()).toBeNull();
+    expect(component.codexDetectionState.activeDetection('book-1')).toBeNull();
   });
 
   it('keeps the scene AI submenu open with a loader while generation is active', async () => {
