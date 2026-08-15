@@ -161,3 +161,12 @@
     </div>
   </form>
 </div>
+
+@if (pendingCoverFile(); as coverFile) {
+<app-image-crop-modal
+  [imageFile]="coverFile"
+  [config]="coverCropConfig"
+  (cropped)="onCoverCropped($event)"
+  (cancelled)="cancelCoverCrop()"
+/>
+}

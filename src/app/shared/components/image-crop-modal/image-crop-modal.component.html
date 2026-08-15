@@ -1,0 +1,132 @@
+<ng-container
+  [appOverlayModal]="cropModal"
+  #modalTrigger="appOverlayModal"
+  (closed)="onOverlayClosed()"
+></ng-container>
+
+<ng-template #cropModal>
+  <section
+    class="crop-modal overlay-modal"
+    [class.is-visible]="isVisible()"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="image-crop-title"
+    aria-describedby="image-crop-description"
+    [cdkTrapFocus]="true"
+    [cdkTrapFocusAutoCapture]="true"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="endPointerInteraction($event)"
+    (pointercancel)="endPointerInteraction($event)"
+  >
+    <header class="crop-modal-header">
+      <div>
+        <h2 id="image-crop-title">Crop image</h2>
+        <p id="image-crop-description">Move and resize the frame to select the area to upload.</p>
+      </div>
+      <button type="button" class="icon-button" aria-label="Cancel image crop" (click)="cancel()">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </header>
+
+    <div class="crop-details" aria-label="Crop settings">
+      <span>Aspect ratio <strong>{{ aspectRatioLabel() }}</strong></span>
+      <span>Output <strong>{{ config().outputWidth }} × {{ outputHeight() }} px</strong></span>
+      <span>Format <strong>{{ config().format.replace('image/', '').toUpperCase() }}</strong></span>
+    </div>
+
+    <div class="crop-workspace" #cropWorkspace [class.has-error]="errorMessage() && !imageReady()">
+      <div
+        class="image-stage"
+        [style.width.px]="stageSize().width"
+        [style.height.px]="stageSize().height"
+      >
+        <img
+          #sourceImage
+          class="source-image"
+          [src]="imageUrl()"
+          alt="Image being cropped"
+          draggable="false"
+          (load)="onImageLoad()"
+          (error)="handleImageError()"
+        />
+
+        @if (imageReady()) {
+          <div class="crop-shade shade-top" [style.height.px]="cropFrame().y"></div>
+          <div
+            class="crop-shade shade-left"
+            [style.top.px]="cropFrame().y"
+            [style.width.px]="cropFrame().x"
+            [style.height.px]="cropFrame().height"
+          ></div>
+          <div
+            class="crop-shade shade-right"
+            [style.top.px]="cropFrame().y"
+            [style.left.px]="cropFrame().x + cropFrame().width"
+            [style.height.px]="cropFrame().height"
+          ></div>
+          <div
+            class="crop-shade shade-bottom"
+            [style.top.px]="cropFrame().y + cropFrame().height"
+          ></div>
+
+          <div
+            class="crop-frame"
+            tabindex="0"
+            role="group"
+            aria-label="Selected crop area. Use arrow keys to move it; hold Shift for larger steps."
+            [style.left.px]="cropFrame().x"
+            [style.top.px]="cropFrame().y"
+            [style.width.px]="cropFrame().width"
+            [style.height.px]="cropFrame().height"
+            (pointerdown)="startMove($event)"
+            (keydown)="moveCropWithKeyboard($event)"
+          >
+            <span class="crop-grid grid-horizontal grid-horizontal-first" aria-hidden="true"></span>
+            <span class="crop-grid grid-horizontal grid-horizontal-second" aria-hidden="true"></span>
+            <span class="crop-grid grid-vertical grid-vertical-first" aria-hidden="true"></span>
+            <span class="crop-grid grid-vertical grid-vertical-second" aria-hidden="true"></span>
+
+            @for (handle of resizeHandles; track handle) {
+              <button
+                type="button"
+                class="resize-handle"
+                [ngClass]="'handle-' + handle"
+                [attr.aria-label]="'Resize crop from ' + handle.replace('-', ' ') + ' corner'"
+                (pointerdown)="startResize($event, handle)"
+                (keydown)="resizeCropWithKeyboard($event, handle)"
+              ></button>
+            }
+          </div>
+        }
+      </div>
+
+      @if (!imageReady() && !errorMessage()) {
+        <div class="loading-state" role="status">Loading image…</div>
+      }
+    </div>
+
+    @if (errorMessage(); as error) {
+      <p class="crop-error" role="alert">{{ error }}</p>
+    }
+
+    <footer class="crop-modal-actions">
+      <button type="button" class="btn-secondary" [disabled]="isCropping()" (click)="resetCrop()">
+        Reset
+      </button>
+      <span class="action-spacer"></span>
+      <button type="button" class="btn-secondary" [disabled]="isCropping()" (click)="cancel()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="btn-primary"
+        [disabled]="!imageReady() || isCropping()"
+        (click)="cropImage()"
+      >
+        {{ isCropping() ? 'Cropping…' : 'Crop image' }}
+      </button>
+    </footer>
+  </section>
+</ng-template>

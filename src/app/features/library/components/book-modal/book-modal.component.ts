@@ -15,13 +15,19 @@ import { AutocompleteDropdownComponent, DropdownOption } from '../../../../share
 import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { CodexService } from '../../../codex/services/codex.service';
+import { ImageCropModalComponent } from '../../../../shared/components/image-crop-modal/image-crop-modal.component';
+import {
+  COVER_CROP_CONFIG,
+  fileToDataUrl,
+} from '../../../../shared/utils/cover-image';
+import { prepareImageUpload } from '../../../../shared/utils/image-upload';
 
 
 
 @Component({
   selector: 'app-book-modal',
   standalone: true,
-  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe, InfoIconComponent, ReactiveFormsModule, AutocompleteDropdownComponent],
+  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe, InfoIconComponent, ReactiveFormsModule, AutocompleteDropdownComponent, ImageCropModalComponent],
   templateUrl: './book-modal.component.html',
   styleUrl: './book-modal.component.scss'
 })
@@ -69,6 +75,8 @@ export class BookModalComponent {
   currentView = signal<'details' | 'settings'>('details');
   activeSlideModalAnimation = signal<boolean>(false);
   isLifecycleActionPending = signal(false);
+  pendingCoverFile = signal<File | null>(null);
+  readonly coverCropConfig = COVER_CROP_CONFIG;
 
   // Settings State
   selectedTense = signal<'past' | 'present'>('past');
@@ -410,21 +418,52 @@ export class BookModalComponent {
     }
   }
 
-  async onCoverImageChange(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64DataUrl = reader.result as string;
-        try {
-          const updatedBook = await this.store.updateBook(this.book().id, { coverImage: base64DataUrl });
-          this.book.set(updatedBook);
-        } catch (error) {
-          console.error('Failed to update cover image:', error);
-        }
-      };
-      reader.readAsDataURL(file);
+  async onCoverImageChange(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+
+    if (!file) return;
+
+    try {
+      const result = await prepareImageUpload({
+        file,
+        aspectRatio: COVER_CROP_CONFIG.aspectRatio,
+      });
+      if (!result) return;
+
+      if (result.kind === 'ready') {
+        await this.updateCoverDataUrl(result.dataUrl);
+        return;
+      }
+
+      this.pendingCoverFile.set(result.file);
+    } catch (error) {
+      console.error('Failed to load cover image:', error);
     }
+  }
+
+  async onCoverCropped(file: File): Promise<void> {
+    this.pendingCoverFile.set(null);
+    await this.updateCover(file);
+  }
+
+  cancelCoverCrop(): void {
+    this.pendingCoverFile.set(null);
+  }
+
+  private async updateCover(file: File): Promise<void> {
+    try {
+      const base64DataUrl = await fileToDataUrl(file);
+      await this.updateCoverDataUrl(base64DataUrl);
+    } catch (error) {
+      console.error('Failed to update cover image:', error);
+    }
+  }
+
+  private async updateCoverDataUrl(dataUrl: string): Promise<void> {
+    const updatedBook = await this.store.updateBook(this.book().id, { coverImage: dataUrl });
+    this.book.set(updatedBook);
   }
 
 }

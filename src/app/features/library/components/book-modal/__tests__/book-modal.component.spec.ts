@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BookDto } from '../../../../../../../shared/models/book.model';
 import { ConfigStore } from '../../../../../core/store/config.store';
@@ -16,6 +16,8 @@ describe('BookModalComponent lifecycle actions', () => {
   let updateBook: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
   let getEntries: ReturnType<typeof vi.fn>;
+  let imageWidth: number;
+  let imageHeight: number;
 
   const book: BookUi = {
     id: 'book-1',
@@ -33,6 +35,29 @@ describe('BookModalComponent lifecycle actions', () => {
   };
 
   beforeEach(async () => {
+    imageWidth = 600;
+    imageHeight = 900;
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn().mockReturnValue('blob:selected-cover'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.stubGlobal(
+      'Image',
+      class {
+        naturalWidth = imageWidth;
+        naturalHeight = imageHeight;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        set src(_value: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
     vi.stubGlobal(
       'ResizeObserver',
       class {
@@ -87,6 +112,12 @@ describe('BookModalComponent lifecycle actions', () => {
     fixture = TestBed.createComponent(BookModalComponent);
     fixture.componentRef.setInput('book', book);
     fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    if (fixture && !fixture.componentRef.hostView.destroyed) fixture.destroy();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('archives immediately and closes the modal', async () => {
@@ -149,4 +180,84 @@ describe('BookModalComponent lifecycle actions', () => {
       settings: { povCharacterId: null },
     });
   });
+
+  it('updates immediately with the original file when its ratio is within tolerance', async () => {
+    imageWidth = 606;
+    imageHeight = 900;
+    const file = imageFile('matching.png');
+    const input = fileInput(file);
+
+    await fixture.componentInstance.onCoverImageChange({ target: input } as unknown as Event);
+
+    expect(fixture.componentInstance.pendingCoverFile()).toBeNull();
+    expect(updateBook).toHaveBeenCalledWith('book-1', {
+      coverImage: expect.stringContaining('data:image/png'),
+    });
+    expect(input.value).toBe('');
+  });
+
+  it('opens the crop modal for an image outside tolerance', async () => {
+    imageWidth = 607;
+    imageHeight = 900;
+    const file = imageFile('wide.png');
+
+    await fixture.componentInstance.onCoverImageChange({
+      target: fileInput(file),
+    } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.pendingCoverFile()).toBe(file);
+    expect(
+      document.querySelector('.cdk-overlay-container .crop-modal'),
+    ).not.toBeNull();
+    expect(updateBook).not.toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({ coverImage: expect.anything() }),
+    );
+  });
+
+  it('persists the cropped WebP and clears pending state', async () => {
+    fixture.componentInstance.pendingCoverFile.set(imageFile('source.png'));
+    const cropped = new File(['cropped'], 'source.webp', { type: 'image/webp' });
+
+    await fixture.componentInstance.onCoverCropped(cropped);
+
+    expect(fixture.componentInstance.pendingCoverFile()).toBeNull();
+    expect(updateBook).toHaveBeenCalledWith('book-1', {
+      coverImage: expect.stringContaining('data:image/webp'),
+    });
+  });
+
+  it('cancels cropping without changing the current cover', () => {
+    fixture.componentInstance.pendingCoverFile.set(imageFile('replacement.png'));
+
+    fixture.componentInstance.cancelCoverCrop();
+
+    expect(fixture.componentInstance.pendingCoverFile()).toBeNull();
+    expect(fixture.componentInstance.book().coverImage).toBeNull();
+    expect(updateBook).not.toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({ coverImage: expect.anything() }),
+    );
+  });
+
+  it('ignores non-image files and resets the input', async () => {
+    const input = fileInput(new File(['text'], 'notes.txt', { type: 'text/plain' }));
+
+    await fixture.componentInstance.onCoverImageChange({ target: input } as unknown as Event);
+
+    expect(fixture.componentInstance.pendingCoverFile()).toBeNull();
+    expect(input.value).toBe('');
+  });
+
+  function imageFile(name: string): File {
+    return new File(['image'], name, { type: 'image/png' });
+  }
+
+  function fileInput(file: File): HTMLInputElement {
+    const input = document.createElement('input');
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    Object.defineProperty(input, 'value', { configurable: true, writable: true, value: 'selected' });
+    return input;
+  }
 });

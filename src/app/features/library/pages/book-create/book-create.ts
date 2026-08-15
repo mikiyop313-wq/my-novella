@@ -8,11 +8,23 @@ import { ConfigStore } from '../../../../core/store/config.store';
 import { CreateBookDto, CategoryDto } from '../../../../../../shared/models/book.model';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { ImageCropModalComponent } from '../../../../shared/components/image-crop-modal/image-crop-modal.component';
+import {
+  COVER_CROP_CONFIG,
+  fileToDataUrl,
+} from '../../../../shared/utils/cover-image';
+import { prepareImageUpload } from '../../../../shared/utils/image-upload';
 
 @Component({
   selector: 'app-book-create',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, CdkMenuModule, AutocompleteDropdownComponent],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    CdkMenuModule,
+    AutocompleteDropdownComponent,
+    ImageCropModalComponent,
+  ],
   templateUrl: './book-create.html',
   styleUrl: './book-create.scss'
 })
@@ -49,6 +61,8 @@ export class BookCreate implements OnInit {
   isAdvancedSettingsOpen = signal(false);
 
   coverPreview = signal<string | null>(null);
+  pendingCoverFile = signal<File | null>(null);
+  readonly coverCropConfig = COVER_CROP_CONFIG;
 
   languages: { value: string, label: string }[] = [];
 
@@ -90,39 +104,66 @@ export class BookCreate implements OnInit {
     this.isDragging = false;
 
   }
-  onDrop($event: DragEvent) {
+  async onDrop($event: DragEvent): Promise<void> {
     $event.preventDefault();
     $event.stopPropagation();
     this.isDragging = false;
 
     const files = $event.dataTransfer?.files;
     if (files && files.length > 0) {
-      this.handleFile(files[0]);
+      await this.handleFile(files[0]);
     }
   }
 
-  private handleFile(file: File) {
-    if (!file.type.startsWith('image/')) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-
-      this.coverPreview.set(reader.result as string);
-
-      this.bookForm.patchValue({
-        coverImage: reader.result as string,
+  private async handleFile(file: File): Promise<void> {
+    try {
+      const result = await prepareImageUpload({
+        file,
+        aspectRatio: COVER_CROP_CONFIG.aspectRatio,
       });
-    };
-    reader.readAsDataURL(file);
+      if (!result) return;
+
+      if (result.kind === 'ready') {
+        this.setCoverDataUrl(result.dataUrl);
+        return;
+      }
+
+      this.pendingCoverFile.set(result.file);
+    } catch (error) {
+      console.error('Failed to load cover image:', error);
+    }
   }
 
-  onFileChange(event: any) {
-    const file = event.target.files[0];
+  async onFileChange(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
     if (file) {
-      this.handleFile(file);
+      await this.handleFile(file);
     }
-    // Reset the input value so the same file can be selected again
-    event.target.value = '';
+    input.value = '';
+  }
+
+  async onCoverCropped(file: File): Promise<void> {
+    this.pendingCoverFile.set(null);
+    await this.setCoverFile(file);
+  }
+
+  cancelCoverCrop(): void {
+    this.pendingCoverFile.set(null);
+  }
+
+  private async setCoverFile(file: File): Promise<void> {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      this.setCoverDataUrl(dataUrl);
+    } catch (error) {
+      console.error('Failed to read cover image:', error);
+    }
+  }
+
+  private setCoverDataUrl(dataUrl: string): void {
+    this.coverPreview.set(dataUrl);
+    this.bookForm.patchValue({ coverImage: dataUrl });
   }
 
   removeCoverImage(event: Event) {

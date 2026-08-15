@@ -3,6 +3,7 @@ import {
   EventEmitter,
   HostListener,
   Input,
+  OnDestroy,
   Output,
   TemplateRef,
   ViewContainerRef,
@@ -14,12 +15,13 @@ import { TemplatePortal } from '@angular/cdk/portal';
   selector: '[appOverlayModal]',
   exportAs: 'appOverlayModal'
 })
-export class OverlayModalDirective {
+export class OverlayModalDirective implements OnDestroy {
   @Input('appOverlayModal') modalTemplate!: TemplateRef<any>;
   @Output() closed = new EventEmitter<void>();
 
   private overlayRef?: OverlayRef;
   private isClosing = false;
+  private closingTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private overlay: Overlay,
@@ -39,6 +41,7 @@ export class OverlayModalDirective {
 
     this.overlayRef = this.overlay.create({
       positionStrategy,
+      scrollStrategy: this.overlay.scrollStrategies.block(),
       hasBackdrop: true,
       backdropClass: 'cdk-overlay-dark-backdrop',
       panelClass: 'overlay-modal-panel'
@@ -64,13 +67,20 @@ export class OverlayModalDirective {
       if (modalElement) {
         modalElement.classList.add('is-closed');
         backdropElement?.classList.add('is-closed');
-        setTimeout(() => {
+        this.closingTimer = setTimeout(() => {
+          this.closingTimer = null;
           this.destroyOverlay();
         }, 200);
       } else {
         this.destroyOverlay();
       }
     }
+  }
+
+  ngOnDestroy(): void {
+    if (this.closingTimer !== null) clearTimeout(this.closingTimer);
+    this.overlayRef?.dispose();
+    this.overlayRef = undefined;
   }
 
   private destroyOverlay() {
