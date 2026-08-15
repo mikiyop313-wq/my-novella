@@ -123,7 +123,12 @@ export const LibraryStore = signalStore(
         yesterday.setDate(yesterday.getDate() - 1);
         const thisWeek = new Date(today);
         thisWeek.setDate(thisWeek.getDate() - 7);
-        const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        // Use a 30-day rolling window (not calendar month start) so "This Month"
+        // never overlaps with "This Week" — a calendar month start (e.g. June 1)
+        // can be *after* the 7-day boundary (May 28), making the filter impossible.
+        const thisMonth = new Date(today);
+        thisMonth.setDate(thisMonth.getDate() - 30);
+        const yearStart = new Date(now.getFullYear(), 0, 1);
 
         // Define chronological time ranges
         let timeGroups = [
@@ -131,8 +136,8 @@ export const LibraryStore = signalStore(
           { label: 'Yesterday', filter: (d: Date) => d >= yesterday && d < today },
           { label: 'This Week', filter: (d: Date) => d >= thisWeek && d < yesterday },
           { label: 'This Month', filter: (d: Date) => d >= thisMonth && d < thisWeek },
-          { label: 'Earlier this Year', filter: (d: Date) => d.getFullYear() === now.getFullYear() && d < thisMonth },
-          { label: 'Older', filter: (d: Date) => d.getFullYear() < now.getFullYear() },
+          { label: 'Earlier this Year', filter: (d: Date) => d >= yearStart && d < thisMonth },
+          { label: 'Older', filter: (d: Date) => d < yearStart },
         ];
 
         // Invert groups if sorting by oldest first
@@ -143,7 +148,10 @@ export const LibraryStore = signalStore(
         // Apply filters to assign books to their respective time groups
         timeGroups.forEach(group => {
           const groupBooks = books.filter((b: BookUi) => {
-            const date = new Date(order === 'lastUpdate' ? b.lastEditedAt : b.createdAt);
+            const raw = new Date(order === 'lastUpdate' ? b.lastEditedAt : b.createdAt);
+            // Normalize to local midnight so UTC timestamps compare correctly
+            // against the boundary dates (which are also local midnight).
+            const date = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate());
             return group.filter(date);
           });
           if (groupBooks.length > 0) {
