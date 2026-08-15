@@ -8,11 +8,24 @@ import { ConfigStore } from '../../../../core/store/config.store';
 import { CreateBookDto, CategoryDto } from '../../../../../../shared/models/book.model';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { ImageCropModalComponent } from '../../../../shared/components/image-crop-modal/image-crop-modal.component';
+import {
+  COVER_CROP_CONFIG,
+  fileToDataUrl,
+  loadImageDimensions,
+  matchesCoverAspectRatio,
+} from '../../../../shared/utils/cover-image';
 
 @Component({
   selector: 'app-book-create',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, CdkMenuModule, AutocompleteDropdownComponent],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    CdkMenuModule,
+    AutocompleteDropdownComponent,
+    ImageCropModalComponent,
+  ],
   templateUrl: './book-create.html',
   styleUrl: './book-create.scss'
 })
@@ -49,6 +62,8 @@ export class BookCreate implements OnInit {
   isAdvancedSettingsOpen = signal(false);
 
   coverPreview = signal<string | null>(null);
+  pendingCoverFile = signal<File | null>(null);
+  readonly coverCropConfig = COVER_CROP_CONFIG;
 
   languages: { value: string, label: string }[] = [];
 
@@ -90,39 +105,59 @@ export class BookCreate implements OnInit {
     this.isDragging = false;
 
   }
-  onDrop($event: DragEvent) {
+  async onDrop($event: DragEvent): Promise<void> {
     $event.preventDefault();
     $event.stopPropagation();
     this.isDragging = false;
 
     const files = $event.dataTransfer?.files;
     if (files && files.length > 0) {
-      this.handleFile(files[0]);
+      await this.handleFile(files[0]);
     }
   }
 
-  private handleFile(file: File) {
+  private async handleFile(file: File): Promise<void> {
     if (!file.type.startsWith('image/')) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
+    try {
+      const dimensions = await loadImageDimensions(file);
+      if (matchesCoverAspectRatio(dimensions)) {
+        await this.setCoverFile(file);
+        return;
+      }
 
-      this.coverPreview.set(reader.result as string);
-
-      this.bookForm.patchValue({
-        coverImage: reader.result as string,
-      });
-    };
-    reader.readAsDataURL(file);
+      this.pendingCoverFile.set(file);
+    } catch (error) {
+      console.error('Failed to load cover image:', error);
+    }
   }
 
-  onFileChange(event: any) {
-    const file = event.target.files[0];
+  async onFileChange(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
     if (file) {
-      this.handleFile(file);
+      await this.handleFile(file);
     }
-    // Reset the input value so the same file can be selected again
-    event.target.value = '';
+    input.value = '';
+  }
+
+  async onCoverCropped(file: File): Promise<void> {
+    this.pendingCoverFile.set(null);
+    await this.setCoverFile(file);
+  }
+
+  cancelCoverCrop(): void {
+    this.pendingCoverFile.set(null);
+  }
+
+  private async setCoverFile(file: File): Promise<void> {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      this.coverPreview.set(dataUrl);
+      this.bookForm.patchValue({ coverImage: dataUrl });
+    } catch (error) {
+      console.error('Failed to read cover image:', error);
+    }
   }
 
   removeCoverImage(event: Event) {
