@@ -13,6 +13,7 @@ import {
   serializeAutomaticManuscript,
   serializeCodexContext,
   serializeFullOutline,
+  serializeNarrativeGuidance,
   serializeSelectedManuscript,
   serializeTiptapDocument,
 } from './ai-prompt-context-builder';
@@ -77,6 +78,25 @@ describe('AI prompt context builder', () => {
     expect(result).toContain('Full prose:\nPrevious.');
     expect(result).toContain('Prose before AI prompt:\nCurrent.');
     expect(result).toContain('--- BEGIN ACT 2 ---');
+  });
+
+  it.each([
+    ['first', 'First Person'],
+    ['second', 'Second Person'],
+    ['third_limited', 'Third Person Limited'],
+    ['third_omni', 'Third Person Omniscient'],
+  ] as const)('renders the %s point of view as %s', (pointOfView, label) => {
+    expect(serializeNarrativeGuidance(pointOfView, null)).toBe(
+      `## Narrative Guidance\n\nPoint of View: ${label}`,
+    );
+  });
+
+  it('adds a resolved POV character and omits an empty one', () => {
+    expect(serializeNarrativeGuidance('first', '  Mara  ')).toContain(
+      'POV Character: Mara',
+    );
+    expect(serializeNarrativeGuidance('first', null)).not.toContain('POV Character:');
+    expect(serializeNarrativeGuidance('first', '   ')).not.toContain('POV Character:');
   });
 
   it('finds the current scene before the prompt position', () => {

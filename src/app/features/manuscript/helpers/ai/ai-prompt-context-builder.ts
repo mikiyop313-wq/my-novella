@@ -4,6 +4,7 @@ import type {
   CodexEntryDetailDto,
   CodexEntryProgressionDto,
 } from '../../../../../../shared/models/codex.model';
+import type { BookSettingsDto } from '../../../../../../shared/models/book.model';
 import type {
   ActDto,
   ChapterDto,
@@ -160,6 +161,17 @@ export function serializeAutomaticManuscript(
   });
 
   return body ? `## Automatic Manuscript Context\n\n${body}` : '';
+}
+
+export function serializeNarrativeGuidance(
+  pointOfView: BookSettingsDto['pointOfView'],
+  povCharacterName: string | null | undefined,
+): string {
+  const fields = [`Point of View: ${displayPointOfView(pointOfView)}`];
+  const cleanCharacterName = povCharacterName?.trim();
+  if (cleanCharacterName) fields.push(`POV Character: ${cleanCharacterName}`);
+
+  return `## Narrative Guidance\n\n${fields.join('\n')}`;
 }
 
 export function serializeCodexContext(
@@ -360,6 +372,19 @@ function progressionLine(item: CodexEntryProgressionDto, location: string | unde
 
 function displayCodexType(type: string): string {
   return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function displayPointOfView(pointOfView: BookSettingsDto['pointOfView']): string {
+  switch (pointOfView) {
+    case 'first':
+      return 'First Person';
+    case 'second':
+      return 'Second Person';
+    case 'third_omni':
+      return 'Third Person Omniscient';
+    case 'third_limited':
+      return 'Third Person Limited';
+  }
 }
 
 function scenesForAct(act: ActDto): SceneDto[] {

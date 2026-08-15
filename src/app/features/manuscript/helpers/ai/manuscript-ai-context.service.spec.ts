@@ -5,6 +5,7 @@ import { vi } from 'vitest';
 
 import { ElectronService } from '../../../../core/services/electron.service';
 import { CodexService } from '../../../codex/services/codex.service';
+import { LibraryStore } from '../../../library/store/book.store';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
 import { ManuscriptAiContextService } from './manuscript-ai-context.service';
@@ -14,17 +15,23 @@ describe('ManuscriptAiContextService', () => {
   let invoke: ReturnType<typeof vi.fn>;
   let getEntry: ReturnType<typeof vi.fn>;
   let flushDirtySections: ReturnType<typeof vi.fn>;
+  let books: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     invoke = vi.fn();
     getEntry = vi.fn().mockResolvedValue(undefined);
     flushDirtySections = vi.fn().mockResolvedValue(undefined);
+    books = vi.fn(() => [{
+      id: 'book-1',
+      settings: { pointOfView: 'third_omni' },
+    }]);
 
     TestBed.configureTestingModule({
       providers: [
         ManuscriptAiContextService,
         { provide: ElectronService, useValue: { invoke } },
         { provide: CodexService, useValue: { getEntry } },
+        { provide: LibraryStore, useValue: { books } },
         { provide: ManuscriptProseSaverService, useValue: { flushDirtySections } },
       ],
     });
@@ -149,6 +156,77 @@ describe('ManuscriptAiContextService', () => {
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
   });
 
+  it('uses the book POV for global prompts and omits a null POV character', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+
+    const messages = await service.buildMessages(baseRequest(doc, findNodePos(doc, 'aiPrompt')));
+
+    expect(messages[0].content).toContain('## Narrative Guidance');
+    expect(messages[0].content).toContain('Point of View: Third Person Omniscient');
+    expect(messages[0].content).not.toContain('POV Character:');
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('uses a prompt POV override and defaults a missing book to third-person limited', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    const promptPos = findNodePos(doc, 'aiPrompt');
+
+    const overridden = await service.buildMessages({
+      ...baseRequest(doc, promptPos),
+      pointOfView: 'first',
+    });
+    expect(overridden[0].content).toContain('Point of View: First Person');
+
+    books.mockReturnValue([]);
+    const defaulted = await service.buildMessages(baseRequest(doc, promptPos));
+    expect(defaulted[0].content).toContain('Point of View: Third Person Limited');
+  });
+
+  it('includes a selected POV character once in guidance and eligible Codex context', async () => {
+    const doc = schema.node('doc', null, [sceneSummary('scene-1'), schema.node('aiPrompt')]);
+    getEntry.mockResolvedValue({
+      ...cachedCodexEntry(),
+      description: 'Carries the silver key.',
+      entryNotes: [],
+      entryProgression: [],
+    });
+
+    const messages = await service.buildMessages({
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      pointOfView: 'first',
+      povCharacterId: 'codex-1',
+      manualCodexEntryIds: ['codex-1'],
+      codexEntries: [cachedCodexEntry()],
+    });
+
+    expect(getEntry).toHaveBeenCalledOnce();
+    expect(getEntry).toHaveBeenCalledWith('codex-1');
+    expect(messages[0].content).toContain('Point of View: First Person');
+    expect(messages[0].content).toContain('POV Character: Mara');
+    expect(messages[0].content).toContain('Description:\nCarries the silver key.');
+    expect(messages[0].content.match(/--- BEGIN CODEX ENTRY ---/g)).toHaveLength(1);
+  });
+
+  it('omits an unresolved character and withholds never-include character details', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    const promptPos = findNodePos(doc, 'aiPrompt');
+
+    const unresolved = await service.buildMessages({
+      ...baseRequest(doc, promptPos),
+      povCharacterId: 'missing-character',
+    });
+    expect(unresolved[0].content).not.toContain('POV Character:');
+
+    const neverIncluded = await service.buildMessages({
+      ...baseRequest(doc, promptPos),
+      povCharacterId: 'codex-1',
+      codexEntries: [cachedCodexEntry({ trackingSetting: 'never_include' })],
+    });
+    expect(neverIncluded[0].content).toContain('POV Character: Mara');
+    expect(neverIncluded[0].content).not.toContain('## Codex Context');
+    expect(getEntry).not.toHaveBeenCalled();
+  });
+
   it('skips missing Codex details and propagates context transport failures', async () => {
     const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
     const request = {
@@ -158,7 +236,8 @@ describe('ManuscriptAiContextService', () => {
     };
 
     const messages = await service.buildMessages(request);
-    expect(messages).toHaveLength(1);
+    expect(messages).toHaveLength(2);
+    expect(messages[0].content).toContain('Point of View: Third Person Omniscient');
     expect(messages.at(-1)?.content).toBe('Continue the scene.');
 
     getEntry.mockRejectedValueOnce(new Error('Codex unavailable'));
@@ -191,6 +270,8 @@ function baseRequest(doc: ProseMirrorNode, promptPos: number) {
     manualCodexEntryIds: [],
     automaticCodexEntryIds: new Set<string>(),
     codexEntries: [],
+    pointOfView: 'global',
+    povCharacterId: null,
   } as const;
 }
 

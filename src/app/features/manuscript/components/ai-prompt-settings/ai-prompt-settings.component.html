@@ -65,7 +65,7 @@
             POV CHARACTER OVERRIDE
             <app-info-icon [infoText]="INFO.POV_CHARACTER"></app-info-icon>
           </span>
-          <app-autocomplete-dropdown [options]="characters()" [selectedValue]="povCharacter()"
+          <app-autocomplete-dropdown [options]="povCharacterOptions()" [selectedValue]="povCharacter()"
             placeholder="Select character..." [emptyText]="characterEmptyText()"
             (selectionChange)="onPovCharacterSelectionChange($event)">
           </app-autocomplete-dropdown>

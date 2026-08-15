@@ -68,8 +68,13 @@ export class AiPromptSettingsComponent {
 
   bookId = computed(() => this.workspaceStore.bookId());
 
-  characters = signal<DropdownOption[]>([]);
+  characters = signal<DropdownOption<string>[]>([]);
   characterLoadState = signal<CharacterLoadState>('idle');
+
+  povCharacterOptions = computed<DropdownOption<string | null>[]>(() => [
+    { value: null, label: 'None' },
+    ...this.characters(),
+  ]);
 
   characterEmptyText = computed(() => {
     switch (this.characterLoadState()) {

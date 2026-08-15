@@ -57,6 +57,11 @@ describe('AiPromptSettingsComponent', () => {
       { value: 'character-1', label: 'Ari' },
       { value: 'character-2', label: 'Zara' },
     ]);
+    expect(component.povCharacterOptions()).toEqual([
+      { value: null, label: 'None' },
+      { value: 'character-1', label: 'Ari' },
+      { value: 'character-2', label: 'Zara' },
+    ]);
     expect(component.characterLoadState()).toBe('loaded');
   });
 
@@ -67,6 +72,15 @@ describe('AiPromptSettingsComponent', () => {
     component.onPovCharacterSelectionChange('character-1');
 
     expect(emitted).toHaveBeenCalledWith('character-1');
+  });
+
+  it('emits null when the None POV character option is selected', () => {
+    const emitted = vi.fn();
+    component.povCharacterChange.subscribe(emitted);
+
+    component.onPovCharacterSelectionChange(null);
+
+    expect(emitted).toHaveBeenCalledWith(null);
   });
 
   it('does not query Codex without a current book', async () => {

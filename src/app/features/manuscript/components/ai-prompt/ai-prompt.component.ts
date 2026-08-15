@@ -6,7 +6,10 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
-import { ManuscriptAiContextService } from '../../helpers/ai/manuscript-ai-context.service';
+import {
+  ManuscriptAiContextService,
+  type ManuscriptAiPointOfViewSetting,
+} from '../../helpers/ai/manuscript-ai-context.service';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
@@ -39,7 +42,7 @@ import {
 
 interface PromptSettings {
   wordCount: number;
-  pov: string;
+  pov: ManuscriptAiPointOfViewSetting;
   povCharacter: string | null;
   vectorSearch: string;
   reasoningMode: boolean;
@@ -272,6 +275,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   }
 
   onPovChange(value: string): void {
+    if (!isPointOfViewSetting(value)) return;
     this.setAttribute(this.pov, 'pov', value);
   }
 
@@ -391,6 +395,8 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         manualCodexEntryIds: this.contextCodexEntryIds(),
         automaticCodexEntryIds: this.automaticallyIncludedCodexEntryIds(),
         codexEntries: this.contextCodexEntries(),
+        pointOfView: this.pov(),
+        povCharacterId: this.povCharacter(),
       });
     } catch (error) {
       console.error('AI context preparation failed:', error);
@@ -595,4 +601,12 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     return left.size === right.size && [...left].every(value => right.has(value));
   }
 
+}
+
+function isPointOfViewSetting(value: string): value is ManuscriptAiPointOfViewSetting {
+  return value === 'global'
+    || value === 'first'
+    || value === 'second'
+    || value === 'third_limited'
+    || value === 'third_omni';
 }

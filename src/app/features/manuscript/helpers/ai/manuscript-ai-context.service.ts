@@ -4,6 +4,8 @@ import type { Editor } from '@tiptap/core';
 import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { CodexService } from '../../../codex/services/codex.service';
+import { LibraryStore } from '../../../library/store/book.store';
+import type { BookSettingsDto } from '../../../../../../shared/models/book.model';
 import type { CodexEntryDto } from '../../../../../../shared/models/codex.model';
 import type {
   ActDto,
@@ -21,9 +23,12 @@ import {
   serializeAutomaticManuscript,
   serializeCodexContext,
   serializeFullOutline,
+  serializeNarrativeGuidance,
   serializeSelectedManuscript,
   serializeTiptapDocument,
 } from './ai-prompt-context-builder';
+
+export type ManuscriptAiPointOfViewSetting = BookSettingsDto['pointOfView'] | 'global';
 
 export interface ManuscriptAiContextRequest {
   editor: Editor;
@@ -38,12 +43,15 @@ export interface ManuscriptAiContextRequest {
   manualCodexEntryIds: readonly string[];
   automaticCodexEntryIds: ReadonlySet<string>;
   codexEntries: readonly CodexEntryDto[];
+  pointOfView: ManuscriptAiPointOfViewSetting;
+  povCharacterId: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
 export class ManuscriptAiContextService {
   private readonly electronService = inject(ElectronService);
   private readonly codexService = inject(CodexService);
+  private readonly libraryStore = inject(LibraryStore);
   private readonly saver = inject(ManuscriptProseSaverService);
 
   async buildMessages(request: ManuscriptAiContextRequest): Promise<AiChatMessage[]> {
@@ -108,7 +116,23 @@ export class ManuscriptAiContextService {
           proseBySceneId,
         );
 
-    const codexEntryIds = this.resolveCodexEntryIds(request);
+    const pointOfView = request.pointOfView === 'global'
+      ? this.resolveGlobalPointOfView(request.bookId)
+      : request.pointOfView;
+    const povCharacter = request.povCharacterId
+      ? request.codexEntries.find(entry =>
+        entry.id === request.povCharacterId
+        && entry.type === 'character'
+        && entry.status === 'active'
+        && entry.name.trim().length > 0,
+      )
+      : undefined;
+    const narrativeGuidance = serializeNarrativeGuidance(
+      pointOfView,
+      povCharacter?.name,
+    );
+
+    const codexEntryIds = this.resolveCodexEntryIds(request, povCharacter?.id);
     const codexDetails = (await Promise.all(codexEntryIds.map(id => this.codexService.getEntry(id))))
       .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
       .filter(entry => entry.status === 'active' && entry.trackingSetting !== 'never_include');
@@ -119,11 +143,12 @@ export class ManuscriptAiContextService {
     );
 
     const messages: AiChatMessage[] = [];
-    if (manuscriptContext || codexContext) {
+    if (narrativeGuidance || manuscriptContext || codexContext) {
       messages.push({
         role: 'user',
         content: [
           '--- BEGIN STORY CONTEXT ---',
+          narrativeGuidance,
           manuscriptContext,
           codexContext,
           '--- END STORY CONTEXT ---',
@@ -157,17 +182,26 @@ export class ManuscriptAiContextService {
     return serializeAutomaticManuscript(hierarchy, sceneContent);
   }
 
-  private resolveCodexEntryIds(request: ManuscriptAiContextRequest): string[] {
+  private resolveCodexEntryIds(
+    request: ManuscriptAiContextRequest,
+    povCharacterId: string | undefined,
+  ): string[] {
     const cachedEntries = new Map(request.codexEntries.map(entry => [entry.id, entry]));
     const includedIds = new Set([
       ...request.manualCodexEntryIds,
       ...request.automaticCodexEntryIds,
     ]);
+    if (povCharacterId) includedIds.add(povCharacterId);
 
     return [...includedIds].filter(id => {
       const entry = cachedEntries.get(id);
       return entry?.status === 'active' && entry.trackingSetting !== 'never_include';
     });
+  }
+
+  private resolveGlobalPointOfView(bookId: string): BookSettingsDto['pointOfView'] {
+    return this.libraryStore.books().find(book => book.id === bookId)?.settings?.pointOfView
+      ?? 'third_limited';
   }
 }
 
