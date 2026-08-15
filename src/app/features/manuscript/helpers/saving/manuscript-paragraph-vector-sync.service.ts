@@ -19,6 +19,8 @@ interface SyncedParagraph {
   hash: string;
 }
 
+const AI_GENERATED_BLOCK_NODE_TYPE = 'aiGeneratedBlock';
+
 @Injectable({ providedIn: 'root' })
 export class ManuscriptParagraphVectorSyncService implements OnDestroy {
 
@@ -334,6 +336,8 @@ export class ManuscriptParagraphVectorSyncService implements OnDestroy {
   ): Array<{ node: Record<string, any>; position: number }> {
     const paragraphs: Array<{ node: Record<string, any>; position: number }> = [];
     const visit = (node: Record<string, any>) => {
+      if (node['type'] === AI_GENERATED_BLOCK_NODE_TYPE) return;
+
       if (this.isParagraphNode(node)) {
         paragraphs.push({ node, position: paragraphs.length });
       }

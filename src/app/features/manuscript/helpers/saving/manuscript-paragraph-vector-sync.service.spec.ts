@@ -95,6 +95,63 @@ describe('ManuscriptParagraphVectorSyncService', () => {
     expect(service.indexingState()).toBe('updated');
   });
 
+  it('does not index paragraphs inside generating or finalized AI blocks', async () => {
+    const generatedParagraph = paragraph('generated-1', 'Generated paragraph');
+
+    service.snapshotDirtyParagraphs('scene-1', [
+      aiGeneratedBlock(true, [generatedParagraph]),
+    ]);
+    service.snapshotDirtyParagraphs('scene-1', [
+      aiGeneratedBlock(false, [generatedParagraph]),
+    ]);
+
+    expect(service.indexingState()).toBe('updated');
+    await service.flushParagraphVectorChanges();
+    expect(upsertParagraphs).not.toHaveBeenCalled();
+    expect(deleteParagraphs).not.toHaveBeenCalled();
+  });
+
+  it('continues indexing normal paragraphs adjacent to an AI block', async () => {
+    service.snapshotDirtyParagraphs('scene-1', [
+      paragraph('before', 'Before generated text'),
+      aiGeneratedBlock(false, [paragraph('generated-1', 'Generated paragraph')]),
+      paragraph('after', 'After generated text'),
+    ]);
+
+    await service.flushParagraphVectorChanges();
+
+    expect(upsertParagraphs).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      upserts: [
+        expect.objectContaining({ paragraphId: 'before', position: 0 }),
+        expect.objectContaining({ paragraphId: 'after', position: 1 }),
+      ],
+    });
+  });
+
+  it('indexes generated paragraphs after the AI block is applied', async () => {
+    const generatedParagraph = paragraph('generated-1', 'Generated paragraph');
+    service.snapshotDirtyParagraphs('scene-1', [
+      aiGeneratedBlock(false, [generatedParagraph]),
+    ]);
+
+    expect(service.indexingState()).toBe('updated');
+
+    service.snapshotDirtyParagraphs('scene-1', [generatedParagraph]);
+    expect(service.indexingState()).toBe('pending');
+    await service.flushParagraphVectorChanges();
+
+    expect(upsertParagraphs).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      upserts: [expect.objectContaining({
+        paragraphId: 'generated-1',
+        sceneId: 'scene-1',
+        text: 'Generated paragraph',
+        position: 0,
+      })],
+    });
+  });
+
   it('stays pending when a newer edit is queued during indexing', async () => {
     let completeUpsert!: () => void;
     upsertParagraphs.mockImplementationOnce(() => new Promise<void>(resolve => {
@@ -299,5 +356,16 @@ function paragraph(id: string, text: string): Record<string, unknown> {
     type: 'paragraph',
     attrs: { id },
     content: [{ type: 'text', text }],
+  };
+}
+
+function aiGeneratedBlock(
+  isGenerating: boolean,
+  content: Record<string, unknown>[],
+): Record<string, unknown> {
+  return {
+    type: 'aiGeneratedBlock',
+    attrs: { isGenerating },
+    content,
   };
 }
