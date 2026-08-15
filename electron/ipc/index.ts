@@ -18,9 +18,16 @@ import { setupOpenRouterEmbeddingModelHandlers } from './library/openrouter-embe
 import { setupCloudEmbeddingProviderHandlers } from './library/cloud-embedding-provider';
 import { setupManuscriptExportHandlers } from './manuscript-export/manuscript-export';
 import { setupDataTransferHandlers } from './data-transfer/data-transfer';
+import { setupUpdateHandlers } from './update/update';
+import type { UpdateService } from '../domain/update/update.service';
+
+interface InitializeIpcOptions {
+    updateService: UpdateService;
+    requestUpdateInstall: () => void;
+}
 
 /** Initializes all application IPC domains once the Electron app is ready. */
-export function initializeIpc(): void {
+export function initializeIpc(options: InitializeIpcOptions): void {
     setupIpcHandlers();
     setupLibraryHandlers();
     setupAiHandlers();
@@ -35,6 +42,7 @@ export function initializeIpc(): void {
     setupCloudEmbeddingProviderHandlers();
     setupManuscriptExportHandlers();
     setupDataTransferHandlers();
+    setupUpdateHandlers(options);
 
     try {
         console.log('IPC handlers initialized');

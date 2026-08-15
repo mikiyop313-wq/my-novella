@@ -11,6 +11,7 @@ export default defineConfig({
           build: {
             rollupOptions: {
               external: [
+                'electron-updater',
                 'better-sqlite3',
                 '@lancedb/lancedb',
                 '@xenova/transformers',

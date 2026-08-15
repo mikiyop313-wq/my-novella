@@ -17,6 +17,7 @@ $colors-light: (
     cover-control-bg: rgba(20, 20, 20, 0.58),
     cover-control-hover: rgba(20, 20, 20, 0.78),
     cover-control-shadow: 0 8px 24px rgba(0, 0, 0, 0.24),
+    overlay-backdrop: rgba(0, 0, 0, 0.58),
 
     // Surface Typography
     text-primary: #262626,
@@ -50,6 +51,7 @@ $colors-dark: (
     cover-control-bg: rgba(20, 20, 20, 0.58),
     cover-control-hover: rgba(20, 20, 20, 0.78),
     cover-control-shadow: 0 8px 24px rgba(0, 0, 0, 0.5),
+    overlay-backdrop: rgba(0, 0, 0, 0.72),
 
     // Surface Typography
     text-primary: #faefea,

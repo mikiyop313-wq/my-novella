@@ -1,0 +1,92 @@
+@if (visible()) {
+  <div class="update-dialog-backdrop" (click)="onBackdropClick()">
+    <section
+      class="update-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="update-dialog-title"
+      aria-describedby="update-dialog-description"
+      (click)="stopPropagation($event)"
+    >
+      <header class="update-dialog-header">
+        <div class="update-dialog-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v12"></path>
+            <path d="m7 10 5 5 5-5"></path>
+            <path d="M5 21h14"></path>
+          </svg>
+        </div>
+        <div>
+          <span class="update-dialog-kicker">My Novella {{ state().availableVersion }}</span>
+          <h2 id="update-dialog-title">
+            @if (state().status === 'downloading') {
+              Downloading update
+            } @else if (state().status === 'downloaded') {
+              Applying update
+            } @else if (state().status === 'error') {
+              Update interrupted
+            } @else {
+              A new version is available
+            }
+          </h2>
+        </div>
+      </header>
+
+      <div class="update-dialog-body">
+        @if (state().status === 'available') {
+          <p id="update-dialog-description">
+            Update from version {{ state().currentVersion }} to {{ state().availableVersion }}.
+          </p>
+          <section class="release-notes" aria-labelledby="release-notes-title">
+            <h3 id="release-notes-title">What’s changed</h3>
+            <div class="release-notes-copy">{{ state().releaseNotes || 'No release notes were provided.' }}</div>
+          </section>
+        } @else if (state().status === 'downloading') {
+          <p id="update-dialog-description">
+            Keep My Novella open while the update downloads.
+          </p>
+          <div class="download-progress-copy">
+            <span>Downloading</span>
+            <strong>{{ state().downloadPercent ?? 0 }}%</strong>
+          </div>
+          <div
+            class="download-progress"
+            role="progressbar"
+            aria-label="Update download progress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="state().downloadPercent ?? 0"
+          >
+            <span [style.width.%]="state().downloadPercent ?? 0"></span>
+          </div>
+        } @else if (state().status === 'downloaded') {
+          <p id="update-dialog-description">
+            Saving your work and restarting My Novella to finish the update.
+          </p>
+          <div class="applying-indicator" aria-label="Applying update">
+            <span class="applying-spinner" aria-hidden="true"></span>
+            <span>Preparing restart…</span>
+          </div>
+        } @else if (state().status === 'error') {
+          <p id="update-dialog-description">
+            {{ state().errorMessage || 'The update could not be completed.' }}
+          </p>
+        }
+      </div>
+
+      @if (state().status === 'available') {
+        <footer class="update-dialog-actions">
+          <button type="button" class="secondary-action" (click)="dismiss()">Skip</button>
+          <button type="button" class="primary-action" (click)="acceptUpdate()">Update now</button>
+        </footer>
+      } @else if (state().status === 'error') {
+        <footer class="update-dialog-actions">
+          <button type="button" class="secondary-action" (click)="dismiss()">Close</button>
+          @if (state().availableVersion) {
+            <button type="button" class="primary-action" (click)="retryDownload()">Retry</button>
+          }
+        </footer>
+      }
+    </section>
+  </div>
+}

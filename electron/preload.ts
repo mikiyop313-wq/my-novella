@@ -24,9 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Signal to main process that flushing is complete and it's safe to close
     sendCloseReady: () => ipcRenderer.send('app:close-ready'),
 
-    // Example: Get app version
-    getAppVersion: () => process.versions.chrome,
-
     // Abort an in-flight AI generation
     abortAiGeneration: (streamId: string) => ipcRenderer.invoke('ai:abort', { streamId }),
 

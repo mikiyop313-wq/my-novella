@@ -1,5 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
+import electronUpdater from 'electron-updater';
 import * as path from 'path';
+import { AppCloseCoordinator } from './app-close-coordinator';
+import { UpdateService } from './domain/update/update.service';
 import { initializeIpc } from './ipc';
 import { ChatWindowManager } from './windows/chat-window-manager';
 import { CodexWindowManager } from './windows/codex-window-manager';
@@ -11,8 +14,22 @@ if (!app.isPackaged) {
 }
 
 let win: BrowserWindow | null;
-let isReadyToClose = false;
 const appIconPath = path.join(app.getAppPath(), 'public', 'app-icon.ico');
+const { autoUpdater } = electronUpdater;
+const updateService = new UpdateService({
+    updater: autoUpdater,
+    isPackaged: app.isPackaged,
+    currentVersion: app.getVersion(),
+    broadcast: (state) => {
+        BrowserWindow.getAllWindows().forEach((window) => {
+            window.webContents.send('update:state-changed', state);
+        });
+    },
+});
+const closeCoordinator = new AppCloseCoordinator({
+    getWindow: () => win,
+    installUpdate: () => updateService.quitAndInstall(),
+});
 
 function isDevMode(): boolean {
     return process.env.NODE_ENV === 'development';
@@ -83,6 +100,9 @@ function createWindow() {
         }
     });
 
+    win.webContents.once('did-finish-load', () => {
+        void updateService.checkForUpdatesAtStartup();
+    });
     loadAppRoute(win);
     if (isDevMode()) {
         win.webContents.openDevTools();
@@ -90,16 +110,7 @@ function createWindow() {
 
     // ── Graceful close: let the renderer flush unsaved data ──────────────
     win.on('close', (e) => {
-        if (!isReadyToClose && win) {
-            e.preventDefault();
-            win.webContents.send('app:before-close');
-
-            // Safety timeout — if the renderer doesn't respond in 3 s, close anyway.
-            setTimeout(() => {
-                isReadyToClose = true;
-                win?.close();
-            }, 3000);
-        }
+        closeCoordinator.handleWindowClose(e);
     });
 
     // ── Instant keyboard shortcuts (bypass slow native menu bar) ─────────
@@ -126,12 +137,15 @@ function createWindow() {
 
 // Renderer signals that flushing is done; allow the window to close.
 ipcMain.on('app:close-ready', () => {
-    isReadyToClose = true;
-    win?.close();
+    closeCoordinator.handleRendererReady();
 });
 
 app.on('ready', async () => {
-    initializeIpc();
+    updateService.initialize();
+    initializeIpc({
+        updateService,
+        requestUpdateInstall: () => closeCoordinator.requestUpdateInstall(),
+    });
     setupCodexWindowHandlers();
     setupChatWindowHandlers();
     await localEmbeddingModelManager.cleanupIncompleteDownloads();

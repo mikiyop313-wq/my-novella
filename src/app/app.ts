@@ -6,10 +6,11 @@ import { routeAnimations } from './shared/animations/route-animations';
 import { ToastService } from './shared/services/toast.service';
 import { ConfirmModalComponent } from './shared/components/confirm-modal/confirm-modal.component';
 import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
+import { UpdateDialogComponent } from './shared/components/update-dialog/update-dialog.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, ConfirmModalComponent, ToastContainerComponent],
+  imports: [RouterOutlet, ConfirmModalComponent, ToastContainerComponent, UpdateDialogComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   animations: [routeAnimations]

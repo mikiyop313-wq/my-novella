@@ -10,7 +10,6 @@ interface IElectronAPI {
     sendMessage: (channel: string, data?: any) => void;
     onMessage: (channel: string, callback: (...args: any[]) => void) => () => void;
     invoke: (channel: string, data?: any) => Promise<any>;
-    getAppVersion: () => string;
     abortAiGeneration: (streamId: string) => Promise<void>;
     onGenerationAborted: (callback: (event: AiGenerationAbortedEvent) => void) => () => void;
 }
