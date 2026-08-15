@@ -3,14 +3,13 @@ import { ChildrenOutletContexts, RouterOutlet } from '@angular/router';
 import { ElectronService } from './core/services/electron.service';
 import { ThemeService } from './core/services/theme.service';
 import { routeAnimations } from './shared/animations/route-animations';
-import { RouterLink } from '@angular/router';
 import { ToastService } from './shared/services/toast.service';
 import { ConfirmModalComponent } from './shared/components/confirm-modal/confirm-modal.component';
 import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, ConfirmModalComponent, ToastContainerComponent],
+  imports: [RouterOutlet, ConfirmModalComponent, ToastContainerComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   animations: [routeAnimations]

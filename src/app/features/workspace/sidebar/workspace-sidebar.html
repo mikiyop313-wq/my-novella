@@ -1,0 +1,23 @@
+<aside class="workspace-sidebar-panel" [class.is-collapsed]="!store.sidebarOpen()" aria-label="Workspace sidebar">
+  <div class="sidebar-header">
+    <div class="header-text" [class.hidden]="!store.sidebarOpen()">
+      <span>Reference</span>
+      <h2>Workspace</h2>
+    </div>
+
+    <button class="close-btn" (click)="store.toggleSidebar()" [title]="store.sidebarOpen() ? 'Collapse sidebar' : 'Expand sidebar'" aria-label="Toggle sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+        stroke-linejoin="round" [style.transform]="store.sidebarOpen() ? 'rotate(0deg)' : 'rotate(180deg)'" style="transition: transform 0.3s ease;">
+        <path d="m15 18-6-6 6-6"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div class="sidebar-sections">
+    <app-codex-sidebar-section></app-codex-sidebar-section>
+  </div>
+
+  <div class="sidebar-footer">
+    <app-settings-section></app-settings-section>
+  </div>
+</aside>

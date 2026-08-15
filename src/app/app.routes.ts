@@ -3,7 +3,15 @@ import { Routes } from '@angular/router';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'library', pathMatch: 'full' },
+  { path: 'codex-detached/:sessionId', loadComponent: () => import('./features/codex/pages/codex-detached/codex-detached').then(m => m.CodexDetached) },
   { path: 'library/create', loadComponent: () => import('./features/library/pages/book-create/book-create').then(m => m.BookCreate), data: { animation: 'CreatePage' } },
   { path: 'library', loadComponent: () => import('./features/library/library').then(m => m.Library), data: { animation: 'LibraryPage' } },
-  { path: 'manuscript/:mode/:id', loadComponent: () => import('./features/manuscript/manuscript').then(m => m.Manuscript) }
+  {
+    path: 'workspace/:bookId',
+    loadComponent: () => import('./features/workspace/workspace').then(m => m.Workspace),
+    data: { animation: 'WorkspacePage' },
+    children: [
+      { path: 'manuscript/:mode/:id', loadComponent: () => import('./features/manuscript/manuscript').then(m => m.Manuscript) },
+    ],
+  }
 ];

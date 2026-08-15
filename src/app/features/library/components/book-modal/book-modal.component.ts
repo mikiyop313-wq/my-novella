@@ -1,5 +1,5 @@
 import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, input, computed, inject, linkedSignal, effect, output } from '@angular/core';
-import { RouterLink, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -19,7 +19,7 @@ import { AutocompleteDropdownComponent, DropdownOption } from '../../../../share
 @Component({
   selector: 'app-book-modal',
   standalone: true,
-  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe, InfoIconComponent, ReactiveFormsModule, AutocompleteDropdownComponent, RouterLink],
+  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe, InfoIconComponent, ReactiveFormsModule, AutocompleteDropdownComponent],
   templateUrl: './book-modal.component.html',
   styleUrl: './book-modal.component.scss'
 })
@@ -285,8 +285,7 @@ export class BookModalComponent {
 
   openManuscript() {
     this.close.emit();
-    console.log("GO TO MANUSCRIPT: ", this.book().id);
-    this.router.navigate(['/manuscript', 'book', this.book().id]);
+    this.router.navigate(['/workspace', this.book().id]);
   }
 
   // Edit Methods

@@ -223,30 +223,6 @@
     overflow-y: auto;
     overflow-x: hidden;
 
-
-    // Firefox
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-text-secondary) transparent;
-
-    // Chrome, Edge, Safari
-    &::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    &::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    &::-webkit-scrollbar-thumb {
-        background-color: var(--color-text-secondary);
-        border-radius: 10px;
-
-        &:hover {
-            background-color: var(--color-text-primary);
-        }
-    }
-
-
     .close-btn {
         position: absolute;
         top: 20px;

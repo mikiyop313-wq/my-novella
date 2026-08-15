@@ -1,0 +1,271 @@
+:host {
+  display: block;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.codex-detached-page {
+  height: 100%;
+  width: 100%;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  
+  /* Entrance animation for the whole page wrapper */
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.detached-state {
+  align-self: center;
+  margin: auto;
+  width: min(420px, calc(100% - 48px));
+  padding: 32px 24px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  text-align: center;
+  font-size: 0.95rem;
+  box-shadow: var(--color-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+
+  /* Subtle pulsing animation for loading state */
+  &.loading-state {
+    animation: pulse-glow 2s infinite ease-in-out;
+  }
+
+  h1 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  button {
+    margin-top: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    padding: 10px 20px;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background: var(--color-hover-bg);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    
+    &:active {
+      transform: translateY(0);
+    }
+  }
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 20px var(--color-hover-bg); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+:host ::ng-deep app-codex-entry-menu {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+:host ::ng-deep .create-entry-menu {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  
+  /* Premium Full Window Styles */
+  border-radius: 0;
+  border: none;
+  /* Use a subtle background gradient for the whole window */
+  background: radial-gradient(circle at top right, color-mix(in srgb, var(--color-hover-bg) 50%, transparent), transparent 60%),
+              radial-gradient(circle at bottom left, color-mix(in srgb, var(--color-hover-bg) 50%, transparent), transparent 60%),
+              var(--color-background);
+  box-shadow: none;
+  
+  /* Animation */
+  animation: fade-in 0.4s ease-out forwards;
+  will-change: opacity;
+}
+
+/* Hide redundant window controls in detached mode */
+:host ::ng-deep .header-actions {
+  display: none !important;
+}
+
+/* --- Premium Layout Overrides (Only for large/fullscreen windows) --- */
+@media (min-width: 1024px) and (min-height: 700px) {
+  /* Spacious Header */
+  :host ::ng-deep .menu-header {
+    padding: 40px 60px 0 !important;
+    background: transparent !important;
+    border-bottom: none !important;
+  }
+
+  :host ::ng-deep .menu-header .header-top h4 {
+    font-size: 1.1rem !important;
+    opacity: 0.7;
+  }
+
+  :host ::ng-deep .menu-header .header-divider {
+    display: none !important; /* Hide the divider for a cleaner look */
+  }
+
+  :host ::ng-deep .menu-header .tabs-row {
+    margin-top: 24px !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent) !important;
+  }
+
+  :host ::ng-deep .menu-header .view-tabs {
+    gap: 40px !important;
+  }
+
+  :host ::ng-deep .menu-header .view-tabs button {
+    font-size: 0.9rem !important;
+    padding-bottom: 16px !important;
+    letter-spacing: 0.08em !important;
+  }
+
+  :host ::ng-deep .menu-header .view-tabs button::after {
+    height: 3px !important; /* Thicker active indicator */
+  }
+
+  /* Center and space out the body content */
+  :host ::ng-deep .menu-body {
+    padding: 48px 60px !important;
+    align-items: center !important;
+  }
+
+  :host ::ng-deep .menu-body > * {
+    width: 100% !important;
+    max-width: 900px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  /* Top Row: Title and Thumbnail */
+  :host ::ng-deep .menu-body .top-row {
+    gap: 64px !important;
+    margin-bottom: 40px !important;
+  }
+
+  :host ::ng-deep .menu-body .left-col {
+    justify-content: center !important;
+    gap: 24px !important;
+  }
+
+  :host ::ng-deep .menu-body .title-type-selector ::ng-deep .dropdown-trigger {
+    font-size: 0.9rem !important;
+    opacity: 0.6 !important;
+  }
+
+  :host ::ng-deep .menu-body .premium-name-input {
+    font-size: 3.5rem !important;
+    font-weight: 800 !important;
+    padding: 12px 0 20px 0 !important;
+    border-bottom-width: 3px !important;
+  }
+
+  :host ::ng-deep .menu-body .alias-group {
+    margin-top: 8px !important;
+  }
+
+  :host ::ng-deep .menu-body .alias-group input {
+    font-size: 1.1rem !important;
+    padding: 16px !important;
+  }
+
+  /* Larger Thumbnail */
+  :host ::ng-deep .menu-body .thumbnail-upload {
+    flex: 0 0 220px !important;
+    width: 220px !important;
+    height: 310px !important;
+    margin-top: 0 !important; /* Remove top margin */
+  }
+
+  :host ::ng-deep .menu-body .thumbnail-upload .upload-placeholder,
+  :host ::ng-deep .menu-body .thumbnail-upload .thumbnail-image {
+    border-radius: 16px !important;
+  }
+
+  :host ::ng-deep .menu-body .thumbnail-upload .upload-placeholder svg {
+    width: 48px !important;
+    height: 48px !important;
+    margin-bottom: 16px !important;
+  }
+
+  :host ::ng-deep .menu-body .thumbnail-upload .upload-placeholder span {
+    font-size: 0.85rem !important;
+  }
+
+  /* Form Groups (Description, Notes, etc) */
+  :host ::ng-deep .form-group label,
+  :host ::ng-deep .view-label {
+    font-size: 0.85rem !important;
+    letter-spacing: 0.08em !important;
+    margin-bottom: 8px !important;
+    opacity: 0.8 !important;
+  }
+
+  :host ::ng-deep .form-group textarea,
+  :host ::ng-deep .notes-view textarea {
+    font-size: 1rem !important;
+    padding: 16px !important;
+    line-height: 1.6 !important;
+    border-radius: 12px !important;
+    min-height: 120px !important;
+  }
+
+  :host ::ng-deep .view-description {
+    font-size: 0.95rem !important;
+    margin-bottom: 24px !important;
+  }
+
+  /* Spacious Footer */
+  :host ::ng-deep .menu-footer {
+    padding: 32px 60px !important;
+    background: transparent !important;
+    border-top: none !important;
+    justify-content: center !important; /* Center the buttons */
+    gap: 24px !important;
+  }
+
+  :host ::ng-deep .menu-footer button {
+    padding: 12px 32px !important;
+    font-size: 1rem !important;
+    border-radius: 12px !important;
+  }
+}

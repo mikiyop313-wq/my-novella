@@ -3,6 +3,7 @@ import { patchState, signalStore, withComputed, withMethods, withState } from '@
 import { Editor } from '@tiptap/core';
 
 import { ElectronService } from '../../../core/services/electron.service';
+import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
 import {
   ActDto,
   ChapterDto,
@@ -56,7 +57,6 @@ export interface ManuscriptState {
   /** Scene IDs with prose fetches already in flight. */
   loadingSkeletonSceneIds: string[];
 
-  bookHierarchy: ActDto[];
   currentWordCount: number;
 }
 
@@ -89,7 +89,6 @@ const initialState: ManuscriptState = {
   pendingSkeletonSceneIds: [],
   loadingSkeletonSceneIds: [],
 
-  bookHierarchy: [],
   currentWordCount: 0,
 };
 
@@ -236,7 +235,9 @@ export const ManuscriptStore = signalStore(
 
   withState(initialState),
 
-  withComputed(({ currentWordCount, bookHierarchy, activeEntityId, mode }) => ({
+  withComputed(({ currentWordCount, activeEntityId, mode }, workspaceBookStore = inject(WorkspaceBookStore)) => ({
+    bookHierarchy: computed(() => workspaceBookStore.bookHierarchy()),
+
     bookId: computed(() => mode() === 'book' ? activeEntityId() : null),
     actId: computed(() => mode() === 'act' ? activeEntityId() : null),
     chapterId: computed(() => mode() === 'chapter' ? activeEntityId() : null),
@@ -256,7 +257,7 @@ export const ManuscriptStore = signalStore(
       const id = activeEntityId();
       if (!id) return null;
 
-      for (const act of bookHierarchy()) {
+      for (const act of workspaceBookStore.bookHierarchy()) {
         for (const chapter of act.chapters || []) {
           const found = chapter.scenes?.find(scene => scene.id === id);
           if (found) return found.position + 1;
@@ -274,7 +275,7 @@ export const ManuscriptStore = signalStore(
       const id = activeEntityId();
       if (!id) return { actId: null, chapterId: null };
 
-      for (const act of bookHierarchy()) {
+      for (const act of workspaceBookStore.bookHierarchy()) {
         for (const chapter of act.chapters || []) {
           if (chapter.scenes?.some(scene => scene.id === id)) {
             return { actId: act.id, chapterId: chapter.id };
@@ -294,7 +295,11 @@ export const ManuscriptStore = signalStore(
     }),
   })),
 
-  withMethods((store, electronService = inject(ElectronService)) => ({
+  withMethods((
+    store,
+    electronService = inject(ElectronService),
+    workspaceBookStore = inject(WorkspaceBookStore),
+  ) => ({
 
     // -------------------------------------------------------------------------
     // Route / State
@@ -352,12 +357,11 @@ export const ManuscriptStore = signalStore(
     async loadManuscriptData<T extends ManuscriptMode>(mode: T, id: string): Promise<ManuscriptModeDto<T>> {
       Promise.all([
         electronService.invoke('manuscript:getWordCount', { mode, id }),
-        electronService.invoke('manuscript:getBookHierarchy', { mode, id }),
+        workspaceBookStore.loadBookHierarchy(mode, id),
       ])
-        .then(([wordCount, hierarchy]) => {
+        .then(([wordCount]) => {
           patchState(store, {
             currentWordCount: wordCount as number,
-            bookHierarchy: hierarchy as ActDto[],
           });
         })
         .catch(error => console.error('Failed to load stats/hierarchy', error));
@@ -448,11 +452,7 @@ export const ManuscriptStore = signalStore(
         await electronService.invoke('manuscript:updateAct', payload);
 
         if (payload.title !== undefined) {
-          patchState(store, {
-            bookHierarchy: store.bookHierarchy().map(act =>
-              act.id === payload.id ? { ...act, title: payload.title! } : act
-            ),
-          });
+          workspaceBookStore.updateActTitle(payload.id, payload.title);
         }
       } catch (error) {
         console.error('updateAct: IPC call failed', error);
@@ -464,14 +464,7 @@ export const ManuscriptStore = signalStore(
         await electronService.invoke('manuscript:updateChapter', payload);
 
         if (payload.title !== undefined) {
-          patchState(store, {
-            bookHierarchy: store.bookHierarchy().map(act => ({
-              ...act,
-              chapters: (act.chapters || []).map(chapter =>
-                chapter.id === payload.id ? { ...chapter, title: payload.title! } : chapter
-              ),
-            })),
-          });
+          workspaceBookStore.updateChapterTitle(payload.id, payload.title);
         }
       } catch (error) {
         console.error('updateChapter: IPC call failed', error);
@@ -483,17 +476,7 @@ export const ManuscriptStore = signalStore(
         await electronService.invoke('manuscript:updateScene', payload);
 
         if (payload.title !== undefined) {
-          patchState(store, {
-            bookHierarchy: store.bookHierarchy().map(act => ({
-              ...act,
-              chapters: (act.chapters || []).map(chapter => ({
-                ...chapter,
-                scenes: (chapter.scenes || []).map(scene =>
-                  scene.id === payload.id ? { ...scene, title: payload.title! } : scene
-                ),
-              })),
-            })),
-          });
+          workspaceBookStore.updateSceneTitle(payload.id, payload.title);
         }
       } catch (error) {
         console.error('updateScene: IPC call failed', error);

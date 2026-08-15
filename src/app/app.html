@@ -1,10 +1,4 @@
 <main class="main">
-
-  <button (click)="sendToMain()"> Dummy button </button>
-  <button (click)="toggleTheme()"> Toggle Theme </button>
-  <button routerLink="/manuscript/book/1"> Manuscript</button>
-  <button routerLink="/library">Library</button>
-
   <div class="animation-container" [@routeAnimations]="getRouteAnimationData()">
     <router-outlet />
   </div>

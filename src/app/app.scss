@@ -4,24 +4,6 @@
   scrollbar-gutter: stable; // Prevents layout shift when scrollbar activates
   height: 100vh;
   width: 100vw;
-
-  // Custom scrollbar
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 10px;
-  }
-
-  &::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-secondary);
-  }
 }
 
 .animation-container {

@@ -184,20 +184,6 @@
         opacity: 0.65;
         pointer-events: none;
       }
-
-      // Styled custom scrollbar for textarea
-      &::-webkit-scrollbar {
-        width: 6px;
-      }
-
-      &::-webkit-scrollbar-track {
-        background: transparent;
-      }
-
-      &::-webkit-scrollbar-thumb {
-        background: var(--color-border);
-        border-radius: 4px;
-      }
     }
   }
 
@@ -450,18 +436,6 @@
     overflow-y: auto;
     max-height: 280px;
     padding: 6px 0;
-
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 20%, transparent) transparent;
-
-    &::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background-color: color-mix(in srgb, var(--color-text-secondary) 20%, transparent);
-      border-radius: 4px;
-    }
 
     .group-header {
       padding: 10px 16px 6px;
