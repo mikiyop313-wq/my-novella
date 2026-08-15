@@ -108,7 +108,12 @@ export class CodexMatchChooserService {
     return [...new Set(entryIds)]
       .map((entryId) => entriesById.get(entryId))
       .filter((entry): entry is NonNullable<typeof entry> => !!entry)
-      .map((entry) => ({ id: entry.id, name: entry.name, description: entry.description }))
+      .map((entry) => ({
+        id: entry.id,
+        type: entry.type,
+        name: entry.name,
+        description: entry.description,
+      }))
       .sort(
         (left, right) =>
           left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) ||

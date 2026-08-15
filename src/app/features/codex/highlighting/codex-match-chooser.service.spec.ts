@@ -3,21 +3,32 @@ import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { type CodexEntryType } from '../../../../../shared/models/codex.model';
 import { CodexContextTrieService } from '../services/codex-context-trie.service';
 import { CodexEntryOpenerService } from '../services/codex-entry-opener.service';
 import { CodexMatchChooserService } from './codex-match-chooser.service';
 
 describe('CodexMatchChooserService', () => {
   let service: CodexMatchChooserService;
-  let entries: Array<{ id: string; name: string; description: string | null }>;
+  let entries: Array<{
+    id: string;
+    type: CodexEntryType;
+    name: string;
+    description: string | null;
+  }>;
   let overlay: ReturnType<typeof createOverlay>;
   let opener: { open: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     entries = [
-      { id: 'codex-b', name: 'alpha', description: null },
-      { id: 'codex-a', name: 'Alpha', description: 'The first entry.' },
-      { id: 'codex-c', name: 'Mara Vale', description: 'A cautious cartographer.' },
+      { id: 'codex-b', type: 'location', name: 'alpha', description: null },
+      { id: 'codex-a', type: 'lore', name: 'Alpha', description: 'The first entry.' },
+      {
+        id: 'codex-c',
+        type: 'character',
+        name: 'Mara Vale',
+        description: 'A cautious cartographer.',
+      },
     ];
     overlay = createOverlay();
     opener = { open: vi.fn(async () => undefined) };
@@ -39,9 +50,14 @@ describe('CodexMatchChooserService', () => {
     service.open(['codex-c', 'missing', 'codex-b', 'codex-a', 'codex-c'], 12, 20);
 
     expect(overlay.refs[0].setInput).toHaveBeenCalledWith('entries', [
-      { id: 'codex-a', name: 'Alpha', description: 'The first entry.' },
-      { id: 'codex-b', name: 'alpha', description: null },
-      { id: 'codex-c', name: 'Mara Vale', description: 'A cautious cartographer.' },
+      { id: 'codex-a', type: 'lore', name: 'Alpha', description: 'The first entry.' },
+      { id: 'codex-b', type: 'location', name: 'alpha', description: null },
+      {
+        id: 'codex-c',
+        type: 'character',
+        name: 'Mara Vale',
+        description: 'A cautious cartographer.',
+      },
     ]);
   });
 
@@ -58,7 +74,12 @@ describe('CodexMatchChooserService', () => {
     expect(opener.open).not.toHaveBeenCalled();
     expect(overlay.api.create).toHaveBeenCalledTimes(1);
     expect(overlay.refs[0].setInput).toHaveBeenCalledWith('entries', [
-      { id: 'codex-c', name: 'Mara Vale', description: 'A cautious cartographer.' },
+      {
+        id: 'codex-c',
+        type: 'character',
+        name: 'Mara Vale',
+        description: 'A cautious cartographer.',
+      },
     ]);
   });
 

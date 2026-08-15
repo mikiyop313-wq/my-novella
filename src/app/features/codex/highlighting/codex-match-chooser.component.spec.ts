@@ -10,8 +10,17 @@ describe('CodexMatchChooserComponent', () => {
     await TestBed.configureTestingModule({ imports: [CodexMatchChooserComponent] }).compileComponents();
     fixture = TestBed.createComponent(CodexMatchChooserComponent);
     fixture.componentRef.setInput('entries', [
-      { id: 'codex-2', name: 'Mara Vale', description: 'A cautious cartographer.' },
-      { id: 'codex-1', name: 'Silver Key', description: null },
+      {
+        id: 'codex-2',
+        type: 'character',
+        name: 'Mara Vale',
+        description: 'A cautious cartographer.',
+      },
+      { id: 'codex-1', type: 'object', name: 'Silver Key', description: null },
+      { id: 'codex-3', type: 'location', name: 'North Reach', description: null },
+      { id: 'codex-4', type: 'lore', name: 'The Sundering', description: null },
+      { id: 'codex-5', type: 'subplot', name: 'Missing Heir', description: null },
+      { id: 'codex-6', type: 'other', name: 'Unsorted Note', description: null },
     ]);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -29,6 +38,9 @@ describe('CodexMatchChooserComponent', () => {
       'No description available.',
     );
     expect(fixture.nativeElement.textContent).not.toContain('Open entry');
+    expect(
+      buttons.map((button) => button.querySelector('.entry-type')?.textContent?.trim()),
+    ).toEqual(['Character', 'Object', 'Location', 'Lore', 'Subplot', 'Other']);
     expect(document.activeElement).toBe(buttons[0]);
   });
 

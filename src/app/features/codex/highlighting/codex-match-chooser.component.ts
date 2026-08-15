@@ -8,8 +8,20 @@ import {
   output,
 } from '@angular/core';
 
+import { type CodexEntryType } from '../../../../../shared/models/codex.model';
+
+const CODEX_ENTRY_TYPE_LABELS: Record<CodexEntryType, string> = {
+  character: 'Character',
+  location: 'Location',
+  object: 'Object',
+  lore: 'Lore',
+  subplot: 'Subplot',
+  other: 'Other',
+};
+
 export interface CodexMatchChooserEntry {
   id: string;
+  type: CodexEntryType;
   name: string;
   description: string | null;
 }
@@ -27,7 +39,10 @@ export interface CodexMatchChooserEntry {
           [attr.aria-label]="'Open ' + entry.name"
           (click)="entrySelected.emit(entry.id)"
         >
-          <span class="entry-title">{{ entry.name }}</span>
+          <span class="entry-name-row">
+            <span class="entry-title">{{ entry.name }}</span>
+            <span class="entry-type">{{ typeLabel(entry.type) }}</span>
+          </span>
           <span class="entry-description">{{
             entry.description ?? 'No description available.'
           }}</span>
@@ -94,7 +109,26 @@ export interface CodexMatchChooserEntry {
       cursor: pointer;
     }
     .entry-title {
+      min-width: 0;
       font-weight: 600;
+    }
+    .entry-name-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      width: 100%;
+    }
+    .entry-type {
+      flex: 0 0 auto;
+      margin-left: auto;
+      padding: 1px 5px;
+      border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+      border-radius: 999px;
+      color: var(--color-text-secondary, #a3a3a3);
+      font-size: 0.65rem;
+      font-weight: 500;
+      line-height: 1.35;
+      white-space: nowrap;
     }
     .entry-description {
       display: -webkit-box;
@@ -124,6 +158,8 @@ export class CodexMatchChooserComponent implements AfterViewInit {
   readonly entries = input.required<readonly CodexMatchChooserEntry[]>();
   readonly entrySelected = output<string>();
   readonly closeRequested = output<void>();
+
+  readonly typeLabel = (type: CodexEntryType): string => CODEX_ENTRY_TYPE_LABELS[type];
 
   /** Focus the first result once Angular has rendered the projected entries. */
   ngAfterViewInit(): void {
