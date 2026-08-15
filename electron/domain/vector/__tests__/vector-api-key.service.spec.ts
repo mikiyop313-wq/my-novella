@@ -12,6 +12,7 @@ vi.mock('../../../../db/repositories/app-settings.repository', () => ({
 }));
 
 import type { AppSettingsStore } from '../../../../db/repositories/app-settings.repository';
+import { ApiKeyService } from '../../ai/api-key.service';
 import { VectorApiKeyService } from '../vector-api-key.service';
 
 class MemorySettingsStore implements AppSettingsStore {
@@ -53,6 +54,31 @@ describe('VectorApiKeyService', () => {
         );
         expect(store.values.has('ai.apiKey.openrouter')).toBe(false);
     });
+
+    it.each([
+        ['sk-or-shared-1234', 'sk-or-shared-1234'],
+        ['sk-or-ai-1234', 'sk-or-vector-5678'],
+    ])(
+        'keeps AI and vector OpenRouter credentials independent when values are %s and %s',
+        async (aiKey, vectorKey) => {
+            const aiService = new ApiKeyService(store);
+
+            await aiService.saveApiKey('openrouter', aiKey);
+            await service.saveApiKey('openrouter', vectorKey);
+
+            await expect(aiService.getApiKey('openrouter')).resolves.toBe(aiKey);
+            await expect(service.getApiKey('openrouter')).resolves.toBe(vectorKey);
+
+            await aiService.saveApiKey('openrouter', '');
+            await expect(aiService.getApiKey('openrouter')).resolves.toBeNull();
+            await expect(service.getApiKey('openrouter')).resolves.toBe(vectorKey);
+
+            await aiService.saveApiKey('openrouter', aiKey);
+            await service.saveApiKey('openrouter', '');
+            await expect(aiService.getApiKey('openrouter')).resolves.toBe(aiKey);
+            await expect(service.getApiKey('openrouter')).resolves.toBeNull();
+        },
+    );
 
     it('decrypts the full key but exposes only status and suffix normally', async () => {
         store.values.set(

@@ -121,6 +121,12 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   @ViewChild('backButton')
   private backButton?: ElementRef<HTMLButtonElement>;
 
+  @ViewChild(AiConfigurationSettingsComponent)
+  private aiConfigurationSettings?: AiConfigurationSettingsComponent;
+
+  @ViewChild(VectorConfigurationSettingsComponent)
+  private vectorConfigurationSettings?: VectorConfigurationSettingsComponent;
+
   ngOnInit(): void {
     if (this.isBookContext) {
       void this.loadSettings();
@@ -305,24 +311,28 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   selectSection(section: SettingsSection): void {
     if (section === this.activeSection()) return;
 
-    this.cancelEditing();
-    this.activeView.set(
-      section === 'editor-display'
-        || section === 'ai-configuration'
-        || section === 'vector-search'
-        || section === 'global-prompts'
-        ? 'general'
-        : 'book',
-    );
-    this.activeSection.set(section);
+    this.runAfterConfigurationFlush(() => {
+      this.cancelEditing();
+      this.activeView.set(
+        section === 'editor-display'
+          || section === 'ai-configuration'
+          || section === 'vector-search'
+          || section === 'global-prompts'
+          ? 'general'
+          : 'book',
+      );
+      this.activeSection.set(section);
+    });
   }
 
   selectView(view: SettingsView): void {
     if (view === this.activeView()) return;
 
-    this.cancelEditing();
-    this.activeView.set(view);
-    this.activeSection.set(view === 'book' ? 'general' : 'editor-display');
+    this.runAfterConfigurationFlush(() => {
+      this.cancelEditing();
+      this.activeView.set(view);
+      this.activeSection.set(view === 'book' ? 'general' : 'editor-display');
+    });
   }
 
   updateBookFromChild(book: BookDto): void {
@@ -362,6 +372,10 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   }
 
   closeSettings(): void {
+    this.runAfterConfigurationFlush(() => this.navigateFromSettings());
+  }
+
+  private navigateFromSettings(): void {
     const bookId = this.activeBookId();
     if (!bookId) {
       void this.router.navigateByUrl('/library');
@@ -388,6 +402,28 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     }
 
     this.closeSettings();
+  }
+
+  private runAfterConfigurationFlush(action: () => void): void {
+    const flush = this.flushActiveConfiguration();
+    if (!flush) {
+      action();
+      return;
+    }
+
+    void flush.then((saved) => {
+      if (saved) action();
+    });
+  }
+
+  private flushActiveConfiguration(): Promise<boolean> | null {
+    if (this.activeSection() === 'ai-configuration') {
+      return this.aiConfigurationSettings?.flushPendingChanges() ?? null;
+    }
+    if (this.activeSection() === 'vector-search') {
+      return this.vectorConfigurationSettings?.flushPendingChanges() ?? null;
+    }
+    return null;
   }
 
   private buildUpdate(field: EditableField, book: BookDto): UpdateBookDto | null {

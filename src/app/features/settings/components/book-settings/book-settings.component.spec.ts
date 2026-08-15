@@ -492,6 +492,85 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('.content-title')?.textContent).toContain('Vector Search');
   });
 
+  it('keeps the active credential editor mounted until its pending save succeeds', async () => {
+    fixture.componentInstance.selectView('general');
+    fixture.componentInstance.selectSection('ai-configuration');
+    fixture.detectChanges();
+
+    const aiConfiguration = fixture.debugElement.query(
+      By.directive(AiConfigurationSettingsComponent),
+    ).componentInstance as AiConfigurationSettingsComponent;
+    let resolveFlush!: (saved: boolean) => void;
+    const pendingFlush = new Promise<boolean>((resolve) => {
+      resolveFlush = resolve;
+    });
+    vi.spyOn(aiConfiguration, 'flushPendingChanges').mockReturnValue(pendingFlush);
+
+    fixture.componentInstance.selectSection('vector-search');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeSection()).toBe('ai-configuration');
+    expect(
+      fixture.debugElement.query(By.directive(AiConfigurationSettingsComponent)),
+    ).not.toBeNull();
+
+    resolveFlush(true);
+    await pendingFlush;
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeSection()).toBe('vector-search');
+    expect(
+      fixture.debugElement.query(By.directive(VectorConfigurationSettingsComponent)),
+    ).not.toBeNull();
+  });
+
+  it('stays in the credential editor when flushing changes fails', async () => {
+    fixture.componentInstance.selectView('general');
+    fixture.componentInstance.selectSection('ai-configuration');
+    fixture.detectChanges();
+
+    const aiConfiguration = fixture.debugElement.query(
+      By.directive(AiConfigurationSettingsComponent),
+    ).componentInstance as AiConfigurationSettingsComponent;
+    vi.spyOn(aiConfiguration, 'flushPendingChanges').mockResolvedValue(false);
+
+    fixture.componentInstance.selectSection('vector-search');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeSection()).toBe('ai-configuration');
+    expect(
+      fixture.debugElement.query(By.directive(AiConfigurationSettingsComponent)),
+    ).not.toBeNull();
+  });
+
+  it('waits for vector credential changes before Escape closes settings', async () => {
+    fixture.componentInstance.selectView('general');
+    fixture.componentInstance.selectSection('vector-search');
+    fixture.detectChanges();
+
+    const vectorConfiguration = fixture.debugElement.query(
+      By.directive(VectorConfigurationSettingsComponent),
+    ).componentInstance as VectorConfigurationSettingsComponent;
+    let resolveFlush!: (saved: boolean) => void;
+    const pendingFlush = new Promise<boolean>((resolve) => {
+      resolveFlush = resolve;
+    });
+    vi.spyOn(vectorConfiguration, 'flushPendingChanges').mockReturnValue(pendingFlush);
+
+    fixture.componentInstance.onEscape(new KeyboardEvent('keydown', {
+      key: 'Escape',
+      cancelable: true,
+    }));
+
+    expect(navigateByUrl).not.toHaveBeenCalled();
+
+    resolveFlush(true);
+    await pendingFlush;
+
+    expect(navigateByUrl).toHaveBeenCalledWith('/workspace/book-1/manuscript/book/book-1');
+  });
+
   it('hides the settings view selector when there is no active book', () => {
     bookId.set(null);
     fixture.detectChanges();

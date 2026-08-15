@@ -213,6 +213,63 @@ describe('AiConfigurationSettingsComponent', () => {
     );
   });
 
+  it('flushes dirty API keys and server URLs before the component is destroyed', async () => {
+    clickProvider('openai');
+    const apiKeyInput = element.querySelector<HTMLInputElement>('#openai-api-key')!;
+    apiKeyInput.dispatchEvent(new FocusEvent('focus'));
+    setInputValue(apiKeyInput, 'sk-openai-flush-abcd');
+
+    clickProvider('lm-studio');
+    const serverUrlInput = element.querySelector<HTMLInputElement>('#lm-studio-server-url')!;
+    setInputValue(serverUrlInput, 'http://localhost:1234/v1');
+
+    await expect(fixture.componentInstance.flushPendingChanges()).resolves.toBe(true);
+
+    expect(saveCalls('ai:config:save-api-key')).toContainEqual([
+      'ai:config:save-api-key',
+      { providerId: 'openai', apiKey: 'sk-openai-flush-abcd' },
+    ]);
+    expect(saveCalls('ai:config:save-server-url')).toContainEqual([
+      'ai:config:save-server-url',
+      { providerId: 'lm-studio', serverUrl: 'http://localhost:1234/v1' },
+    ]);
+  });
+
+  it('reports a failed flush and preserves an invalid dirty value', async () => {
+    clickProvider('lm-studio');
+    const input = element.querySelector<HTMLInputElement>('#lm-studio-server-url')!;
+    setInputValue(input, 'not a URL');
+
+    await expect(fixture.componentInstance.flushPendingChanges()).resolves.toBe(false);
+
+    expect(input.value).toBe('not a URL');
+    expect(saveCalls('ai:config:save-server-url')).toHaveLength(0);
+  });
+
+  it('awaits an in-flight blur save without saving the same revision twice', async () => {
+    let resolveSave!: (value: { configured: true; suffix: string }) => void;
+    const pendingSave = new Promise<{ configured: true; suffix: string }>((resolve) => {
+      resolveSave = resolve;
+    });
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'ai:config:save-api-key') return pendingSave;
+      throw new Error(`Unexpected IPC channel: ${channel}`);
+    });
+
+    clickProvider('openai');
+    const input = element.querySelector<HTMLInputElement>('#openai-api-key')!;
+    input.dispatchEvent(new FocusEvent('focus'));
+    setInputValue(input, 'sk-pending-abcd');
+    input.dispatchEvent(new FocusEvent('blur'));
+
+    const flush = fixture.componentInstance.flushPendingChanges();
+    expect(saveCalls('ai:config:save-api-key')).toHaveLength(1);
+
+    resolveSave({ configured: true, suffix: 'abcd' });
+    await expect(flush).resolves.toBe(true);
+    expect(saveCalls('ai:config:save-api-key')).toHaveLength(1);
+  });
+
   it('saves a dirty key before testing and reports success inline', async () => {
     clickProvider('openai');
     const input = element.querySelector<HTMLInputElement>('#openai-api-key')!;

@@ -313,6 +313,18 @@ export class AiConfigurationSettingsComponent implements OnInit {
     }
   }
 
+  async flushPendingChanges(): Promise<boolean> {
+    const apiKeySaves = this.cloudProviders
+      .filter((provider) => this.apiKeyDirty()[provider.id])
+      .map((provider) => this.saveApiKey(provider.id));
+    const serverUrlSaves = this.localProviders
+      .filter((provider) => this.serverUrlDirty()[provider.id])
+      .map((provider) => this.saveServerUrl(provider.id));
+    const results = await Promise.all([...apiKeySaves, ...serverUrlSaves]);
+
+    return results.every((saved) => saved);
+  }
+
   private saveApiKey(providerId: AiCloudProviderId): Promise<boolean> {
     return this.runSave(providerId, () => this.persistApiKey(providerId));
   }

@@ -319,6 +319,15 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     }
   }
 
+  async flushPendingChanges(): Promise<boolean> {
+    const saves = this.providers
+      .filter((provider) => this.apiKeyDirty()[provider.id])
+      .map((provider) => this.saveApiKey(provider.id));
+    const results = await Promise.all(saves);
+
+    return results.every((saved) => saved);
+  }
+
   private saveApiKey(providerId: VectorConfigurationProviderId): Promise<boolean> {
     return this.runSave(providerId, () => this.persistApiKey(providerId));
   }

@@ -382,6 +382,47 @@ describe('VectorConfigurationSettingsComponent', () => {
     });
   });
 
+  it('flushes a dirty vector credential before the component is destroyed', async () => {
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-flush-abcd');
+
+    await expect(fixture.componentInstance.flushPendingChanges()).resolves.toBe(true);
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:save-api-key', {
+      providerId: 'voyage',
+      apiKey: 'voyage-flush-abcd',
+    });
+  });
+
+  it('awaits an in-flight vector blur save without saving twice', async () => {
+    let resolveSave!: (value: { configured: true; suffix: string }) => void;
+    const pendingSave = new Promise<{ configured: true; suffix: string }>((resolve) => {
+      resolveSave = resolve;
+    });
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'vectors:config:save-api-key') return pendingSave;
+      return Promise.resolve(vectorConfiguration);
+    });
+
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-pending-abcd');
+    input.dispatchEvent(new FocusEvent('blur'));
+
+    const flush = fixture.componentInstance.flushPendingChanges();
+    const saves = () => invoke.mock.calls.filter(
+      ([channel]) => channel === 'vectors:config:save-api-key',
+    );
+    expect(saves()).toHaveLength(1);
+
+    resolveSave({ configured: true, suffix: 'abcd' });
+    await expect(flush).resolves.toBe(true);
+    expect(saves()).toHaveLength(1);
+  });
+
   it('saves pending edits before testing the provider connection', async () => {
     selectProvider('voyage');
     const input = credentialInput();
