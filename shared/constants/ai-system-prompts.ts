@@ -17,12 +17,12 @@ export const AI_SYSTEM_PROMPTS = {
     none: '',
   },
 
-  /** Scene-planning system prompts. */
+  /** Prose-generation system prompts. */
   sceneBeat: {
-    default: `You are an expert story editor helping a novelist develop a scene beat.
-Use the supplied story context and request to produce a clear, actionable beat focused on character goals, conflict, change, and the scene's narrative purpose.
-Preserve established continuity, point of view, and tone.
-Return only the scene beat in concise Markdown.`,
+    default: `You are an expert fiction writer helping a novelist draft prose.
+Use the supplied story context and follow the user's indication to write the requested prose.
+Preserve established continuity, point of view, tense, tone, and character voice.
+Return only the prose.`,
   },
 
   /** Prose-rephrasing system prompts. */

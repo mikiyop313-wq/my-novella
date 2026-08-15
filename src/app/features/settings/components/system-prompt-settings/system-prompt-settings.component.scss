@@ -201,11 +201,19 @@ button {
 }
 
 .category-picker {
-  padding: 18px 20px;
+  padding: 20px 20px 18px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 64%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+
+  .field-heading {
+    margin: 0 0 2px;
+
+    label {
+      font-size: 0.8rem;
+    }
+  }
 
   app-autocomplete-dropdown {
     display: block;
@@ -223,15 +231,41 @@ button {
   gap: 16px;
 }
 
-.preset-panel-header > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.preset-panel-header {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 12px;
+}
 
-  strong {
-    color: var(--color-text-secondary);
-    font-size: 0.72rem;
+.preset-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+
+  .eyebrow {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+}
+
+.preset-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--color-text-primary) 14%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-primary);
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  font-size: 0.68rem;
+  font-weight: 750;
 }
 
 .eyebrow {
@@ -255,6 +289,7 @@ button {
   font-size: 0.73rem;
   font-weight: 700;
   cursor: pointer;
+  justify-content: center;
   transition:
     opacity 0.18s ease,
     transform 0.18s ease;
@@ -276,7 +311,11 @@ button {
 }
 
 .preset-list {
+  max-height: clamp(160px, calc(100vh - 310px), 420px);
   padding: 9px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 5px;

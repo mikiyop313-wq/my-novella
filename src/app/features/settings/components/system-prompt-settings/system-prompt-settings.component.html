@@ -68,7 +68,6 @@
         <div class="category-picker">
           <div class="field-heading">
             <label for="prompt-category">Prompt category</label>
-            <span>Choose an AI task</span>
           </div>
           <app-autocomplete-dropdown
             id="prompt-category"
@@ -82,11 +81,13 @@
         </div>
 
         <div class="preset-panel-header">
-          <div>
+          <div class="preset-panel-heading">
             <span class="eyebrow">
               {{ selectedScopeLabel() }} {{ selectedCategoryLabel() }} presets
             </span>
-            <strong>{{ filteredPresets().length }}</strong>
+            <span class="preset-count" [attr.aria-label]="filteredPresets().length + ' presets'">
+              {{ filteredPresets().length }}
+            </span>
           </div>
           <button
             class="add-preset-button"

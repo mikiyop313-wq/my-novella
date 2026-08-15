@@ -38,7 +38,7 @@ interface SystemPromptCategoryDefinition {
 
 const SYSTEM_PROMPT_CATEGORY_LABELS: Record<SystemPromptCategory, string> = {
   chat: 'Chat',
-  sceneBeat: 'Scene Beat',
+  sceneBeat: 'Prose Generation',
   rephrase: 'Rephrase',
   summary: 'Summary',
   expand: 'Expand',
