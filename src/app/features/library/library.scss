@@ -34,10 +34,15 @@
   gap: 32px;
 }
 
-.library-settings-button {
+.library-top-actions {
   position: absolute;
   top: 2rem;
   right: clamp(1.5rem, 6vw, 5rem);
+  display: flex;
+  gap: 4px;
+}
+
+.library-icon-button {
   width: 48px;
   height: 48px;
   padding: 0;
@@ -63,6 +68,11 @@
   &:focus-visible {
     outline: 2px solid color-mix(in srgb, var(--color-text) 42%, transparent);
     outline-offset: 3px;
+  }
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.55;
   }
 }
 

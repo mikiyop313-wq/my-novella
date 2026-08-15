@@ -1,11 +1,16 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import { dialog, ipcMain } from 'electron';
 
 import { dataExportService } from '../../domain/data-transfer/data-export.service';
+import { dataImportService } from '../../domain/data-transfer/data-import.service';
 import type { DataExportSnapshot } from '../../domain/data-transfer/models';
-import { createTransferArchive } from '../../domain/data-transfer/transfer-archive';
+import {
+  createTransferArchive,
+  readTransferArchive,
+} from '../../domain/data-transfer/transfer-archive';
 import type {
+  ImportDataResult,
   SaveDataExportRequest,
   SaveDataExportResult,
 } from '../../../shared/models/data-transfer.model';
@@ -45,6 +50,29 @@ export function setupDataTransferHandlers(): void {
       }
     },
   );
+
+  ipcMain.handle('data-transfer:import', async (): Promise<ImportDataResult> => {
+    try {
+      const openResult = await dialog.showOpenDialog({
+        title: 'Import data',
+        properties: ['openFile'],
+        filters: [{ name: 'My Novella archive', extensions: [ARCHIVE_EXTENSION] }],
+      });
+
+      if (openResult.canceled || openResult.filePaths.length === 0) {
+        return { status: 'cancelled' };
+      }
+
+      const archive = await readFile(openResult.filePaths[0]);
+      const snapshot = await readTransferArchive(archive);
+      const result = await dataImportService.importSnapshot(snapshot);
+
+      return { status: 'imported', importedBookIds: result.importedBookIds };
+    } catch (error) {
+      console.error('Failed to import data:', error);
+      throw error;
+    }
+  });
 }
 
 async function prepareDataExport(request: SaveDataExportRequest): Promise<PreparedDataExport> {

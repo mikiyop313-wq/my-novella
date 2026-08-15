@@ -6,14 +6,21 @@ import type { SaveDataExportRequest } from '../../../../shared/models/data-trans
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => unknown>(),
   showSaveDialog: vi.fn(),
+  showOpenDialog: vi.fn(),
   writeFile: vi.fn(),
+  readFile: vi.fn(),
   createBookExport: vi.fn(),
   createLibraryExport: vi.fn(),
   createTransferArchive: vi.fn(),
+  readTransferArchive: vi.fn(),
+  importSnapshot: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
-  dialog: { showSaveDialog: mocks.showSaveDialog },
+  dialog: {
+    showSaveDialog: mocks.showSaveDialog,
+    showOpenDialog: mocks.showOpenDialog,
+  },
   ipcMain: {
     handle: vi.fn((channel: string, handler: (...args: any[]) => unknown) => {
       mocks.handlers.set(channel, handler);
@@ -21,7 +28,10 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('node:fs/promises', () => ({ writeFile: mocks.writeFile }));
+vi.mock('node:fs/promises', () => ({
+  readFile: mocks.readFile,
+  writeFile: mocks.writeFile,
+}));
 
 vi.mock('../../../domain/data-transfer/data-export.service', () => ({
   dataExportService: {
@@ -30,8 +40,13 @@ vi.mock('../../../domain/data-transfer/data-export.service', () => ({
   },
 }));
 
+vi.mock('../../../domain/data-transfer/data-import.service', () => ({
+  dataImportService: { importSnapshot: mocks.importSnapshot },
+}));
+
 vi.mock('../../../domain/data-transfer/transfer-archive', () => ({
   createTransferArchive: mocks.createTransferArchive,
+  readTransferArchive: mocks.readTransferArchive,
 }));
 
 import { setupDataTransferHandlers } from '../data-transfer';
@@ -51,11 +66,47 @@ describe('data transfer IPC handler', () => {
     });
     mocks.createTransferArchive.mockResolvedValue(archive);
     mocks.writeFile.mockResolvedValue(undefined);
+    mocks.showOpenDialog.mockResolvedValue({
+      canceled: false,
+      filePaths: ['C:\\Imports\\novel.novella'],
+    });
+    mocks.readFile.mockResolvedValue(archive);
+    mocks.readTransferArchive.mockResolvedValue(librarySnapshot);
+    mocks.importSnapshot.mockResolvedValue({ importedBookIds: ['imported-book-1'] });
     setupDataTransferHandlers();
   });
 
   it('registers the export handler', () => {
     expect(mocks.handlers.has('data-transfer:export')).toBe(true);
+  });
+
+  it('registers the import handler', () => {
+    expect(mocks.handlers.has('data-transfer:import')).toBe(true);
+  });
+
+  it('imports a selected archive', async () => {
+    const result = await invokeImportHandler();
+
+    expect(mocks.showOpenDialog).toHaveBeenCalledWith({
+      title: 'Import data',
+      properties: ['openFile'],
+      filters: [{ name: 'My Novella archive', extensions: ['novella'] }],
+    });
+    expect(mocks.readFile).toHaveBeenCalledWith('C:\\Imports\\novel.novella');
+    expect(mocks.readTransferArchive).toHaveBeenCalledWith(archive);
+    expect(mocks.importSnapshot).toHaveBeenCalledWith(librarySnapshot);
+    expect(result).toEqual({
+      status: 'imported',
+      importedBookIds: ['imported-book-1'],
+    });
+  });
+
+  it('cancels import without reading a file', async () => {
+    mocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+
+    await expect(invokeImportHandler()).resolves.toEqual({ status: 'cancelled' });
+    expect(mocks.readFile).not.toHaveBeenCalled();
+    expect(mocks.importSnapshot).not.toHaveBeenCalled();
   });
 
   it('exports one book to a branded archive', async () => {
@@ -164,6 +215,15 @@ async function invokeHandler(request: SaveDataExportRequest): Promise<unknown> {
   }
 
   return await handler({}, request);
+}
+
+async function invokeImportHandler(): Promise<unknown> {
+  const handler = mocks.handlers.get('data-transfer:import');
+  if (!handler) {
+    throw new Error('Data transfer import handler was not registered.');
+  }
+
+  return await handler({});
 }
 
 function createSnapshot(bookTitle?: string): DataExportSnapshot {
