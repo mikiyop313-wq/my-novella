@@ -17,6 +17,7 @@ import {
   UpdateScenePayload,
 } from '../../../../../shared/models/manuscript.model';
 import { buildScenePatch } from '../helpers/content/manuscript-content.utils';
+import { ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META } from '../extensions/manuscript-editing-guard.extension';
 
 const FORMAT_SETTINGS_STORAGE_KEY = 'manuscript_format_global';
 
@@ -148,6 +149,7 @@ function deleteNodeRangeInDoc(
   }
 
   let tr = editor.state.tr.delete(from, to);
+  tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
 
   if (targetType === ACT_HEADER_NODE) {
     tr = decrementFollowingActPositions(tr, from);
@@ -511,7 +513,10 @@ export const ManuscriptStore = signalStore(
 
       const endPosition = editor.state.doc.content.size;
 
-      editor.chain().focus().insertContentAt(endPosition, [
+      editor.chain().focus().command(({ tr }) => {
+        tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+        return true;
+      }).insertContentAt(endPosition, [
         { type: ACT_HEADER_NODE, attrs: { id: act.id, title: act.title, position: act.position } },
         { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
@@ -539,7 +544,10 @@ export const ManuscriptStore = signalStore(
 
       const endPosition = editor.state.doc.content.size;
 
-      editor.chain().focus().insertContentAt(endPosition, [
+      editor.chain().focus().command(({ tr }) => {
+        tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+        return true;
+      }).insertContentAt(endPosition, [
         { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
@@ -564,7 +572,10 @@ export const ManuscriptStore = signalStore(
       const scene = await manuscriptStructureService.createScene(chapterId);
       const endPosition = editor.state.doc.content.size;
 
-      editor.chain().focus().insertContentAt(endPosition, [
+      editor.chain().focus().command(({ tr }) => {
+        tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+        return true;
+      }).insertContentAt(endPosition, [
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();

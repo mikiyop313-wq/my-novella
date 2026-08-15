@@ -23,6 +23,10 @@ import { ActHeaderExtension, ChapterHeaderExtension } from './components/manuscr
 import { SceneHeaderComponent } from './components/scene/scene-header/scene-header.component';
 import { SceneSkeletonExtension } from './components/scene/scene-skeleton/scene-skeleton.extension';
 import { SceneSummaryExtension } from './components/scene/scene-summary/scene-summary.extension';
+import {
+  isPositionInsideSceneProse,
+  ManuscriptEditingGuardExtension,
+} from './extensions/manuscript-editing-guard.extension';
 import { UniqueIdExtension } from './extensions/unique-id.extension';
 import {
   buildEditorContentLazy,
@@ -76,6 +80,10 @@ export class Manuscript implements OnInit, OnDestroy {
   editor: Editor | undefined;
 
   indexItems = signal<ManuscriptIndexItem[]>([]);
+  hasLoadedContent = signal(false);
+  hasSceneNodes = signal(false);
+
+  showCreateSceneHint = computed(() => this.hasLoadedContent() && !this.hasSceneNodes());
 
   currentScopeLabel = computed<string>(() => {
     const mode = this.store.mode();
@@ -160,6 +168,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
       const mode = params['mode'] as ManuscriptMode;
       const id = params['id'];
+      this.hasLoadedContent.set(false);
       this.store.setRouteParams(mode, id);
 
       const bookId = this.getWorkspaceBookId();
@@ -198,7 +207,9 @@ export class Manuscript implements OnInit, OnDestroy {
         StarterKit,
         Markdown,
         Placeholder.configure({
-          placeholder: 'Start writing or type /ai for AI assistant...',
+          placeholder: ({ editor, pos }) => isPositionInsideSceneProse(editor.state.doc, pos)
+            ? 'Start writing or type /ai for AI assistant...'
+            : '',
           emptyEditorClass: 'is-editor-empty',
         }),
 
@@ -208,10 +219,12 @@ export class Manuscript implements OnInit, OnDestroy {
         ChapterHeaderExtension(this.injector),
         SceneSummaryExtension(this.injector),
         SceneSkeletonExtension(this.injector),
+        ManuscriptEditingGuardExtension,
         UniqueIdExtension,
       ],
 
       onUpdate: ({ transaction }) => {
+        this.refreshSceneAvailability();
         this.refreshIndexItems();
 
         if (transaction.docChanged && !transaction.getMeta('skipSaver')) {
@@ -241,8 +254,12 @@ export class Manuscript implements OnInit, OnDestroy {
 
       this.editor!.view.dispatch(tr);
       this.saver.seedCleanSnapshots(this.editor!);
+      this.hasLoadedContent.set(true);
+      this.refreshSceneAvailability();
       this.refreshIndexItems();
     } catch (error) {
+      this.hasLoadedContent.set(true);
+      this.refreshSceneAvailability();
       console.error('Failed to load manuscript content:', error);
     }
   }
@@ -375,6 +392,16 @@ export class Manuscript implements OnInit, OnDestroy {
     });
 
     this.indexItems.set(items);
+  }
+
+  private refreshSceneAvailability(): void {
+    let hasScene = false;
+
+    this.editor?.state.doc.forEach(node => {
+      if (node.type.name === 'sceneSummary') hasScene = true;
+    });
+
+    this.hasSceneNodes.set(hasScene);
   }
 
   private getWorkspaceBookId(): string | null {

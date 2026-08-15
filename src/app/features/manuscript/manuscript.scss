@@ -421,6 +421,14 @@
     transition: max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  .manuscript-empty-hint {
+    width: 100%;
+    max-width: var(--editor-page-width, 800px);
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    text-align: center;
+  }
+
   .add-new-section {
     width: 100%;
     max-width: var(--editor-page-width, 800px);
@@ -462,6 +470,18 @@
       line-height: var(--editor-line-height);
       text-align: var(--editor-text-align);
       color: var(--color-text);
+
+      &.manuscript-editing-forbidden-root,
+      .manuscript-editing-forbidden,
+      .manuscript-editing-forbidden * {
+        cursor: not-allowed !important;
+        caret-color: transparent;
+      }
+
+      &.manuscript-editing-forbidden-root app-manuscript-header input {
+        cursor: text !important;
+        caret-color: auto;
+      }
 
 
       // Placeholder styling

@@ -364,6 +364,10 @@
       }
       <tiptap-editor [editor]="editor" codexContextHighlight=".tiptap"></tiptap-editor>
 
+      @if (showCreateSceneHint()) {
+      <div class="manuscript-empty-hint">Create a scene before you start writing.</div>
+      }
+
       @if (store.mode() !== 'scene') {
       <div class="add-new-section">
         <button [cdkMenuTriggerFor]="addMenu">
