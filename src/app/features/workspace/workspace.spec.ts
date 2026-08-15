@@ -1,10 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, ChildrenOutletContexts, Router, convertToParamMap } from '@angular/router';
-import { vi } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { NEVER, of } from 'rxjs';
 
 import type { ChatThreadDetailDto } from '../../../../shared/models/chat.model';
 import { ChatStore } from '../chat/store/chat.store';
+import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { Workspace } from './workspace';
 import { WorkspaceBookStore } from './workspace-book.store';
 import { WorkspaceStore } from './workspace.store';
@@ -52,6 +53,7 @@ describe('Workspace', () => {
             selectedThread: vi.fn(() => selectedThread),
           },
         },
+        { provide: CodexContextTrieService, useValue: { loadForContext: vi.fn() } },
         {
           provide: ActivatedRoute,
           useValue: { paramMap: of(convertToParamMap({ bookId: 'book-1' })) },
@@ -68,6 +70,14 @@ describe('Workspace', () => {
 
     fixture = TestBed.createComponent(Workspace);
     component = fixture.componentInstance;
+  });
+
+  it('loads Codex context trie when entering the workspace book', () => {
+    const codexContextTrie = TestBed.inject(CodexContextTrieService);
+
+    fixture.detectChanges();
+
+    expect(codexContextTrie.loadForContext).toHaveBeenCalledWith('book-1');
   });
 
   it('returns the selected thread route for the active book', () => {

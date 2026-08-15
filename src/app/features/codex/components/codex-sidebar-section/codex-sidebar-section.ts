@@ -16,6 +16,7 @@ import {
 import { CodexEntryMenuComponent } from '../codex-entry-menu/codex-entry-menu.component';
 import { CodexStore } from '../../store/codex.store';
 import { createCodexImageUrl, revokeCodexImageUrl } from '../../utils/codex-image-url';
+import { CodexContextTrieService } from '../../services/codex-context-trie.service';
 import { CodexWindowService } from '../../services/codex-window.service';
 import {
   type CodexDetachRequest,
@@ -42,6 +43,7 @@ export class CodexSidebarSection {
   readonly store = inject(WorkspaceStore);
   readonly workspaceBookStore = inject(WorkspaceBookStore);
   readonly codexStore = inject(CodexStore);
+  readonly codexContextTrie = inject(CodexContextTrieService);
   readonly codexWindowService = inject(CodexWindowService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -148,6 +150,7 @@ export class CodexSidebarSection {
         this.searchQuery().trim(),
         this.entryFilters(),
       );
+      void this.codexContextTrie.refreshCurrentContext();
     });
 
     this.destroyRef.onDestroy(() => {

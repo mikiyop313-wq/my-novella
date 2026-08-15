@@ -10,6 +10,7 @@ import {
   type CodexTrackingSetting,
 } from '../../../../../shared/models/codex.model';
 import { type CodexEntryMenuPayload } from '../../../../../shared/models/codex-window.model';
+import { CodexContextTrieService } from '../services/codex-context-trie.service';
 import { CodexEntryPersistenceService } from '../services/codex-entry-persistence.service';
 import { CodexService } from '../services/codex.service';
 
@@ -48,6 +49,7 @@ export const CodexStore = signalStore(
     store,
     codexService = inject(CodexService),
     persistenceService = inject(CodexEntryPersistenceService),
+    codexContextTrie = inject(CodexContextTrieService),
     toastService = inject(ToastService),
   ) => {
     let loadRequestId = 0;
@@ -121,6 +123,7 @@ export const CodexStore = signalStore(
 
         patchState(store, { activeType: entryData.type });
         await loadEntries(bookId, entryData.type, store.searchQuery().trim());
+        await codexContextTrie.refreshCurrentContext();
         closeCreateMenu();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create codex entry.';
@@ -150,6 +153,7 @@ export const CodexStore = signalStore(
 
         patchState(store, { activeType: entryData.type });
         await loadEntries(bookId, entryData.type, store.searchQuery().trim());
+        await codexContextTrie.refreshCurrentContext();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to update codex entry.';
         patchState(store, { error: message });
@@ -271,6 +275,7 @@ export const CodexStore = signalStore(
           await persistenceService.archiveEntry(selectedEntry);
 
           await loadEntries(bookId, selectedEntry.type, store.searchQuery().trim());
+          await codexContextTrie.refreshCurrentContext();
           closeCreateMenu();
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to archive codex entry.';
@@ -296,6 +301,7 @@ export const CodexStore = signalStore(
           await persistenceService.restoreEntry(selectedEntry);
 
           await loadEntries(bookId, selectedEntry.type, store.searchQuery().trim());
+          await codexContextTrie.refreshCurrentContext();
           closeCreateMenu();
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to restore codex entry.';
@@ -321,6 +327,7 @@ export const CodexStore = signalStore(
           await persistenceService.deleteEntry(selectedEntry);
 
           await loadEntries(bookId, selectedEntry.type, store.searchQuery().trim());
+          await codexContextTrie.refreshCurrentContext();
           closeCreateMenu();
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to delete codex entry.';

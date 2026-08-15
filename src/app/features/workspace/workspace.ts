@@ -8,6 +8,7 @@ import { WorkspaceBookStore } from './workspace-book.store';
 import { WorkspaceStore } from './workspace.store';
 import { ChatStore } from '../chat/store/chat.store';
 import { routeAnimations } from '../../shared/animations/route-animations';
+import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 
 @Component({
   selector: 'app-workspace',
@@ -20,6 +21,7 @@ export class Workspace implements OnInit {
   readonly store = inject(WorkspaceStore);
   readonly bookStore = inject(WorkspaceBookStore);
   readonly chatStore = inject(ChatStore);
+  readonly codexContextTrie = inject(CodexContextTrieService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -44,6 +46,7 @@ export class Workspace implements OnInit {
 
         this.store.enterBook(bookId);
         this.bookStore.clearBookHierarchy();
+        void this.codexContextTrie.loadForContext(bookId);
         this.navigateToDefaultOutline(bookId);
       });
   }
