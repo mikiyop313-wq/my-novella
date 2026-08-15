@@ -15,6 +15,8 @@ import type {
 import type { AiManuscriptContextRef } from '../models/ai-context.model';
 import {
   filterHierarchyForContext,
+  isActIncludedInContext,
+  isChapterIncludedInContext,
   isSceneIncludedInContext,
 } from '../../../../shared/utils/manuscript-context-inclusion';
 
@@ -238,6 +240,7 @@ export function serializeFullOutline(
       [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: PROSE_LABEL, text }]),
     ),
     promptBoundary,
+    markCurrentScene: promptBoundary !== undefined,
   });
 
   return body ? `${FULL_OUTLINE_HEADING}\n\n${body}` : '';
@@ -252,18 +255,16 @@ export function serializePartialOutline(
   const contextHierarchy = filterHierarchyForContext(hierarchy, new Set([currentSceneId]));
   const scenes = flattenScenes(contextHierarchy);
   const currentSceneIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
-  const includeCurrentScene = content.currentSceneProse !== undefined
-    || content.selectedSceneProse?.has(currentSceneId) === true;
-  if (currentSceneIndex < 0 || (currentSceneIndex === 0 && !includeCurrentScene)) return '';
+  if (currentSceneIndex < 0) return '';
 
-  const precedingSceneIds = new Set(
+  const renderedSceneIds = new Set(
     scenes
-      .slice(0, currentSceneIndex + (includeCurrentScene ? 1 : 0))
+      .slice(0, currentSceneIndex + 1)
       .map((scene) => scene.id),
   );
   const sceneContent = new Map<string, { label: string; text: string }>();
   for (const [sceneId, prose] of content.selectedSceneProse ?? []) {
-    precedingSceneIds.add(sceneId);
+    renderedSceneIds.add(sceneId);
     sceneContent.set(sceneId, { label: PROSE_LABEL, text: prose });
   }
   if (content.previousScene) {
@@ -275,6 +276,9 @@ export function serializePartialOutline(
   if (content.currentSceneProse !== undefined) {
     sceneContent.set(currentSceneId, { label: PROSE_LABEL, text: content.currentSceneProse });
   }
+  const hasRenderedFutureScene = scenes
+    .slice(currentSceneIndex + 1)
+    .some((scene) => renderedSceneIds.has(scene.id));
   const body = serializeHierarchy({
     hierarchy: contextHierarchy,
     bookTitle,
@@ -282,10 +286,11 @@ export function serializePartialOutline(
     includeNovel: true,
     includeParentSummaries: false,
     includeSceneSummaries: true,
-    sceneSummaryExclusions: new Set(sceneContent.keys()),
-    selectedSceneIds: precedingSceneIds,
+    sceneSummaryExclusions: new Set([...sceneContent.keys(), currentSceneId]),
+    selectedSceneIds: renderedSceneIds,
     sceneContent,
     promptBoundary: content.promptBoundary,
+    markCurrentScene: hasRenderedFutureScene && content.promptBoundary !== undefined,
   });
 
   return body ? `${OUTLINE_HEADING}\n\n${body}` : '';
@@ -312,6 +317,7 @@ export function serializeSelectedManuscript(
       [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: PROSE_LABEL, text }]),
     ),
     promptBoundary,
+    markCurrentScene: false,
   });
 
   return body ? `${MANUSCRIPT_CONTEXT_HEADING}\n\n${body}` : '';
@@ -338,18 +344,31 @@ export function serializeCodexContext(
   currentSceneId: string | null,
 ): string {
   const sceneRanks = new Map(flattenScenes(hierarchy).map((scene, index) => [scene.id, index]));
+  const contextHierarchy = filterHierarchyForContext(hierarchy);
   const includedSceneIds = new Set(
-    flattenScenes(filterHierarchyForContext(hierarchy)).map((scene) => scene.id),
+    flattenScenes(contextHierarchy).map((scene) => scene.id),
   );
-  const sceneLocations = progressionLocations(filterHierarchyForContext(hierarchy));
   const currentRank = currentSceneId ? sceneRanks.get(currentSceneId) : undefined;
+  const eligibleEntries = entries.filter(
+    (entry) => entry.status === 'active' && entry.trackingSetting !== 'never_include',
+  );
+  const progressionByEntryId = new Map(eligibleEntries.map((entry) => [
+    entry.id,
+    applicableProgression(entry.entryProgression, sceneRanks, currentRank, includedSceneIds),
+  ]));
+  const progressionSceneIds = new Set(
+    [...progressionByEntryId.values()]
+      .flatMap((progression) => progression.map((item) => item.sceneId))
+      .filter((sceneId): sceneId is string => sceneId !== null),
+  );
+  const sceneLocations = progressionLocations(
+    filterHierarchyBySceneIds(contextHierarchy, progressionSceneIds),
+  );
   const entriesByType = new Map<CodexEntryDetailDto['type'], CodexEntryDetailDto[]>();
-  for (const entry of entries) {
-    if (entry.status === 'active' && entry.trackingSetting !== 'never_include') {
-      const groupedEntries = entriesByType.get(entry.type) ?? [];
-      groupedEntries.push(entry);
-      entriesByType.set(entry.type, groupedEntries);
-    }
+  for (const entry of eligibleEntries) {
+    const groupedEntries = entriesByType.get(entry.type) ?? [];
+    groupedEntries.push(entry);
+    entriesByType.set(entry.type, groupedEntries);
   }
   const serializedGroups = [...entriesByType].map(([type, groupedEntries]) => {
     const serializedEntries = groupedEntries.map((entry) => {
@@ -366,12 +385,7 @@ export function serializeCodexContext(
         fields.push(`${CODEX_DESCRIPTION_LABEL}:\n${entry.description.trim()}`);
       }
 
-      const progression = applicableProgression(
-        entry.entryProgression,
-        sceneRanks,
-        currentRank,
-        includedSceneIds,
-      );
+      const progression = progressionByEntryId.get(entry.id) ?? [];
       if (progression.length > 0) {
         fields.push(
           `${CODEX_PROGRESSION_LABEL}:\n${progression
@@ -408,6 +422,7 @@ interface HierarchySerializationRequest {
   selectedSceneIds: ReadonlySet<string>;
   sceneContent: ReadonlyMap<string, { label: string; text: string }>;
   promptBoundary?: ManuscriptPromptBoundary;
+  markCurrentScene: boolean;
 }
 
 interface HierarchySerializationState {
@@ -421,44 +436,87 @@ interface ScenePath {
   sceneIndex: number;
 }
 
+interface SerializationPosition {
+  sourceIndex: number;
+  displayPosition: number;
+}
+
+interface SerializeActRequest {
+  act: ActDto;
+  position: SerializationPosition;
+  request: HierarchySerializationRequest;
+  state: HierarchySerializationState;
+}
+
+interface SerializeChapterRequest {
+  chapter: ChapterDto;
+  actSourceIndex: number;
+  position: SerializationPosition;
+  request: HierarchySerializationRequest;
+  state: HierarchySerializationState;
+}
+
+interface SerializeSceneRequest {
+  scene: SceneDto;
+  actSourceIndex: number;
+  chapterSourceIndex: number;
+  position: SerializationPosition;
+  request: HierarchySerializationRequest;
+  state: HierarchySerializationState;
+}
+
 function serializeHierarchy(request: HierarchySerializationRequest): string {
   const state = createSerializationState(request);
   const acts = request.hierarchy
-    .map((act, actIndex) => serializeAct(act, actIndex, request, state))
-    .filter(Boolean);
+    .map((act, sourceIndex) => ({ act, sourceIndex }))
+    .filter(({ act }) => shouldIncludeAct(act, request))
+    .map(({ act, sourceIndex }, displayPosition) => serializeAct({
+      act,
+      position: { sourceIndex, displayPosition },
+      request,
+      state,
+    }));
   if (acts.length === 0) return '';
 
   const body = acts.join('\n\n');
   if (!request.includeNovel) return body;
 
-  const delimiter = entityDelimiter('NOVEL', undefined, request.bookTitle);
+  const delimiter = entityDelimiter({
+    type: 'NOVEL',
+    position: undefined,
+    title: request.bookTitle,
+  });
   return [delimiter.begin, body, delimiter.end].filter(Boolean).join('\n\n');
 }
 
 function serializeAct(
-  act: ActDto,
-  actIndex: number,
-  request: HierarchySerializationRequest,
-  state: HierarchySerializationState,
+  { act, position, request, state }: SerializeActRequest,
 ): string {
-  if (!shouldIncludeAct(act, request)) return '';
-
   const boundary = boundaryBeforeEntity(
-    comparePathPart(actIndex, state.currentPath?.actIndex),
+    comparePathPart(position.sourceIndex, state.currentPath?.actIndex),
     request,
     state,
   );
   const chapters = (act.chapters ?? [])
-    .map((chapter, chapterIndex) =>
-      serializeChapter(chapter, actIndex, chapterIndex, request, state),
-    )
-    .filter(Boolean);
+    .map((chapter, sourceIndex) => ({ chapter, sourceIndex }))
+    .filter(({ chapter }) => shouldIncludeChapter(chapter, request))
+    .map(({ chapter, sourceIndex }, displayPosition) => serializeChapter({
+      chapter,
+      actSourceIndex: position.sourceIndex,
+      position: { sourceIndex, displayPosition },
+      request,
+      state,
+    }));
 
-  const delimiter = entityDelimiter('ACT', act.position, act.title);
+  const delimiter = entityDelimiter({
+    type: 'ACT',
+    position: position.displayPosition,
+    title: act.title,
+  });
   return [
     boundary,
     delimiter.begin,
-    request.includeParentSummaries ? summaryBlock(act.summary) : '',
+    request.includeParentSummaries && isActIncludedInContext(act) ? summaryBlock(act.summary) : '',
     chapters.join('\n\n'),
     delimiter.end,
   ]
@@ -467,29 +525,35 @@ function serializeAct(
 }
 
 function serializeChapter(
-  chapter: ChapterDto,
-  actIndex: number,
-  chapterIndex: number,
-  request: HierarchySerializationRequest,
-  state: HierarchySerializationState,
+  { chapter, actSourceIndex, position, request, state }: SerializeChapterRequest,
 ): string {
-  if (!shouldIncludeChapter(chapter, request)) return '';
-
-  const relation = actIndex === state.currentPath?.actIndex
-    ? comparePathPart(chapterIndex, state.currentPath.chapterIndex)
+  const relation = actSourceIndex === state.currentPath?.actIndex
+    ? comparePathPart(position.sourceIndex, state.currentPath.chapterIndex)
     : 'current';
   const boundary = boundaryBeforeEntity(relation, request, state);
   const scenes = (chapter.scenes ?? [])
-    .map((scene, sceneIndex) =>
-      serializeScene(scene, actIndex, chapterIndex, sceneIndex, request, state),
-    )
-    .filter(Boolean);
+    .map((scene, sourceIndex) => ({ scene, sourceIndex }))
+    .filter(({ scene }) => shouldIncludeScene(scene, request))
+    .map(({ scene, sourceIndex }, displayPosition) => serializeScene({
+      scene,
+      actSourceIndex,
+      chapterSourceIndex: position.sourceIndex,
+      position: { sourceIndex, displayPosition },
+      request,
+      state,
+    }));
 
-  const delimiter = entityDelimiter('CHAPTER', chapter.position, chapter.title);
+  const delimiter = entityDelimiter({
+    type: 'CHAPTER',
+    position: position.displayPosition,
+    title: chapter.title,
+  });
   return [
     boundary,
     delimiter.begin,
-    request.includeParentSummaries ? summaryBlock(chapter.summary) : '',
+    request.includeParentSummaries && isChapterIncludedInContext(chapter)
+      ? summaryBlock(chapter.summary)
+      : '',
     scenes.join('\n\n'),
     delimiter.end,
   ]
@@ -498,26 +562,33 @@ function serializeChapter(
 }
 
 function serializeScene(
-  scene: SceneDto,
-  actIndex: number,
-  chapterIndex: number,
-  sceneIndex: number,
-  request: HierarchySerializationRequest,
-  state: HierarchySerializationState,
+  {
+    scene,
+    actSourceIndex,
+    chapterSourceIndex,
+    position,
+    request,
+    state,
+  }: SerializeSceneRequest,
 ): string {
-  if (!request.includeAll && !request.selectedSceneIds.has(scene.id)) return '';
-
   const isCurrentScene = scene.id === request.promptBoundary?.sceneId;
-  const relation = actIndex === state.currentPath?.actIndex
-    && chapterIndex === state.currentPath.chapterIndex
-    ? comparePathPart(sceneIndex, state.currentPath.sceneIndex)
+  const relation = actSourceIndex === state.currentPath?.actIndex
+    && chapterSourceIndex === state.currentPath.chapterIndex
+    ? comparePathPart(position.sourceIndex, state.currentPath.sceneIndex)
     : 'current';
   const boundary = isCurrentScene
     ? ''
     : boundaryBeforeEntity(relation, request, state);
-  const delimiter = entityDelimiter('SCENE', scene.position, scene.title);
+  const delimiter = entityDelimiter({
+    type: 'SCENE',
+    position: position.displayPosition,
+    title: scene.title,
+    currentScene: isCurrentScene && request.markCurrentScene,
+  });
   const content = request.sceneContent.get(scene.id);
-  const summary = request.includeSceneSummaries && !request.sceneSummaryExclusions?.has(scene.id)
+  const summary = request.includeSceneSummaries
+    && isSceneIncludedInContext(scene)
+    && !request.sceneSummaryExclusions?.has(scene.id)
     ? summaryBlock(scene.summary)
     : '';
 
@@ -592,6 +663,10 @@ function shouldIncludeChapter(
     || (chapter.scenes ?? []).some((scene) => request.selectedSceneIds.has(scene.id));
 }
 
+function shouldIncludeScene(scene: SceneDto, request: HierarchySerializationRequest): boolean {
+  return request.includeAll || request.selectedSceneIds.has(scene.id);
+}
+
 function comparePathPart(
   index: number,
   currentIndex: number | undefined,
@@ -621,15 +696,22 @@ function renderPromptBoundary(
     : FUTURE_MANUSCRIPT_GUIDANCE;
 }
 
-function entityDelimiter(
-  type: 'NOVEL' | 'ACT' | 'CHAPTER' | 'SCENE',
-  position: number | undefined,
-  title: string | undefined,
-): { begin: string; end: string } {
+function entityDelimiter({
+  type,
+  position,
+  title,
+  currentScene = false,
+}: {
+  type: 'NOVEL' | 'ACT' | 'CHAPTER' | 'SCENE';
+  position: number | undefined;
+  title: string | undefined;
+  currentScene?: boolean;
+}): { begin: string; end: string } {
   const number = position === undefined ? '' : ` ${position + 1}`;
+  const currentSceneLabel = currentScene ? ' [CURRENT SCENE]' : '';
   const cleanTitle = title?.trim();
   const suffix = cleanTitle ? ` — ${cleanTitle}` : '';
-  const label = `${type}${number}${suffix}`;
+  const label = `${type}${number}${currentSceneLabel}${suffix}`;
   return {
     begin: `${ENTITY_BEGIN_MARKER} ${label} ${ENTITY_MARKER_SUFFIX}`,
     end: `${ENTITY_END_MARKER} ${label} ${ENTITY_MARKER_SUFFIX}`,
@@ -723,15 +805,15 @@ function applicableProgression(
 function progressionLocations(hierarchy: readonly ActDto[]): ReadonlyMap<string, string> {
   const locations = new Map<string, string>();
 
-  for (const act of hierarchy) {
-    for (const chapter of act.chapters ?? []) {
-      for (const scene of chapter.scenes ?? []) {
+  for (const [actIndex, act] of hierarchy.entries()) {
+    for (const [chapterIndex, chapter] of (act.chapters ?? []).entries()) {
+      for (const [sceneIndex, scene] of (chapter.scenes ?? []).entries()) {
         locations.set(
           scene.id,
           [
-            progressionLocationPart('Act', act.position, act.title),
-            progressionLocationPart('Chapter', chapter.position, chapter.title),
-            progressionLocationPart('Scene', scene.position, scene.title),
+            progressionLocationPart('Act', actIndex, act.title),
+            progressionLocationPart('Chapter', chapterIndex, chapter.title),
+            progressionLocationPart('Scene', sceneIndex, scene.title),
           ].join(' > '),
         );
       }
@@ -739,6 +821,19 @@ function progressionLocations(hierarchy: readonly ActDto[]): ReadonlyMap<string,
   }
 
   return locations;
+}
+
+function filterHierarchyBySceneIds(
+  hierarchy: readonly ActDto[],
+  sceneIds: ReadonlySet<string>,
+): ActDto[] {
+  return hierarchy.flatMap((act) => {
+    const chapters = (act.chapters ?? []).flatMap((chapter) => {
+      const scenes = (chapter.scenes ?? []).filter((scene) => sceneIds.has(scene.id));
+      return scenes.length > 0 ? [{ ...chapter, scenes }] : [];
+    });
+    return chapters.length > 0 ? [{ ...act, chapters }] : [];
+  });
 }
 
 function progressionLocationPart(

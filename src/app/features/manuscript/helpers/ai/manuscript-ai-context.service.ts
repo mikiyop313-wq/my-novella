@@ -32,7 +32,10 @@ import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.se
 import type { SimilarParagraphResult } from '../../../../../../shared/models/vector.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
-import { isSceneIncludedInContext } from '../../../../../../shared/utils/manuscript-context-inclusion';
+import {
+  filterHierarchyForContext,
+  isSceneIncludedInContext,
+} from '../../../../../../shared/utils/manuscript-context-inclusion';
 
 export type ManuscriptAiPointOfViewSetting = BookSettingsDto['pointOfView'] | 'global';
 
@@ -79,25 +82,32 @@ export class ManuscriptAiContextService {
     const promptBoundary = currentSceneId
       ? createPromptBoundary(currentSceneId, currentScene?.prose, request.promptId)
       : undefined;
+    const currentContextScene = currentSceneId
+      ? findSceneById(request.hierarchy, currentSceneId)
+      : null;
+    const currentSceneIsIncluded = currentContextScene
+      ? isSceneIncludedInContext(currentContextScene)
+      : false;
+    const contextPromptBoundary = promptBoundary && !currentSceneIsIncluded
+      ? { ...promptBoundary, afterPromptProse: '' }
+      : promptBoundary;
     const currentProseBeforePrompt = promptBoundary?.beforePromptProse ?? '';
     const selectedSceneIds = expandManuscriptRefs(request.hierarchy, request.manuscriptRefs);
     const usesAutomaticProse = request.manuscriptRefs.length === 0;
     const precedingSceneId = currentSceneId
       ? findPreviousSceneId(request.hierarchy, currentSceneId)
       : null;
-    const hasOutlineContext = !request.includeFullOutline
-      && currentSceneId !== null
-      && (
-        request.manuscriptRefs.length > 0
-        || precedingSceneId !== null
-        || (usesAutomaticProse && currentProseBeforePrompt.length > 0)
-      );
+    const hasOutlineContext = !request.includeFullOutline && currentSceneId !== null;
     const previousSceneId = usesAutomaticProse && !currentProseBeforePrompt
       ? precedingSceneId
       : null;
     const proseSceneIds = new Set(selectedSceneIds);
     if (previousSceneId) proseSceneIds.add(previousSceneId);
-    if (request.includeFullOutline && usesAutomaticProse && currentSceneId) {
+    if (
+      request.includeFullOutline
+      && currentSceneId
+      && (usesAutomaticProse || !currentSceneIsIncluded)
+    ) {
       proseSceneIds.add(currentSceneId);
     }
 
@@ -137,11 +147,11 @@ export class ManuscriptAiContextService {
           proseBySceneId,
           usesAutomaticProse ? proseSceneIds : selectedSceneIds,
         ),
-        promptBoundary,
+        contextPromptBoundary,
       )
       : '';
     const partialOutlineContent: PartialOutlineContent = {};
-    if (usesAutomaticProse && currentProseBeforePrompt) {
+    if ((usesAutomaticProse || !currentSceneIsIncluded) && currentProseBeforePrompt) {
       partialOutlineContent.currentSceneProse = currentProseBeforePrompt;
     }
     if (usesAutomaticProse && previousSceneId) {
@@ -155,7 +165,7 @@ export class ManuscriptAiContextService {
         proseBySceneId,
         selectedSceneIds,
       );
-      partialOutlineContent.promptBoundary = promptBoundary;
+      partialOutlineContent.promptBoundary = contextPromptBoundary;
     }
     const partialOutline = hasOutlineContext && currentSceneId
       ? serializePartialOutline(
@@ -308,24 +318,32 @@ function serializeSimilarParagraphs(
   results: readonly SimilarParagraphResult[],
   hierarchy: readonly ActDto[],
 ): string {
-  const includedSceneIds = new Set(
-    hierarchy.flatMap((act) => (act.chapters ?? []).flatMap((chapter) =>
-      (chapter.scenes ?? []).filter(isSceneIncludedInContext).map((scene) => scene.id),
-    )),
-  );
+  const contextHierarchy = filterHierarchyForContext(hierarchy);
+  const includedSceneIds = new Set(flattenSceneIds(contextHierarchy));
   const includedResults = results.filter((result) => includedSceneIds.has(result.sceneId));
   if (includedResults.length === 0) return '';
 
+  const resultSceneIds = new Set(includedResults.map((result) => result.sceneId));
   const sceneLocations = new Map<string, string>();
-  for (const act of hierarchy) {
-    for (const chapter of act.chapters ?? []) {
-      for (const scene of chapter.scenes ?? []) {
-        sceneLocations.set(scene.id, [
-          formatHierarchyPart('Act', act.position, act.title),
-          formatHierarchyPart('Chapter', chapter.position, chapter.title),
-          formatHierarchyPart('Scene', scene.position, scene.title),
-        ].join(' > '));
+  let actDisplayIndex = 0;
+  for (const act of contextHierarchy) {
+    const visibleChapters = (act.chapters ?? []).filter((chapter) =>
+      (chapter.scenes ?? []).some((scene) => resultSceneIds.has(scene.id)),
+    );
+    if (visibleChapters.length > 0) {
+      for (const [chapterIndex, chapter] of visibleChapters.entries()) {
+        const visibleScenes = (chapter.scenes ?? []).filter((scene) =>
+          resultSceneIds.has(scene.id),
+        );
+        for (const [sceneIndex, scene] of visibleScenes.entries()) {
+          sceneLocations.set(scene.id, [
+            formatHierarchyPart('Act', actDisplayIndex, act.title),
+            formatHierarchyPart('Chapter', chapterIndex, chapter.title),
+            formatHierarchyPart('Scene', sceneIndex, scene.title),
+          ].join(' > '));
+        }
       }
+      actDisplayIndex += 1;
     }
   }
 
@@ -351,6 +369,12 @@ function serializeSimilarParagraphs(
   return paragraphs.length > 0
     ? `${heading}\n\n${VECTOR_CONTEXT_GUIDANCE}\n\n${paragraphs.join('\n\n')}`
     : '';
+}
+
+function flattenSceneIds(hierarchy: readonly ActDto[]): string[] {
+  return hierarchy.flatMap((act) => (act.chapters ?? []).flatMap((chapter) =>
+    (chapter.scenes ?? []).map((scene) => scene.id),
+  ));
 }
 
 function formatHierarchyPart(type: string, position: number, title: string): string {

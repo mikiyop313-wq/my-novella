@@ -113,6 +113,60 @@ describe('ManuscriptAiContextService', () => {
     expect(messages[0].content.match(/--- BEGIN ACT 1/g)).toHaveLength(1);
   });
 
+  it('includes a renumbered structural path when every scene is disabled', async () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-2'),
+      schema.node('aiPrompt'),
+      paragraph('Disabled prose after prompt.'),
+    ]);
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes!.forEach((scene) => {
+      scene.includeInContext = false;
+    });
+    invoke.mockResolvedValue(hierarchy);
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      hierarchy,
+    });
+
+    expect(messages[0].content).toContain('## Outline');
+    expect(messages[0].content).toContain('--- BEGIN ACT 1 — Act One ---');
+    expect(messages[0].content).toContain('--- BEGIN CHAPTER 1 — Chapter One ---');
+    expect(messages[0].content).toContain('--- BEGIN SCENE 1 — Scene 2 ---');
+    expect(messages[0].content).not.toContain('[CURRENT SCENE]');
+    expect(messages[0].content).not.toContain('Summary:');
+    expect(messages[0].content).not.toContain('Prose:');
+    expect(messages[0].content).not.toContain('Disabled prose after prompt.');
+  });
+
+  it('limits a disabled full-outline target to prose before the prompt', async () => {
+    const doc = schema.node('doc', null, [
+      sceneSummary('scene-2'),
+      paragraph('Disabled prose before prompt.'),
+      schema.node('aiPrompt'),
+      paragraph('Disabled prose after prompt.'),
+    ]);
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes!.forEach((scene) => {
+      scene.includeInContext = false;
+    });
+    invoke.mockResolvedValue(hierarchy);
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      hierarchy,
+      includeFullOutline: true,
+    });
+
+    expect(messages[0].content).toContain('## Full Outline');
+    expect(messages[0].content).toContain('--- BEGIN SCENE 1 [CURRENT SCENE] — Scene 2 ---');
+    expect(messages[0].content).toContain('--- END SCENE 1 [CURRENT SCENE] — Scene 2 ---');
+    expect(messages[0].content).toContain('Prose:\nDisabled prose before prompt.');
+    expect(messages[0].content).not.toContain('Disabled prose after prompt.');
+    expect(messages[0].content).not.toContain('Summary:');
+  });
+
   it('loads an Outline with persisted summaries for scenes before the current prompt scene', async () => {
     const doc = schema.node('doc', null, [
       sceneSummary('scene-1'),
@@ -452,6 +506,31 @@ describe('ManuscriptAiContextService', () => {
     );
     expect(messages[0].content).toContain('Mara found the silver key.');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('renumbers semantic paragraph locations after excluded scenes are removed', async () => {
+    const doc = schema.node('doc', null, [sceneSummary('scene-2'), schema.node('aiPrompt')]);
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes![0].includeInContext = false;
+    searchSimilarParagraphs.mockResolvedValue([{
+      paragraphId: 'paragraph-2',
+      actId: 'act-1',
+      chapterId: 'chapter-1',
+      sceneId: 'scene-2',
+      text: 'Only the visible scene remains.',
+      distance: 0.12,
+    }]);
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      hierarchy,
+      vectorSearch: 'enabled',
+    });
+
+    expect(messages[0].content).toContain(
+      '1. [Act 1: Act One > Chapter 1: Chapter One > Scene 1: Scene 2]',
+    );
+    expect(messages[0].content).not.toContain('Scene 2: Scene 2');
   });
 
   it('omits missing titles from vector-context hierarchy labels', async () => {

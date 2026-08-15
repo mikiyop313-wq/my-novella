@@ -62,6 +62,68 @@ describe('Story context builder', () => {
     expect(outline).toContain('SCENE 1 — Ending');
   });
 
+  it('renumbers a forced current scene and marks both full-outline delimiters', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes!.forEach((scene) => {
+      scene.includeInContext = false;
+    });
+
+    const result = serializeFullOutline(
+      hierarchy,
+      'Silver Key',
+      new Map([['scene-2', 'Before prompt.']]),
+      {
+        sceneId: 'scene-2',
+        beforePromptProse: 'Before prompt.',
+        afterPromptProse: '',
+      },
+    );
+
+    expect(result).toContain('--- BEGIN SCENE 1 [CURRENT SCENE] ---');
+    expect(result).toContain('--- END SCENE 1 [CURRENT SCENE] ---');
+    expect(result).not.toContain('SCENE 2');
+    expect(result).not.toContain('Act summary.');
+    expect(result).not.toContain('Chapter summary.');
+    expect(result).not.toContain('Second summary.');
+  });
+
+  it('renders a structural-only partial outline for a disabled current scene', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes!.forEach((scene) => {
+      scene.includeInContext = false;
+    });
+
+    const result = serializePartialOutline(hierarchy, 'Silver Key', 'scene-2');
+
+    expect(result).toContain('--- BEGIN ACT 1 — Act One ---');
+    expect(result).toContain('--- BEGIN CHAPTER 1 — Chapter One ---');
+    expect(result).toContain('--- BEGIN SCENE 1 ---');
+    expect(result).not.toContain('[CURRENT SCENE]');
+    expect(result).not.toContain('Summary:');
+    expect(result).not.toContain('Prose:');
+  });
+
+  it('marks the current partial-outline scene when selected future context follows it', () => {
+    const result = serializePartialOutline(
+      createHierarchy(),
+      'Silver Key',
+      'scene-1',
+      {
+        selectedSceneProse: new Map([['scene-2', 'Future selected prose.']]),
+        promptBoundary: {
+          sceneId: 'scene-1',
+          beforePromptProse: '',
+          afterPromptProse: '',
+        },
+      },
+    );
+
+    expect(result).toContain('--- BEGIN SCENE 1 [CURRENT SCENE] — Opening ---');
+    expect(result).toContain('--- END SCENE 1 [CURRENT SCENE] — Opening ---');
+    expect(result).toContain(AFTER_CONTEXT_NOTE);
+    expect(result).toContain('--- BEGIN SCENE 2 ---');
+  });
+
   it('renders an Outline with summaries only for scenes before the current scene', () => {
     const result = serializePartialOutline(
       createHierarchy(),
@@ -80,17 +142,25 @@ describe('Story context builder', () => {
     expect(result.indexOf('SCENE 1')).toBeLessThan(result.indexOf('SCENE 2'));
     expect(result).not.toContain('Act summary.');
     expect(result).not.toContain('Chapter summary.');
-    expect(result).not.toContain('SCENE 1 — Ending');
-    expect(result).not.toContain('BEGIN ACT 2');
+    expect(result).toContain('SCENE 1 — Ending');
+    expect(result).toContain('BEGIN ACT 2');
+    expect(result).not.toContain('[CURRENT SCENE]');
     expect(result).not.toContain('Prose:');
   });
 
   it.each([
-    ['the first scene', createHierarchy(), 'scene-1'],
     ['an unknown scene', createHierarchy(), 'missing-scene'],
     ['an empty hierarchy', [], 'scene-1'],
   ])('omits the Outline for %s', (_label, hierarchy, currentSceneId) => {
     expect(serializePartialOutline(hierarchy, 'Silver Key', currentSceneId)).toBe('');
+  });
+
+  it('renders only the structural path for the first current scene', () => {
+    const result = serializePartialOutline(createHierarchy(), 'Silver Key', 'scene-1');
+
+    expect(result).toContain('--- BEGIN SCENE 1 — Opening ---');
+    expect(result).not.toContain('[CURRENT SCENE]');
+    expect(result).not.toContain('First summary.');
   });
 
   it('embeds the current scene edit content when provided', () => {
@@ -127,10 +197,31 @@ describe('Story context builder', () => {
     expect(result).not.toContain('## Full Outline');
     expect(result).toContain('--- BEGIN ACT 1 — Act One ---');
     expect(result).toContain('--- BEGIN CHAPTER 1 — Chapter One ---');
-    expect(result).toContain('--- BEGIN SCENE 2 ---');
+    expect(result).toContain('--- BEGIN SCENE 1 ---');
     expect(result).toContain('BEGIN NOVEL');
-    expect(result).not.toContain('SCENE 1');
+    expect(result).not.toContain('SCENE 2');
     expect(result).not.toContain('Summary:');
+  });
+
+  it('uses visible ordinals instead of stored positions for selected manuscript context', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[1].position = 8;
+    hierarchy[1].chapters![0].position = 6;
+    hierarchy[1].chapters![0].scenes![0].position = 4;
+
+    const result = serializeSelectedManuscript(
+      hierarchy,
+      'Silver Key',
+      new Set(['scene-3']),
+      new Map([['scene-3', 'Only visible prose.']]),
+    );
+
+    expect(result).toContain('--- BEGIN ACT 1 ---');
+    expect(result).toContain('--- BEGIN CHAPTER 1 ---');
+    expect(result).toContain('--- BEGIN SCENE 1 — Ending ---');
+    expect(result).not.toContain('ACT 9');
+    expect(result).not.toContain('CHAPTER 7');
+    expect(result).not.toContain('SCENE 5');
   });
 
   it('groups selected scenes from one chapter without duplicating parent delimiters', () => {
@@ -286,7 +377,7 @@ describe('Story context builder', () => {
       result.indexOf(AFTER_CONTEXT_NOTE),
     );
     expect(result.indexOf(AFTER_CONTEXT_NOTE)).toBeLessThan(
-      result.indexOf('--- BEGIN SCENE 3 — Later Scene ---'),
+      result.indexOf('--- BEGIN SCENE 2 — Later Scene ---'),
     );
     expect(result.match(/FOLLOWING MANUSCRIPT CONTEXT/g)).toHaveLength(1);
   });
@@ -342,6 +433,8 @@ describe('Story context builder', () => {
     );
 
     expect(result).toContain('Summary:\nSecond summary.');
+    expect(result).toContain('--- BEGIN SCENE 2 [CURRENT SCENE] ---');
+    expect(result).toContain('--- END SCENE 2 [CURRENT SCENE] ---');
     expect(result).toContain(`Prose:\nBefore.\n\n${AFTER_PROSE_NOTE}\n\nAfter.`);
     expect(result.indexOf('Second summary.')).toBeLessThan(result.indexOf(AFTER_PROSE_NOTE));
     expect(result.match(/FOLLOWING PROSE AND ANY SUBSEQUENT/g)).toHaveLength(1);
@@ -532,6 +625,19 @@ The others waited outside.`,
     expect(result).not.toContain('Future');
     expect(result).not.toContain('Unlinked');
     expect(result).not.toContain('Private note');
+  });
+
+  it('renumbers Codex progression locations after excluded scenes are removed', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes![0].includeInContext = false;
+
+    const result = serializeCodexContext([createCodexEntry()], hierarchy, 'scene-2');
+
+    expect(result).not.toContain('Introduced:');
+    expect(result).toContain(
+      '- [Act 1 — Act One > Chapter 1 — Chapter One > Scene 1] Known: She has the key.',
+    );
+    expect(result).not.toContain('Scene 2] Known:');
   });
 
   it('groups Codex entries by type inside one context wrapper', () => {
