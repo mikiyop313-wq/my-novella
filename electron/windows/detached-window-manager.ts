@@ -36,7 +36,6 @@ export class DetachedWindowManager<TSession extends DetachedWindowSession> {
             },
         });
 
-        child.setMenuBarVisibility(false);
         this.config.applyShortcuts(child);
         this.config.loadRoute(child, `${this.config.routePrefix}/${session.sessionId}`);
 

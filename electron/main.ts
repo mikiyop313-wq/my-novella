@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import electronUpdater from 'electron-updater';
 import * as path from 'path';
 import { AppCloseCoordinator } from './app-close-coordinator';
@@ -141,6 +141,10 @@ ipcMain.on('app:close-ready', () => {
 });
 
 app.on('ready', async () => {
+    if (!isDevMode()) {
+        Menu.setApplicationMenu(null);
+    }
+
     updateService.initialize();
     initializeIpc({
         updateService,
