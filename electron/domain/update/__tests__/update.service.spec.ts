@@ -11,14 +11,17 @@ describe('UpdateService', () => {
   let checkForUpdates: Mock<() => Promise<null>>;
   let downloadUpdate: Mock<() => Promise<string[]>>;
   let quitAndInstall: Mock<(isSilent?: boolean, isForceRunAfter?: boolean) => void>;
-  let broadcast: Mock<(state: import('../../../../shared/models/update.model').UpdateState) => void>;
+  let broadcast: Mock<
+    (state: import('../../../../shared/models/update.model').UpdateState) => void
+  >;
 
   beforeEach(() => {
     emitter = new EventEmitter();
     checkForUpdates = vi.fn<() => Promise<null>>().mockResolvedValue(null);
     downloadUpdate = vi.fn<() => Promise<string[]>>().mockResolvedValue([]);
     quitAndInstall = vi.fn<(isSilent?: boolean, isForceRunAfter?: boolean) => void>();
-    broadcast = vi.fn<(state: import('../../../../shared/models/update.model').UpdateState) => void>();
+    broadcast =
+      vi.fn<(state: import('../../../../shared/models/update.model').UpdateState) => void>();
     updater = Object.assign(emitter, {
       autoDownload: true,
       autoInstallOnAppQuit: false,
@@ -57,14 +60,36 @@ describe('UpdateService', () => {
     expect(emitter.listenerCount('update-available')).toBe(1);
   });
 
+  it('allows repeated manual update checks in packaged builds', async () => {
+    const service = createService();
+    service.initialize();
+
+    await service.checkForUpdates();
+    await service.checkForUpdates();
+
+    expect(checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps manual checks unavailable in unpackaged builds', async () => {
+    const service = createService({ isPackaged: false });
+
+    await service.checkForUpdates();
+
+    expect(service.getState().status).toBe('unavailable');
+    expect(checkForUpdates).not.toHaveBeenCalled();
+  });
+
   it('publishes available, progress, and downloaded states', () => {
     const service = createService();
     service.initialize();
 
-    emitter.emit('update-available', updateInfo({
-      version: '0.2.0',
-      releaseNotes: '<img src=x onerror=alert(1)>Safer editor',
-    }));
+    emitter.emit(
+      'update-available',
+      updateInfo({
+        version: '0.2.0',
+        releaseNotes: '<img src=x onerror=alert(1)>Safer editor',
+      }),
+    );
     expect(service.getState()).toMatchObject({
       status: 'available',
       availableVersion: '0.2.0',
@@ -89,9 +114,10 @@ describe('UpdateService', () => {
     emitter.emit('update-available', updateInfo({ version: '0.2.0' }));
     let rejectDownload: (error: Error) => void = () => undefined;
     downloadUpdate.mockImplementationOnce(
-      () => new Promise((_resolve, reject) => {
-        rejectDownload = reject;
-      }),
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectDownload = reject;
+        }),
     );
 
     const firstDownload = service.downloadUpdate();
@@ -124,10 +150,12 @@ describe('UpdateService', () => {
   });
 
   it('normalizes multi-version release notes', () => {
-    expect(normalizeReleaseNotes([
-      { version: '0.2.0', note: 'New editor' },
-      { version: '0.1.1', note: '  Fixes  ' },
-    ])).toBe('0.2.0\nNew editor\n\n0.1.1\nFixes');
+    expect(
+      normalizeReleaseNotes([
+        { version: '0.2.0', note: 'New editor' },
+        { version: '0.1.1', note: '  Fixes  ' },
+      ]),
+    ).toBe('0.2.0\nNew editor\n\n0.1.1\nFixes');
     expect(normalizeReleaseNotes('   ')).toBeNull();
     expect(normalizeReleaseNotes(null)).toBeNull();
   });

@@ -9,6 +9,7 @@ interface SetupUpdateHandlersOptions {
 
 export function setupUpdateHandlers(options: SetupUpdateHandlersOptions): void {
   ipcMain.handle('update:get-state', () => options.updateService.getState());
+  ipcMain.handle('update:check', () => options.updateService.checkForUpdates());
   ipcMain.handle('update:download', () => options.updateService.downloadUpdate());
   ipcMain.handle('update:install', () => {
     options.updateService.assertReadyToInstall();

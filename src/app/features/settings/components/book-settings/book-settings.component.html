@@ -241,6 +241,33 @@
         <button
           class="nav-item section-item"
           type="button"
+          [class.is-active]="activeSection() === 'updates'"
+          [attr.aria-current]="activeSection() === 'updates' ? 'page' : null"
+          (click)="selectSection('updates')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M20 12a8 8 0 1 1-2.34-5.66"></path>
+              <path d="M20 4v6h-6"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">Updates</span>
+            <span class="nav-sub">Version &amp; installation</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
+
+        <button
+          class="nav-item section-item"
+          type="button"
           [class.is-active]="activeSection() === 'library-export'"
           [attr.aria-current]="activeSection() === 'library-export' ? 'page' : null"
           (click)="selectSection('library-export')"
@@ -1380,6 +1407,8 @@
       <app-ai-configuration-settings></app-ai-configuration-settings>
     } @else if (activeSection() === 'vector-search') {
       <app-vector-configuration-settings></app-vector-configuration-settings>
+    } @else if (activeSection() === 'updates') {
+      <app-update-settings></app-update-settings>
     } @else if (activeSection() === 'editor-display') {
       <div class="settings-section-panel">
         <header class="content-header">

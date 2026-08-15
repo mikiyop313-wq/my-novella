@@ -84,6 +84,10 @@ export class UpdateService {
     if (this.startupCheckStarted) return;
 
     this.startupCheckStarted = true;
+    await this.checkForUpdates();
+  }
+
+  async checkForUpdates(): Promise<void> {
     if (!this.isPackaged) return;
 
     try {

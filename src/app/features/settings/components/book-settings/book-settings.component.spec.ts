@@ -144,6 +144,17 @@ describe('BookSettingsComponent', () => {
     currentTheme = signal<Theme>('light');
     setTheme = vi.fn((theme: Theme) => currentTheme.set(theme));
     electronInvoke = vi.fn(async (channel: string) => {
+      if (channel === 'update:get-state') {
+        return {
+          status: 'idle',
+          currentVersion: '0.1.0',
+          availableVersion: null,
+          releaseNotes: null,
+          releaseDate: null,
+          downloadPercent: null,
+          errorMessage: null,
+        };
+      }
       if (channel === 'vectors:local-model:get-status') {
         return [{
           modelName: 'mixedbread-ai/mxbai-embed-large-v1',
@@ -532,7 +543,7 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(element.querySelector('.settings-view-switcher')?.classList).toContain('is-general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
-    expect(sections).toHaveLength(4);
+    expect(sections).toHaveLength(5);
     expect(element.querySelectorAll('.settings-section-panel')).toHaveLength(1);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(element.querySelectorAll('.theme-option')).toHaveLength(2);
@@ -699,20 +710,26 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
     expect(element.querySelector('.settings-view-switcher')).toBeNull();
-    expect(element.querySelectorAll('.section-item')).toHaveLength(5);
+    expect(element.querySelectorAll('.section-item')).toHaveLength(6);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(getBooks).not.toHaveBeenCalled();
 
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
-    expect(sections[1].textContent).toContain('Library Export');
+    expect(sections[1].textContent).toContain('Updates');
     sections[1].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeSection()).toBe('updates');
+    expect(element.querySelector('.content-title')?.textContent).toContain('Updates');
+
+    expect(sections[2].textContent).toContain('Library Export');
+    sections[2].click();
     fixture.detectChanges();
     expect(fixture.componentInstance.activeSection()).toBe('library-export');
     expect(element.querySelector('.content-title')?.textContent).toContain('Library Export');
     expect(element.querySelectorAll('.export-button')).toHaveLength(1);
 
-    expect(sections[2].textContent).toContain('Global Prompts');
-    sections[2].click();
+    expect(sections[3].textContent).toContain('Global Prompts');
+    sections[3].click();
     fixture.detectChanges();
     expect(fixture.componentInstance.activeSection()).toBe('global-prompts');
     expect(element.querySelector('.content-title')?.textContent).toContain('Global Prompts');

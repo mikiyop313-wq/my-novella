@@ -26,6 +26,7 @@ describe('update IPC handlers', () => {
     errorMessage: null,
   } as const;
   let getState: Mock<() => typeof state>;
+  let checkForUpdates: Mock<() => Promise<void>>;
   let downloadUpdate: Mock<() => Promise<void>>;
   let assertReadyToInstall: Mock<() => void>;
   let requestUpdateInstall: Mock<() => void>;
@@ -33,12 +34,14 @@ describe('update IPC handlers', () => {
   beforeEach(() => {
     mocks.handlers.clear();
     getState = vi.fn<() => typeof state>(() => state);
+    checkForUpdates = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     downloadUpdate = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     assertReadyToInstall = vi.fn<() => void>();
     requestUpdateInstall = vi.fn<() => void>();
     setupUpdateHandlers({
       updateService: {
         getState,
+        checkForUpdates,
         downloadUpdate,
         assertReadyToInstall,
       } as unknown as UpdateService,
@@ -48,7 +51,9 @@ describe('update IPC handlers', () => {
 
   it('registers and delegates state and download operations', async () => {
     expect(invoke('update:get-state')).toEqual(state);
+    await expect(invoke('update:check')).resolves.toBeUndefined();
     await expect(invoke('update:download')).resolves.toBeUndefined();
+    expect(checkForUpdates).toHaveBeenCalledOnce();
     expect(downloadUpdate).toHaveBeenCalledOnce();
   });
 

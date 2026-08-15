@@ -38,6 +38,7 @@ import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/a
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 import { BookVectorSettingsComponent } from '../book-vector-settings/book-vector-settings.component';
 import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
+import { UpdateSettingsComponent } from '../update-settings/update-settings.component';
 import { VectorConfigurationSettingsComponent } from '../vector-configuration-settings/vector-configuration-settings.component';
 
 type EditableField =
@@ -58,6 +59,7 @@ type SettingsSection =
   | 'export'
   | 'global-prompts'
   | 'editor-display'
+  | 'updates'
   | 'library-export'
   | 'ai-configuration'
   | 'vector-search'
@@ -72,6 +74,7 @@ type SettingsView = 'book' | 'general';
     AutocompleteDropdownComponent,
     BookVectorSettingsComponent,
     SystemPromptSettingsComponent,
+    UpdateSettingsComponent,
     VectorConfigurationSettingsComponent,
   ],
   templateUrl: './book-settings.component.html',
@@ -442,6 +445,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
       this.cancelEditing();
       this.activeView.set(
         section === 'editor-display' ||
+          section === 'updates' ||
           section === 'library-export' ||
           section === 'ai-configuration' ||
           section === 'vector-search' ||

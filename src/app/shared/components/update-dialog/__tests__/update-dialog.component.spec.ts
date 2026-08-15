@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UpdateState } from '../../../../../../shared/models/update.model';
+import { AppUpdateService } from '../../../../core/services/app-update.service';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { UpdateDialogComponent } from '../update-dialog.component';
 
@@ -9,7 +10,6 @@ describe('UpdateDialogComponent', () => {
   let fixture: ComponentFixture<UpdateDialogComponent>;
   let component: UpdateDialogComponent;
   let invoke: ReturnType<typeof vi.fn>;
-  let removeStateListener: ReturnType<typeof vi.fn>;
   let updateListener: (state: UpdateState) => void;
 
   beforeEach(async () => {
@@ -17,7 +17,6 @@ describe('UpdateDialogComponent', () => {
       if (channel === 'update:get-state') return Promise.resolve(updateState('unavailable'));
       return Promise.resolve(undefined);
     });
-    removeStateListener = vi.fn();
     updateListener = () => undefined;
 
     await TestBed.configureTestingModule({
@@ -29,7 +28,7 @@ describe('UpdateDialogComponent', () => {
             invoke,
             on: vi.fn((_channel: string, listener: (state: UpdateState) => void) => {
               updateListener = listener;
-              return removeStateListener;
+              return () => undefined;
             }),
           },
         },
@@ -43,10 +42,12 @@ describe('UpdateDialogComponent', () => {
   });
 
   it('shows an available update once and renders release notes as text', () => {
-    updateListener(updateState('available', {
-      availableVersion: '0.2.0',
-      releaseNotes: '<img src=x onerror=alert(1)>Safer editor',
-    }));
+    updateListener(
+      updateState('available', {
+        availableVersion: '0.2.0',
+        releaseNotes: '<img src=x onerror=alert(1)>Safer editor',
+      }),
+    );
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
@@ -70,10 +71,12 @@ describe('UpdateDialogComponent', () => {
     fixture.detectChanges();
 
     await component.acceptUpdate();
-    updateListener(updateState('downloading', {
-      availableVersion: '0.2.0',
-      downloadPercent: 42,
-    }));
+    updateListener(
+      updateState('downloading', {
+        availableVersion: '0.2.0',
+        downloadPercent: 42,
+      }),
+    );
     fixture.detectChanges();
 
     expect(invoke).toHaveBeenCalledWith('update:download');
@@ -106,11 +109,14 @@ describe('UpdateDialogComponent', () => {
 
   it('retries an interrupted download in the same dialog', async () => {
     updateListener(updateState('available', { availableVersion: '0.2.0' }));
+    fixture.detectChanges();
     await component.acceptUpdate();
-    updateListener(updateState('error', {
-      availableVersion: '0.2.0',
-      errorMessage: 'Network unavailable',
-    }));
+    updateListener(
+      updateState('error', {
+        availableVersion: '0.2.0',
+        errorMessage: 'Network unavailable',
+      }),
+    );
     fixture.detectChanges();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Network unavailable');
@@ -121,16 +127,21 @@ describe('UpdateDialogComponent', () => {
 
   it('requests installation once after an accepted download completes', async () => {
     updateListener(updateState('available', { availableVersion: '0.2.0' }));
+    fixture.detectChanges();
     await component.acceptUpdate();
 
-    updateListener(updateState('downloaded', {
-      availableVersion: '0.2.0',
-      downloadPercent: 100,
-    }));
-    updateListener(updateState('downloaded', {
-      availableVersion: '0.2.0',
-      downloadPercent: 100,
-    }));
+    updateListener(
+      updateState('downloaded', {
+        availableVersion: '0.2.0',
+        downloadPercent: 100,
+      }),
+    );
+    updateListener(
+      updateState('downloaded', {
+        availableVersion: '0.2.0',
+        downloadPercent: 100,
+      }),
+    );
     fixture.detectChanges();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Applying update');
@@ -140,9 +151,14 @@ describe('UpdateDialogComponent', () => {
     expect(invoke.mock.calls.filter(([channel]) => channel === 'update:install')).toHaveLength(1);
   });
 
-  it('removes its IPC listener when destroyed', () => {
-    fixture.destroy();
-    expect(removeStateListener).toHaveBeenCalledOnce();
+  it('does not open for an update found by a manual settings check', async () => {
+    const updateService = TestBed.inject(AppUpdateService);
+
+    await updateService.checkForUpdates();
+    updateListener(updateState('available', { availableVersion: '0.2.0' }));
+    fixture.detectChanges();
+
+    expect(component.visible()).toBe(false);
   });
 });
 
