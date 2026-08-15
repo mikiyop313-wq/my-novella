@@ -1,13 +1,16 @@
-import { and, asc, eq, or } from 'drizzle-orm';
+import { and, asc, eq, ne, or } from 'drizzle-orm';
 
+import { createDefaultSystemPromptPresetIds } from '../../shared/constants/ai-system-prompts';
 import type {
+  ActiveSystemPromptPresetIds,
   CreateSystemPromptPresetDto,
+  SystemPromptCategory,
   SystemPromptOwnership,
   SystemPromptPresetDto,
   UpdateSystemPromptPresetDto,
 } from '../../shared/models/system-prompt.model';
 import { db } from '../index';
-import { systemPromptPresets } from '../schema';
+import { activeSystemPromptPresets, systemPromptPresets } from '../schema';
 
 type SystemPromptPresetEntity = typeof systemPromptPresets.$inferSelect;
 type SystemPromptPresetInsert = typeof systemPromptPresets.$inferInsert;
@@ -69,6 +72,72 @@ export class SystemPromptRepository {
     return presets.map((preset) => this.mapToDto(preset));
   }
 
+  async getById(id: string): Promise<SystemPromptPresetDto | undefined> {
+    const preset = await db.query.systemPromptPresets.findFirst({
+      where: eq(systemPromptPresets.id, id),
+    });
+
+    return preset ? this.mapToDto(preset) : undefined;
+  }
+
+  async listActivePresetIdsForBook(bookId: string): Promise<ActiveSystemPromptPresetIds> {
+    const rows = await db
+      .select({
+        category: activeSystemPromptPresets.category,
+        presetId: activeSystemPromptPresets.presetId,
+      })
+      .from(activeSystemPromptPresets)
+      .where(eq(activeSystemPromptPresets.bookId, bookId));
+    const activePresetIds = createDefaultSystemPromptPresetIds();
+
+    for (const row of rows) {
+      activePresetIds[row.category] = row.presetId;
+    }
+
+    return activePresetIds;
+  }
+
+  async setActivePreset(
+    bookId: string,
+    category: SystemPromptCategory,
+    presetId: string,
+  ): Promise<ActiveSystemPromptPresetIds> {
+    const preset = await this.getById(presetId);
+    if (!preset) throw new Error('System prompt preset does not exist.');
+    if (preset.category !== category) {
+      throw new Error('System prompt preset category does not match the active category.');
+    }
+    if (preset.scope === 'book' && preset.bookId !== bookId) {
+      throw new Error('Book-scoped system prompt preset belongs to another book.');
+    }
+
+    await db
+      .insert(activeSystemPromptPresets)
+      .values({ bookId, category, presetId })
+      .onConflictDoUpdate({
+        target: [activeSystemPromptPresets.bookId, activeSystemPromptPresets.category],
+        set: { presetId },
+      });
+
+    return this.listActivePresetIdsForBook(bookId);
+  }
+
+  async resetActivePreset(
+    bookId: string,
+    category: SystemPromptCategory,
+  ): Promise<ActiveSystemPromptPresetIds> {
+    await db
+      .delete(activeSystemPromptPresets)
+      .where(
+        and(
+          eq(activeSystemPromptPresets.bookId, bookId),
+          eq(activeSystemPromptPresets.category, category),
+        ),
+      );
+
+    return this.listActivePresetIdsForBook(bookId);
+  }
+
   async create(data: CreateSystemPromptPresetDto): Promise<SystemPromptPresetDto> {
     const ownership = this.mapOwnership(data);
     const [created] = await db
@@ -115,7 +184,28 @@ export class SystemPromptRepository {
       .where(eq(systemPromptPresets.id, id))
       .returning();
 
-    return updated ? this.mapToDto(updated) : undefined;
+    if (!updated) return undefined;
+
+    await db
+      .delete(activeSystemPromptPresets)
+      .where(
+        and(
+          eq(activeSystemPromptPresets.presetId, id),
+          ne(activeSystemPromptPresets.category, updated.category),
+        ),
+      );
+    if (updated.scope === 'book' && updated.bookId) {
+      await db
+        .delete(activeSystemPromptPresets)
+        .where(
+          and(
+            eq(activeSystemPromptPresets.presetId, id),
+            ne(activeSystemPromptPresets.bookId, updated.bookId),
+          ),
+        );
+    }
+
+    return this.mapToDto(updated);
   }
 
   async delete(id: string): Promise<{ success: boolean }> {

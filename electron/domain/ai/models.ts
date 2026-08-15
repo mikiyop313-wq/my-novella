@@ -1,3 +1,5 @@
+import type { SystemPromptCategory } from '../../../shared/models/system-prompt.model';
+
 export type AiChatMessageRole = 'system' | 'user' | 'assistant';
 
 export interface AiChatMessage {
@@ -9,12 +11,20 @@ export interface AiChatCompletionPayload {
     model: string;
     messages: AiChatMessage[];
     temperature: number;
+    top_p?: number;
     max_tokens?: number;
+    presence_penalty?: number;
+    frequency_penalty?: number;
     stream: boolean;
     reasoning?: {
         enabled: true;
         effort: 'medium';
     };
+}
+
+export interface AiSystemPromptPresetSelection {
+    category: SystemPromptCategory;
+    presetId: string;
 }
 
 export interface AiPromptRequest {
@@ -25,6 +35,7 @@ export interface AiPromptRequest {
     temperature?: number;
     maxTokens?: number;
     systemMessage?: string;
+    systemPromptPreset?: AiSystemPromptPresetSelection;
     reasoningMode?: boolean;
     abortSignal?: AbortSignal;
     onToken?: (token: string) => void;

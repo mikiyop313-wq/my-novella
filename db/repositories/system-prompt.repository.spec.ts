@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BUILT_IN_SYSTEM_PROMPT_PRESETS } from '../../shared/constants/ai-system-prompts';
 import type {
   CreateSystemPromptPresetDto,
   SystemPromptCategory,
@@ -23,12 +23,37 @@ describe('SystemPromptRepository', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     sqlite.exec('CREATE TABLE books (id text PRIMARY KEY NOT NULL);');
-    sqlite.exec(
-      readFileSync(
-        new URL('../migrations/0011_system_prompt_presets.sql', import.meta.url),
-        'utf8',
-      ),
-    );
+    sqlite.exec(`
+      CREATE TABLE system_prompt_presets (
+        id text PRIMARY KEY NOT NULL,
+        name text NOT NULL,
+        system_prompt text NOT NULL,
+        category text NOT NULL,
+        scope text NOT NULL,
+        book_id text REFERENCES books(id) ON DELETE CASCADE,
+        temperature real DEFAULT 0.5 NOT NULL,
+        top_p real DEFAULT 1 NOT NULL,
+        max_output_tokens integer,
+        presence_penalty real DEFAULT 0 NOT NULL,
+        frequency_penalty real DEFAULT 0 NOT NULL,
+        created_at integer DEFAULT (unixepoch()) NOT NULL,
+        last_edited_at integer DEFAULT (unixepoch()) NOT NULL,
+        CONSTRAINT system_prompt_presets_scope_book_check CHECK (
+          (scope = 'global' AND book_id IS NULL)
+          OR (scope = 'book' AND book_id IS NOT NULL)
+        )
+      );
+      CREATE INDEX system_prompt_presets_scope_book_category_idx
+        ON system_prompt_presets (scope, book_id, category);
+      CREATE TABLE active_system_prompt_presets (
+        book_id text NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        category text NOT NULL,
+        preset_id text NOT NULL REFERENCES system_prompt_presets(id) ON DELETE CASCADE,
+        PRIMARY KEY (book_id, category)
+      );
+      CREATE INDEX active_system_prompt_presets_preset_idx
+        ON active_system_prompt_presets (preset_id);
+    `);
     mockedDatabase.value = drizzle(sqlite, { schema });
 
     const { SystemPromptRepository } = await import('./system-prompt.repository');
@@ -37,6 +62,7 @@ describe('SystemPromptRepository', () => {
 
   beforeEach(() => {
     sqlite.exec(`
+      DELETE FROM active_system_prompt_presets;
       DELETE FROM system_prompt_presets;
       DELETE FROM books;
       INSERT INTO books (id) VALUES ('book-1'), ('book-2');
@@ -114,6 +140,71 @@ describe('SystemPromptRepository', () => {
         bookId: '',
       }),
     ).rejects.toThrow('require a book ID');
+  });
+
+  it('enforces scope and book ownership in the database schema', () => {
+    const insert = sqlite.prepare(`
+      INSERT INTO system_prompt_presets (
+        id, name, system_prompt, category, scope, book_id
+      ) VALUES (?, 'Invalid', 'Prompt', 'chat', ?, ?)
+    `);
+
+    expect(() => insert.run('invalid-global', 'global', 'book-1')).toThrow();
+    expect(() => insert.run('invalid-book', 'book', null)).toThrow();
+    expect(() => insert.run('missing-book', 'book', 'missing')).toThrow();
+  });
+
+  it('returns built-in defaults when no custom preset is active', async () => {
+    const active = await repository.listActivePresetIdsForBook('book-1');
+
+    expect(active).toEqual({
+      chat: BUILT_IN_SYSTEM_PROMPT_PRESETS.chat.id,
+      sceneBeat: BUILT_IN_SYSTEM_PROMPT_PRESETS.sceneBeat.id,
+      rephrase: BUILT_IN_SYSTEM_PROMPT_PRESETS.rephrase.id,
+      summary: BUILT_IN_SYSTEM_PROMPT_PRESETS.summary.id,
+      expand: BUILT_IN_SYSTEM_PROMPT_PRESETS.expand.id,
+      shorten: BUILT_IN_SYSTEM_PROMPT_PRESETS.shorten.id,
+      title: BUILT_IN_SYSTEM_PROMPT_PRESETS.title.id,
+    });
+  });
+
+  it('sets and resets book and global active presets by category', async () => {
+    const book = await repository.create(bookPreset('book-1', 'Book Chat', 'chat'));
+    const global = await repository.create(globalPreset('Shared Summary', 'summary'));
+
+    let active = await repository.setActivePreset('book-1', 'chat', book.id);
+    active = await repository.setActivePreset('book-1', 'summary', global.id);
+    expect(active.chat).toBe(book.id);
+    expect(active.summary).toBe(global.id);
+
+    active = await repository.resetActivePreset('book-1', 'chat');
+    expect(active.chat).toBe(BUILT_IN_SYSTEM_PROMPT_PRESETS.chat.id);
+    expect(active.summary).toBe(global.id);
+  });
+
+  it('rejects invalid active preset scope and category', async () => {
+    const otherBook = await repository.create(bookPreset('book-2', 'Other Book', 'chat'));
+    const summary = await repository.create(globalPreset('Summary', 'summary'));
+
+    await expect(repository.setActivePreset('book-1', 'chat', otherBook.id))
+      .rejects.toThrow('another book');
+    await expect(repository.setActivePreset('book-1', 'chat', summary.id))
+      .rejects.toThrow('category');
+    await expect(repository.setActivePreset('book-1', 'chat', 'missing'))
+      .rejects.toThrow('does not exist');
+  });
+
+  it('cascades active selections when a preset or book is deleted', async () => {
+    const global = await repository.create(globalPreset('Shared', 'chat'));
+    await repository.setActivePreset('book-1', 'chat', global.id);
+    await repository.setActivePreset('book-2', 'chat', global.id);
+
+    sqlite.prepare('DELETE FROM books WHERE id = ?').run('book-1');
+    expect((await repository.listActivePresetIdsForBook('book-2')).chat).toBe(global.id);
+
+    await repository.delete(global.id);
+    expect((await repository.listActivePresetIdsForBook('book-2')).chat)
+      .toBe(BUILT_IN_SYSTEM_PROMPT_PRESETS.chat.id);
   });
 
   it('cascades book presets while retaining global presets', async () => {

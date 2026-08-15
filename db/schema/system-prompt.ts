@@ -1,5 +1,14 @@
 import { randomUUID } from 'crypto';
-import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core';
 
 import type {
   SystemPromptCategory,
@@ -29,10 +38,31 @@ export const systemPromptPresets = sqliteTable(
       .$defaultFn(() => new Date()),
   },
   (table) => [
+    check(
+      'system_prompt_presets_scope_book_check',
+      sql`(${table.scope} = 'global' AND ${table.bookId} IS NULL) OR (${table.scope} = 'book' AND ${table.bookId} IS NOT NULL)`,
+    ),
     index('system_prompt_presets_scope_book_category_idx').on(
       table.scope,
       table.bookId,
       table.category,
     ),
+  ],
+);
+
+export const activeSystemPromptPresets = sqliteTable(
+  'active_system_prompt_presets',
+  {
+    bookId: text('book_id')
+      .notNull()
+      .references(() => books.id, { onDelete: 'cascade' }),
+    category: text('category').$type<SystemPromptCategory>().notNull(),
+    presetId: text('preset_id')
+      .notNull()
+      .references(() => systemPromptPresets.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.bookId, table.category] }),
+    index('active_system_prompt_presets_preset_idx').on(table.presetId),
   ],
 );

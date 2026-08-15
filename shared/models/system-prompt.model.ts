@@ -4,7 +4,8 @@ export type SystemPromptCategory =
   | 'rephrase'
   | 'summary'
   | 'expand'
-  | 'shorten';
+  | 'shorten'
+  | 'title';
 
 export type SystemPromptScope = 'global' | 'book';
 
@@ -64,4 +65,21 @@ export interface UpdateSystemPromptPresetPayload {
 
 export interface DeleteSystemPromptPresetPayload {
   id: string;
+}
+
+export type ActiveSystemPromptPresetIds = Record<SystemPromptCategory, string>;
+
+export interface ListActiveSystemPromptPresetsPayload {
+  bookId: string;
+}
+
+export interface SetActiveSystemPromptPresetPayload {
+  bookId: string;
+  category: SystemPromptCategory;
+  presetId: string;
+}
+
+export interface ResetActiveSystemPromptPresetPayload {
+  bookId: string;
+  category: SystemPromptCategory;
 }

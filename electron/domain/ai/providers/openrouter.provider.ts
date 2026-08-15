@@ -20,7 +20,7 @@ export class OpenRouterProvider implements AiProvider {
         console.log(`[OpenRouter] Generating prompt: ${this.getPromptPreview(request).substring(0, 50)}...`);
 
         try {
-            const payload = promptBuilderService.buildChatCompletionPayload(
+            const payload = await promptBuilderService.buildChatCompletionPayload(
                 request,
                 DEFAULT_OPENROUTER_MODEL_ID,
             );
