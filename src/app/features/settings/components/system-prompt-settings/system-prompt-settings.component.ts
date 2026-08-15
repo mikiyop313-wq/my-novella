@@ -1,29 +1,25 @@
-import { Component, computed, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, input, signal } from '@angular/core';
 
 import { AI_SYSTEM_PROMPTS } from '../../../../../../shared/constants/ai-system-prompts';
+import type {
+  CreateSystemPromptPresetDto,
+  SystemPromptCategory,
+  SystemPromptGenerationSettings,
+  SystemPromptPresetDto,
+  UpdateSystemPromptPresetDto,
+} from '../../../../../../shared/models/system-prompt.model';
 import {
   AutocompleteDropdownComponent,
   type DropdownOption,
 } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { SystemPromptService } from '../../services/system-prompt.service';
 
-export type SystemPromptCategory =
-  | 'chat'
-  | 'sceneBeat'
-  | 'rephrase'
-  | 'summary'
-  | 'expand'
-  | 'shorten';
-
-interface SystemPromptPreset {
+interface SystemPromptPreset extends SystemPromptGenerationSettings {
   id: string;
   name: string;
   category: SystemPromptCategory;
   systemPrompt: string;
-  temperature: number;
-  topP: number;
-  maxOutputTokens: number | null;
-  presencePenalty: number;
-  frequencyPenalty: number;
   isBuiltIn: boolean;
 }
 
@@ -82,13 +78,15 @@ const SYSTEM_PROMPT_CATEGORIES: readonly SystemPromptCategoryDefinition[] = [
   },
 ] as const;
 
-const DEFAULT_GENERATION_SETTINGS = {
+const DEFAULT_GENERATION_SETTINGS: SystemPromptGenerationSettings = {
   temperature: 0.5,
   topP: 1,
   maxOutputTokens: null,
   presencePenalty: 0,
   frequencyPenalty: 0,
-} as const;
+};
+
+const AUTOSAVE_DELAY_MS = 500;
 
 @Component({
   selector: 'app-system-prompt-settings',
@@ -96,7 +94,14 @@ const DEFAULT_GENERATION_SETTINGS = {
   templateUrl: './system-prompt-settings.component.html',
   styleUrl: './system-prompt-settings.component.scss',
 })
-export class SystemPromptSettingsComponent {
+export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
+  readonly bookId = input.required<string>();
+
+  private readonly systemPromptService = inject(SystemPromptService);
+  private readonly toastService = inject(ToastService);
+  private readonly confirmedPresets = new Map<string, SystemPromptPreset>();
+  private readonly saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   readonly categories = SYSTEM_PROMPT_CATEGORIES;
   readonly categoryOptions: readonly DropdownOption<SystemPromptCategory>[] =
     SYSTEM_PROMPT_CATEGORIES.map((category) => ({
@@ -107,6 +112,12 @@ export class SystemPromptSettingsComponent {
   readonly selectedCategory = signal<SystemPromptCategory>('chat');
   readonly selectedPresetId = signal(defaultPresetIdFor('chat'));
   readonly advancedOpen = signal(false);
+  readonly isLoading = signal(true);
+  readonly loadError = signal<string | null>(null);
+  readonly isCreating = signal(false);
+  readonly deletingPresetId = signal<string | null>(null);
+  readonly pendingSaveIds = signal<ReadonlySet<string>>(new Set());
+  readonly savingPresetIds = signal<ReadonlySet<string>>(new Set());
   readonly filteredPresets = computed(() =>
     this.presets().filter((preset) => preset.category === this.selectedCategory()),
   );
@@ -117,7 +128,40 @@ export class SystemPromptSettingsComponent {
     this.filteredPresets().find((preset) => preset.id === this.selectedPresetId()),
   );
 
-  private nextPresetId = 1;
+  ngOnInit(): void {
+    void this.loadPresets();
+  }
+
+  ngOnDestroy(): void {
+    for (const [presetId, timer] of this.saveTimers) {
+      clearTimeout(timer);
+      void this.savePreset(presetId);
+    }
+    this.saveTimers.clear();
+  }
+
+  async loadPresets(): Promise<void> {
+    this.isLoading.set(true);
+    this.loadError.set(null);
+
+    try {
+      const available = await this.systemPromptService.listAvailable(this.bookId());
+      const bookPresets = available
+        .filter((preset) => preset.scope === 'book' && preset.bookId === this.bookId())
+        .map(mapDtoToPreset);
+
+      this.confirmedPresets.clear();
+      for (const preset of bookPresets) {
+        this.confirmedPresets.set(preset.id, preset);
+      }
+      this.presets.set([...createBuiltInPresets(), ...bookPresets]);
+      this.ensureValidSelection();
+    } catch (error) {
+      this.loadError.set(errorMessage(error, 'Unable to load system prompt presets.'));
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
 
   selectPreset(id: string): void {
     if (this.filteredPresets().some((preset) => preset.id === id)) {
@@ -132,50 +176,94 @@ export class SystemPromptSettingsComponent {
     this.selectedPresetId.set(defaultPresetIdFor(value));
   }
 
-  addPreset(): void {
-    const preset: SystemPromptPreset = {
-      id: this.createPresetId(),
+  async addPreset(): Promise<void> {
+    if (this.isCreating()) return;
+
+    const data: CreateSystemPromptPresetDto = {
       name: this.uniqueName('Untitled Preset'),
       category: this.selectedCategory(),
       systemPrompt: '',
+      scope: 'book',
+      bookId: this.bookId(),
       ...DEFAULT_GENERATION_SETTINGS,
-      isBuiltIn: false,
     };
 
-    this.presets.update((presets) => [...presets, preset]);
-    this.selectedPresetId.set(preset.id);
+    this.isCreating.set(true);
+    try {
+      const created = mapDtoToPreset(await this.systemPromptService.create(data));
+      this.confirmedPresets.set(created.id, created);
+      this.presets.update((presets) => [...presets, created]);
+      this.selectedPresetId.set(created.id);
+    } catch (error) {
+      this.showError(error, 'Unable to create this preset.', 'Preset creation failed');
+    } finally {
+      this.isCreating.set(false);
+    }
   }
 
-  cloneSelectedPreset(): void {
+  async cloneSelectedPreset(): Promise<void> {
     const selected = this.selectedPreset();
-    if (!selected) return;
+    if (!selected || this.isCreating() || this.isPresetPendingOrSaving(selected.id)) return;
 
-    const clonedPreset: SystemPromptPreset = {
-      ...selected,
-      id: this.createPresetId(),
+    const data: CreateSystemPromptPresetDto = {
       name: this.uniqueName(`${selected.name.trim() || 'Untitled Preset'} Copy`),
-      isBuiltIn: false,
+      category: selected.category,
+      systemPrompt: selected.systemPrompt,
+      scope: 'book',
+      bookId: this.bookId(),
+      temperature: selected.temperature,
+      topP: selected.topP,
+      maxOutputTokens: selected.maxOutputTokens,
+      presencePenalty: selected.presencePenalty,
+      frequencyPenalty: selected.frequencyPenalty,
     };
 
-    this.presets.update((presets) => [...presets, clonedPreset]);
-    this.selectedPresetId.set(clonedPreset.id);
+    this.isCreating.set(true);
+    try {
+      const created = mapDtoToPreset(await this.systemPromptService.create(data));
+      this.confirmedPresets.set(created.id, created);
+      this.presets.update((presets) => [...presets, created]);
+      this.selectedPresetId.set(created.id);
+    } catch (error) {
+      this.showError(error, 'Unable to clone this preset.', 'Preset cloning failed');
+    } finally {
+      this.isCreating.set(false);
+    }
   }
 
-  deleteSelectedPreset(): void {
+  async deleteSelectedPreset(): Promise<void> {
     const selected = this.selectedPreset();
-    if (!selected || selected.isBuiltIn) return;
+    if (
+      !selected ||
+      selected.isBuiltIn ||
+      this.deletingPresetId() !== null ||
+      this.isPresetPendingOrSaving(selected.id)
+    ) {
+      return;
+    }
 
-    const categoryPresets = this.filteredPresets();
-    const selectedIndex = categoryPresets.findIndex((preset) => preset.id === selected.id);
-    const remainingPresets = this.presets().filter((preset) => preset.id !== selected.id);
-    const remainingCategoryPresets = remainingPresets.filter(
-      (preset) => preset.category === selected.category,
-    );
-    const nextSelection =
-      remainingCategoryPresets[Math.min(selectedIndex, remainingCategoryPresets.length - 1)];
+    this.deletingPresetId.set(selected.id);
+    try {
+      const result = await this.systemPromptService.delete(selected.id);
+      if (!result.success) throw new Error('The preset no longer exists.');
 
-    this.presets.set(remainingPresets);
-    this.selectedPresetId.set(nextSelection.id);
+      const categoryPresets = this.filteredPresets();
+      const selectedIndex = categoryPresets.findIndex((preset) => preset.id === selected.id);
+      const remainingPresets = this.presets().filter((preset) => preset.id !== selected.id);
+      const remainingCategoryPresets = remainingPresets.filter(
+        (preset) => preset.category === selected.category,
+      );
+      const nextSelection =
+        remainingCategoryPresets[Math.min(selectedIndex, remainingCategoryPresets.length - 1)];
+
+      this.confirmedPresets.delete(selected.id);
+      this.presets.set(remainingPresets);
+      this.selectedPresetId.set(nextSelection.id);
+    } catch (error) {
+      this.showError(error, 'Unable to delete this preset.', 'Preset deletion failed');
+    } finally {
+      this.deletingPresetId.set(null);
+    }
   }
 
   toggleAdvancedSettings(): void {
@@ -187,12 +275,10 @@ export class SystemPromptSettingsComponent {
   }
 
   updateName(event: Event): void {
-    if (this.selectedPreset()?.isBuiltIn) return;
     this.updateSelectedPreset({ name: this.inputValue(event) });
   }
 
   updateSystemPrompt(event: Event): void {
-    if (this.selectedPreset()?.isBuiltIn) return;
     this.updateSelectedPreset({ systemPrompt: this.inputValue(event) });
   }
 
@@ -216,19 +302,86 @@ export class SystemPromptSettingsComponent {
     this.updateSelectedPreset({ maxOutputTokens: Math.max(1, Math.round(value)) });
   }
 
+  isPresetPendingOrSaving(id: string): boolean {
+    return this.pendingSaveIds().has(id) || this.savingPresetIds().has(id);
+  }
+
   private updateSelectedPreset(update: Partial<SystemPromptPreset>): void {
-    const selectedId = this.selectedPresetId();
+    const selected = this.selectedPreset();
+    if (!selected || selected.isBuiltIn || this.savingPresetIds().has(selected.id)) return;
+
     this.presets.update((presets) =>
-      presets.map((preset) => (preset.id === selectedId ? { ...preset, ...update } : preset)),
+      presets.map((preset) => (preset.id === selected.id ? { ...preset, ...update } : preset)),
     );
+    this.scheduleSave(selected.id);
+  }
+
+  private scheduleSave(presetId: string): void {
+    const existingTimer = this.saveTimers.get(presetId);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    this.updateIdSet(this.pendingSaveIds, presetId, true);
+    const timer = setTimeout(() => {
+      this.saveTimers.delete(presetId);
+      this.updateIdSet(this.pendingSaveIds, presetId, false);
+      void this.savePreset(presetId);
+    }, AUTOSAVE_DELAY_MS);
+    this.saveTimers.set(presetId, timer);
+  }
+
+  private async savePreset(presetId: string): Promise<void> {
+    const preset = this.presets().find((candidate) => candidate.id === presetId);
+    if (!preset || preset.isBuiltIn || this.savingPresetIds().has(presetId)) return;
+
+    this.updateIdSet(this.pendingSaveIds, presetId, false);
+    this.updateIdSet(this.savingPresetIds, presetId, true);
+    try {
+      const updated = await this.systemPromptService.update(presetId, updateDtoFor(preset));
+      if (!updated) throw new Error('The preset no longer exists.');
+
+      const confirmed = mapDtoToPreset(updated);
+      this.confirmedPresets.set(presetId, confirmed);
+      this.replacePreset(confirmed);
+    } catch (error) {
+      const confirmed = this.confirmedPresets.get(presetId);
+      if (confirmed) this.replacePreset(confirmed);
+      this.showError(error, 'Your latest changes were reverted.', 'Preset autosave failed');
+    } finally {
+      this.updateIdSet(this.savingPresetIds, presetId, false);
+    }
+  }
+
+  private replacePreset(replacement: SystemPromptPreset): void {
+    this.presets.update((presets) =>
+      presets.map((preset) => (preset.id === replacement.id ? replacement : preset)),
+    );
+  }
+
+  private updateIdSet(
+    target: { update(updater: (value: ReadonlySet<string>) => ReadonlySet<string>): void },
+    id: string,
+    add: boolean,
+  ): void {
+    target.update((ids) => {
+      const next = new Set(ids);
+      if (add) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  private ensureValidSelection(): void {
+    const selectedExists = this.presets().some(
+      (preset) =>
+        preset.category === this.selectedCategory() && preset.id === this.selectedPresetId(),
+    );
+    if (!selectedExists) {
+      this.selectedPresetId.set(defaultPresetIdFor(this.selectedCategory()));
+    }
   }
 
   private inputValue(event: Event): string {
     return (event.target as HTMLInputElement | HTMLTextAreaElement).value;
-  }
-
-  private createPresetId(): string {
-    return `prompt-preset-${this.nextPresetId++}`;
   }
 
   private uniqueName(baseName: string): string {
@@ -241,6 +394,10 @@ export class SystemPromptSettingsComponent {
     }
 
     return `${baseName} ${suffix}`;
+  }
+
+  private showError(error: unknown, fallback: string, title: string): void {
+    this.toastService.error(errorMessage(error, fallback), title);
   }
 }
 
@@ -255,6 +412,33 @@ function createBuiltInPresets(): SystemPromptPreset[] {
   }));
 }
 
+function mapDtoToPreset(preset: SystemPromptPresetDto): SystemPromptPreset {
+  return {
+    id: preset.id,
+    name: preset.name,
+    category: preset.category,
+    systemPrompt: preset.systemPrompt,
+    temperature: preset.temperature,
+    topP: preset.topP,
+    maxOutputTokens: preset.maxOutputTokens,
+    presencePenalty: preset.presencePenalty,
+    frequencyPenalty: preset.frequencyPenalty,
+    isBuiltIn: false,
+  };
+}
+
+function updateDtoFor(preset: SystemPromptPreset): UpdateSystemPromptPresetDto {
+  return {
+    name: preset.name,
+    systemPrompt: preset.systemPrompt,
+    temperature: preset.temperature,
+    topP: preset.topP,
+    maxOutputTokens: preset.maxOutputTokens,
+    presencePenalty: preset.presencePenalty,
+    frequencyPenalty: preset.frequencyPenalty,
+  };
+}
+
 function categoryDefinitionFor(category: SystemPromptCategory): SystemPromptCategoryDefinition {
   return SYSTEM_PROMPT_CATEGORIES.find((definition) => definition.id === category)!;
 }
@@ -265,4 +449,8 @@ function defaultPresetIdFor(category: SystemPromptCategory): string {
 
 function isSystemPromptCategory(value: string): value is SystemPromptCategory {
   return SYSTEM_PROMPT_CATEGORIES.some((category) => category.id === value);
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }

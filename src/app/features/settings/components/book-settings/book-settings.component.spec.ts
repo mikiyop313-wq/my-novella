@@ -14,6 +14,7 @@ import { ManuscriptStructureService } from '../../../workspace/services/manuscri
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
+import { SystemPromptService } from '../../services/system-prompt.service';
 import { BookSettingsComponent } from './book-settings.component';
 
 describe('BookSettingsComponent', () => {
@@ -206,6 +207,15 @@ describe('BookSettingsComponent', () => {
           useValue: { currentTheme, setTheme },
         },
         {
+          provide: SystemPromptService,
+          useValue: {
+            listAvailable: vi.fn().mockResolvedValue([]),
+            create: vi.fn(),
+            update: vi.fn(),
+            delete: vi.fn(),
+          },
+        },
+        {
           provide: Router,
           useValue: { navigateByUrl },
         },
@@ -293,15 +303,19 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('.settings-divider')).not.toBeNull();
   });
 
-  it('loads the in-memory preset editor when System Prompts is selected', () => {
+  it('loads the persistent preset editor with the active book when System Prompts is selected', async () => {
     const element = fixture.nativeElement as HTMLElement;
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
 
     sections[1].click();
     fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
 
     expect(fixture.componentInstance.activeSection()).toBe('system-prompts');
-    expect(fixture.debugElement.query(By.directive(SystemPromptSettingsComponent))).not.toBeNull();
+    const promptSettings = fixture.debugElement.query(By.directive(SystemPromptSettingsComponent))
+      .componentInstance as SystemPromptSettingsComponent;
+    expect(promptSettings.bookId()).toBe('book-1');
     expect(element.querySelector('.content-title')?.textContent).toContain('System Prompts');
     expect(element.querySelectorAll('[role="option"]')).toHaveLength(1);
     expect(sections[1].getAttribute('aria-current')).toBe('page');

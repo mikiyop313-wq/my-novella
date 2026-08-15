@@ -11,7 +11,7 @@ import {
     tableNameForEmbeddingSpace,
 } from './embedding-space';
 
-const isDev = process.env.NODE_ENV === 'development';
+const isDev = process.env['NODE_ENV'] === 'development';
 const vectorDbPath = (isDev || !app)
     ? '.data/vectors'
     : path.join(app.getPath('userData'), 'vectors');

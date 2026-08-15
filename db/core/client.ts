@@ -10,7 +10,7 @@ import * as schema from '../schema';
 // Database path
 // ---------------------------------------------------------------------------
 
-const isDev = process.env.NODE_ENV === 'development';
+const isDev = process.env['NODE_ENV'] === 'development';
 const usesLocalDatabase = isDev || !app;
 
 const LOCAL_DATABASE_DIR = '.data';

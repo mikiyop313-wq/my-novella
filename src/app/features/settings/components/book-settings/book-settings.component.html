@@ -851,7 +851,7 @@
         }
       </div>
     } @else if (activeSection() === 'system-prompts') {
-      <app-system-prompt-settings></app-system-prompt-settings>
+      <app-system-prompt-settings [bookId]="activeBookId()!"></app-system-prompt-settings>
     } @else if (activeSection() === 'editor-display') {
       <div class="settings-section-panel">
         <header class="content-header">
