@@ -67,8 +67,8 @@ export class BookModalComponent {
   povs: DropdownOption[] = [
     { value: 'first', label: 'First Person' },
     { value: 'second', label: 'Second Person' },
-    { value: 'third-limited', label: 'Third Person Limited' },
-    { value: 'third-omni', label: 'Third Person Omniscient' }
+    { value: 'third_limited', label: 'Third Person Limited' },
+    { value: 'third_omni', label: 'Third Person Omniscient' }
   ];
 
   availableTropes = ['Enemies to Lovers', 'Chosen One', 'System', 'Reincarnation', 'Time Loop', 'Magic School'];

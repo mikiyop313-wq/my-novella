@@ -13,6 +13,41 @@ export const AiPromptExtension = (injector: Injector) => {
 
     atom: true,
 
+    addAttributes() {
+      return {
+        promptText: {
+          default: '',
+          parseHTML: element => element.getAttribute('data-prompt-text') || '',
+          renderHTML: attributes => attributes['promptText'] ? { 'data-prompt-text': attributes['promptText'] } : {},
+        },
+        selectedModel: {
+          default: null,
+          parseHTML: element => element.getAttribute('data-selected-model') || null,
+          renderHTML: attributes => attributes['selectedModel'] ? { 'data-selected-model': attributes['selectedModel'] } : {},
+        },
+        wordCount: {
+          default: 500,
+          parseHTML: element => Number(element.getAttribute('data-word-count')) || 500,
+          renderHTML: attributes => ({ 'data-word-count': attributes['wordCount'] }),
+        },
+        pov: {
+          default: 'global',
+          parseHTML: element => element.getAttribute('data-pov') || 'global',
+          renderHTML: attributes => ({ 'data-pov': attributes['pov'] }),
+        },
+        povCharacter: {
+          default: null,
+          parseHTML: element => element.getAttribute('data-pov-character') || null,
+          renderHTML: attributes => attributes['povCharacter'] ? { 'data-pov-character': attributes['povCharacter'] } : {},
+        },
+        vectorSearch: {
+          default: 'global',
+          parseHTML: element => element.getAttribute('data-vector-search') || 'global',
+          renderHTML: attributes => ({ 'data-vector-search': attributes['vectorSearch'] }),
+        }
+      };
+    },
+
     parseHTML() {
       return [
         {

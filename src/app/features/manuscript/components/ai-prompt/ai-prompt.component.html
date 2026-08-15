@@ -1,11 +1,12 @@
-<div class="ai-prompt-wrapper" [class.focused]="isFocused()">
+<div class="ai-prompt-wrapper" [class.focused]="isFocused()" [class.collapsed]="isCollapsed()">
   <div class="ai-prompt-card">
     <div class="card-bg-glow"></div>
 
     <!-- Card Header -->
     <div class="card-header">
       <div class="header-title">
-        <svg data-drag-handle style="cursor: grab;" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3">
+        <svg data-drag-handle style="cursor: grab;" xmlns="http://www.w3.org/2000/svg" height="24px"
+          viewBox="0 -960 960 960" width="24px" fill="#e3e3e3">
           <path
             d="M360-160q-33 0-56.5-23.5T280-240q0-33 23.5-56.5T360-320q33 0 56.5 23.5T440-240q0 33-23.5 56.5T360-160Zm240 0q-33 0-56.5-23.5T520-240q0-33 23.5-56.5T600-320q33 0 56.5 23.5T680-240q0 33-23.5 56.5T600-160ZM360-400q-33 0-56.5-23.5T280-480q0-33 23.5-56.5T360-560q33 0 56.5 23.5T440-480q0 33-23.5 56.5T360-400Zm240 0q-33 0-56.5-23.5T520-480q0-33 23.5-56.5T600-560q33 0 56.5 23.5T680-480q0 33-23.5 56.5T600-400ZM360-640q-33 0-56.5-23.5T280-720q0-33 23.5-56.5T360-800q33 0 56.5 23.5T440-720q0 33-23.5 56.5T360-640Zm240 0q-33 0-56.5-23.5T520-720q0-33 23.5-56.5T600-800q33 0 56.5 23.5T680-720q0 33-23.5 56.5T600-640Z" />
         </svg>
@@ -15,11 +16,26 @@
         @if (promptText()) {
         <button class="clear-btn" (click)="clearPrompt()" title="Clear text">Clear</button>
         }
-        <button class="remove-btn" (click)="removePrompt()" title="Remove Prompt">
+        <button class="collapse-btn" (click)="collapse()" [title]="isCollapsed() ? 'Expand Prompt' : 'Collapse Prompt'">
+          @if (isCollapsed()) {
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+          } @else {
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+          }
+        </button>
+        <button class="remove-btn" (click)="removePrompt()" title="Remove Prompt">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="10" y2="17"></line>
+            <line x1="14" y1="11" x2="14" y2="17"></line>
           </svg>
         </button>
       </div>
@@ -29,6 +45,7 @@
     <div class="card-body">
       <div class="prompt-textarea" #promptInput contenteditable="true" (input)="onInput($event)" (focus)="onFocus()"
         (blur)="onBlur()"
+        [class.empty]="isEmpty()"
         data-placeholder="Ask AI to write, brainstorm, or refine. Try: 'Write a suspenseful scene...'"></div>
     </div>
 
@@ -67,35 +84,11 @@
 
       <!-- Right side: Advanced settings modal -->
       <div class="footer-right">
-        <button class="settings-btn" [appOverlayModal]="settingsModalTemplate" title="Advanced Settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" width="18" height="18">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-            </path>
-          </svg>
-        </button>
-
-        <ng-template #settingsModalTemplate let-closeModal>
-          <div class="settings-modal-content overlay-modal">
-            <div class="modal-header">
-              <h3>Advanced Novel Settings</h3>
-              <button class="close-modal-btn" (click)="closeModal()">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-            <div class="modal-body">
-              <div class="empty-state">
-                <p>No advanced settings available yet.</p>
-              </div>
-            </div>
-          </div>
-        </ng-template>
+        <app-ai-prompt-settings [wordCount]="wordCount()" [pov]="pov()" [povCharacter]="povCharacter()"
+          [vectorSearch]="vectorSearch()" (wordCountChange)="onWordCountChange($event)" (povChange)="onPovChange($event)"
+          (povCharacterChange)="onPovCharacterChange($event)" (vectorSearchChange)="onVectorSearchChange($event)"
+          (reset)="onSettingsReset()">
+        </app-ai-prompt-settings>
       </div>
     </div>
   </div>

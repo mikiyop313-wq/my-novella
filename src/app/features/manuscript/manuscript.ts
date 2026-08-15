@@ -8,6 +8,7 @@ import { TiptapEditorDirective } from 'ngx-tiptap';
 import { ThemeService } from '../../core/services/theme.service';
 import { AutocompleteDropdownComponent, DropdownOption } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
+import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
 
 export interface FormattingSettings {
   fontFamily: string;
@@ -22,7 +23,7 @@ export interface FormattingSettings {
 @Component({
   selector: 'app-manuscript',
   standalone: true,
-  imports: [CommonModule, TiptapEditorDirective, AutocompleteDropdownComponent],
+  imports: [CommonModule, TiptapEditorDirective, AutocompleteDropdownComponent, EditorBubbleMenuComponent],
   templateUrl: './manuscript.html',
   styleUrl: './manuscript.scss',
 })
@@ -36,20 +37,19 @@ export class Manuscript implements OnInit, OnDestroy {
   bookId = signal<string | null>(null);
 
   fontOptions: DropdownOption[] = [
+
     // Serif Group
     { value: "'Merriweather', serif", label: 'Merriweather', fontFamily: "'Merriweather', serif", group: 'Serif' },
-    { value: "'Cormorant Garamond', serif", label: 'Cormorant Garamond', fontFamily: "'Cormorant Garamond', serif", group: 'Serif' },
     { value: "'EB Garamond', serif", label: 'EB Garamond', fontFamily: "'EB Garamond', serif", group: 'Serif' },
     { value: "'Lora', serif", label: 'Lora', fontFamily: "'Lora', serif", group: 'Serif' },
-    { value: "'Playfair Display', serif", label: 'Playfair Display', fontFamily: "'Playfair Display', serif", group: 'Serif' },
     { value: "'Georgia', serif", label: 'Georgia', fontFamily: "'Georgia', serif", group: 'Serif' },
+    { value: "'Crimson Pro', serif", label: 'Crimson Pro', fontFamily: "'Crimson Pro', serif", group: 'Serif' },
+    { value: "'Literata', serif", label: 'Literata', fontFamily: "'Literata', serif", group: 'Serif' },
 
     // Sans Serif Group
     { value: "'Inter', sans-serif", label: 'Inter', fontFamily: "'Inter', sans-serif", group: 'Sans Serif' },
-    { value: "'Roboto', sans-serif", label: 'Roboto', fontFamily: "'Roboto', sans-serif", group: 'Sans Serif' },
     { value: "'Open Sans', sans-serif", label: 'Open Sans', fontFamily: "'Open Sans', sans-serif", group: 'Sans Serif' },
-    { value: "'Montserrat', sans-serif", label: 'Montserrat', fontFamily: "'Montserrat', sans-serif", group: 'Sans Serif' },
-    { value: "'Poppins', sans-serif", label: 'Poppins', fontFamily: "'Poppins', sans-serif", group: 'Sans Serif' },
+
 
     // Monospace Group
     { value: "'Courier Prime', monospace", label: 'Courier Prime', fontFamily: "'Courier Prime', monospace", group: 'Monospace' },
