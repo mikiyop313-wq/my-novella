@@ -33,4 +33,8 @@ export class LibraryService {
   async getGenres(): Promise<any[]> {
     return await this.electronService.invoke('library:get-genres');
   }
+
+  async getTropes(): Promise<any[]> {
+    return await this.electronService.invoke('library:get-tropes');
+  }
 }

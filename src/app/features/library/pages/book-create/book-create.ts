@@ -41,9 +41,6 @@ export class BookCreate implements OnInit {
   tropeInput = new FormControl('');
   languageInput = new FormControl('');
 
-  availableTropes = ['Enemies to Lovers', 'Chosen One', 'System', 'Reincarnation', 'Time Loop', 'Magic School'];
-  tropeOptions: DropdownOption[] = this.availableTropes.map(g => ({ value: g, label: g }));
-
   isSubmitting = false;
   isDragging = false;
 
@@ -54,6 +51,7 @@ export class BookCreate implements OnInit {
   ngOnInit() {
     this.config.loadLanguages();
     this.config.loadGenres();
+    this.config.loadTropes();
   }
 
 
@@ -142,12 +140,17 @@ export class BookCreate implements OnInit {
               isCustom: !existsAsGenre && !existsAsSubgenre
             };
           }),
-          ...(this.tropes.value as string[]).map((name: string) => ({
-            id: crypto.randomUUID(),
-            name,
-            type: 'trope' as const,
-            isCustom: !this.availableTropes.includes(name)
-          }))
+          ...(this.tropes.value as string[]).map((name: string) => {
+            const allTropes = this.config.tropes();
+            const existsAsTrope = allTropes.some(t => t.value === name);
+            const existsAsSubtrope = allTropes.some(t => t.subOptions?.some(s => s.value === name));
+            return {
+              id: crypto.randomUUID(),
+              name,
+              type: 'trope' as const,
+              isCustom: !existsAsTrope && !existsAsSubtrope
+            };
+          })
         ];
 
         const bookData: CreateBookDto = {

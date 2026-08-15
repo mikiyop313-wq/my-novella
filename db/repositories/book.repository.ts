@@ -147,6 +147,15 @@ export class BookRepository {
             }
         });
     }
+
+    async getTropes() {
+        return await db.query.categories.findMany({
+            where: eq(categories.type, 'trope'),
+            with: {
+                subcategories: true
+            }
+        });
+    }
 }
 
 export const bookRepository = new BookRepository();
