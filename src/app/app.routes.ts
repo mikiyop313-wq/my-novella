@@ -18,6 +18,7 @@ export const routes: Routes = [
       { path: 'new-chat', redirectTo: 'thread/new-chat', pathMatch: 'full' },
       { path: 'thread/:threadId', loadComponent: () => import('./features/chat/chat').then(m => m.Chat), data: { animation: 'ChatPage' } },
       { path: 'chat', redirectTo: 'threads', pathMatch: 'full' },
+      { path: 'settings', loadComponent: () => import('./features/settings/components/book-settings/book-settings.component').then(m => m.BookSettingsComponent), data: { animation: 'SettingsPage' } },
     ],
   }
 ];

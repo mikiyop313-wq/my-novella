@@ -1,1 +1,81 @@
+<div class="settings-layout">
+  <aside class="settings-sidebar">
+    <header class="sidebar-header">
+      <button
+        #backButton
+        class="settings-back-button"
+        type="button"
+        aria-label="Close settings"
+        title="Back to workspace"
+        (click)="closeSettings()"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </button>
 
+      <div class="sidebar-heading">
+        <span class="sidebar-kicker">Book Configuration</span>
+        <h2 class="sidebar-title">Settings</h2>
+      </div>
+    </header>
+
+    <nav class="section-nav" aria-label="Book settings sections">
+      <button class="nav-item section-item is-active" type="button" aria-current="page">
+        <span class="nav-icon-wrapper" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </span>
+        <span class="nav-text">
+          <span class="nav-label">General</span>
+          <span class="nav-sub">Title, author &amp; language</span>
+        </span>
+        <span class="active-indicator" aria-hidden="true"></span>
+      </button>
+
+      <button class="nav-item section-item" type="button">
+        <span class="nav-icon-wrapper" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+        </span>
+        <span class="nav-text">
+          <span class="nav-label">Editor &amp; Display</span>
+          <span class="nav-sub">Typography, layout &amp; theme</span>
+        </span>
+      </button>
+    </nav>
+  </aside>
+
+  <div class="settings-separator settings-divider" role="separator" aria-orientation="vertical">
+    <div class="separator-line">
+      <div class="separator-glow"></div>
+    </div>
+  </div>
+
+  <main class="settings-content">
+    <header class="content-header">
+      <h1 class="content-title">General Settings</h1>
+      <p class="content-subtitle">
+        Manage your book's primary metadata, language settings, and core workflow preferences.
+      </p>
+    </header>
+
+    <div class="placeholder-panel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M12 8v4"></path>
+        <path d="M12 16h.01"></path>
+      </svg>
+      <span>Settings will appear here soon.</span>
+    </div>
+  </main>
+</div>

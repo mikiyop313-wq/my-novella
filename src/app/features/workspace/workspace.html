@@ -19,7 +19,8 @@
     <div class="topbar-center view-toggle" 
          [class.is-outline]="store.activeView() === 'outline'"
          [class.is-manuscript]="store.activeView() === 'manuscript'"
-         [class.is-chat]="store.activeView() === 'chat'">
+         [class.is-chat]="store.activeView() === 'chat'"
+         [class.is-settings]="store.activeView() === 'settings'">
       <div class="active-pill"></div>
       <a [routerLink]="['/workspace', bookId, 'outline']" [class.is-active]="store.activeView() === 'outline'" class="view-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -47,7 +48,22 @@
     <div class="topbar-center"></div>
     }
 
-    <div class="topbar-right"></div>
+    <div class="topbar-right">
+      @if (store.bookId(); as bookId) {
+      <a
+        class="icon-btn settings-button"
+        [routerLink]="['/workspace', bookId, 'settings']"
+        title="Book settings"
+        aria-label="Open book settings"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      </a>
+      }
+    </div>
   </header>
 
   <div class="workspace-body">

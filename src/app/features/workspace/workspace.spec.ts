@@ -43,6 +43,7 @@ describe('Workspace', () => {
             activeView: vi.fn(() => 'outline'),
             enterBook: vi.fn(),
             setActiveView: vi.fn(),
+            setLastWorkspaceUrl: vi.fn(),
           },
         },
         { provide: WorkspaceBookStore, useValue: { clearBookHierarchy: vi.fn() } },
@@ -78,6 +79,30 @@ describe('Workspace', () => {
     fixture.detectChanges();
 
     expect(codexContextTrie.loadForContext).toHaveBeenCalledWith('book-1');
+  });
+
+  it('sets settings as the active view for the settings route', () => {
+    const router = TestBed.inject(Router) as Router & { url: string };
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    router.url = '/workspace/book-1/settings';
+
+    fixture.detectChanges();
+
+    expect(workspaceStore.setActiveView).toHaveBeenCalledWith('settings');
+    expect(workspaceStore.setLastWorkspaceUrl).not.toHaveBeenCalled();
+  });
+
+  it('remembers the latest non-settings workspace route', () => {
+    const router = TestBed.inject(Router) as Router & { url: string };
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    router.url = '/workspace/book-1/thread/thread-1';
+
+    fixture.detectChanges();
+
+    expect(workspaceStore.setActiveView).toHaveBeenCalledWith('chat');
+    expect(workspaceStore.setLastWorkspaceUrl).toHaveBeenCalledWith(
+      '/workspace/book-1/thread/thread-1',
+    );
   });
 
   it('returns the selected thread route for the active book', () => {

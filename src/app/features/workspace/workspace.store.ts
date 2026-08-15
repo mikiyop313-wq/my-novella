@@ -3,12 +3,13 @@ import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 
 import { LibraryService } from '../library/services/library.service';
 
-export type WorkspaceView = 'manuscript' | 'outline' | 'chat';
+export type WorkspaceView = 'manuscript' | 'outline' | 'chat' | 'settings';
 
 export interface WorkspaceState {
   bookId: string | null;
   bookTitle: string;
   activeView: WorkspaceView;
+  lastWorkspaceUrl: string | null;
   sidebarOpen: boolean;
   isLoadingBook: boolean;
   error: string | null;
@@ -18,6 +19,7 @@ const initialState: WorkspaceState = {
   bookId: null,
   bookTitle: 'Workspace',
   activeView: 'manuscript',
+  lastWorkspaceUrl: null,
   sidebarOpen: true,
   isLoadingBook: false,
   error: null,
@@ -55,6 +57,10 @@ export const WorkspaceStore = signalStore(
 
     setActiveView(activeView: WorkspaceView): void {
       patchState(store, { activeView });
+    },
+
+    setLastWorkspaceUrl(lastWorkspaceUrl: string): void {
+      patchState(store, { lastWorkspaceUrl });
     },
 
     openSidebar(): void {
