@@ -180,6 +180,38 @@
           </span>
           <span class="active-indicator" aria-hidden="true"></span>
         </button>
+
+        <button
+          class="nav-item section-item"
+          type="button"
+          [class.is-active]="activeSection() === 'ai-configuration'"
+          [attr.aria-current]="activeSection() === 'ai-configuration' ? 'page' : null"
+          (click)="selectSection('ai-configuration')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m12 3-1.35 3.65L7 8l3.65 1.35L12 13l1.35-3.65L17 8l-3.65-1.35L12 3Z"></path>
+              <path
+                d="m18.5 14-0.8 2.2-2.2 0.8 2.2 0.8 0.8 2.2 0.8-2.2 2.2-0.8-2.2-0.8-0.8-2.2Z"
+              ></path>
+              <path
+                d="m5.5 13-0.65 1.85L3 15.5l1.85 0.65L5.5 18l0.65-1.85L8 15.5l-1.85-0.65L5.5 13Z"
+              ></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">AI Configuration</span>
+            <span class="nav-sub">Providers, keys &amp; local servers</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
       }
     </nav>
   </aside>
@@ -891,6 +923,8 @@
       </div>
     } @else if (activeSection() === 'system-prompts') {
       <app-system-prompt-settings [bookId]="activeBookId()!"></app-system-prompt-settings>
+    } @else if (activeSection() === 'ai-configuration') {
+      <app-ai-configuration-settings></app-ai-configuration-settings>
     } @else if (activeSection() === 'editor-display') {
       <div class="settings-section-panel">
         <header class="content-header">

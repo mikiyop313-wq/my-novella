@@ -27,6 +27,7 @@ import { ToastService } from '../../../../shared/services/toast.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/ai-configuration-settings.component';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
 
@@ -41,12 +42,22 @@ type EditableField =
   | 'genres'
   | 'tropes';
 
-type SettingsSection = 'general' | 'system-prompts' | 'editor-display' | 'archive';
+type SettingsSection =
+  | 'general'
+  | 'system-prompts'
+  | 'editor-display'
+  | 'ai-configuration'
+  | 'archive';
 type SettingsView = 'book' | 'general';
 
 @Component({
   selector: 'app-book-settings',
-  imports: [ArchiveSettingsComponent, AutocompleteDropdownComponent, SystemPromptSettingsComponent],
+  imports: [
+    AiConfigurationSettingsComponent,
+    ArchiveSettingsComponent,
+    AutocompleteDropdownComponent,
+    SystemPromptSettingsComponent,
+  ],
   templateUrl: './book-settings.component.html',
   styleUrl: '../../styles/settings.shared.scss',
   host: { class: 'book-settings-panel' },
@@ -257,7 +268,9 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     if (section === this.activeSection()) return;
 
     this.cancelEditing();
-    this.activeView.set(section === 'editor-display' ? 'general' : 'book');
+    this.activeView.set(
+      section === 'editor-display' || section === 'ai-configuration' ? 'general' : 'book',
+    );
     this.activeSection.set(section);
   }
 

@@ -13,6 +13,7 @@ import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/ai-configuration-settings.component';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
 import { SystemPromptService } from '../../services/system-prompt.service';
@@ -375,7 +376,7 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(element.querySelector('.settings-view-switcher')?.classList).toContain('is-general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
-    expect(sections).toHaveLength(1);
+    expect(sections).toHaveLength(2);
     expect(element.querySelectorAll('.settings-section-panel')).toHaveLength(1);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(element.querySelectorAll('.theme-option')).toHaveLength(2);
@@ -392,6 +393,27 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('.theme-option.is-dark')?.getAttribute('aria-checked')).toBe(
       'true',
     );
+  });
+
+  it('opens AI Configuration from general settings', () => {
+    const element = fixture.nativeElement as HTMLElement;
+    const generalSettingsPill =
+      element.querySelectorAll<HTMLButtonElement>('.settings-view-pill')[1];
+
+    generalSettingsPill.click();
+    fixture.detectChanges();
+
+    const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
+    sections[1].click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeView()).toBe('general');
+    expect(fixture.componentInstance.activeSection()).toBe('ai-configuration');
+    expect(sections[1].getAttribute('aria-current')).toBe('page');
+    expect(
+      fixture.debugElement.query(By.directive(AiConfigurationSettingsComponent)),
+    ).not.toBeNull();
+    expect(element.querySelector('.content-title')?.textContent).toContain('AI Configuration');
   });
 
   it('hides the settings view selector when there is no active book', () => {
@@ -416,7 +438,7 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
     expect(element.querySelector('.settings-view-switcher')).toBeNull();
-    expect(element.querySelectorAll('.section-item')).toHaveLength(1);
+    expect(element.querySelectorAll('.section-item')).toHaveLength(2);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(getBooks).not.toHaveBeenCalled();
 
