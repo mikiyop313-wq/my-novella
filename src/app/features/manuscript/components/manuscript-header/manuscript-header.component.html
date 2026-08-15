@@ -1,4 +1,4 @@
-<div class="manuscript-header-node" [id]="'section-' + entityId()" [class.act-mode]="headerType() === 'act'" [class.chapter-mode]="headerType() === 'chapter'" data-drag-handle>
+<div class="manuscript-header-node" [id]="'section-' + entityId()" [class.act-mode]="headerType() === 'act'" [class.chapter-mode]="headerType() === 'chapter'" [class.is-chapter-view]="store.mode() === 'chapter'" data-drag-handle>
   @if (headerType() === 'act') {
     <div class="act-header">
       <div class="act-number">Act {{ position() + 1 }}</div>

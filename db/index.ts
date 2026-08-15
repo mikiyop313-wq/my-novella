@@ -33,7 +33,7 @@ try {
     seedLanguages().catch(err => console.error('Seeding languages failed:', err));
     seedGenres().catch(err => console.error('Seeding genres failed:', err));
     seedTropes().catch(err => console.error('Seeding tropes failed:', err));
-    
+
     // Initialize Vector DB
     vectorDb.getManuscriptTable().then(() => {
         console.log('LanceDB Manuscript table ready');

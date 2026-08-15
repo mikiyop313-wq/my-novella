@@ -2,9 +2,11 @@ import { Injectable, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
 import { ManuscriptStore } from '../store/manuscript.store';
 import { TiptapJsonDoc } from '../../../../../shared/models/manuscript.model';
+import { countWordsInScene } from './manuscript-content.utils';
 
 interface DirtySection {
   prose: TiptapJsonDoc;
+  wordCount: number;
 }
 
 /** ProseMirror node type names that mark structural section boundaries. */
@@ -32,6 +34,8 @@ export class ManuscriptProseSaverService {
    * snapshots its prose JSON, and schedules a debounced DB write.
    */
   onDocumentChanged(transaction: any, editor: Editor): void {
+    this.detectDeletedSections(transaction);
+
     const affectedIds = this.findAffectedSectionIds(transaction, editor);
     if (affectedIds.size === 0) return;
 
@@ -41,14 +45,42 @@ export class ManuscriptProseSaverService {
     this.proseDebounceTimer = setTimeout(() => this.flushDirtySections(), 2000);
   }
 
+  /**
+   * Detects if structural nodes were removed from the document (e.g. user pressed backspace
+   * on a scene node) and triggers their deletion in the database to keep the DB in sync.
+   */
+  private detectDeletedSections(transaction: any): void {
+    const beforeIds = new Map<string, string>();
+    transaction.before.forEach((node: any) => {
+      if (HEADER_NODE_TYPES.has(node.type.name) && node.attrs['id']) {
+        beforeIds.set(node.attrs['id'], node.type.name);
+      }
+    });
+
+    const afterIds = new Set<string>();
+    transaction.doc.forEach((node: any) => {
+      if (HEADER_NODE_TYPES.has(node.type.name) && node.attrs['id']) {
+        afterIds.add(node.attrs['id']);
+      }
+    });
+
+    beforeIds.forEach((type, id) => {
+      if (!afterIds.has(id)) {
+        if (type === 'sceneSummary') this.store.deleteScene(id);
+        else if (type === 'chapterHeader') this.store.deleteChapter(id);
+        else if (type === 'actHeader') this.store.deleteAct(id);
+      }
+    });
+  }
+
   /** Persists all dirty scene sections immediately and clears the queue. */
   flushDirtySections(): void {
     if (this.proseDebounceTimer !== null) {
       clearTimeout(this.proseDebounceTimer);
       this.proseDebounceTimer = null;
     }
-    this.dirtySections.forEach(({ prose }, id) => {
-      this.store.updateScene({ id, prose });
+    this.dirtySections.forEach(({ prose, wordCount }, id) => {
+      this.store.updateScene({ id, prose, wordCount });
     });
     this.dirtySections.clear();
   }
@@ -126,8 +158,10 @@ export class ManuscriptProseSaverService {
 
     const commit = (id: string, content: Record<string, any>[]) => {
       if (affectedIds.has(id)) {
+        const wordCount = countWordsInScene(editor, id);
         this.dirtySections.set(id, {
-          prose: { type: 'doc', content }
+          prose: { type: 'doc', content },
+          wordCount
         });
       }
     };

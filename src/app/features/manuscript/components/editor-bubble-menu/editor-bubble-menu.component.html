@@ -68,16 +68,21 @@
 
     <div class="toolbar-separator"></div>
 
-    <!-- Heading Group: H1, H2 -->
+    <!-- Heading Group: H1 to H4 -->
     <div class="toolbar-group">
-      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 1 })?.run()"
-        [class.active]="store.editor()?.isActive('heading', { level: 1 })" title="Heading 1">
-        <span class="heading-tag">H1</span>
-      </button>
-
-      <button (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 2 })?.run()"
-        [class.active]="store.editor()?.isActive('heading', { level: 2 })" title="Heading 2">
-        <span class="heading-tag">H2</span>
+      <button class="heading-btn" [appOverlayMenu]="headingMenuTemplate" #headingMenuTrigger="appOverlayMenu"
+        (mousedown)="$event.preventDefault()" title="Headings"
+        [class.active]="store.editor()?.isActive('heading')">
+        <span class="heading-tag">
+          {{ store.editor()?.isActive('heading', { level: 1 }) ? 'H1' :
+             store.editor()?.isActive('heading', { level: 2 }) ? 'H2' :
+             store.editor()?.isActive('heading', { level: 3 }) ? 'H3' :
+             store.editor()?.isActive('heading', { level: 4 }) ? 'H4' : 'H' }}
+        </span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6; margin-left: 2px;">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
       </button>
     </div>
 
@@ -151,6 +156,27 @@
         <path d="M10 20H4v-6"></path>
       </svg>
       Expand
+    </button>
+  </div>
+</ng-template>
+
+<ng-template #headingMenuTemplate let-closeMenu>
+  <div class="overlay-menu">
+    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 1 })?.run(); closeMenu()" [class.active]="store.editor()?.isActive('heading', { level: 1 })">
+      <span class="heading-tag" style="font-weight: 700; width: 20px;">H1</span>
+      Heading 1
+    </button>
+    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 2 })?.run(); closeMenu()" [class.active]="store.editor()?.isActive('heading', { level: 2 })">
+      <span class="heading-tag" style="font-weight: 700; width: 20px;">H2</span>
+      Heading 2
+    </button>
+    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 3 })?.run(); closeMenu()" [class.active]="store.editor()?.isActive('heading', { level: 3 })">
+      <span class="heading-tag" style="font-weight: 700; width: 20px;">H3</span>
+      Heading 3
+    </button>
+    <button class="menu-item" (mousedown)="$event.preventDefault()" (click)="store.editor()?.chain()?.focus()?.toggleHeading({ level: 4 })?.run(); closeMenu()" [class.active]="store.editor()?.isActive('heading', { level: 4 })">
+      <span class="heading-tag" style="font-weight: 700; width: 20px;">H4</span>
+      Heading 4
     </button>
   </div>
 </ng-template>

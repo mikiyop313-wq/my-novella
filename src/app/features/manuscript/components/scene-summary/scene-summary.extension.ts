@@ -27,6 +27,11 @@ export const SceneSummaryExtension = (injector: Injector) => {
           default: '',
           parseHTML: element => element.getAttribute('data-summary') || '',
           renderHTML: attributes => ({ 'data-summary': attributes['summary'] }),
+        },
+        position: {
+          default: '',
+          parseHTML: element => element.getAttribute('data-position') || '',
+          renderHTML: attributes => ({ 'data-position': attributes['position'] }),
         }
       };
     },

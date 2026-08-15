@@ -200,5 +200,11 @@
       font-weight: 700;
       letter-spacing: -0.02em;
     }
+
+    &.heading-btn {
+      width: auto;
+      padding: 0 8px;
+      gap: 2px;
+    }
   }
 }

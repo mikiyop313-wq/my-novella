@@ -278,33 +278,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       const pos: number = this.getPos()() ?? 0;
       const nodeSizePosition: number = this.node().nodeSize + pos;
 
-      // Create an initial empty paragraph to receive the AI's response
-      this.editor().chain().focus().insertContentAt(nodeSizePosition, {
-        type: 'paragraph'
-      }).run();
-
-      // +1 to move the cursor inside the newly created paragraph node
-      let currentInsertPos = nodeSizePosition + 1;
-      this.isLoading.set(true);
-
-      // Buffer to accumulate regular text characters to avoid slow 1-by-1 insertions
-      let textBuffer = '';
-      // Flag to track consecutive newlines so we only create one paragraph break for multiple \n\n
-      let isNewlineSequence = false;
-
-      // Helper function to insert the accumulated buffer into the editor
-      const flushBuffer = () => {
-        if (textBuffer.length > 0) {
-          // Record doc size before insertion so we can accurately track how much it grew
-          const beforeSize = this.editor().state.doc.content.size;
-          this.editor().chain().insertContentAt(currentInsertPos, textBuffer).run();
-          const afterSize = this.editor().state.doc.content.size;
-          // Advance the insertion cursor by the exact number of nodes/characters added
-          currentInsertPos += (afterSize - beforeSize);
-          textBuffer = ''; // Reset buffer after successful insertion
-        }
-      };
-
       // Determine provider and modelId
       const selectedId = this.selectedModel();
       const selectedModelObj = this.allModels().find(m => m.id === selectedId);
@@ -322,44 +295,148 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         }
       }
 
-      // Start streaming the AI response
-      await this.aiStateService.generate(text, provider, modelId, (token) => {
-        if (token) {
-          // Process the incoming chunk of text character by character
-          for (let i = 0; i < token.length; i++) {
-            const char = token[i];
+      // Create an initial empty paragraph to receive the AI's response
+      // Wrap it in aiGeneratedBlock (with addToHistory: false)
+      const blockNodeJson = {
+        type: 'aiGeneratedBlock',
+        attrs: { promptText: text, provider: provider, modelId: modelId || '', isGenerating: true },
+        content: [{ type: 'paragraph' }]
+      };
+      const tr = this.editor().state.tr;
+      const node = this.editor().schema.nodeFromJSON(blockNodeJson);
+      tr.insert(nodeSizePosition, node);
+      tr.setMeta('addToHistory', false);
+      this.editor().view.dispatch(tr);
 
-            // Check for newlines (both Unix \n and Windows \r)
-            if (char === '\n' || char === '\r') {
-              // Ignore \r completely. Only act when we see \n
-              if (char === '\n') {
-                // If we aren't already in the middle of a sequence of newlines
-                if (!isNewlineSequence) {
-                  flushBuffer(); // Insert any pending text first
-                  const beforeSize = this.editor().state.doc.content.size;
+      // +2 to move the cursor inside the newly created paragraph node within the block
+      let currentInsertPos = nodeSizePosition + 2;
+      this.isLoading.set(true);
 
-                  // Execute a Tiptap transaction to split the current paragraph node into two
-                  this.editor().view.dispatch(this.editor().state.tr.split(currentInsertPos));
+      // Buffer to accumulate regular text characters to avoid slow 1-by-1 insertions
+      let textBuffer = '';
+      // Flag to track consecutive newlines so we only create one paragraph break for multiple \n\n
+      let isNewlineSequence = false;
 
-                  const afterSize = this.editor().state.doc.content.size;
-                  currentInsertPos += (afterSize - beforeSize); // Move cursor into the new paragraph
-                  isNewlineSequence = true;
-                }
-              }
-            } else {
-              // We hit a normal character. Reset the newline sequence flag and buffer the character.
-              isNewlineSequence = false;
-              textBuffer += char;
-            }
-          }
-          // Flush the buffer at the end of each token so the user sees the text appearing live
-          flushBuffer();
+      // Helper function to insert the accumulated buffer into the editor
+      const flushBuffer = () => {
+        if (textBuffer.length > 0) {
+          const beforeSize = this.editor().state.doc.content.size;
+          const trInsert = this.editor().state.tr.insertText(textBuffer, currentInsertPos);
+          trInsert.setMeta('addToHistory', false);
+          this.editor().view.dispatch(trInsert);
+          const afterSize = this.editor().state.doc.content.size;
+          // Advance the insertion cursor by the exact number of nodes/characters added
+          currentInsertPos += (afterSize - beforeSize);
+          textBuffer = ''; // Reset buffer after successful insertion
         }
-      }).finally(() => {
+      };
+
+
+
+      let hasError = false;
+      try {
+        // Start streaming the AI response
+        await this.aiStateService.generate(text, provider, modelId, (token) => {
+          if (token) {
+            // Process the incoming chunk of text character by character
+            for (let i = 0; i < token.length; i++) {
+              const char = token[i];
+
+              // Check for newlines (both Unix \n and Windows \r)
+              if (char === '\n' || char === '\r') {
+                // Ignore \r completely. Only act when we see \n
+                if (char === '\n') {
+                  // If we aren't already in the middle of a sequence of newlines
+                  if (!isNewlineSequence) {
+                    flushBuffer(); // Insert any pending text first
+                    const beforeSize = this.editor().state.doc.content.size;
+
+                    // Execute a Tiptap transaction to split the current paragraph node into two
+                    const trSplit = this.editor().state.tr.split(currentInsertPos);
+                    trSplit.setMeta('addToHistory', false);
+                    this.editor().view.dispatch(trSplit);
+
+                    const afterSize = this.editor().state.doc.content.size;
+                    currentInsertPos += (afterSize - beforeSize); // Move cursor into the new paragraph
+                    isNewlineSequence = true;
+                  }
+                }
+              } else {
+                // We hit a normal character. Reset the newline sequence flag and buffer the character.
+                isNewlineSequence = false;
+                textBuffer += char;
+              }
+            }
+            // Flush the buffer at the end of each token so the user sees the text appearing live
+          }
+        });
+      } catch (err) {
+        hasError = true;
+        console.error('AI Generation failed in prompt:', err);
+      } finally {
         // Ensure any remaining text in the buffer is inserted when the stream finishes
         flushBuffer();
         this.isLoading.set(false);
-      });
+
+        if (hasError) {
+          // Find the generating block and remove it
+          const state = this.editor().state;
+          let blockPos: number | null = null;
+          let blockSize: number | null = null;
+
+          state.doc.descendants((node, pos) => {
+            if (node.type.name === 'aiGeneratedBlock' && node.attrs['isGenerating']) {
+              blockPos = pos;
+              blockSize = node.nodeSize;
+              return false;
+            }
+            return true;
+          });
+
+          if (blockPos !== null && blockSize !== null) {
+            const trDel = this.editor().state.tr.delete(blockPos, blockPos + blockSize);
+            trDel.setMeta('addToHistory', false);
+            this.editor().view.dispatch(trDel);
+          }
+        } else {
+          // Find the generating block
+          const state = this.editor().state;
+          let blockPos: number | null = null;
+          let blockNode: any = null;
+
+          state.doc.descendants((node, pos) => {
+            if (node.type.name === 'aiGeneratedBlock' && node.attrs['isGenerating']) {
+              blockPos = pos;
+              blockNode = node;
+              return false;
+            }
+            return true;
+          });
+
+          if (blockPos !== null && blockNode !== null) {
+            const finalizedBlockJson = {
+              type: 'aiGeneratedBlock',
+              attrs: {
+                promptText: blockNode.attrs['promptText'] || '',
+                provider: blockNode.attrs['provider'] || '',
+                modelId: blockNode.attrs['modelId'] || '',
+                isGenerating: false
+              },
+              content: blockNode.content.toJSON()
+            };
+
+            const blockNodeSize: number = blockNode.nodeSize;
+
+            // Delete the temporary block (without adding to history)
+            const trDel = this.editor().state.tr.delete(blockPos, blockPos + blockNodeSize);
+            trDel.setMeta('addToHistory', false);
+            this.editor().view.dispatch(trDel);
+
+            // Insert finalized block (with adding to history)
+            this.editor().chain().insertContentAt(blockPos, finalizedBlockJson).focus().run();
+          }
+        }
+      }
     }
   }
 
