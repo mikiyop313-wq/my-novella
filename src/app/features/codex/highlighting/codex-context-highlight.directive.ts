@@ -155,6 +155,7 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
     if (entryIds.length === 0) return;
 
     event.preventDefault();
+    event.stopPropagation();
     this.chooser.open(entryIds, event.clientX, event.clientY);
   }
 

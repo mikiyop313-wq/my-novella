@@ -195,22 +195,32 @@ describe('CodexContextHighlightDirective', () => {
     expect(registry.setRanges).toHaveBeenCalledTimes(1);
   });
 
-  it('opens previews for unique and duplicate matches', () => {
+  it('opens previews for unique and duplicate matches without propagating keyword clicks', () => {
     flushFrames();
     vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: true } as Selection);
     const target = fixture.nativeElement.querySelector('.inline') as HTMLElement;
+    const parentClick = vi.fn();
+    fixture.nativeElement.addEventListener('click', parentClick);
 
     registry.getEntryIdsAtPoint.mockReturnValueOnce(['codex-1']);
-    target.dispatchEvent(
-      new MouseEvent('click', { bubbles: true, button: 0, clientX: 12, clientY: 20 }),
-    );
+    const keywordClick = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 12,
+      clientY: 20,
+    });
+    target.dispatchEvent(keywordClick);
     expect(chooser.open).toHaveBeenCalledWith(['codex-1'], 12, 20);
+    expect(keywordClick.defaultPrevented).toBe(true);
+    expect(parentClick).not.toHaveBeenCalled();
 
     registry.getEntryIdsAtPoint.mockReturnValueOnce(['codex-2', 'codex-1', 'codex-2']);
     target.dispatchEvent(
       new MouseEvent('click', { bubbles: true, button: 0, clientX: 12, clientY: 20 }),
     );
     expect(chooser.open).toHaveBeenLastCalledWith(['codex-2', 'codex-1'], 12, 20);
+    expect(parentClick).not.toHaveBeenCalled();
   });
 
   it('shows a pointer cursor only while hovering a highlighted keyword', () => {

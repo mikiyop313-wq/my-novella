@@ -244,21 +244,29 @@
                               @if (editing()[scene.id]) {
                               <div class="scene-summary">
                                 <span class="scene-summary-label">Summary</span>
-                                <textarea class="scene-summary-input" rows="3" placeholder="Add a summary..."
-                                  aria-label="Scene summary" (click)="$event.stopPropagation()" (blur)="
-                                              updateSceneSummary(
-                                                scene.id,
-                                                $any($event.target).value,
-                                                $any($event)
-                                              )
-                                            ">{{ scene.summary || '' }}</textarea>
+                                <app-markdown-editor class="scene-summary-input"
+                                  [value]="sceneSummaryValue(scene)" placeholder="Add a summary..."
+                                  ariaLabel="Scene summary" (click)="$event.stopPropagation()"
+                                  (valueChange)="updateSceneSummaryDraft(scene.id, $event)" (focusout)="
+                                            updateSceneSummary(
+                                              scene.id,
+                                              sceneSummaryValue(scene),
+                                              $any($event)
+                                            )
+                                          ">
+                                </app-markdown-editor>
                               </div>
                               } @else {
                               <div class="scene-summary">
                                 <span class="scene-summary-label">Summary</span>
-                                <p class="scene-summary-body">
-                                  {{ scene.summary || 'No summary yet...' }}
-                                </p>
+                                <div class="scene-summary-body">
+                                  @if (scene.summary?.trim()) {
+                                  <markdown class="scene-summary-markdown" [data]="scene.summary || ''"
+                                    codexContextHighlight></markdown>
+                                  } @else {
+                                  <span class="scene-summary-empty">No summary yet...</span>
+                                  }
+                                </div>
                               </div>
                               }
 

@@ -1,11 +1,17 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
+import { provideMarkdown } from 'ngx-markdown';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 
 import { ToastService } from '../../shared/services/toast.service';
+import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import { CodexContextHighlightRegistryService } from '../codex/highlighting/codex-context-highlight-registry.service';
+import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
+import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { Outline } from './outline';
 import { OutlineStore } from './store/outline.store';
 
@@ -14,8 +20,26 @@ describe('Outline', () => {
   let fixture: ComponentFixture<Outline>;
   let store: any;
   let toastService: Pick<ToastService, 'error'>;
+  const trieState = signal<object | null>({});
+  const contextTrie = {
+    trie: trieState.asReadonly(),
+    findMatches: vi.fn((text: string) => findCodexMatches(text)),
+  };
+  const highlightRegistry = {
+    setRanges: vi.fn(),
+    clearRanges: vi.fn(),
+    getEntryIdsAtPoint: vi.fn<() => string[]>(() => []),
+  };
+  const matchChooser = { open: vi.fn() };
 
   beforeEach(async () => {
+    trieState.set({});
+    contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
+    highlightRegistry.setRanges.mockClear();
+    highlightRegistry.clearRanges.mockClear();
+    highlightRegistry.getEntryIdsAtPoint.mockReset().mockReturnValue([]);
+    matchChooser.open.mockClear();
+
     store = {
       bookId: signal('book-1'),
       isLoading: signal(false),
@@ -61,6 +85,10 @@ describe('Outline', () => {
         },
         { provide: OutlineStore, useValue: store },
         { provide: ToastService, useValue: toastService },
+        { provide: CodexContextTrieService, useValue: contextTrie },
+        { provide: CodexContextHighlightRegistryService, useValue: highlightRegistry },
+        { provide: CodexMatchChooserService, useValue: matchChooser },
+        ...provideMarkdown(),
       ],
     }).compileComponents();
 
@@ -120,6 +148,132 @@ describe('Outline', () => {
     expect(store.updateScene).toHaveBeenCalledWith({ id: 'scene-1', summary: 'New scene summary' });
   });
 
+  it('edits scene summaries with the Markdown editor and saves the draft on focus loss', async () => {
+    store.bookHierarchy.set([
+      {
+        id: 'act-1',
+        title: 'Act 1',
+        chapters: [
+          {
+            id: 'chapter-1',
+            title: 'Chapter 1',
+            scenes: [
+              { id: 'scene-1', title: 'Scene 1', summary: 'Scene summary', wordCount: 0 },
+            ],
+          },
+        ],
+      },
+    ]);
+    component.editing.set({ 'scene-1': true });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const editorDebugElement = fixture.debugElement.query(By.directive(MarkdownEditorComponent));
+    expect(editorDebugElement).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('textarea.scene-summary-input')).toBeNull();
+    expect(fixture.nativeElement.querySelector('markdown.scene-summary-markdown')).toBeNull();
+
+    const editor = editorDebugElement.componentInstance as MarkdownEditorComponent;
+    const view = editor.editorView();
+    expect(view).not.toBeNull();
+    expect(view?.state.doc.toString()).toBe('Scene summary');
+
+    view?.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: '**New** summary' },
+    });
+
+    expect(component.sceneSummaryDrafts()['scene-1']).toBe('**New** summary');
+    expect(store.updateScene).not.toHaveBeenCalled();
+
+    view?.contentDOM.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(store.updateScene).toHaveBeenCalledWith({
+        id: 'scene-1',
+        summary: '**New** summary',
+      });
+    });
+    expect(component.sceneSummaryDrafts()['scene-1']).toBeUndefined();
+  });
+
+  it('renders sanitized Markdown for scene summaries in view mode', async () => {
+    showScene([
+      'Mara **Vale** and *fearless*.',
+      '',
+      '- First beat',
+      '- Second beat',
+      '',
+      '<script>alert(1)</script>',
+    ].join('\n'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const summary = fixture.nativeElement.querySelector(
+      'markdown.scene-summary-markdown',
+    ) as HTMLElement;
+
+    expect(summary).not.toBeNull();
+    expect(summary.querySelector('strong')?.textContent).toBe('Vale');
+    expect(summary.querySelector('em')?.textContent).toBe('fearless');
+    expect(summary.querySelectorAll('li')).toHaveLength(2);
+    expect(summary.querySelector('script')).toBeNull();
+    expect(summary.textContent).not.toContain('**');
+  });
+
+  it('highlights Codex keywords across rendered Markdown elements', async () => {
+    highlightRegistry.setRanges.mockClear();
+    contextTrie.findMatches.mockClear();
+    showScene('Mara **Vale** enters.');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await waitForHighlightScan();
+
+    const ranges = highlightRegistry.setRanges.mock.calls.at(-1)?.[1] ?? [];
+    expect(ranges.map((item: { range: Range }) => item.range.toString())).toEqual(['Mara Vale']);
+  });
+
+  it('opens Codex keywords without opening the manuscript scene', async () => {
+    showScene('Mara **Vale** enters.');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: true } as Selection);
+    const openManuscript = vi.spyOn(component, 'openManuscript');
+    const keyword = fixture.nativeElement.querySelector(
+      'markdown.scene-summary-markdown strong',
+    ) as HTMLElement;
+
+    highlightRegistry.getEntryIdsAtPoint.mockReturnValueOnce(['codex-1']);
+    keyword.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 12,
+      clientY: 20,
+    }));
+
+    expect(matchChooser.open).toHaveBeenCalledWith(['codex-1'], 12, 20);
+    expect(openManuscript).not.toHaveBeenCalled();
+
+    highlightRegistry.getEntryIdsAtPoint.mockReturnValueOnce([]);
+    keyword.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+    expect(openManuscript).toHaveBeenCalledWith('scene', 'scene-1');
+  });
+
+  it('shows an unscanned placeholder for an empty scene summary', async () => {
+    contextTrie.findMatches.mockClear();
+    showScene('   ');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await waitForHighlightScan();
+
+    expect(fixture.nativeElement.querySelector('markdown.scene-summary-markdown')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.scene-summary-empty')?.textContent)
+      .toContain('No summary yet...');
+    expect(contextTrie.findMatches).not.toHaveBeenCalled();
+  });
+
   it('skips unchanged title updates', async () => {
     store.bookHierarchy.set([
       {
@@ -173,6 +327,33 @@ describe('Outline', () => {
 
     expect(toastService.error).toHaveBeenCalledWith('Update exploded', 'Outline');
     expect(component.editing()['act-1']).toBe(true);
+  });
+
+  it('retains a scene summary draft when saving fails', async () => {
+    store.bookHierarchy.set([
+      {
+        id: 'act-1',
+        title: 'Act 1',
+        chapters: [
+          {
+            id: 'chapter-1',
+            title: 'Chapter 1',
+            scenes: [
+              { id: 'scene-1', title: 'Scene 1', summary: 'Scene summary' },
+            ],
+          },
+        ],
+      },
+    ]);
+    component.editing.set({ 'scene-1': true });
+    component.updateSceneSummaryDraft('scene-1', 'Unsaved **summary**');
+    store.updateScene.mockRejectedValueOnce(new Error('Update exploded'));
+
+    await component.updateSceneSummary('scene-1', 'Unsaved **summary**');
+
+    expect(component.sceneSummaryDrafts()['scene-1']).toBe('Unsaved **summary**');
+    expect(component.editing()['scene-1']).toBe(true);
+    expect(toastService.error).toHaveBeenCalledWith('Update exploded', 'Outline');
   });
 
   it('keeps scene editing active when focus moves from title to summary', async () => {
@@ -304,4 +485,43 @@ describe('Outline', () => {
     expect(mockTrigger2.isOpen).toHaveBeenCalled();
     expect(mockTrigger2.close).not.toHaveBeenCalled();
   });
+
+  function showScene(summary: string): void {
+    store.bookHierarchy.set([
+      {
+        id: 'act-1',
+        title: 'Act 1',
+        chapters: [
+          {
+            id: 'chapter-1',
+            title: 'Chapter 1',
+            scenes: [
+              { id: 'scene-1', title: 'Scene 1', summary, wordCount: 0 },
+            ],
+          },
+        ],
+      },
+    ]);
+    component.editing.set({});
+    fixture.detectChanges();
+  }
+
+  async function waitForHighlightScan(): Promise<void> {
+    await Promise.resolve();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  }
 });
+
+function findCodexMatches(text: string) {
+  return [...text.matchAll(/Mara\s+Vale/gi)].map((match) => ({
+    term: 'mara vale',
+    value: {
+      entryId: 'codex-1',
+      trackingSetting: 'include_when_detected' as const,
+      status: 'active' as const,
+    },
+    startIndex: match.index,
+    endIndex: match.index + match[0].length,
+    text: match[0],
+  }));
+}

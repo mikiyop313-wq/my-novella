@@ -1,3 +1,5 @@
+@use '../../shared/styles/markdown' as markdown;
+
 // Outline View
 // Dark literary aesthetic with card-based scene layout.
 
@@ -110,7 +112,7 @@
   border-radius: 12px;
   margin: 2rem auto;
   max-width: 600px;
-  
+
   .empty-state-icon {
     display: flex;
     align-items: center;
@@ -496,6 +498,7 @@
   gap: 1rem;
   padding-left: 0.25rem;
   min-height: 40px;
+  margin: 8px 0 8px 0;
 }
 
 .scene-wrapper {
@@ -647,36 +650,31 @@
   }
 
   .scene-summary-input {
-    font-family: inherit;
-    font-size: 0.8rem;
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    padding: 0.4rem;
     width: 100%;
-    box-sizing: border-box;
-    resize: none;
-    outline: none;
-    margin: 0;
     flex: 1;
-    overflow-y: auto;
-    transition:
-      border-color 150ms ease,
-      background 150ms ease;
-    opacity: 0.85;
-    background: color-mix(in srgb, var(--color-surface) 95%, var(--color-text-primary));
+    min-height: 0;
+    overflow: hidden;
+  }
 
-    &:focus {
+  ::ng-deep .scene-summary-input .cm-editor {
+    height: 100%;
+    min-height: 0;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-surface) 95%, var(--color-text-primary));
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    opacity: 0.85;
+
+    &.cm-focused {
       border-color: var(--color-text-secondary);
+      box-shadow: none;
       opacity: 1;
     }
+  }
 
-    &::placeholder {
-      color: var(--color-text-secondary);
-      opacity: 0.5;
-    }
+  ::ng-deep .scene-summary-input .cm-content {
+    padding: 0.4rem;
   }
 
   .scene-summary-body {
@@ -690,6 +688,10 @@
     -webkit-box-orient: vertical;
     overflow: auto;
     opacity: 0.75;
+  }
+
+  .scene-summary-markdown {
+    @include markdown.markdown-compact-content;
   }
 
   .scene-card-footer {
@@ -725,6 +727,10 @@
   }
 
   .scene-summary-input {
+    min-height: 120px;
+  }
+
+  ::ng-deep .scene-summary-input .cm-editor {
     min-height: 120px;
   }
 
@@ -807,11 +813,11 @@
       padding: 1.2rem 1.5rem;
       display: flex;
       flex-direction: column;
-      
+
       .scene-summary-label {
         display: none;
       }
-      
+
       .scene-summary-body {
         -webkit-line-clamp: unset;
         font-size: 0.88rem;
@@ -821,25 +827,34 @@
         flex: 1;
         margin: 0;
         padding-right: 0.5rem;
-        
+
         &::-webkit-scrollbar {
           width: 4px;
         }
+
         &::-webkit-scrollbar-track {
           background: transparent;
         }
+
         &::-webkit-scrollbar-thumb {
           background: color-mix(in srgb, var(--color-border) 60%, transparent);
           border-radius: 4px;
         }
+
         &:hover::-webkit-scrollbar-thumb {
           background: var(--color-text-secondary);
         }
       }
-      
+
       .scene-summary-input {
         flex: 1;
-        overflow-y: auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      ::ng-deep .scene-summary-input .cm-editor {
+        height: 100%;
+        min-height: 0;
       }
     }
 
@@ -862,7 +877,7 @@
     flex-direction: row;
     padding: 1rem 1.5rem;
     gap: 1rem;
-    
+
     .insert-scene-icon {
       width: 28px;
       height: 28px;

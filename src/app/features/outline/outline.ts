@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import {
   ActDto,
@@ -15,6 +16,8 @@ import {
 
 import { ToastService } from '../../shared/services/toast.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
+import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { OutlineStore } from './store/outline.store';
 
 // -----------------------------------------------------------------------------
@@ -60,7 +63,15 @@ const transferBetween = <T>(
 @Component({
   selector: 'app-outline',
   standalone: true,
-  imports: [DragDropModule, DecimalPipe, CdkMenuModule, ElementAnimationDirective],
+  imports: [
+    DragDropModule,
+    DecimalPipe,
+    CdkMenuModule,
+    ElementAnimationDirective,
+    MarkdownComponent,
+    MarkdownEditorComponent,
+    CodexContextHighlightDirective,
+  ],
   templateUrl: './outline.html',
   styleUrl: './outline.scss',
 })
@@ -82,6 +93,7 @@ export class Outline implements OnInit {
   // Local UI state for collapsed sections and inline title/comment editing.
   collapsed = signal<Record<string, boolean>>({});
   editing = signal<Record<string, boolean>>({});
+  sceneSummaryDrafts = signal<Record<string, string>>({});
   sceneCardMode = signal<'compact' | 'fit' | 'list'>('compact');
 
   // ---------------------------------------------------------------------------
@@ -492,12 +504,14 @@ export class Outline implements OnInit {
     const currentSummary = this.findScene(sceneId)?.summary ?? '';
 
     if (currentSummary === nextSummary) {
+      this.clearSceneSummaryDraft(sceneId);
       this.setSceneEditing(sceneId, keepEditing);
       return;
     }
 
     try {
       await this.store.updateScene({ id: sceneId, summary: nextSummary });
+      this.clearSceneSummaryDraft(sceneId);
       this.setSceneEditing(sceneId, keepEditing);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update scene summary.';
@@ -520,12 +534,33 @@ export class Outline implements OnInit {
     return !hasSummary && !hasProse;
   }
 
+  sceneSummaryValue(scene: SceneDto): string {
+    return this.sceneSummaryDrafts()[scene.id] ?? scene.summary ?? '';
+  }
+
+  updateSceneSummaryDraft(sceneId: string, summary: string): void {
+    this.sceneSummaryDrafts.update((drafts) => ({
+      ...drafts,
+      [sceneId]: summary,
+    }));
+  }
+
   private normalizeEditableValue(value: string): string {
     return value.trim().length === 0 ? '' : value;
   }
 
   private setSceneEditing(sceneId: string, keepEditing: boolean): void {
     this.editing.update((state) => ({ ...state, [sceneId]: keepEditing }));
+  }
+
+  private clearSceneSummaryDraft(sceneId: string): void {
+    this.sceneSummaryDrafts.update((drafts) => {
+      if (!(sceneId in drafts)) return drafts;
+
+      const nextDrafts = { ...drafts };
+      delete nextDrafts[sceneId];
+      return nextDrafts;
+    });
   }
 
   private findAct(actId: string): ActDto | undefined {
