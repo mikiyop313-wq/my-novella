@@ -22,10 +22,22 @@
         <path d="M12 8h.01"></path>
       </svg>
       <div>
-        <strong>Configuration preview</strong>
-        <p>Credentials are temporary and are not saved or used for AI requests yet.</p>
+        <strong>Secure provider configuration</strong>
+        <p>
+          API keys are encrypted by your operating system before being stored. Saved
+          configuration is not used for AI requests yet.
+        </p>
       </div>
     </div>
+
+    @if (isLoading()) {
+      <div class="configuration-state" role="status">Loading provider configuration…</div>
+    } @else if (loadError(); as error) {
+      <div class="configuration-state is-error" role="alert">
+        <span>{{ error }}</span>
+        <button type="button" (click)="loadConfiguration()">Retry</button>
+      </div>
+    }
 
     <section class="provider-section" aria-labelledby="cloud-providers-heading">
       <header class="section-header">
@@ -55,9 +67,12 @@
             [class.is-selected]="selectedProvider() === provider.id"
             [attr.aria-pressed]="selectedProvider() === provider.id"
             [attr.data-provider]="provider.id"
+            [disabled]="isLoading()"
             (click)="selectProvider(provider.id)"
           >
-            <span class="provider-mark" aria-hidden="true">{{ provider.mark }}</span>
+            <span class="provider-mark" aria-hidden="true">
+              <app-ai-provider-icon [providerId]="provider.id" />
+            </span>
             <span class="provider-copy">
               <strong>{{ provider.name }}</strong>
               <span>{{ provider.description }}</span>
@@ -82,57 +97,68 @@
         <div class="provider-editor">
           <div class="field-heading">
             <label [for]="provider.id + '-api-key'">{{ provider.name }} API key</label>
-            <span>Kept only in memory for this preview.</span>
+            <span
+              class="field-status"
+              [class.is-error]="fieldErrors()[provider.id]"
+              aria-live="polite"
+            >{{ fieldStatus(provider.id) }}</span>
           </div>
+          <p class="field-help">Saving a new key replaces the key currently configured.</p>
           <div class="credential-input">
             <input
               [id]="provider.id + '-api-key'"
-              [type]="apiKeyVisible() ? 'text' : 'password'"
-              [value]="apiKeys()[provider.id]"
+              [type]="apiKeyInputType(provider.id)"
+              [value]="apiKeyInputValue(provider.id)"
               [placeholder]="provider.keyPlaceholder"
+              [disabled]="isLoading() || !!loadError()"
               autocomplete="off"
               spellcheck="false"
+              (focus)="beginApiKeyEdit(provider.id, $event)"
               (input)="updateApiKey(provider.id, $event)"
+              (blur)="saveApiKeyOnBlur(provider.id)"
             />
-            <button
-              class="visibility-button"
-              type="button"
-              [attr.aria-label]="apiKeyVisible() ? 'Hide API key' : 'Show API key'"
-              [attr.aria-pressed]="apiKeyVisible()"
-              (click)="toggleApiKeyVisibility()"
-            >
-              @if (apiKeyVisible()) {
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="m3 3 18 18"></path>
-                  <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7"></path>
-                  <path
-                    d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9.5 5 9.5 5a18 18 0 0 1-2.1 2.5"
-                  ></path>
-                  <path d="M6.6 6.6C4 8.2 2.5 11 2.5 11S6.5 16 12 16c.7 0 1.4-.1 2-.2"></path>
-                </svg>
-              } @else {
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M2.5 12S6.5 7 12 7s9.5 5 9.5 5-4 5-9.5 5-9.5-5-9.5-5Z"></path>
-                  <circle cx="12" cy="12" r="2.5"></circle>
-                </svg>
-              }
-            </button>
+            @if (focusedApiKeyProvider() === provider.id) {
+              <button
+                class="visibility-button"
+                type="button"
+                [attr.aria-label]="apiKeyVisible() ? 'Hide API key' : 'Show API key'"
+                [attr.aria-pressed]="apiKeyVisible()"
+                (mousedown)="$event.preventDefault()"
+                (click)="toggleApiKeyVisibility()"
+              >
+                @if (apiKeyVisible()) {
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m3 3 18 18"></path>
+                    <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7"></path>
+                    <path
+                      d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9.5 5 9.5 5a18 18 0 0 1-2.1 2.5"
+                    ></path>
+                    <path d="M6.6 6.6C4 8.2 2.5 11 2.5 11S6.5 16 12 16c.7 0 1.4-.1 2-.2"></path>
+                  </svg>
+                } @else {
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M2.5 12S6.5 7 12 7s9.5 5 9.5 5-4 5-9.5 5-9.5-5-9.5-5Z"></path>
+                    <circle cx="12" cy="12" r="2.5"></circle>
+                  </svg>
+                }
+              </button>
+            }
           </div>
         </div>
       }
@@ -168,9 +194,12 @@
             [class.is-selected]="selectedProvider() === provider.id"
             [attr.aria-pressed]="selectedProvider() === provider.id"
             [attr.data-provider]="provider.id"
+            [disabled]="isLoading()"
             (click)="selectProvider(provider.id)"
           >
-            <span class="provider-mark" aria-hidden="true">{{ provider.mark }}</span>
+            <span class="provider-mark" aria-hidden="true">
+              <app-ai-provider-icon [providerId]="provider.id" />
+            </span>
             <span class="provider-copy">
               <strong>{{ provider.name }}</strong>
               <span>{{ provider.description }}</span>
@@ -195,17 +224,24 @@
         <div class="provider-editor">
           <div class="field-heading">
             <label [for]="provider.id + '-server-url'">{{ provider.name }} server URL</label>
-            <span>Enter the address of your locally running server.</span>
+            <span
+              class="field-status"
+              [class.is-error]="fieldErrors()[provider.id]"
+              aria-live="polite"
+            >{{ fieldStatus(provider.id) }}</span>
           </div>
+          <p class="field-help">Enter the HTTP or HTTPS address of your locally running server.</p>
           <input
             class="server-url-input"
             [id]="provider.id + '-server-url'"
             type="url"
             [value]="serverUrls()[provider.id]"
             [placeholder]="provider.urlPlaceholder"
+            [disabled]="isLoading() || !!loadError()"
             autocomplete="off"
             spellcheck="false"
             (input)="updateServerUrl(provider.id, $event)"
+            (blur)="saveServerUrlOnBlur(provider.id)"
           />
         </div>
       }

@@ -9,12 +9,12 @@ export class OpenRouterProvider implements AiProvider {
     readonly name = 'OpenRouter';
 
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
-        // TODO: Retrieve API key from user settings securely
-        //const apiKey = process.env.OPENROUTER_API_KEY; 
-        const apiKey = "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";
+        const apiKey = this.getConfiguredApiKey();
 
         if (!apiKey) {
-            console.warn('[OpenRouter] Warning: OPENROUTER_API_KEY is not set in environment variables.');
+            throw new Error(
+                'OpenRouter generation is unavailable until saved provider configuration is connected.',
+            );
         }
 
         console.log(`[OpenRouter] Generating prompt: ${this.getPromptPreview(request).substring(0, 50)}...`);
@@ -103,6 +103,10 @@ export class OpenRouterProvider implements AiProvider {
         }
 
         return request.messages?.find((message) => message.content?.trim())?.content.trim() ?? '';
+    }
+
+    private getConfiguredApiKey(): string | null {
+        return null;
     }
 
     async getAvailableModels(): Promise<any[]> {

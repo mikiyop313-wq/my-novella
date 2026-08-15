@@ -1,4 +1,10 @@
 import { ipcMain } from 'electron';
+import type {
+    LoadAiApiKeyRequest,
+    SaveAiApiKeyRequest,
+    SaveAiServerUrlRequest,
+} from '../../../shared/models/ai.model';
+import { aiConfigurationService } from '../../domain/ai/ai-configuration.service';
 import { aiService } from '../../domain/ai/ai.service';
 import { AiPromptRequest } from '../../domain/ai/models';
 import { OpenRouterProvider } from '../../domain/ai/providers/openrouter.provider';
@@ -6,6 +12,43 @@ import { OpenRouterProvider } from '../../domain/ai/providers/openrouter.provide
 let currentAbortController: AbortController | null = null;
 
 export function setupAiHandlers() {
+    ipcMain.handle('ai:config:load', async () => {
+        return aiConfigurationService.loadConfiguration();
+    });
+
+    ipcMain.handle(
+        'ai:config:load-api-key',
+        async (_event, request: LoadAiApiKeyRequest) => {
+            if (!request || typeof request.providerId !== 'string') {
+                throw new Error('Invalid API key load request.');
+            }
+
+            return aiConfigurationService.loadApiKey(request.providerId);
+        },
+    );
+
+    ipcMain.handle(
+        'ai:config:save-api-key',
+        async (_event, request: SaveAiApiKeyRequest) => {
+            if (!request || typeof request.providerId !== 'string' || typeof request.apiKey !== 'string') {
+                throw new Error('Invalid API key configuration request.');
+            }
+
+            return aiConfigurationService.saveApiKey(request.providerId, request.apiKey);
+        },
+    );
+
+    ipcMain.handle(
+        'ai:config:save-server-url',
+        async (_event, request: SaveAiServerUrlRequest) => {
+            if (!request || typeof request.providerId !== 'string' || typeof request.serverUrl !== 'string') {
+                throw new Error('Invalid server URL configuration request.');
+            }
+
+            return aiConfigurationService.saveServerUrl(request.providerId, request.serverUrl);
+        },
+    );
+
     ipcMain.handle('ai:generate', async (event, request: AiPromptRequest) => {
         // Create a fresh controller for this generation session
         currentAbortController = new AbortController();
