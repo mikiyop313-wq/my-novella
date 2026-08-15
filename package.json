@@ -1,12 +1,21 @@
 {
   "name": "my-novella",
   "version": "0.0.0",
+  "main": "dist-electron/main.js",
   "scripts": {
     "ng": "ng",
+    "ng:serve": "ng serve",
+    "electron:serve": "wait-on http-get://localhost:4200 && vite",
+    "dev": "concurrently \"npm run ng:serve\" \"npm run electron:serve\"",
     "start": "ng serve",
-    "build": "ng build",
+    "build:electron": "vite build",
+    "build": "ng build && npm run build:electron",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "electron": "npm run build:electron && electron .",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
   },
   "private": true,
   "packageManager": "npm@11.11.0",
@@ -17,6 +26,8 @@
     "@angular/forms": "^21.2.0",
     "@angular/platform-browser": "^21.2.0",
     "@angular/router": "^21.2.0",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
@@ -24,9 +35,17 @@
     "@angular/build": "^21.2.7",
     "@angular/cli": "^21.2.7",
     "@angular/compiler-cli": "^21.2.0",
+    "@electron/rebuild": "^4.0.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "concurrently": "^9.2.1",
+    "drizzle-kit": "^0.31.10",
+    "electron": "^41.2.0",
     "jsdom": "^28.0.0",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2",
-    "vitest": "^4.0.8"
+    "vite": "^7.3.2",
+    "vite-plugin-electron": "^0.29.1",
+    "vitest": "^4.0.8",
+    "wait-on": "^9.0.5"
   }
 }
