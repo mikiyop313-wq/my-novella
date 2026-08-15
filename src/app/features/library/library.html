@@ -1,5 +1,5 @@
 <div class="library-container">
-    @if (books().length > 0) {
+    @if (bookStore.books().length > 0) {
     <h1 class="title">The library</h1>
     <app-search-bar></app-search-bar>
 
@@ -14,8 +14,8 @@
     </div>
 
     <div class="books-grid">
-        @for (book of books(); track $index) {
-        <app-book-card class="book-card"></app-book-card>
+        @for (book of bookStore.books(); track $index) {
+        <app-book-card class="book-card" [book]="book"></app-book-card>
         }
     </div>
     } @else {

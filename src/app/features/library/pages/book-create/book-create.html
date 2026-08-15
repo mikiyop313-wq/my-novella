@@ -35,14 +35,32 @@
         </div>
       </div>
 
-      <div class="input-group">
+      <div class="input-group autocomplete-group">
         <label for="language">Language</label>
-        <div class="select-wrapper">
-          <select id="language" formControlName="language">
-            @for (lang of languages; track lang.value) {
-            <option [value]="lang.value">{{lang.label}}</option>
-            }
-          </select>
+        <div class="autocomplete-wrapper">
+          <div class="dropdown-trigger" [cdkMenuTriggerFor]="languageMenu" (cdkMenuOpened)="onMenuOpened('language')">
+            <span [class.placeholder]="!bookForm.get('language')?.value">
+              {{getSelectedLanguageLabel()}}
+            </span>
+            <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"
+              fill="currentColor">
+              <path d="M480-360 280-560h400L480-360Z" />
+            </svg>
+          </div>
+          <ng-template #languageMenu>
+            <div class="autocomplete-dropdown" cdkMenu>
+              <div class="dropdown-search">
+                <input id="languageInput" type="text" [formControl]="languageInput"
+                  placeholder="Write custom language and press Enter..." (input)="onInputChange($event, 'language')"
+                  (keydown)="onKeyDown($event, 'language')" (click)="$event.stopPropagation()">
+              </div>
+              <ul class="options-list">
+                @for (lang of filteredLanguages; track lang.value) {
+                <li cdkMenuItem (click)="selectLanguage(lang.value, lang.label)">{{lang.label}}</li>
+                }
+              </ul>
+            </div>
+          </ng-template>
         </div>
       </div>
 

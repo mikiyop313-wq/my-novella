@@ -36,6 +36,7 @@ export class BookCreate implements OnInit {
   genreInput = new FormControl('');
   subgenreInput = new FormControl('');
   tropeInput = new FormControl('');
+  languageInput = new FormControl('');
 
   availableGenres = ['Fantasy', 'Sci-Fi', 'Romance', 'Mystery', 'Horror', 'Thriller', 'Historical', 'LitRPG', 'Wuxia', 'Xianxia'];
   availableSubgenres = ['Cyberpunk', 'Steampunk', 'Dark Fantasy', 'Urban Fantasy', 'Post-Apocalyptic', 'High Fantasy'];
@@ -44,6 +45,7 @@ export class BookCreate implements OnInit {
   filteredGenres: string[] = [];
   filteredSubgenres: string[] = [];
   filteredTropes: string[] = [];
+  filteredLanguages: { value: string, label: string }[] = [];
 
   isSubmitting = false;
   isDragging = false;
@@ -59,13 +61,13 @@ export class BookCreate implements OnInit {
     { value: 'chinese', label: 'Chinese' },
     { value: 'korean', label: 'Korean' },
     { value: 'russian', label: 'Russian' },
-    { value: 'other', label: 'Other' }
   ];
 
   ngOnInit() {
     this.filterOptions('genre', '');
     this.filterOptions('subgenre', '');
     this.filterOptions('trope', '');
+    this.filterOptions('language', '');
   }
 
 
@@ -123,25 +125,26 @@ export class BookCreate implements OnInit {
     this.bookForm.patchValue({ coverImage: null });
   }
 
-  getControl(type: 'genre' | 'subgenre' | 'trope'): FormControl {
+  getControl(type: 'genre' | 'subgenre' | 'trope' | 'language'): FormControl {
     if (type === 'genre') return this.genreInput;
     if (type === 'subgenre') return this.subgenreInput;
+    if (type === 'language') return this.languageInput;
     return this.tropeInput;
   }
 
-  onMenuOpened(type: 'genre' | 'subgenre' | 'trope') {
+  onMenuOpened(type: 'genre' | 'subgenre' | 'trope' | 'language') {
     this.filterOptions(type, this.getControl(type).value || '');
     setTimeout(() => {
       document.getElementById(`${type}Input`)?.focus();
     }, 0);
   }
 
-  onInputChange(event: Event, type: 'genre' | 'subgenre' | 'trope') {
+  onInputChange(event: Event, type: 'genre' | 'subgenre' | 'trope' | 'language') {
     const value = (event.target as HTMLInputElement).value;
     this.filterOptions(type, value);
   }
 
-  filterOptions(type: 'genre' | 'subgenre' | 'trope', query: string) {
+  filterOptions(type: 'genre' | 'subgenre' | 'trope' | 'language', query: string) {
     const q = query.toLowerCase();
     if (type === 'genre') {
       const selected = this.genres.value as string[];
@@ -149,9 +152,11 @@ export class BookCreate implements OnInit {
     } else if (type === 'subgenre') {
       const selected = this.subgenres.value as string[];
       this.filteredSubgenres = this.availableSubgenres.filter(g => !selected.includes(g) && g.toLowerCase().includes(q));
-    } else {
+    } else if (type === 'trope') {
       const selected = this.tropes.value as string[];
       this.filteredTropes = this.availableTropes.filter(g => !selected.includes(g) && g.toLowerCase().includes(q));
+    } else {
+      this.filteredLanguages = this.languages.filter(l => l.label.toLowerCase().includes(q));
     }
   }
 
@@ -160,10 +165,18 @@ export class BookCreate implements OnInit {
     this.addTag(type);
   }
 
-  addTag(type: 'genre' | 'subgenre' | 'trope') {
+  addTag(type: 'genre' | 'subgenre' | 'trope' | 'language') {
     let inputControl = this.getControl(type);
-    let arrayControl: FormArray;
 
+    if (type === 'language') {
+      const value = inputControl.value?.trim();
+      if (value) {
+        this.selectLanguage(value, value);
+      }
+      return;
+    }
+
+    let arrayControl: FormArray;
     if (type === 'genre') arrayControl = this.genres;
     else if (type === 'subgenre') arrayControl = this.subgenres;
     else arrayControl = this.tropes;
@@ -179,13 +192,27 @@ export class BookCreate implements OnInit {
     }
   }
 
+  selectLanguage(value: string, label: string) {
+    // If it's a new language, add it to the list
+    if (!this.languages.find(l => l.value === value)) {
+      this.languages.push({ value, label });
+    }
+    this.bookForm.patchValue({ language: value });
+    this.languageInput.setValue('');
+  }
+
+  getSelectedLanguageLabel(): string {
+    const value = this.bookForm.get('language')?.value;
+    return this.languages.find(l => l.value === value)?.label || 'Select language...';
+  }
+
   removeTag(type: 'genre' | 'subgenre' | 'trope', index: number) {
     if (type === 'genre') this.genres.removeAt(index);
     else if (type === 'subgenre') this.subgenres.removeAt(index);
     else this.tropes.removeAt(index);
   }
 
-  onKeyDown(event: KeyboardEvent, type: 'genre' | 'subgenre' | 'trope') {
+  onKeyDown(event: KeyboardEvent, type: 'genre' | 'subgenre' | 'trope' | 'language') {
     if (event.key === 'Enter') {
       event.preventDefault();
       this.addTag(type);
@@ -197,9 +224,24 @@ export class BookCreate implements OnInit {
       this.isSubmitting = true;
       try {
         const categories: CategoryDto[] = [
-          ...(this.genres.value as string[]).map((name: string) => ({ id: crypto.randomUUID(), name, type: 'genre' as const })),
-          ...(this.subgenres.value as string[]).map((name: string) => ({ id: crypto.randomUUID(), name, type: 'genre' as const })), // Mapped to genre for db compatibility
-          ...(this.tropes.value as string[]).map((name: string) => ({ id: crypto.randomUUID(), name, type: 'trope' as const }))
+          ...(this.genres.value as string[]).map((name: string) => ({
+            id: crypto.randomUUID(),
+            name,
+            type: 'genre' as const,
+            isCustom: !this.availableGenres.includes(name)
+          })),
+          ...(this.subgenres.value as string[]).map((name: string) => ({
+            id: crypto.randomUUID(),
+            name,
+            type: 'genre' as const, // Mapped to genre for db compatibility
+            isCustom: !this.availableSubgenres.includes(name)
+          })),
+          ...(this.tropes.value as string[]).map((name: string) => ({
+            id: crypto.randomUUID(),
+            name,
+            type: 'trope' as const,
+            isCustom: !this.availableTropes.includes(name)
+          }))
         ];
 
         const bookData: CreateBookDto = {
