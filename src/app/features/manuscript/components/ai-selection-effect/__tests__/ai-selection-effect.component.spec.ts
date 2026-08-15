@@ -105,7 +105,7 @@ describe('AiSelectionEffectComponent', () => {
     expect(editor.dispatch).not.toHaveBeenCalled();
   });
 
-  it('cancels when the editor selection changes', () => {
+  it('stays active when the editor selection changes', () => {
     component.start();
     editor.selection.from = 3;
     editor.selection.to = 7;
@@ -113,17 +113,34 @@ describe('AiSelectionEffectComponent', () => {
     editor.emit('selectionUpdate');
     fixture.detectChanges();
 
-    expect(component.state()).toBe('idle');
-    expect(component.bounds()).toBeNull();
+    expect(component.state()).toBe('drawing');
+    expect(component.bounds()).not.toBeNull();
   });
 
-  it('cancels when the editor document changes', () => {
+  it('keeps ready actions visible when the user clicks outside the selection', () => {
+    component.start();
+    vi.advanceTimersByTime(5_000);
+    editor.selection.empty = true;
+    editor.selection.from = 20;
+    editor.selection.to = 20;
+
+    editor.emit('selectionUpdate');
+    fixture.detectChanges();
+
+    expect(component.state()).toBe('ready');
+    expect(component.bounds()).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.cancel-button')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.confirm-button')).not.toBeNull();
+  });
+
+  it('stays active when the editor document changes', () => {
     component.start();
 
     editor.emit('update');
     fixture.detectChanges();
 
-    expect(component.state()).toBe('idle');
+    expect(component.state()).toBe('drawing');
+    expect(component.bounds()).not.toBeNull();
     expect(editor.dispatch).not.toHaveBeenCalled();
   });
 

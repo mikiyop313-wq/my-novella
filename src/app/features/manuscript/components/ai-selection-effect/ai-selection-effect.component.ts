@@ -46,7 +46,6 @@ export class AiSelectionEffectComponent {
   private readonly toastService = inject(ToastService);
   private readonly zone = inject(NgZone);
   private selection: { from: number; to: number } | null = null;
-  private originalSelection: { from: number; to: number } | null = null;
   private previewSelection: { from: number; to: number } | null = null;
   private originalSlice: Slice | null = null;
   private candidateSlice: Slice | null = null;
@@ -93,7 +92,7 @@ export class AiSelectionEffectComponent {
         this.responseTimer = null;
         if (this.state() !== 'idle') {
           this.state.set('ready');
-          this.refreshSelectionSpacing(true);
+          this.refreshSelectionSpacing();
           this.updatePosition();
         }
       });
@@ -127,7 +126,6 @@ export class AiSelectionEffectComponent {
 
     if (!this.beginSelectionEffect('rephrase')) return false;
 
-    this.originalSelection = { from: selection.from, to: selection.to };
     this.originalSlice = currentEditor.state.doc.slice(selection.from, selection.to);
     const requestId = crypto.randomUUID();
     this.streamId = requestId;
@@ -156,15 +154,6 @@ export class AiSelectionEffectComponent {
   private readonly onSelectionUpdate = () => {
     this.zone.run(() => {
       if (this.state() === 'idle' || this.isInternalUpdate) return;
-      if (this.state() === 'ready' && this.mode === 'rephrase') {
-        this.restoreOriginalPreview();
-        this.dismiss();
-        return;
-      }
-      if (!this.hasOriginalSelection()) {
-        this.dismiss();
-        return;
-      }
       this.updatePosition();
     });
   };
@@ -173,15 +162,12 @@ export class AiSelectionEffectComponent {
     this.zone.run(() => {
       if (this.state() === 'idle' || this.isInternalUpdate) return;
 
-      if (this.state() === 'ready' && this.previewSelection && event) {
-        this.previewSelection = {
-          from: event.transaction.mapping.map(this.previewSelection.from, -1),
-          to: event.transaction.mapping.map(this.previewSelection.to, 1),
-        };
-        this.selection = this.previewSelection;
-        this.restoreOriginalPreview();
+      if (this.selection && event?.transaction.docChanged) {
+        this.selection = mapSelection(this.selection, event.transaction);
+        if (this.previewSelection) this.previewSelection = this.selection;
+        this.refreshSelectionSpacing();
       }
-      this.dismiss();
+      this.updatePosition();
     });
   };
 
@@ -282,7 +268,7 @@ export class AiSelectionEffectComponent {
 
   private previewCandidate(candidateSlice: Slice): void {
     const editor = this.editor;
-    const original = this.originalSelection;
+    const original = this.selection;
     if (!editor || !original) return;
 
     this.removeSelectionSpacing();
@@ -310,21 +296,27 @@ export class AiSelectionEffectComponent {
 
     this.removeSelectionSpacing();
     const tr = editor.state.tr.replaceRange(preview.from, preview.to, originalSlice);
+    const restoredSelection = mapReplacedSelection(preview, tr);
     tr.setMeta('addToHistory', false);
     tr.setMeta('skipSaver', true);
     this.dispatchInternal(editor, tr);
     this.previewSelection = null;
-    this.selection = this.originalSelection;
+    this.selection = restoredSelection;
   }
 
   private commitRephrasePreview(): void {
     const editor = this.editor;
-    const original = this.originalSelection;
     const candidateSlice = this.candidateSlice;
-    if (!editor || !original || !candidateSlice || !this.previewSelection) return;
+    if (!editor || !candidateSlice || !this.previewSelection) return;
 
     this.restoreOriginalPreview();
-    const tr = editor.state.tr.replaceRange(original.from, original.to, candidateSlice);
+    const restoredSelection = this.selection;
+    if (!restoredSelection) return;
+    const tr = editor.state.tr.replaceRange(
+      restoredSelection.from,
+      restoredSelection.to,
+      candidateSlice,
+    );
     this.dispatchInternal(editor, tr);
     editor.commands.focus();
   }
@@ -350,7 +342,6 @@ export class AiSelectionEffectComponent {
 
   private resetSelectionState(): void {
     this.selection = null;
-    this.originalSelection = null;
     this.previewSelection = null;
     this.originalSlice = null;
     this.candidateSlice = null;
@@ -386,14 +377,6 @@ export class AiSelectionEffectComponent {
     }
   }
 
-  private hasOriginalSelection(): boolean {
-    const editor = this.editor;
-    const original = this.selection;
-    if (!editor || this.store.editor() !== editor || !original) return false;
-    const { selection } = editor.state;
-    return selection.from === original.from && selection.to === original.to;
-  }
-
   private clearTimers(): void {
     if (this.drawTimer !== null) clearTimeout(this.drawTimer);
     if (this.responseTimer !== null) clearTimeout(this.responseTimer);
@@ -409,6 +392,9 @@ export class AiSelectionEffectComponent {
   ): void {
     editor.registerPlugin(new Plugin({
       key: AI_SELECTION_SPACING_PLUGIN_KEY,
+      filterTransaction: transaction => (
+        this.isInternalUpdate || !transactionTouchesSelection(transaction, selection)
+      ),
       props: {
         decorations: state => {
           const decorations: Decoration[] = [Decoration.inline(selection.from, selection.to, {
@@ -428,15 +414,100 @@ export class AiSelectionEffectComponent {
     }));
   }
 
-  private refreshSelectionSpacing(includeActionSpace: boolean): void {
+  private refreshSelectionSpacing(): void {
     const editor = this.editor;
     const selection = this.selection;
     if (!editor || !selection) return;
     editor.unregisterPlugin(AI_SELECTION_SPACING_PLUGIN_KEY);
-    this.addSelectionSpacing(editor, selection, includeActionSpace);
+    this.addSelectionSpacing(
+      editor,
+      selection,
+      this.state() === 'ready',
+      this.state() === 'drawing' || this.state() === 'generating',
+    );
   }
 
   private removeSelectionSpacing(): void {
     this.editor?.unregisterPlugin(AI_SELECTION_SPACING_PLUGIN_KEY);
   }
+}
+
+function mapSelection(
+  selection: { from: number; to: number },
+  transaction: Transaction,
+): { from: number; to: number } {
+  return {
+    from: transaction.mapping.map(selection.from, 1),
+    to: transaction.mapping.map(selection.to, -1),
+  };
+}
+
+function mapReplacedSelection(
+  selection: { from: number; to: number },
+  transaction: Transaction,
+): { from: number; to: number } {
+  return {
+    from: transaction.mapping.map(selection.from, -1),
+    to: transaction.mapping.map(selection.to, 1),
+  };
+}
+
+function transactionTouchesSelection(
+  transaction: Transaction,
+  selection: { from: number; to: number },
+): boolean {
+  if (!transaction.docChanged) return false;
+
+  let currentSelection = selection;
+  let touchesSelection = false;
+
+  transaction.steps.forEach((step, index) => {
+    if (!touchesSelection && stepTouchesSelection(
+      step,
+      currentSelection,
+      transaction.docs[index],
+    )) {
+      touchesSelection = true;
+    }
+    currentSelection = {
+      from: step.getMap().map(currentSelection.from, 1),
+      to: step.getMap().map(currentSelection.to, -1),
+    };
+  });
+
+  return touchesSelection;
+}
+
+function stepTouchesSelection(
+  step: Transaction['steps'][number],
+  selection: { from: number; to: number },
+  doc: Transaction['before'],
+): boolean {
+  let hasMappedRange = false;
+  let touchesSelection = false;
+
+  step.getMap().forEach((oldStart, oldEnd) => {
+    hasMappedRange = true;
+    if (oldStart === oldEnd) {
+      if (oldStart > selection.from && oldStart < selection.to) touchesSelection = true;
+    } else if (oldStart < selection.to && oldEnd > selection.from) {
+      touchesSelection = true;
+    }
+  });
+
+  if (hasMappedRange) return touchesSelection;
+
+  const rangedStep = step as typeof step & { from?: number; to?: number; pos?: number };
+  if (typeof rangedStep.from === 'number' && typeof rangedStep.to === 'number') {
+    return rangedStep.from < selection.to && rangedStep.to > selection.from;
+  }
+  if (typeof rangedStep.pos === 'number') {
+    const affectedNode = doc.nodeAt(rangedStep.pos);
+    if (affectedNode) {
+      return rangedStep.pos < selection.to &&
+        rangedStep.pos + affectedNode.nodeSize > selection.from;
+    }
+    return rangedStep.pos > selection.from && rangedStep.pos < selection.to;
+  }
+  return false;
 }

@@ -110,8 +110,57 @@ describe('AiSelectionEffectComponent AI rephrasing', () => {
     expect(editor.getText()).not.toContain('Elias looked away.');
   });
 
-  it('restores the exact original document when the preview is cancelled', async () => {
+  it('keeps the effect active and maps its range through surrounding edits', async () => {
+    streamText.mockImplementation(async (request: AiStreamRequest) => {
+      request.onToken?.('Elias lowered his gaze.');
+      return 'Elias lowered his gaze.';
+    });
+
+    component.startRephrase();
+    editor.commands.insertContentAt(findTextPosition(editor, 'Before passage.'), 'New lead. ');
+
+    expect(component.state()).toBe('drawing');
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.runAllTimersAsync();
+
+    expect(component.state()).toBe('ready');
+    expect(editor.getText()).toContain('New lead. Before passage.');
+    expect(editor.getText()).toContain('Elias lowered his gaze.');
+    expect(editor.getText()).not.toContain('Elias looked away.');
+  });
+
+  it('protects the framed text while allowing boundary and surrounding edits', () => {
+    streamText.mockReturnValue(new Promise(() => undefined));
+    component.startRephrase();
+    const originalFrom = findTextPosition(editor, 'Elias looked away.');
     const originalDocument = editor.getJSON();
+
+    editor.commands.insertContentAt(originalFrom + 1, 'blocked');
+    editor.commands.deleteRange({ from: originalFrom - 1, to: originalFrom + 1 });
+    editor.chain()
+      .setTextSelection({ from: originalFrom, to: originalFrom + 'Elias'.length })
+      .toggleItalic()
+      .run();
+
+    expect(editor.getJSON()).toEqual(originalDocument);
+    expect(component.state()).toBe('drawing');
+
+    editor.commands.insertContentAt(originalFrom, 'Left ');
+    const mappedFrom = findTextPosition(editor, 'Elias looked away.');
+    editor.commands.insertContentAt(mappedFrom + 'Elias looked away.'.length, ' right');
+    editor.commands.insertContentAt(findTextPosition(editor, 'After passage.'), 'Nearby ');
+
+    expect(editor.getText()).toContain('Left Elias looked away. right');
+    expect(editor.getText()).toContain('Nearby After passage.');
+    expect(component.state()).toBe('drawing');
+
+    expect(editor.commands.undo()).toBe(true);
+    expect(component.state()).toBe('drawing');
+    expect(editor.commands.redo()).toBe(true);
+    expect(component.state()).toBe('drawing');
+  });
+
+  it('restores the original prose without discarding surrounding edits when cancelled', async () => {
     streamText.mockImplementation(async (request: AiStreamRequest) => {
       request.onToken?.('Elias lowered his gaze.');
       return 'Elias lowered his gaze.';
@@ -120,9 +169,12 @@ describe('AiSelectionEffectComponent AI rephrasing', () => {
     component.startRephrase();
     await vi.advanceTimersByTimeAsync(600);
     await vi.runAllTimersAsync();
+    editor.commands.insertContentAt(findTextPosition(editor, 'After passage.'), 'Persistent note. ');
     component.cancel();
 
-    expect(editor.getJSON()).toEqual(originalDocument);
+    expect(editor.getText()).toContain('Elias looked away.');
+    expect(editor.getText()).not.toContain('Elias lowered his gaze.');
+    expect(editor.getText()).toContain('Persistent note. After passage.');
     expect(component.state()).toBe('idle');
   });
 
@@ -135,11 +187,14 @@ describe('AiSelectionEffectComponent AI rephrasing', () => {
     component.startRephrase();
     await vi.advanceTimersByTimeAsync(600);
     await vi.runAllTimersAsync();
+    editor.commands.insertContentAt(findTextPosition(editor, 'After passage.'), 'Persistent note. ');
     component.confirm();
 
     expect(editor.getText()).toContain('Elias lowered his gaze.');
+    expect(editor.getText()).toContain('Persistent note. After passage.');
     expect(editor.commands.undo()).toBe(true);
     expect(editor.getText()).toContain('Elias looked away.');
+    expect(editor.getText()).toContain('Persistent note. After passage.');
   });
 
   it('keeps the original prose when the model returns no content', async () => {
@@ -160,6 +215,14 @@ describe('AiSelectionEffectComponent AI rephrasing', () => {
 });
 
 function selectText(editor: Editor, text: string): void {
+  const from = findTextPosition(editor, text);
+  if (from < 0) throw new Error(`Text not found: ${text}`);
+  editor.view.dispatch(editor.state.tr.setSelection(
+    TextSelection.create(editor.state.doc, from, from + text.length),
+  ));
+}
+
+function findTextPosition(editor: Editor, text: string): number {
   let from = -1;
   editor.state.doc.descendants((node, pos) => {
     if (from < 0 && node.isText && node.text?.includes(text)) {
@@ -167,7 +230,5 @@ function selectText(editor: Editor, text: string): void {
     }
   });
   if (from < 0) throw new Error(`Text not found: ${text}`);
-  editor.view.dispatch(editor.state.tr.setSelection(
-    TextSelection.create(editor.state.doc, from, from + text.length),
-  ));
+  return from;
 }
