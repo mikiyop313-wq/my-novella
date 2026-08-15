@@ -1,3 +1,4 @@
+
 // ---------------------------------------------------------------------------
 // Embedding model types
 // ---------------------------------------------------------------------------
@@ -97,9 +98,33 @@ export interface SimilarParagraphResult {
 // Local embedding model management
 // ---------------------------------------------------------------------------
 
-/** Describes whether the managed local model is installed and how much cache space it uses. */
-export interface LocalEmbeddingModelStatus {
-    modelName: string;
+/** Canonical identifiers accepted by local-model lifecycle IPC operations. */
+export type LocalEmbeddingModelName =
+    | 'mixedbread-ai/mxbai-embed-large-v1'
+    | 'BAAI/bge-large-en-v1.5'
+    | 'BAAI/bge-m3'
+    | 'nomic-ai/nomic-embed-text-v1.5'
+    | 'BAAI/bge-base-en-v1.5'
+    | 'Alibaba-NLP/gte-multilingual-base'
+    | 'BAAI/bge-small-en-v1.5'
+    | 'sentence-transformers/all-MiniLM-L6-v2'
+    | 'Snowflake/snowflake-arctic-embed-xs';
+
+export type LocalEmbeddingModelTier = 'large' | 'medium' | 'small';
+
+/** Public catalog metadata for one supported local embedding model. */
+export interface LocalEmbeddingModelDescriptor {
+    modelName: LocalEmbeddingModelName;
+    displayName: string;
+    providerName: string;
+    providerInitials: string;
+    tier: LocalEmbeddingModelTier;
+    dimensions: number;
+    language: string;
+}
+
+/** Describes whether one managed local model is installed and how much cache space it uses. */
+export interface LocalEmbeddingModelStatus extends LocalEmbeddingModelDescriptor {
     installed: boolean;
     cachedBytes: number;
 }
@@ -114,6 +139,7 @@ export type LocalEmbeddingModelDownloadStatus =
 
 /** Progress information for one file involved in a local-model download. */
 export interface LocalEmbeddingModelDownloadProgress {
+    modelName: LocalEmbeddingModelName;
     file: string;
     status: LocalEmbeddingModelDownloadStatus;
     loaded?: number;
@@ -121,8 +147,12 @@ export interface LocalEmbeddingModelDownloadProgress {
     progress?: number;
 }
 
-/** Options accepted by the local-model uninstall IPC operation. */
-export interface UninstallLocalEmbeddingModelPayload {
-    clearVectors: boolean;
+/** Selects the supported model to download. */
+export interface DownloadLocalEmbeddingModelPayload {
+    modelName: LocalEmbeddingModelName;
 }
 
+/** Options accepted by the local-model uninstall IPC operation. */
+export interface UninstallLocalEmbeddingModelPayload extends DownloadLocalEmbeddingModelPayload {
+    clearVectors: boolean;
+}

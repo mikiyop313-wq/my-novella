@@ -1,8 +1,11 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 
 import type {
+  DownloadLocalEmbeddingModelPayload,
   LocalEmbeddingModelDownloadProgress,
+  LocalEmbeddingModelName,
   LocalEmbeddingModelStatus,
+  LocalEmbeddingModelTier,
   UninstallLocalEmbeddingModelPayload,
 } from '../../../../../../shared/models/vector.model';
 import { ElectronService } from '../../../../core/services/electron.service';
@@ -19,7 +22,12 @@ interface VectorCloudProvider {
   keyPlaceholder: string;
 }
 
-type LocalModelOperation = 'download' | 'uninstall';
+type LocalModelOperationType = 'download' | 'uninstall';
+
+interface LocalModelOperation {
+  type: LocalModelOperationType;
+  modelName: LocalEmbeddingModelName;
+}
 
 @Component({
   selector: 'app-vector-configuration-settings',
@@ -46,6 +54,11 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
       keyPlaceholder: 'Enter your Voyage AI API key',
     },
   ];
+  readonly localModelTiers: readonly { id: LocalEmbeddingModelTier; label: string }[] = [
+    { id: 'large', label: 'Large' },
+    { id: 'medium', label: 'Medium' },
+    { id: 'small', label: 'Small' },
+  ];
 
   readonly selectedProviderId = signal<VectorCloudProviderId | null>(null);
   readonly apiKeyVisible = signal(false);
@@ -53,11 +66,13 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
     openai: '',
     voyage: '',
   });
-  readonly localModelStatus = signal<LocalEmbeddingModelStatus | null>(null);
+  readonly localModelStatuses = signal<LocalEmbeddingModelStatus[]>([]);
+  readonly selectedLocalModelTier = signal<LocalEmbeddingModelTier>('large');
   readonly localModelStatusLoading = signal(true);
   readonly localModelOperation = signal<LocalModelOperation | null>(null);
   readonly localModelProgress = signal<LocalEmbeddingModelDownloadProgress | null>(null);
-  readonly localModelError = signal<string | null>(null);
+  readonly localModelErrors = signal<Partial<Record<LocalEmbeddingModelName, string>>>({});
+  readonly localModelLoadError = signal<string | null>(null);
 
   readonly selectedProvider = computed(() => {
     const providerId = this.selectedProviderId();
@@ -68,7 +83,10 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
     this.removeDownloadProgressListener = this.electronService.on(
       'vectors:local-model:download-progress',
       (progress: LocalEmbeddingModelDownloadProgress) => {
-        if (this.localModelOperation() === 'download') this.localModelProgress.set(progress);
+        const operation = this.localModelOperation();
+        if (operation?.type === 'download' && operation.modelName === progress.modelName) {
+          this.localModelProgress.set(progress);
+        }
       },
     );
     void this.loadLocalModelStatus();
@@ -80,34 +98,37 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
 
   async loadLocalModelStatus(): Promise<void> {
     this.localModelStatusLoading.set(true);
-    this.localModelError.set(null);
+    this.localModelLoadError.set(null);
     try {
-      const status = await this.electronService.invoke('vectors:local-model:get-status');
-      this.localModelStatus.set(status as LocalEmbeddingModelStatus);
+      const statuses = await this.electronService.invoke('vectors:local-model:get-status');
+      this.localModelStatuses.set(statuses as LocalEmbeddingModelStatus[]);
     } catch (error) {
-      this.localModelError.set(this.errorMessage(error));
+      this.localModelStatuses.set([]);
+      this.localModelLoadError.set(this.errorMessage(error));
     } finally {
       this.localModelStatusLoading.set(false);
     }
   }
 
-  async downloadLocalModel(): Promise<void> {
+  async downloadLocalModel(modelName: LocalEmbeddingModelName): Promise<void> {
     if (this.localModelOperation()) return;
 
-    this.localModelOperation.set('download');
+    this.localModelOperation.set({ type: 'download', modelName });
     this.localModelProgress.set(null);
-    this.localModelError.set(null);
+    this.setModelError(modelName, null);
     try {
-      const status = await this.electronService.invoke('vectors:local-model:download');
-      this.localModelStatus.set(status as LocalEmbeddingModelStatus);
+      const payload: DownloadLocalEmbeddingModelPayload = { modelName };
+      const status = await this.electronService.invoke('vectors:local-model:download', payload);
+      this.updateModelStatus(status as LocalEmbeddingModelStatus);
     } catch (error) {
       const downloadError = this.errorMessage(error);
       try {
-        const status = await this.electronService.invoke('vectors:local-model:get-status');
-        this.localModelStatus.set(status as LocalEmbeddingModelStatus);
-        this.localModelError.set(downloadError);
+        const statuses = await this.electronService.invoke('vectors:local-model:get-status');
+        this.localModelStatuses.set(statuses as LocalEmbeddingModelStatus[]);
+        this.setModelError(modelName, downloadError);
       } catch (statusError) {
-        this.localModelError.set(
+        this.setModelError(
+          modelName,
           `${downloadError} Status refresh failed: ${this.errorMessage(statusError)}`,
         );
       }
@@ -117,20 +138,19 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
     }
   }
 
-  requestLocalModelUninstall(): void {
+  requestLocalModelUninstall(status: LocalEmbeddingModelStatus): void {
     if (this.localModelOperation()) return;
 
-    const status = this.localModelStatus();
-    const action = status?.installed ? 'Uninstall' : 'Remove downloaded files for';
+    const action = status.installed ? 'Uninstall' : 'Remove downloaded files for';
     this.confirmService.open(
       `${action} local model?`,
-      `${status?.modelName ?? 'The local embedding model'} will be removed from this device. You can download it again later.`,
+      `${status.modelName} will be removed from this device. You can download it again later.`,
       (clearVectors) => {
-        void this.uninstallLocalModel(clearVectors);
+        void this.uninstallLocalModel(status.modelName, clearVectors);
       },
       undefined,
       {
-        confirmLabel: status?.installed ? 'Uninstall' : 'Remove files',
+        confirmLabel: status.installed ? 'Uninstall' : 'Remove files',
         checkboxLabel: 'Also delete vectors generated by this model.',
       },
     );
@@ -145,9 +165,9 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
     return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(value)} ${units[unitIndex]}`;
   }
 
-  downloadPercentage(): number | null {
+  downloadPercentage(modelName: LocalEmbeddingModelName): number | null {
     const progress = this.localModelProgress();
-    if (!progress) return null;
+    if (!progress || progress.modelName !== modelName) return null;
     if (typeof progress.progress === 'number') return this.clampPercentage(progress.progress);
     if (
       typeof progress.loaded === 'number' &&
@@ -159,20 +179,55 @@ export class VectorConfigurationSettingsComponent implements OnInit, OnDestroy {
     return null;
   }
 
-  private async uninstallLocalModel(clearVectors: boolean): Promise<void> {
+  modelsForTier(tier: LocalEmbeddingModelTier): LocalEmbeddingModelStatus[] {
+    return this.localModelStatuses().filter((status) => status.tier === tier);
+  }
+
+  selectLocalModelTier(tier: LocalEmbeddingModelTier): void {
+    this.selectedLocalModelTier.set(tier);
+  }
+
+  modelError(modelName: LocalEmbeddingModelName): string | null {
+    return this.localModelErrors()[modelName] ?? null;
+  }
+
+  isModelOperation(modelName: LocalEmbeddingModelName, type?: LocalModelOperationType): boolean {
+    const operation = this.localModelOperation();
+    return operation?.modelName === modelName && (!type || operation.type === type);
+  }
+
+  private async uninstallLocalModel(
+    modelName: LocalEmbeddingModelName,
+    clearVectors: boolean,
+  ): Promise<void> {
     if (this.localModelOperation()) return;
 
-    this.localModelOperation.set('uninstall');
-    this.localModelError.set(null);
+    this.localModelOperation.set({ type: 'uninstall', modelName });
+    this.setModelError(modelName, null);
     try {
-      const payload: UninstallLocalEmbeddingModelPayload = { clearVectors };
+      const payload: UninstallLocalEmbeddingModelPayload = { modelName, clearVectors };
       const status = await this.electronService.invoke('vectors:local-model:uninstall', payload);
-      this.localModelStatus.set(status as LocalEmbeddingModelStatus);
+      this.updateModelStatus(status as LocalEmbeddingModelStatus);
     } catch (error) {
-      this.localModelError.set(this.errorMessage(error));
+      this.setModelError(modelName, this.errorMessage(error));
     } finally {
       this.localModelOperation.set(null);
     }
+  }
+
+  private updateModelStatus(status: LocalEmbeddingModelStatus): void {
+    this.localModelStatuses.update((statuses) =>
+      statuses.map((current) => (current.modelName === status.modelName ? status : current)),
+    );
+  }
+
+  private setModelError(modelName: LocalEmbeddingModelName, error: string | null): void {
+    this.localModelErrors.update((errors) => {
+      const updated = { ...errors };
+      if (error) updated[modelName] = error;
+      else delete updated[modelName];
+      return updated;
+    });
   }
 
   private clampPercentage(value: number): number {

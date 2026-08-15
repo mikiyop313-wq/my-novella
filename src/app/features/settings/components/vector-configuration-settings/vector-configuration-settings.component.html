@@ -28,110 +28,157 @@
         </div>
       </header>
 
+      <div
+        class="local-model-tier-switch"
+        [class.is-medium]="selectedLocalModelTier() === 'medium'"
+        [class.is-small]="selectedLocalModelTier() === 'small'"
+        role="radiogroup"
+        aria-label="Local model size"
+      >
+        @for (tier of localModelTiers; track tier.id) {
+          <button
+            type="button"
+            role="radio"
+            [class.is-selected]="selectedLocalModelTier() === tier.id"
+            [attr.aria-checked]="selectedLocalModelTier() === tier.id"
+            (click)="selectLocalModelTier(tier.id)"
+          >
+            {{ tier.label }}
+          </button>
+        }
+      </div>
+
       @if (localModelStatusLoading()) {
         <div class="local-model-loading" role="status">Loading local model status…</div>
-      } @else if (localModelStatus(); as status) {
+      } @else if (localModelStatuses().length > 0) {
         <div class="local-model-list">
-          <article class="local-model-card">
-            <div class="local-model-summary">
-              <div class="local-model-mark" aria-hidden="true">MB</div>
-              <div class="local-model-copy">
-                <div class="local-model-heading">
-                  <strong>Mixedbread mxbai Embed Large v1</strong>
-                  <span
-                    class="local-model-badge"
-                    [class.is-installed]="status.installed"
-                    [class.is-partial]="!status.installed && status.cachedBytes > 0"
-                  >
-                    @if (status.installed) {
-                      Installed
-                    } @else if (status.cachedBytes > 0) {
-                      Incomplete download
-                    } @else {
-                      Not installed
-                    }
-                  </span>
-                </div>
-                <code>{{ status.modelName }}</code>
-                <span class="local-model-meta"
-                  >Cache size: {{ formatBytes(status.cachedBytes) }}</span
-                >
-              </div>
-            </div>
+          @for (tier of localModelTiers; track tier.id) {
+            @if (selectedLocalModelTier() === tier.id) {
+              <section
+                class="local-model-tier"
+                [attr.aria-labelledby]="tier.id + '-models-heading'"
+              >
+                <h3 [id]="tier.id + '-models-heading'">{{ tier.label }} models</h3>
+                <div class="local-model-grid">
+                  @for (status of modelsForTier(tier.id); track status.modelName) {
+                    <article class="local-model-card" [attr.data-model]="status.modelName">
+                      <div class="local-model-summary">
+                        <div class="local-model-mark" aria-hidden="true">
+                          {{ status.providerInitials }}
+                        </div>
+                        <div class="local-model-copy">
+                          <div class="local-model-heading">
+                            <strong>{{ status.displayName }}</strong>
+                            <span
+                              class="local-model-badge"
+                              [class.is-installed]="status.installed"
+                              [class.is-partial]="!status.installed && status.cachedBytes > 0"
+                            >
+                              @if (status.installed) {
+                                Installed
+                              } @else if (status.cachedBytes > 0) {
+                                Incomplete download
+                              } @else {
+                                Not installed
+                              }
+                            </span>
+                          </div>
+                          <code>{{ status.modelName }}</code>
+                          <span class="local-model-meta">
+                            {{ status.providerName }} · {{ status.dimensions }} dimensions ·
+                            {{ status.language }} · Cache: {{ formatBytes(status.cachedBytes) }}
+                          </span>
+                        </div>
+                      </div>
 
-            @if (localModelOperation() === 'download') {
-              <div class="local-model-progress" role="status" aria-live="polite">
-                <div class="local-model-progress-copy">
-                  <span>
-                    Downloading
-                    @if (localModelProgress()?.file; as file) {
-                      {{ file }}
-                    }
-                  </span>
-                  @if (downloadPercentage() !== null) {
-                    <span>{{ downloadPercentage() }}%</span>
+                      @if (isModelOperation(status.modelName, 'download')) {
+                        <div class="local-model-progress" role="status" aria-live="polite">
+                          <div class="local-model-progress-copy">
+                            <span>
+                              Downloading
+                              @if (localModelProgress()?.file; as file) {
+                                {{ file }}
+                              }
+                            </span>
+                            @if (downloadPercentage(status.modelName) !== null) {
+                              <span>{{ downloadPercentage(status.modelName) }}%</span>
+                            }
+                          </div>
+                          <div
+                            class="local-model-progress-track"
+                            [class.is-indeterminate]="downloadPercentage(status.modelName) === null"
+                            role="progressbar"
+                            [attr.aria-label]="status.displayName + ' download progress'"
+                            [attr.aria-valuenow]="downloadPercentage(status.modelName)"
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                          >
+                            <span
+                              [style.width.%]="downloadPercentage(status.modelName) ?? 100"
+                            ></span>
+                          </div>
+                        </div>
+                      }
+
+                      @if (modelError(status.modelName); as error) {
+                        <p class="local-model-error" role="alert">{{ error }}</p>
+                      }
+
+                      <div class="local-model-actions">
+                        @if (status.installed) {
+                          <button
+                            class="local-model-button is-danger"
+                            type="button"
+                            [disabled]="localModelOperation() !== null"
+                            (click)="requestLocalModelUninstall(status)"
+                          >
+                            {{
+                              isModelOperation(status.modelName, 'uninstall')
+                                ? 'Uninstalling…'
+                                : 'Uninstall'
+                            }}
+                          </button>
+                        } @else {
+                          <button
+                            class="local-model-button is-primary"
+                            type="button"
+                            [disabled]="localModelOperation() !== null"
+                            (click)="downloadLocalModel(status.modelName)"
+                          >
+                            @if (isModelOperation(status.modelName, 'download')) {
+                              Downloading…
+                            } @else if (status.cachedBytes > 0) {
+                              Retry download
+                            } @else {
+                              Download
+                            }
+                          </button>
+                          @if (status.cachedBytes > 0) {
+                            <button
+                              class="local-model-button"
+                              type="button"
+                              [disabled]="localModelOperation() !== null"
+                              (click)="requestLocalModelUninstall(status)"
+                            >
+                              {{
+                                isModelOperation(status.modelName, 'uninstall')
+                                  ? 'Removing…'
+                                  : 'Remove files'
+                              }}
+                            </button>
+                          }
+                        }
+                      </div>
+                    </article>
                   }
                 </div>
-                <div
-                  class="local-model-progress-track"
-                  [class.is-indeterminate]="downloadPercentage() === null"
-                  role="progressbar"
-                  aria-label="Local model download progress"
-                  [attr.aria-valuenow]="downloadPercentage()"
-                  aria-valuemin="0"
-                  aria-valuemax="100"
-                >
-                  <span [style.width.%]="downloadPercentage() ?? 100"></span>
-                </div>
-              </div>
+              </section>
             }
-
-            @if (localModelError(); as error) {
-              <p class="local-model-error" role="alert">{{ error }}</p>
-            }
-
-            <div class="local-model-actions">
-              @if (status.installed) {
-                <button
-                  class="local-model-button is-danger"
-                  type="button"
-                  [disabled]="localModelOperation() !== null"
-                  (click)="requestLocalModelUninstall()"
-                >
-                  {{ localModelOperation() === 'uninstall' ? 'Uninstalling…' : 'Uninstall' }}
-                </button>
-              } @else {
-                <button
-                  class="local-model-button is-primary"
-                  type="button"
-                  [disabled]="localModelOperation() !== null"
-                  (click)="downloadLocalModel()"
-                >
-                  @if (localModelOperation() === 'download') {
-                    Downloading…
-                  } @else if (status.cachedBytes > 0) {
-                    Retry download
-                  } @else {
-                    Download
-                  }
-                </button>
-                @if (status.cachedBytes > 0) {
-                  <button
-                    class="local-model-button"
-                    type="button"
-                    [disabled]="localModelOperation() !== null"
-                    (click)="requestLocalModelUninstall()"
-                  >
-                    {{ localModelOperation() === 'uninstall' ? 'Removing…' : 'Remove files' }}
-                  </button>
-                }
-              }
-            </div>
-          </article>
+          }
         </div>
       } @else {
         <div class="configuration-state is-error" role="alert">
-          <span>{{ localModelError() ?? 'Unable to load the local model status.' }}</span>
+          <span>{{ localModelLoadError() ?? 'Unable to load local model statuses.' }}</span>
           <button type="button" (click)="loadLocalModelStatus()">Retry</button>
         </div>
       }

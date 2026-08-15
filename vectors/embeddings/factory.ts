@@ -1,3 +1,4 @@
+
 /**
  * Selects, constructs, caches, and releases embedding providers for manuscript vector work.
  *
@@ -7,6 +8,7 @@
 import { bookRepository } from '../../db/repositories/book.repository';
 import { EmbeddingProvider } from './types';
 import { EmbeddingModel } from '../../shared/models/vector.model';
+import type { LocalEmbeddingModelName } from '../../shared/models/vector.model';
 import { LocalEmbeddingProvider } from './providers/local';
 import { OpenAIEmbeddingProvider } from './providers/openai';
 import { VoyageEmbeddingProvider } from './providers/voyage';
@@ -122,7 +124,10 @@ export function getLocalEmbeddingProvider(): LocalEmbeddingProvider {
  *
  * Access remains blocked until {@link restoreLocalEmbeddingProviderAccess} is called.
  */
-export async function releaseLocalEmbeddingProvider(): Promise<void> {
+export async function releaseLocalEmbeddingProvider(
+    modelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
+): Promise<void> {
+    if (modelName !== LOCAL_EMBEDDING_MODEL_NAME) return;
     localProviderUnavailable = true;
     const cached = providerCache.get('local');
     if (cached) await (cached as LocalEmbeddingProvider).dispose();
@@ -130,7 +135,10 @@ export async function releaseLocalEmbeddingProvider(): Promise<void> {
 }
 
 /** Allows a fresh local provider to be created after an uninstall operation has finished. */
-export function restoreLocalEmbeddingProviderAccess(): void {
+export function restoreLocalEmbeddingProviderAccess(
+    modelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
+): void {
+    if (modelName !== LOCAL_EMBEDDING_MODEL_NAME) return;
     localProviderUnavailable = false;
 }
 

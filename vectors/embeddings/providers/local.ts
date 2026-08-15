@@ -1,3 +1,4 @@
+
 /**
  * Loads the managed Transformers.js embedding pipeline and coordinates its runtime lifecycle.
  *
@@ -98,8 +99,9 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
         if (this.config.cacheDir) env.cacheDir = this.config.cacheDir;
 
         try {
-            this.embedder = await pipeline('feature-extraction', this.config.modelName, {
-                quantized: true,
+            const sourceModelName = this.config.sourceModelName ?? this.config.modelName;
+            this.embedder = await pipeline('feature-extraction', sourceModelName, {
+                quantized: this.config.quantized ?? true,
                 local_files_only: !allowRemoteModels,
                 progress_callback: onProgress
                     ? (event: {
@@ -110,7 +112,7 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
                         progress?: number;
                     }) => onProgress({
                         status: event.status as Parameters<LocalEmbeddingDownloadProgressCallback>[0]['status'],
-                        file: event.file ?? this.config.modelName,
+                        file: event.file ?? sourceModelName,
                         loaded: event.loaded,
                         total: event.total,
                         progress: event.progress,

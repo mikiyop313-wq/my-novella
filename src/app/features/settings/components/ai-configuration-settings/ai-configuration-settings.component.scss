@@ -469,6 +469,71 @@
 }
 
 .vector-configuration-panel {
+  .local-model-tier-switch {
+    position: relative;
+    width: fit-content;
+    margin: 18px 22px 0;
+    padding: 3px;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--color-background) 52%, var(--color-surface));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(78px, 1fr));
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      left: 3px;
+      width: calc(33.333333% - 2px);
+      border-radius: 6px;
+      background: var(--color-text-primary);
+      transform: translateX(0);
+      transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+
+    &.is-medium::before {
+      transform: translateX(100%);
+    }
+
+    &.is-small::before {
+      transform: translateX(200%);
+    }
+
+    button {
+      position: relative;
+      z-index: 1;
+      min-height: 32px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--color-text-secondary);
+      font: inherit;
+      font-size: 0.73rem;
+      font-weight: 650;
+      cursor: pointer;
+      transition:
+        color 0.16s ease,
+        background-color 0.16s ease;
+
+      &:hover:not(.is-selected) {
+        color: var(--color-text-primary);
+      }
+
+      &:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--color-text-primary) 42%, transparent);
+        outline-offset: 1px;
+      }
+
+      &.is-selected {
+        color: var(--color-background);
+      }
+    }
+  }
+
   .local-model-loading {
     min-height: 118px;
     padding: 22px;
@@ -481,6 +546,26 @@
 
   .local-model-list {
     padding: 18px 22px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .local-model-tier {
+    h3 {
+      margin: 0 0 10px;
+      color: var(--color-text-primary);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+  }
+
+  .local-model-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .local-model-card {
@@ -488,6 +573,8 @@
     border: 1px solid var(--color-border);
     border-radius: 11px;
     background: color-mix(in srgb, var(--color-background) 48%, var(--color-surface));
+    display: flex;
+    flex-direction: column;
   }
 
   .local-model-summary {
@@ -618,6 +705,8 @@
   .local-model-actions {
     margin-top: 15px;
     display: flex;
+    flex: 1;
+    align-items: flex-end;
     justify-content: flex-end;
     gap: 9px;
   }
@@ -633,6 +722,9 @@
     font-size: 0.75rem;
     font-weight: 600;
     cursor: pointer;
+    transition:
+      opacity 0.18s ease,
+      transform 0.18s ease;
 
     &:hover:not(:disabled) {
       border-color: color-mix(in srgb, var(--color-text-primary) 38%, var(--color-border));
@@ -653,6 +745,13 @@
       border-color: var(--color-text-primary);
       background: var(--color-text-primary);
       color: var(--color-background);
+
+      &:hover:not(:disabled) {
+        border-color: var(--color-text-primary);
+        background: var(--color-text-primary);
+        opacity: 0.88;
+        transform: translateY(-1px);
+      }
     }
 
     &.is-danger {
@@ -725,6 +824,11 @@
   .vector-configuration-panel .local-model-progress-track.is-indeterminate span {
     animation: none;
   }
+
+  .vector-configuration-panel .local-model-tier-switch::before,
+  .vector-configuration-panel .local-model-tier-switch button {
+    transition: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -747,6 +851,17 @@
   }
 
   .vector-configuration-panel {
+    .local-model-tier-switch {
+      width: auto;
+      margin-right: 17px;
+      margin-left: 17px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+
+      button {
+        padding: 0 8px;
+      }
+    }
+
     .local-model-list {
       padding-right: 17px;
       padding-left: 17px;
@@ -756,6 +871,10 @@
       align-items: flex-start;
       flex-direction: column;
       gap: 6px;
+    }
+
+    .local-model-grid {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .local-model-actions {

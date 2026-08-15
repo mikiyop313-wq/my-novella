@@ -1,3 +1,4 @@
+
 /**
  * Defines embedding-provider contracts, configurations, and shared validation helpers.
  *
@@ -51,6 +52,8 @@ export interface CloudEmbeddingConfig extends BaseEmbeddingConfig {
 export interface LocalEmbeddingConfig extends BaseEmbeddingConfig {
   type: 'local';
   dimensions: number; // Required for local
+  sourceModelName?: string; // Transformers.js repository when it differs from the canonical ID
+  quantized?: boolean;
   modelPath?: string; // Path to a pre-downloaded local model
   cacheDir?: string;  // Directory for caching models downloaded from HuggingFace
   installationMarkerPath: string;
@@ -58,7 +61,7 @@ export interface LocalEmbeddingConfig extends BaseEmbeddingConfig {
 
 /** Receives normalized per-file progress from a local-model download. */
 export type LocalEmbeddingDownloadProgressCallback = (
-  progress: LocalEmbeddingModelDownloadProgress,
+  progress: Omit<LocalEmbeddingModelDownloadProgress, 'modelName'>,
 ) => void;
 
 export interface OpenAIEmbeddingConfig extends CloudEmbeddingConfig {
