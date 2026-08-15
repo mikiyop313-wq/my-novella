@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PromptBuilderService } from './prompt-builder.service';
 import { AiPromptRequest } from './models';
+import { AI_SYSTEM_PROMPTS } from '../../../shared/constants/ai-system-prompts';
 
 describe('PromptBuilderService', () => {
     const service = new PromptBuilderService();
@@ -14,7 +15,7 @@ describe('PromptBuilderService', () => {
         };
     }
 
-    it('builds a user prompt payload', () => {
+    it('builds a user prompt payload with the default system prompt', () => {
         const payload = service.buildChatCompletionPayload(makeRequest({
             modelId: 'openai/gpt-4o-mini',
         }), 'fallback-model');
@@ -22,6 +23,7 @@ describe('PromptBuilderService', () => {
         expect(payload).toEqual({
             model: 'openai/gpt-4o-mini',
             messages: [
+                { role: 'system', content: AI_SYSTEM_PROMPTS.chat.gemma_test },
                 { role: 'user', content: 'Draft a tense opening scene.' },
             ],
             temperature: 0.5,
@@ -58,6 +60,22 @@ describe('PromptBuilderService', () => {
         ]);
     });
 
+    it('uses a structured title system prompt without adding the default prompt', () => {
+        const titleSystemPrompt = 'Create a concise title. Return only the title.';
+        const payload = service.buildChatCompletionPayload(makeRequest({
+            prompt: 'Write a scene',
+            messages: [
+                { role: 'system', content: titleSystemPrompt },
+                { role: 'user', content: 'Write a scene' },
+            ],
+        }), 'fallback-model');
+
+        expect(payload.messages).toEqual([
+            { role: 'system', content: titleSystemPrompt },
+            { role: 'user', content: 'Write a scene' },
+        ]);
+    });
+
     it('filters empty message content and trims retained messages', () => {
         const payload = service.buildChatCompletionPayload(makeRequest({
             messages: [
@@ -68,8 +86,18 @@ describe('PromptBuilderService', () => {
         }), 'fallback-model');
 
         expect(payload.messages).toEqual([
+            { role: 'system', content: AI_SYSTEM_PROMPTS.chat.gemma_test },
             { role: 'user', content: 'Keep this.' },
         ]);
+    });
+
+    it('does not mutate the source request while resolving the default system prompt', () => {
+        const request = makeRequest();
+
+        service.buildChatCompletionPayload(request, 'fallback-model');
+
+        expect(request.systemMessage).toBeUndefined();
+        expect(request).not.toHaveProperty('systemMessage');
     });
 
     it('uses the default model when no model ID is provided', () => {

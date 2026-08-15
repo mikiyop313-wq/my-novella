@@ -13,14 +13,9 @@ export class PromptBuilderService {
         request: AiPromptRequest,
         defaultModelId: string,
     ): AiChatCompletionPayload {
-
-        if (!request.systemMessage) {
-            request.systemMessage = AI_SYSTEM_PROMPTS.chat.gemma_test;
-        }
-
         const messages = this.resolveMessages(request);
 
-        if (messages.length === 0) {
+        if (!messages.some((message) => message.role !== 'system')) {
             throw new Error('AI prompt requires at least one non-empty message.');
         }
 
@@ -37,8 +32,13 @@ export class PromptBuilderService {
     }
 
     private resolveMessages(request: AiPromptRequest): AiChatMessage[] {
-        const systemMessage: AiChatMessage[] = request.systemMessage
-            ? [{ role: 'system' as const, content: request.systemMessage }]
+        const hasStructuredSystemMessage = request.messages?.some(
+            (message) => message.role === 'system' && message.content?.trim().length > 0,
+        ) ?? false;
+        const resolvedSystemMessage = request.systemMessage?.trim()
+            || (!hasStructuredSystemMessage ? AI_SYSTEM_PROMPTS.chat.gemma_test : '');
+        const systemMessage: AiChatMessage[] = resolvedSystemMessage
+            ? [{ role: 'system' as const, content: resolvedSystemMessage }]
             : [];
 
         if (request.messages !== undefined) {
