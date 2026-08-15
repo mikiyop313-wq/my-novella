@@ -243,6 +243,35 @@
           </span>
           <span class="active-indicator" aria-hidden="true"></span>
         </button>
+
+        <button
+          class="nav-item section-item"
+          type="button"
+          [class.is-active]="activeSection() === 'vector-search'"
+          [attr.aria-current]="activeSection() === 'vector-search' ? 'page' : null"
+          (click)="selectSection('vector-search')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-4-4"></path>
+              <path d="M8.5 11h5"></path>
+              <path d="M11 8.5v5"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">Vector Search</span>
+            <span class="nav-sub">Embeddings &amp; API keys</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
       }
     </nav>
   </aside>
@@ -992,6 +1021,8 @@
       <app-system-prompt-settings [globalOnly]="true"></app-system-prompt-settings>
     } @else if (activeSection() === 'ai-configuration') {
       <app-ai-configuration-settings></app-ai-configuration-settings>
+    } @else if (activeSection() === 'vector-search') {
+      <app-vector-configuration-settings></app-vector-configuration-settings>
     } @else if (activeSection() === 'editor-display') {
       <div class="settings-section-panel">
         <header class="content-header">

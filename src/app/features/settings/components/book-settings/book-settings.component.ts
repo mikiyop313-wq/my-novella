@@ -30,6 +30,7 @@ import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/ai-configuration-settings.component';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
+import { VectorConfigurationSettingsComponent } from '../vector-configuration-settings/vector-configuration-settings.component';
 
 type EditableField =
   | 'title'
@@ -48,6 +49,7 @@ type SettingsSection =
   | 'global-prompts'
   | 'editor-display'
   | 'ai-configuration'
+  | 'vector-search'
   | 'archive';
 type SettingsView = 'book' | 'general';
 
@@ -58,6 +60,7 @@ type SettingsView = 'book' | 'general';
     ArchiveSettingsComponent,
     AutocompleteDropdownComponent,
     SystemPromptSettingsComponent,
+    VectorConfigurationSettingsComponent,
   ],
   templateUrl: './book-settings.component.html',
   styleUrl: '../../styles/settings.shared.scss',
@@ -301,7 +304,10 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
 
     this.cancelEditing();
     this.activeView.set(
-      section === 'editor-display' || section === 'ai-configuration' || section === 'global-prompts'
+      section === 'editor-display'
+        || section === 'ai-configuration'
+        || section === 'vector-search'
+        || section === 'global-prompts'
         ? 'general'
         : 'book',
     );

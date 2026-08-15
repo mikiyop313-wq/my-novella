@@ -16,6 +16,7 @@ import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/ai-configuration-settings.component';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
+import { VectorConfigurationSettingsComponent } from '../vector-configuration-settings/vector-configuration-settings.component';
 import { SystemPromptService } from '../../services/system-prompt.service';
 import { BookSettingsComponent } from './book-settings.component';
 
@@ -377,7 +378,7 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(element.querySelector('.settings-view-switcher')?.classList).toContain('is-general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
-    expect(sections).toHaveLength(2);
+    expect(sections).toHaveLength(3);
     expect(element.querySelectorAll('.settings-section-panel')).toHaveLength(1);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(element.querySelectorAll('.theme-option')).toHaveLength(2);
@@ -417,6 +418,30 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('.content-title')?.textContent).toContain('AI Configuration');
   });
 
+  it('opens Vector Search from general settings', () => {
+    const element = fixture.nativeElement as HTMLElement;
+    const generalSettingsPill =
+      element.querySelectorAll<HTMLButtonElement>('.settings-view-pill')[1];
+
+    generalSettingsPill.click();
+    fixture.detectChanges();
+
+    const vectorSection = Array.from(
+      element.querySelectorAll<HTMLButtonElement>('.section-item'),
+    ).find((section) => section.textContent?.includes('Vector Search'));
+
+    vectorSection?.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeView()).toBe('general');
+    expect(fixture.componentInstance.activeSection()).toBe('vector-search');
+    expect(vectorSection?.getAttribute('aria-current')).toBe('page');
+    expect(
+      fixture.debugElement.query(By.directive(VectorConfigurationSettingsComponent)),
+    ).not.toBeNull();
+    expect(element.querySelector('.content-title')?.textContent).toContain('Vector Search');
+  });
+
   it('hides the settings view selector when there is no active book', () => {
     bookId.set(null);
     fixture.detectChanges();
@@ -439,7 +464,7 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
     expect(element.querySelector('.settings-view-switcher')).toBeNull();
-    expect(element.querySelectorAll('.section-item')).toHaveLength(3);
+    expect(element.querySelectorAll('.section-item')).toHaveLength(4);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(getBooks).not.toHaveBeenCalled();
 

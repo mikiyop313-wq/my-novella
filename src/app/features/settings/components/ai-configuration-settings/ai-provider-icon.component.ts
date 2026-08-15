@@ -5,7 +5,7 @@ import type {
   AiLocalProviderId,
 } from '../../../../../../shared/models/ai.model';
 
-type ProviderId = AiCloudProviderId | AiLocalProviderId;
+type ProviderId = AiCloudProviderId | AiLocalProviderId | 'voyage';
 
 @Component({
   selector: 'app-ai-provider-icon',
@@ -44,6 +44,12 @@ type ProviderId = AiCloudProviderId | AiLocalProviderId;
             fill-rule="evenodd"
             clip-rule="evenodd"
             transform="scale(0.03125)"
+          />
+        }
+        @case ('voyage') {
+          <path
+            d="M5 6.5 12.8 26h6.4L27 6.5h-5.7L16 21 10.7 6.5H5Z"
+            fill="#6366f1"
           />
         }
         @case ('anthropic') {
