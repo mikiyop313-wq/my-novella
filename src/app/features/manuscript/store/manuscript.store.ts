@@ -622,6 +622,34 @@ export const ManuscriptStore = signalStore(
       });
     },
 
+    async archiveAct(id: string): Promise<void> {
+      const editor = store.editor();
+      if (!editor) return;
+
+      await manuscriptStructureService.archiveAct(id);
+      deleteNodeRangeInDoc({
+        editor,
+        targetType: ACT_HEADER_NODE,
+        id,
+        stopTypes: [ACT_HEADER_NODE],
+        skipSaver: true,
+      });
+    },
+
+    async archiveChapter(id: string): Promise<void> {
+      const editor = store.editor();
+      if (!editor) return;
+
+      await manuscriptStructureService.archiveChapter(id);
+      deleteNodeRangeInDoc({
+        editor,
+        targetType: CHAPTER_HEADER_NODE,
+        id,
+        stopTypes: [CHAPTER_HEADER_NODE, ACT_HEADER_NODE],
+        skipSaver: true,
+      });
+    },
+
     async archiveScene(id: string): Promise<void> {
       const editor = store.editor();
       if (!editor) return;

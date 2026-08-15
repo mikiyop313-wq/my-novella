@@ -42,6 +42,11 @@ import { AiStreamEditorService } from './helpers/ai/ai-stream-editor.service';
 import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
 import { ToastService } from '../../shared/services/toast.service';
 
+interface ManuscriptRouteTarget {
+  mode: ManuscriptMode;
+  id: string;
+}
+
 @Component({
   selector: 'app-manuscript',
   standalone: true,
@@ -90,6 +95,7 @@ export class Manuscript implements OnInit, OnDestroy {
   hasActNodes = signal(false);
   hasChapterNodes = signal(false);
   hasSceneNodes = signal(false);
+  private isNavigatingAfterRemoval = false;
 
   showCreateSceneHint = computed(() => this.hasLoadedContent() && !this.hasSceneNodes());
   canInsertChapter = computed(() => this.hasActNodes());
@@ -175,6 +181,7 @@ export class Manuscript implements OnInit, OnDestroy {
     this.route.params.subscribe(async params => {
       this.aiStreamEditor.beginViewChange();
       try {
+        this.isNavigatingAfterRemoval = false;
         // Route changes reuse this component, so flush pending prose and vector
         // updates before replacing the editor document.
         await this.saver.flushDirtySections();
@@ -247,6 +254,10 @@ export class Manuscript implements OnInit, OnDestroy {
 
         if (transaction.docChanged && !transaction.getMeta('skipSaver')) {
           this.saver.onDocumentChanged(transaction, this.editor!);
+        }
+
+        if (transaction.docChanged) {
+          void this.navigateAfterActiveScopeRemoval();
         }
       },
     });
@@ -444,6 +455,83 @@ export class Manuscript implements OnInit, OnDestroy {
     this.hasActNodes.set(hasAct);
     this.hasChapterNodes.set(hasChapter);
     this.hasSceneNodes.set(hasScene);
+  }
+
+  private async navigateAfterActiveScopeRemoval(): Promise<void> {
+    if (
+      !this.hasLoadedContent()
+      || this.isNavigatingAfterRemoval
+      || this.activeScopeExistsInEditor()
+    ) return;
+
+    const target = this.getActiveScopeParentRoute();
+    const bookId = this.getWorkspaceBookId();
+    if (!target || !bookId) return;
+
+    this.isNavigatingAfterRemoval = true;
+
+    try {
+      await this.saver.flushStructuralChanges();
+      const navigated = await this.router.navigate(
+        ['/workspace', bookId, 'manuscript', target.mode, target.id],
+        { replaceUrl: true },
+      );
+
+      if (!navigated) {
+        this.isNavigatingAfterRemoval = false;
+      }
+    } catch (error) {
+      this.isNavigatingAfterRemoval = false;
+      const message = error instanceof Error
+        ? error.message
+        : 'Failed to switch manuscript view after removing the active section.';
+      this.toastService.error(message, 'Manuscript');
+    }
+  }
+
+  private activeScopeExistsInEditor(): boolean {
+    const mode = this.store.mode();
+    const activeEntityId = this.store.activeEntityId();
+    if (!this.editor || !mode || !activeEntityId || mode === 'book') return true;
+
+    const nodeType = mode === 'act'
+      ? 'actHeader'
+      : mode === 'chapter'
+        ? 'chapterHeader'
+        : 'sceneSummary';
+    let exists = false;
+
+    this.editor.state.doc.forEach(node => {
+      if (node.type.name === nodeType && node.attrs['id'] === activeEntityId) {
+        exists = true;
+      }
+    });
+
+    return exists;
+  }
+
+  private getActiveScopeParentRoute(): ManuscriptRouteTarget | null {
+    const mode = this.store.mode();
+    const activeEntityId = this.store.activeEntityId();
+    if (!mode || !activeEntityId || mode === 'book') return null;
+
+    for (const act of this.store.bookHierarchy()) {
+      if (mode === 'act' && act.id === activeEntityId) {
+        return { mode: 'book', id: act.bookId };
+      }
+
+      for (const chapter of act.chapters || []) {
+        if (mode === 'chapter' && chapter.id === activeEntityId) {
+          return { mode: 'act', id: act.id };
+        }
+
+        if (mode === 'scene' && chapter.scenes?.some(scene => scene.id === activeEntityId)) {
+          return { mode: 'chapter', id: chapter.id };
+        }
+      }
+    }
+
+    return null;
   }
 
   private getWorkspaceBookId(): string | null {

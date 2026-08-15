@@ -300,7 +300,7 @@ describe('OutlineStore', () => {
     });
   });
 
-  it('updates structure positions only after persistence succeeds', async () => {
+  it('updates structure positions optimistically and keeps them after persistence succeeds', async () => {
     const updatePositions = deferred<void>();
     outlineService.getOutline.mockResolvedValueOnce([
       makeAct({ id: 'act-1', position: 0 }),
@@ -317,8 +317,8 @@ describe('OutlineStore', () => {
     });
 
     expect(store.bookHierarchy()).toMatchObject([
-      { id: 'act-1', position: 0 },
-      { id: 'act-2', position: 1 },
+      { id: 'act-2', position: 0 },
+      { id: 'act-1', position: 1 },
     ]);
 
     updatePositions.resolve(undefined);

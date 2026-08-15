@@ -26,6 +26,8 @@ describe('Manuscript', () => {
   let originalRequestAnimationFrame: typeof window.requestAnimationFrame;
   let originalCancelAnimationFrame: typeof window.cancelAnimationFrame;
   let originalResizeObserver: typeof ResizeObserver | undefined;
+  let originalIntersectionObserver: typeof IntersectionObserver | undefined;
+  let routerNavigate: ReturnType<typeof vi.fn>;
   const trieState = signal<object | null>({});
   const contextTrie = {
     trie: trieState.asReadonly(),
@@ -60,6 +62,7 @@ describe('Manuscript', () => {
     originalRequestAnimationFrame = window.requestAnimationFrame;
     originalCancelAnimationFrame = window.cancelAnimationFrame;
     originalResizeObserver = globalThis.ResizeObserver;
+    originalIntersectionObserver = globalThis.IntersectionObserver;
     Object.defineProperty(window, 'requestAnimationFrame', {
       configurable: true,
       writable: true,
@@ -83,11 +86,25 @@ describe('Manuscript', () => {
         disconnect(): void {}
       },
     });
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      writable: true,
+      value: class {
+        root = null;
+        rootMargin = '';
+        thresholds = [];
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+        takeRecords(): IntersectionObserverEntry[] { return []; }
+      },
+    });
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findMatches(text));
     contextTrie.loadForContext.mockClear();
     registry.setRanges.mockClear();
     registry.clearRanges.mockClear();
     trieState.set({});
+    routerNavigate = vi.fn().mockResolvedValue(true);
 
     await TestBed.configureTestingModule({
       imports: [Manuscript],
@@ -106,7 +123,7 @@ describe('Manuscript', () => {
         {
           provide: Router,
           useValue: {
-            navigate: () => Promise.resolve(true),
+            navigate: routerNavigate,
           },
         },
         {
@@ -145,6 +162,11 @@ describe('Manuscript', () => {
       configurable: true,
       writable: true,
       value: originalResizeObserver,
+    });
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      writable: true,
+      value: originalIntersectionObserver,
     });
   });
 
@@ -348,6 +370,86 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
   });
 
+  it.each([
+    { mode: 'scene' as const, id: 'scene-1', deleteEntity: 'deleteScene' as const, parentMode: 'chapter', parentId: 'chapter-1', channel: 'manuscript:deleteScene' },
+    { mode: 'chapter' as const, id: 'chapter-1', deleteEntity: 'deleteChapter' as const, parentMode: 'act', parentId: 'act-1', channel: 'manuscript:deleteChapter' },
+    { mode: 'act' as const, id: 'act-1', deleteEntity: 'deleteAct' as const, parentMode: 'book', parentId: 'book-1', channel: 'manuscript:deleteAct' },
+  ])('persists and navigates after deleting the active $mode', async ({
+    mode,
+    id,
+    deleteEntity,
+    parentMode,
+    parentId,
+    channel,
+  }) => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams(mode, id);
+    routerNavigate.mockClear();
+    electronInvoke.mockClear();
+
+    component.store[deleteEntity](id);
+
+    await vi.waitFor(() => {
+      expect(electronInvoke).toHaveBeenCalledWith(channel, { id });
+      expect(routerNavigate).toHaveBeenCalledWith(
+        ['/workspace', 'book-1', 'manuscript', parentMode, parentId],
+        { replaceUrl: true },
+      );
+      expect(electronInvoke.mock.invocationCallOrder.at(-1))
+        .toBeLessThan(routerNavigate.mock.invocationCallOrder[0]);
+    });
+  });
+
+  it.each([
+    { mode: 'scene' as const, id: 'scene-1', archiveEntity: 'archiveScene' as const, parentMode: 'chapter', parentId: 'chapter-1', channel: 'manuscript:archiveScene' },
+    { mode: 'chapter' as const, id: 'chapter-1', archiveEntity: 'archiveChapter' as const, parentMode: 'act', parentId: 'act-1', channel: 'manuscript:archiveChapter' },
+    { mode: 'act' as const, id: 'act-1', archiveEntity: 'archiveAct' as const, parentMode: 'book', parentId: 'book-1', channel: 'manuscript:archiveAct' },
+  ])('navigates after archiving the active $mode', async ({
+    mode,
+    id,
+    archiveEntity,
+    parentMode,
+    parentId,
+    channel,
+  }) => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams(mode, id);
+    routerNavigate.mockClear();
+    electronInvoke.mockClear();
+
+    await component.store[archiveEntity](id);
+
+    expect(electronInvoke).toHaveBeenCalledWith(channel, { id });
+    await vi.waitFor(() => expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', parentMode, parentId],
+      { replaceUrl: true },
+    ));
+  });
+
+  it('does not navigate when removing a nested entity from a broader view', async () => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams('chapter', 'chapter-1');
+    routerNavigate.mockClear();
+
+    await component.store.archiveScene('scene-1');
+
+    expect(routerNavigate).not.toHaveBeenCalled();
+  });
+
+  it('retains the active entity and route when archiving fails', async () => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams('act', 'act-1');
+    routerNavigate.mockClear();
+    electronInvoke.mockRejectedValueOnce(new Error('Archive failed'));
+
+    await expect(component.store.archiveAct('act-1')).rejects.toThrow('Archive failed');
+
+    expect(component.editor?.getJSON().content?.some(node => (
+      node.type === 'actHeader' && node.attrs?.['id'] === 'act-1'
+    ))).toBe(true);
+    expect(routerNavigate).not.toHaveBeenCalled();
+  });
+
   it('highlights across inline marks without joining separate editor blocks', async () => {
     setEditorContent();
     await Promise.resolve();
@@ -406,6 +508,48 @@ describe('Manuscript', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'Key' }] },
       ],
     }).run();
+  }
+
+  function setRemovalHierarchyAndDocument(): void {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'Scene',
+          chapterId: 'chapter-1',
+          position: 0,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }]);
+
+    const editor = component.editor!;
+    const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, [
+      editor.schema.nodes['actHeader'].create({ id: 'act-1', bookId: 'book-1' }),
+      editor.schema.nodes['chapterHeader'].create({ id: 'chapter-1', actId: 'act-1' }),
+      editor.schema.nodes['sceneSummary'].create({ id: 'scene-1', chapterId: 'chapter-1' }),
+      editor.schema.nodes['paragraph'].create(),
+    ]);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
   }
 
   function flushFrames(): void {

@@ -98,7 +98,7 @@
       display: flex;
       gap: 8px;
 
-      .delete-btn {
+      .header-menu-trigger {
         background: transparent;
         border: none;
         color: var(--color-text-secondary);
@@ -111,8 +111,8 @@
         transition: all 0.2s;
 
         &:hover {
-          color: #e74c3c;
-          background: rgba(231, 76, 60, 0.1);
+          color: var(--color-text-primary);
+          background: var(--color-hover-bg);
         }
       }
     }
