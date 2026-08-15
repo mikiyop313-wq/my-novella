@@ -4,8 +4,8 @@ const buildChatCompletionPayload = vi.hoisted(() => vi.fn());
 vi.mock('../../ai-configuration.service', () => ({
     aiConfigurationService: { getServerUrl: vi.fn() },
 }));
-vi.mock('../../prompt-builder.service', () => ({
-    promptBuilderService: { buildChatCompletionPayload },
+vi.mock('../../chat-completion-payload-builder.service', () => ({
+    chatCompletionPayloadBuilderService: { buildChatCompletionPayload },
 }));
 
 import { LmStudioProvider } from '../lm-studio.provider';

@@ -11,10 +11,10 @@ import {
 } from '../../../shared/constants/ai-system-prompts';
 import type { SystemPromptPresetDto } from '../../../shared/models/system-prompt.model';
 import type { AiPromptRequest } from './models';
-import { PromptBuilderService } from './prompt-builder.service';
+import { ChatCompletionPayloadBuilderService } from './chat-completion-payload-builder.service';
 
-describe('PromptBuilderService', () => {
-    const service = new PromptBuilderService({ getById });
+describe('ChatCompletionPayloadBuilderService', () => {
+    const service = new ChatCompletionPayloadBuilderService({ getById });
 
     beforeEach(() => {
         getById.mockReset();

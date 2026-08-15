@@ -18,7 +18,7 @@ import { appendRequiredSystemPromptContract } from './required-system-prompt-con
 
 const CHAT_MESSAGE_ROLES = new Set<AiChatMessageRole>(['system', 'user', 'assistant']);
 
-export class PromptBuilderService {
+export class ChatCompletionPayloadBuilderService {
     constructor(
         private readonly presetRepository: Pick<SystemPromptRepository, 'getById'> =
             systemPromptRepository,
@@ -137,4 +137,4 @@ type ResolvedSystemPromptPreset = Pick<
     'systemPrompt' | keyof SystemPromptGenerationSettings
 >;
 
-export const promptBuilderService = new PromptBuilderService();
+export const chatCompletionPayloadBuilderService = new ChatCompletionPayloadBuilderService();

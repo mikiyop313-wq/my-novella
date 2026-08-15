@@ -2,7 +2,7 @@ import type { AiModel } from '../../../../shared/models/ai.model';
 import { apiKeyService } from '../api-key.service';
 import type { ApiKeyService } from '../api-key.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
-import { promptBuilderService } from '../prompt-builder.service';
+import { chatCompletionPayloadBuilderService } from '../chat-completion-payload-builder.service';
 import type { AiProvider } from './ai-provider.interface';
 import {
     asObject,
@@ -26,7 +26,10 @@ export class AnthropicProvider implements AiProvider {
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
         const apiKey = await this.requireApiKey();
         const modelId = requireModelId(request.modelId, this.name);
-        const normalized = await promptBuilderService.buildChatCompletionPayload(request, modelId);
+        const normalized = await chatCompletionPayloadBuilderService.buildChatCompletionPayload(
+            request,
+            modelId,
+        );
         const systemMessages = normalized.messages
             .filter((message) => message.role === 'system')
             .map((message) => message.content);
