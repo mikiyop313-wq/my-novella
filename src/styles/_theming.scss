@@ -10,6 +10,13 @@ $colors-light: (
     border: rgba(0, 0, 0, 0.08),
     border-secondary: rgba(0, 0, 0, 0.5),
     shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2),
+    card-hover-shadow: 0 26px 60px -24px rgba(0, 0, 0, 0.34),
+    cover-overlay: rgba(0, 0, 0, 0.34),
+    cover-highlight: rgba(255, 255, 255, 0.2),
+    cover-control-text: #ffffff,
+    cover-control-bg: rgba(20, 20, 20, 0.58),
+    cover-control-hover: rgba(20, 20, 20, 0.78),
+    cover-control-shadow: 0 8px 24px rgba(0, 0, 0, 0.24),
 
     // Surface Typography
     text-primary: #262626,
@@ -36,6 +43,13 @@ $colors-dark: (
     border: rgba(255, 255, 255, 0.08),
     border-secondary: rgba(255, 255, 255, 0.08),
     shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8),
+    card-hover-shadow: 0 26px 60px -24px rgba(0, 0, 0, 0.8),
+    cover-overlay: rgba(0, 0, 0, 0.42),
+    cover-highlight: rgba(255, 255, 255, 0.2),
+    cover-control-text: #ffffff,
+    cover-control-bg: rgba(20, 20, 20, 0.58),
+    cover-control-hover: rgba(20, 20, 20, 0.78),
+    cover-control-shadow: 0 8px 24px rgba(0, 0, 0, 0.5),
 
     // Surface Typography
     text-primary: #faefea,

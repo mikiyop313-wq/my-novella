@@ -1,4 +1,5 @@
 import type {
+  EmbeddingModel,
   LocalEmbeddingModelName,
   OpenRouterEmbeddingModelName,
 } from './vector.model';
@@ -22,9 +23,9 @@ export interface BookSettingsDto {
   synopsisAiContext: boolean;
   povCharacterId?: string | null;
   /** Embedding model/provider used to generate paragraph vectors for this book. */
-  embeddingModel?: 'local' | 'openAI' | 'voyage' | 'openRouter';
+  embeddingModel?: EmbeddingModel | null;
   /** Exact on-device embedding model selected when `embeddingModel` is `local`. */
-  localEmbeddingModel?: LocalEmbeddingModelName;
+  localEmbeddingModel?: LocalEmbeddingModelName | null;
   /** Exact OpenRouter model selected when `embeddingModel` is `openRouter`. */
   openRouterEmbeddingModel?: OpenRouterEmbeddingModelName | null;
   /** Global default inherited by inline manuscript prompts. */

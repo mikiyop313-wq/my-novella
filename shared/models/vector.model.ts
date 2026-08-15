@@ -27,6 +27,13 @@ export interface VectorProviderConfiguration {
     apiKeys: Record<VectorConfigurationProviderId, VectorApiKeyStatus>;
 }
 
+/** Persisted provider and exact-model selection resolved for one book. */
+export interface ResolvedBookEmbeddingSelection {
+    embeddingModel: EmbeddingModel | null;
+    localEmbeddingModel: LocalEmbeddingModelName | null;
+    openRouterEmbeddingModel: OpenRouterEmbeddingModelName | null;
+}
+
 export interface SaveVectorApiKeyRequest {
     providerId: VectorConfigurationProviderId;
     apiKey: string;
@@ -325,17 +332,21 @@ export interface SelectBookLocalEmbeddingModelPayload extends DownloadLocalEmbed
 /** Identifies the exact local model currently selected by a book. */
 export interface BookLocalEmbeddingModelSelection {
     bookId: string;
-    modelName: LocalEmbeddingModelName;
+    modelName: LocalEmbeddingModelName | null;
 }
 
 /** Progress emitted while a book is reconciled into a newly selected local embedding space. */
-export interface BookEmbeddingReindexProgress extends BookLocalEmbeddingModelSelection {
+export interface BookEmbeddingReindexProgress {
+    bookId: string;
+    modelName: LocalEmbeddingModelName;
     processedParagraphs: number;
     totalParagraphs: number;
 }
 
 /** Summary of one complete book reconciliation. */
-export interface BookEmbeddingReindexResult extends BookLocalEmbeddingModelSelection {
+export interface BookEmbeddingReindexResult {
+    bookId: string;
+    modelName: LocalEmbeddingModelName;
     totalParagraphs: number;
     reusedParagraphs: number;
     embeddedParagraphs: number;
@@ -344,7 +355,9 @@ export interface BookEmbeddingReindexResult extends BookLocalEmbeddingModelSelec
 }
 
 /** Result returned when a book model selection does not require reconciliation. */
-export interface BookEmbeddingSelectionOnlyResult extends BookLocalEmbeddingModelSelection {
+export interface BookEmbeddingSelectionOnlyResult {
+    bookId: string;
+    modelName: LocalEmbeddingModelName;
     reindexed: false;
 }
 

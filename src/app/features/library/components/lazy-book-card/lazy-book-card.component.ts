@@ -18,13 +18,15 @@ import { BookCardComponent } from '../book-card/book-card.component';
       display: block;
       width: 100%;
       height: 100%;
-      /* Important: Set a min-height matching the card so the scroll height doesn't jump */
-      min-height: 450px; 
+      /* Match the compact card height so the scroll position stays stable. */
+      min-height: 430px;
     }
     
     .book-card-placeholder {
       width: 100%;
-      height: 450px;
+      max-width: 280px;
+      height: 430px;
+      margin: 0 auto;
       background: rgba(255, 255, 255, 0.03);
       border-radius: 12px;
       animation: pulsePlaceholder 1.5s infinite ease-in-out;

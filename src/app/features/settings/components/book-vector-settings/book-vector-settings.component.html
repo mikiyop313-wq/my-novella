@@ -23,7 +23,28 @@
           <p>Keep paragraph embeddings current and allow semantic manuscript search.</p>
           @if (selectedProviderUnavailable()) {
             <p id="indexing-unavailable-reason" class="unavailable-message" role="note">
-              {{ unavailableMessage() }}
+              @if (selectedProviderId() === null) {
+                No embedding model is available. Install a local model or configure a cloud
+                provider in
+                <a
+                  class="settings-link"
+                  href="/settings"
+                  (click)="openVectorConfiguration($event)"
+                >General Settings &rarr; Vector Search</a>.
+              } @else if (selectedProviderId() === 'local') {
+                @if (selectedLocalModelStatus(); as status) {
+                  {{ status.displayName }} is not installed. Install it from
+                  <a
+                    class="settings-link"
+                    href="/settings"
+                    (click)="openVectorConfiguration($event)"
+                  >General Settings &rarr; Vector Search</a>, or select another installed model.
+                } @else {
+                  {{ unavailableMessage() }}
+                }
+              } @else {
+                {{ unavailableMessage() }}
+              }
             </p>
           }
         </div>
@@ -155,8 +176,12 @@
               </div>
             } @empty {
               <div class="no-models" role="note">
-                No local embedding models are installed. Install one from General Settings &rarr;
-                Vector Search.
+                No local embedding models are installed. Install one from
+                <a
+                  class="settings-link"
+                  href="/settings"
+                  (click)="openVectorConfiguration($event)"
+                >General Settings &rarr; Vector Search</a>.
               </div>
             }
           </div>

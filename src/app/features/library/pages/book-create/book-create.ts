@@ -45,8 +45,7 @@ export class BookCreate implements OnInit {
     status: ['draft'],
     wordCount: [0],
     proseTense: ['past'],
-    pointOfView: ['third_limited'],
-    povCharacterId: [null]
+    pointOfView: ['third_limited']
   });
 
   genres = this.fb.array([]);
@@ -77,8 +76,6 @@ export class BookCreate implements OnInit {
     { value: 'third_limited', label: 'Third Person Limited' },
     { value: 'third_omniscient', label: 'Third Person Omniscient' }
   ];
-
-  characters: DropdownOption[] = [];
 
   toggleAdvancedSettings() {
     this.isAdvancedSettingsOpen.update(v => !v);
@@ -173,15 +170,13 @@ export class BookCreate implements OnInit {
     this.bookForm.patchValue({ coverImage: null });
   }
 
-  onSelectionChange(type: 'genre' | 'trope' | 'language' | 'tense' | 'pov' | 'povCharacter', value: any) {
+  onSelectionChange(type: 'genre' | 'trope' | 'language' | 'tense' | 'pov', value: any) {
     if (type === 'language') {
       this.bookForm.patchValue({ language: value });
     } else if (type === 'tense') {
       this.bookForm.patchValue({ proseTense: value });
     } else if (type === 'pov') {
       this.bookForm.patchValue({ pointOfView: value });
-    } else if (type === 'povCharacter') {
-      this.bookForm.patchValue({ povCharacterId: value });
     } else {
       const arrayControl = type === 'genre' ? this.genres : this.tropes;
 
@@ -236,7 +231,6 @@ export class BookCreate implements OnInit {
             language: formValue.language,
             proseTense: formValue.proseTense,
             pointOfView: formValue.pointOfView,
-            povCharacterId: formValue.povCharacterId,
             synopsisAiContext: true
           }
         };

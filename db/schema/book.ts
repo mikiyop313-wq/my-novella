@@ -53,17 +53,15 @@ export const bookSettings = sqliteTable('book_settings', {
   pointOfView: text('point_of_view').$type<PointOfView>().notNull().default('third_limited'),
   synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
   povCharacterId: text('pov_character_id'),
-  embeddingModel: text('embedding_model').$type<EmbeddingModel>().notNull().default('local'),
+  embeddingModel: text('embedding_model').$type<EmbeddingModel>(),
   localEmbeddingModel: text('local_embedding_model')
-    .$type<LocalEmbeddingModelName>()
-    .notNull()
-    .default('mixedbread-ai/mxbai-embed-large-v1'),
+    .$type<LocalEmbeddingModelName>(),
   openRouterEmbeddingModel: text('openrouter_embedding_model')
     .$type<OpenRouterEmbeddingModelName>(),
   vectorSearchEnabled: integer('vector_search_enabled', { mode: 'boolean' }).notNull().default(true),
   automaticIndexingEnabled: integer('automatic_indexing_enabled', { mode: 'boolean' })
     .notNull()
-    .default(true),
+    .default(false),
 });
 
 // ---------------------------------------------------------------------------

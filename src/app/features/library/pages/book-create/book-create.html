@@ -1,10 +1,11 @@
 <div class="page-container">
   <div class="page-header">
-    <button class="back-btn" (click)="cancel()">
-      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
-        <path d="m313-440 224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z" />
+    <button class="back-btn" (click)="cancel()" aria-label="Back to library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M15 18l-6-6 6-6" />
       </svg>
-      Back to Library
+      <span class="back-text">Back to Library</span>
     </button>
     <div class="header-titles">
       <span class="subtitle">New Masterpiece</span>
@@ -98,18 +99,6 @@
             </div>
           </div>
 
-          <div class="input-row">
-            <div class="input-group">
-              <label>POV Character</label>
-              @if (characters.length > 0) {
-              <app-autocomplete-dropdown [options]="characters" [selectedValue]="bookForm.get('povCharacterId')?.value"
-                (selectionChange)="onSelectionChange('povCharacter', $event)" placeholder="Select a character">
-              </app-autocomplete-dropdown>
-              } @else {
-              <span class="no-options-text">No characters available.</span>
-              }
-            </div>
-          </div>
         </div>
         }
       </div>

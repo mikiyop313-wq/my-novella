@@ -59,6 +59,7 @@ const EMPTY_API_KEY_STATUSES: Record<VectorConfigurationProviderId, VectorApiKey
 export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   readonly book = input.required<BookDto>();
   readonly bookChange = output<BookDto>();
+  readonly vectorConfigurationRequested = output<void>();
 
   private readonly electronService = inject(ElectronService);
   private readonly libraryService = inject(LibraryService);
@@ -107,9 +108,10 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
 
   readonly selectedProviderUnavailable = computed(() => {
     const providerId = this.selectedProviderId();
+    if (providerId === null) return true;
     if (providerId === 'local') {
       const status = this.selectedLocalModelStatus();
-      return status !== null && !status.installed;
+      return status === null || !status.installed;
     }
     if (!this.isProviderConfigured(providerId)) return true;
     return providerId === 'openrouter' && this.selectedOpenRouterModelName() === null;
@@ -117,6 +119,9 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
 
   readonly unavailableMessage = computed(() => {
     const providerId = this.selectedProviderId();
+    if (providerId === null) {
+      return 'No embedding model is available.';
+    }
     if (providerId === 'local') {
       const status = this.selectedLocalModelStatus();
       return status
@@ -138,7 +143,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     () => this.savedIndexingEnabled() && !this.selectedProviderUnavailable(),
   );
   readonly automaticIndexingEnabled = computed(
-    () => this.book().settings?.automaticIndexingEnabled ?? true,
+    () => this.book().settings?.automaticIndexingEnabled ?? false,
   );
   readonly reindexPercentage = computed(() => {
     const progress = this.reindexProgress();
@@ -147,7 +152,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    this.viewedProviderId.set(this.selectedProviderId());
+    this.viewedProviderId.set(this.selectedProviderId() ?? 'local');
     this.listenForProgress<BookEmbeddingReindexProgress>(
       'vectors:local-model:reindex-progress',
       progress => progress.modelName,
@@ -193,7 +198,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
       this.openRouterModels.set(openRouterModels);
       this.selectedOpenRouterModelName.set(openRouterSelection.modelName);
       this.indexSizes.set(Array.isArray(indexSizes) ? indexSizes : []);
-      this.viewedProviderId.set(this.selectedProviderId());
+      this.viewedProviderId.set(this.selectedProviderId() ?? 'local');
     } catch (error) {
       this.loadError.set(this.errorMessage(error));
     } finally {
@@ -219,7 +224,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
       this.emitSettingsUpdate({ embeddingModel: providerId === 'openai' ? 'openAI' : 'voyage' });
     } catch (error) {
       this.operationError.set(this.errorMessage(error));
-      this.viewedProviderId.set(this.selectedProviderId());
+      this.viewedProviderId.set(this.selectedProviderId() ?? 'local');
     } finally {
       this.finishOperation();
     }
@@ -313,6 +318,11 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     } finally {
       this.finishOperation();
     }
+  }
+
+  openVectorConfiguration(event: MouseEvent): void {
+    event.preventDefault();
+    this.vectorConfigurationRequested.emit();
   }
 
   isProviderConfigured(providerId: BookVectorProviderId): boolean {
@@ -420,6 +430,7 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
 
   private async reconcileCurrentSelection(): Promise<void> {
     const providerId = this.selectedProviderId();
+    if (providerId === null) return;
     if (providerId === 'local') {
       const modelName = this.selectedLocalModelName();
       if (modelName) await this.selectLocalModelForBook(modelName, true);
@@ -503,12 +514,13 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     };
   }
 
-  private providerIdFromBook(book: BookDto): BookVectorProviderId {
+  private providerIdFromBook(book: BookDto): BookVectorProviderId | null {
     switch (book.settings?.embeddingModel) {
       case 'openAI': return 'openai';
       case 'voyage': return 'voyage';
       case 'openRouter': return 'openrouter';
-      default: return 'local';
+      case 'local': return 'local';
+      default: return null;
     }
   }
 
