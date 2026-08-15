@@ -11,10 +11,10 @@ import {
 } from '../../../shared/constants/ai-system-prompts';
 import type { SystemPromptPresetDto } from '../../../shared/models/system-prompt.model';
 import type { AiPromptRequest } from './models';
-import { PromptBuilderService } from './prompt-builder.service';
+import { ChatCompletionPayloadBuilderService } from './chat-completion-payload-builder.service';
 
-describe('PromptBuilderService', () => {
-    const service = new PromptBuilderService({ getById });
+describe('ChatCompletionPayloadBuilderService', () => {
+    const service = new ChatCompletionPayloadBuilderService({ getById });
 
     beforeEach(() => {
         getById.mockReset();
@@ -99,6 +99,34 @@ describe('PromptBuilderService', () => {
         });
         expect(payload.max_tokens).toBeUndefined();
         expect(getById).not.toHaveBeenCalled();
+    });
+
+    it('appends the required JSON contract after the editable Codex detection prompt', async () => {
+        const preset = BUILT_IN_SYSTEM_PROMPT_PRESETS.codexDetection;
+        const payload = await service.buildChatCompletionPayload(makeRequest({
+            systemPromptPreset: { category: 'codexDetection', presetId: preset.id },
+        }), 'fallback-model');
+
+        const systemMessage = payload.messages[0]?.content ?? '';
+        expect(systemMessage.startsWith(`${preset.systemPrompt}\n\n`)).toBe(true);
+        expect(systemMessage).toContain('{"entries":[{"name":"string"');
+        expect(systemMessage).toMatch(/other\.$/);
+    });
+
+    it('appends the required contract to a stored editable detection preset', async () => {
+        const preset = storedPreset({
+            category: 'codexDetection',
+            systemPrompt: 'Detect only major story concepts.',
+        });
+        getById.mockResolvedValue(preset);
+
+        const payload = await service.buildChatCompletionPayload(makeRequest({
+            systemPromptPreset: { category: 'codexDetection', presetId: preset.id },
+        }), 'fallback-model');
+
+        expect(payload.messages[0]?.content.startsWith(
+            'Detect only major story concepts.\n\nReturn exactly one valid JSON object',
+        )).toBe(true);
     });
 
     it('loads a stored preset by ID and replaces request generation settings', async () => {
@@ -236,6 +264,7 @@ function storedPreset(
         maxOutputTokens: 500,
         presencePenalty: 0,
         frequencyPenalty: 0,
+        defaultModelId: null,
         createdAt: new Date(0).toISOString(),
         lastEditedAt: new Date(0).toISOString(),
         ...overrides,

@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import { of } from 'rxjs';
 import { provideMarkdown } from 'ngx-markdown';
 
+import type { BookDto } from '../../../../shared/models/book.model';
 import {
   type ChatMessageDetailDto,
   type ChatThreadDetailDto,
@@ -20,6 +21,8 @@ import { CodexContextHighlightRegistryService } from '../codex/highlighting/code
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.service';
+import { CodexWindowService } from '../codex/services/codex-window.service';
+import { LibraryService } from '../library/services/library.service';
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
 import { WorkspaceStore } from '../workspace/workspace.store';
 import { Chat } from './chat';
@@ -33,6 +36,7 @@ function makeThreadDetail(overrides: Partial<ChatThreadDetailDto> = {}): ChatThr
     bookId: 'book-1',
     title: 'Draft chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     messages: [],
@@ -47,6 +51,7 @@ function makeThread(overrides: Partial<ChatThreadDto> = {}): ChatThreadDto {
     bookId: 'book-1',
     title: 'Draft chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -70,11 +75,31 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
-    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
-    sceneRefs: [],
-    codexRefs: [],
+    ...overrides,
+  };
+}
+
+function makeBook(overrides: Partial<BookDto> = {}): BookDto {
+  return {
+    id: 'book-1',
+    title: 'Draft Book',
+    author: 'Author',
+    status: 'draft',
+    synopsis: null,
+    coverImage: null,
+    wordCount: 0,
+    language: 'English',
+    createdAt: '',
+    lastEditedAt: '',
+    categories: [],
+    settings: {
+      language: 'English',
+      proseTense: 'past',
+      pointOfView: 'third_limited',
+      synopsisAiContext: false,
+    },
     ...overrides,
   };
 }
@@ -98,6 +123,7 @@ describe('Chat', () => {
     openThread: ReturnType<typeof vi.fn>;
     closeThread: ReturnType<typeof vi.fn>;
     createThread: ReturnType<typeof vi.fn>;
+    updateThread: ReturnType<typeof vi.fn>;
     sendMessage: ReturnType<typeof vi.fn>;
     createMessageBranch: ReturnType<typeof vi.fn>;
     createAssistantMessage: ReturnType<typeof vi.fn>;
@@ -130,9 +156,13 @@ describe('Chat', () => {
     onDetachedWindowClosed: ReturnType<typeof vi.fn>;
     isBookDetached: ReturnType<typeof vi.fn>;
   };
+  let codexWindowService: {
+    onDetachedEntryChanged: ReturnType<typeof vi.fn>;
+  };
   let toastService: Pick<ToastService, 'error'>;
   let matchChooser: { open: ReturnType<typeof vi.fn> };
   let detachedWindowClosedCallback: ((event: { bookId: string; sessionId: string }) => void) | null;
+  let codexEntryChangedCallback: ((event: { bookId: string | null }) => void) | null;
   let detachedBookIds: Set<string>;
   const trieState = signal<object | null>({});
   const contextEntries = signal<any[]>([]);
@@ -145,6 +175,7 @@ describe('Chat', () => {
     error: contextError.asReadonly(),
     findMatches: vi.fn((text: string) => findCodexMatches(text)),
     loadForContext: vi.fn(),
+    refreshCurrentContext: vi.fn(),
   };
   const contextHierarchy = signal<any[]>([]);
   const contextHierarchyLoading = signal(false);
@@ -161,7 +192,10 @@ describe('Chat', () => {
     enterBook: vi.fn(async () => undefined),
   };
   const chatAiContext = {
-    buildContextMessage: vi.fn(async () => null),
+    buildContext: vi.fn(async () => null),
+  };
+  const libraryService = {
+    getBooks: vi.fn(),
   };
   const highlightRegistry = {
     setRanges: vi.fn(),
@@ -177,6 +211,7 @@ describe('Chat', () => {
         { provide: Router, useValue: router },
         { provide: ChatStore, useValue: chatStore },
         { provide: ChatWindowService, useValue: chatWindowService },
+        { provide: CodexWindowService, useValue: codexWindowService },
         { provide: AiStore, useValue: aiStore },
         { provide: AiStreamService, useValue: aiStreamService },
         { provide: ToastService, useValue: toastService },
@@ -186,6 +221,7 @@ describe('Chat', () => {
         { provide: CodexEntryOpenerService, useValue: { open: vi.fn() } },
         { provide: WorkspaceBookStore, useValue: workspaceBookStore },
         { provide: WorkspaceStore, useValue: workspaceStore },
+        { provide: LibraryService, useValue: libraryService },
         { provide: ChatAiContextService, useValue: chatAiContext },
         ...provideMarkdown(),
       ],
@@ -229,6 +265,7 @@ describe('Chat', () => {
     selectedThread = null;
     threads = [];
     detachedWindowClosedCallback = null;
+    codexEntryChangedCallback = null;
     detachedBookIds = new Set();
     trieState.set({});
     contextEntries.set([]);
@@ -239,9 +276,11 @@ describe('Chat', () => {
     contextHierarchyError.set(null);
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
     contextTrie.loadForContext.mockClear();
+    contextTrie.refreshCurrentContext.mockClear();
     workspaceBookStore.loadBookHierarchy.mockClear();
     workspaceStore.enterBook.mockClear();
-    chatAiContext.buildContextMessage.mockClear();
+    libraryService.getBooks.mockReset().mockResolvedValue([makeBook()]);
+    chatAiContext.buildContext.mockClear();
     highlightRegistry.setRanges.mockClear();
     highlightRegistry.clearRanges.mockClear();
     chatStore = {
@@ -275,6 +314,11 @@ describe('Chat', () => {
         const thread = makeThread();
         selectedThread = { ...thread, messages: [], branchSelections: [] };
         return thread;
+      }),
+      updateThread: vi.fn(async (id: string, data: Partial<ChatThreadDto>) => {
+        if (selectedThread?.id === id) {
+          selectedThread = { ...selectedThread, ...data };
+        }
       }),
       sendMessage: vi.fn(async (content: string) => {
         const message = makeMessage({ content });
@@ -396,6 +440,14 @@ describe('Chat', () => {
         };
       }),
       isBookDetached: vi.fn((bookId: string | null) => !!bookId && detachedBookIds.has(bookId)),
+    };
+    codexWindowService = {
+      onDetachedEntryChanged: vi.fn((callback: (event: { bookId: string | null }) => void) => {
+        codexEntryChangedCallback = callback;
+        return () => {
+          codexEntryChangedCallback = null;
+        };
+      }),
     };
     toastService = { error: vi.fn() };
     matchChooser = { open: vi.fn() };
@@ -567,17 +619,7 @@ describe('Chat', () => {
   it('restores the last model used in an opened thread', async () => {
     chatStore.openThread.mockImplementation(async () => {
       selectedThread = makeThreadDetail({
-        messages: [
-          makeMessage({ id: 'user-1' }),
-          makeMessage({
-            id: 'assistant-1',
-            parentMessageId: 'user-1',
-            role: 'assistant',
-            position: 1,
-            modelId: 'openrouter/test-model',
-            provider: 'openrouter',
-          }),
-        ],
+        lastModelId: 'openrouter/test-model',
       });
     });
 
@@ -666,6 +708,102 @@ describe('Chat', () => {
     expect(component.isSendButtonDisabled()).toBe(true);
   });
 
+  it('restores the model saved on an opened thread', async () => {
+    currentBookId = 'book-1';
+    selectedThread = makeThreadDetail({ lastModelId: 'openrouter/test-model' });
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    expect(component.selectedModelId()).toBe('openrouter/test-model');
+  });
+
+  it('persists model picker changes on the selected thread', async () => {
+    currentBookId = 'book-1';
+    selectedThread = makeThreadDetail();
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    await component.onModelSelectionChange('openrouter/test-model');
+
+    expect(component.selectedModelId()).toBe('openrouter/test-model');
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', {
+      lastModelId: 'openrouter/test-model',
+    });
+  });
+
+  it('persists an unsaved chat model after the first message creates its thread', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    await component.onModelSelectionChange('openrouter/test-model');
+    expect(chatStore.updateThread).not.toHaveBeenCalled();
+    expect(component.hasSelectedModel()).toBe(true);
+
+    setComposerValue('Start the thread');
+    await component.sendPrompt();
+
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start the thread');
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', {
+      lastModelId: 'openrouter/test-model',
+    });
+  });
+
+  it('blocks message editing and retrying when no model is selected', async () => {
+    currentBookId = 'book-1';
+    const user = makeMessage({ id: 'user-1' });
+    const assistant = makeMessage({
+      id: 'assistant-1',
+      parentMessageId: 'user-1',
+      role: 'assistant',
+      position: 1,
+    });
+    selectedThread = makeThreadDetail({ messages: [user, assistant] });
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: {
+        snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) },
+      },
+    });
+
+    component.editMessage('user-1');
+    await component.retryMessage('assistant-1');
+    fixture.detectChanges();
+
+    expect(component.editingMessageId).toBeNull();
+    expect(chatStore.createAssistantMessage).not.toHaveBeenCalled();
+    const editButton = fixture.nativeElement.querySelector(
+      '.message-actions .action-btn[title="Edit"]',
+    ) as HTMLButtonElement;
+    const retryButton = fixture.nativeElement.querySelector(
+      '.message-actions .action-btn[title="Retry"]',
+    ) as HTMLButtonElement;
+    expect(editButton.disabled).toBe(true);
+    expect(retryButton.disabled).toBe(true);
+  });
+
   it('starts an unsaved new chat without creating a thread', async () => {
     await createComponent({
       snapshot: { paramMap: convertToParamMap({}) },
@@ -677,12 +815,14 @@ describe('Chat', () => {
       },
     });
 
+    component.selectedModelId.set('openrouter/test-model');
     await component.startNewConversation();
 
     expect(chatStore.closeThread).toHaveBeenCalled();
     expect(chatStore.createThread).not.toHaveBeenCalled();
     expect(component.hasActiveConversation).toBe(true);
     expect(component.selectedThreadId).toBeNull();
+    expect(component.selectedModelId()).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith(['/workspace', 'book-1', 'thread', 'new-chat'], { replaceUrl: false });
   });
 
@@ -745,11 +885,7 @@ describe('Chat', () => {
 
     await component.sendPrompt();
 
-    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here', {
-      includeFullOutline: false,
-      sceneIds: [],
-      codexEntryIds: [],
-    });
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here');
     expect(router.navigate).toHaveBeenCalledWith(['/workspace', 'book-1', 'thread', 'thread-1'], { replaceUrl: true });
   });
 
@@ -776,7 +912,7 @@ describe('Chat', () => {
           status: 'active',
           prose: null,
           summary: null,
-          wordCount: 0,
+          wordCount: 1,
           pointOfViewOverride: null,
           povCharacterIdOverride: null,
         }],
@@ -838,17 +974,85 @@ describe('Chat', () => {
 
     await component.sendPrompt();
 
-    expect(chatStore.sendMessage).toHaveBeenCalledWith(
-      'Ask Mara Vale about the opening.',
-      {
-        includeFullOutline: true,
-        sceneIds: ['scene-1'],
-        codexEntryIds: ['codex-manual', 'codex-1', 'codex-always'],
-      },
-    );
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Ask Mara Vale about the opening.');
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeFullOutline: true,
+      sceneIds: ['scene-1'],
+      codexEntryIds: ['codex-manual', 'codex-1', 'codex-always'],
+    }));
     expect(component.includeFullOutline()).toBe(true);
-    expect(component.contextManuscriptRefs()).toEqual(['scene:scene-1']);
+    expect(component.contextManuscriptRefs()).toEqual(['novel']);
     expect(component.contextCodexEntryIds()).toEqual(['codex-manual']);
+  });
+
+  it('loads and submits the active book metadata as one context selection', async () => {
+    libraryService.getBooks.mockResolvedValueOnce([makeBook({
+      synopsis: 'A locksmith discovers a door between worlds.',
+      categories: [
+        { id: 'genre-1', name: 'Fantasy', type: 'genre', isCustom: false },
+        { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+      ],
+      settings: {
+        language: 'English',
+        proseTense: 'past',
+        pointOfView: 'third_limited',
+        synopsisAiContext: true,
+      },
+    })]);
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+
+    const metadataSection = component.contextDropdownSections()[0];
+    expect(metadataSection.title).toBe('Book Metadata');
+    expect(metadataSection.options[0]).toEqual(expect.objectContaining({
+      value: 'book-metadata',
+      hint: 'Synopsis, Genres, Tropes',
+      disabled: false,
+    }));
+
+    component.onContextChange(['book-metadata']);
+    setComposerValue('Help me develop this premise.');
+    await component.sendPrompt();
+
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeBookMetadata: true,
+      bookContext: {
+        synopsis: 'A locksmith discovers a door between worlds.',
+        synopsisAiContext: true,
+        categories: [
+          { id: 'genre-1', name: 'Fantasy', type: 'genre', isCustom: false },
+          { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+        ],
+      },
+    }));
+  });
+
+  it('disables book metadata when only a synopsis excluded by settings exists', async () => {
+    libraryService.getBooks.mockResolvedValueOnce([makeBook({
+      synopsis: 'This synopsis is disabled for AI context.',
+    })]);
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+
+    expect(component.contextDropdownSections()[0].options[0]).toEqual(expect.objectContaining({
+      hint: 'No metadata available',
+      disabled: true,
+    }));
   });
 
   it('uses replacement selection state and does not detect Codex from message history', async () => {
@@ -881,15 +1085,50 @@ describe('Chat', () => {
 
     await component.sendPrompt();
 
-    expect(chatStore.sendMessage).toHaveBeenCalledWith(
-      'Continue without that context.',
-      {
-        includeFullOutline: false,
-        sceneIds: [],
-        codexEntryIds: [],
-      },
-    );
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Continue without that context.');
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+    }));
     expect(component.automaticallyIncludedCodexEntryIds()).toEqual(new Set());
+  });
+
+  it('removes deleted Codex selections before submitting composer context', async () => {
+    contextEntries.set([{
+      id: 'codex-manual',
+      bookId: 'book-1',
+      type: 'lore',
+      name: 'Moon Rite',
+      alias: null,
+      description: null,
+      image: null,
+      status: 'active',
+      trackingSetting: 'manual',
+      createdAt: '',
+      lastEditedAt: '',
+    }]);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'new-chat' }) },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    component.onContextChange(['codex:codex-manual']);
+    setComposerValue('Continue the scene.');
+
+    contextEntries.set([]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.contextCodexEntryIds()).toEqual([]);
+
+    await component.sendPrompt();
+
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      codexEntryIds: [],
+    }));
   });
 
   it('streams an AI response after saving the user message', async () => {
@@ -919,10 +1158,13 @@ describe('Chat', () => {
     }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'pending-message-1',
-      prompt: 'Start here',
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
-      messages: [{ role: 'user', content: 'Start here' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Start here',
+        messages: [{ role: 'user', content: 'Start here' }],
+      },
     }));
     expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
       content: 'AI reply',
@@ -1278,11 +1520,7 @@ describe('Chat', () => {
 
     expect(editor.editorView()?.state.doc.toString()).toBe('');
     expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
-    expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**', {
-      includeFullOutline: false,
-      sceneIds: [],
-      codexEntryIds: [],
-    });
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**');
   });
 
   it('keeps the Markdown draft when the user message is not saved', async () => {
@@ -1329,7 +1567,7 @@ describe('Chat', () => {
     expect(chatStore.createMessageBranch).toHaveBeenCalledWith('user-1', 'Edited prompt');
     expect(chatStore.selectMessageBranch).toHaveBeenCalledWith('user-2');
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Edited prompt',
+      aiPrompt: expect.objectContaining({ prompt: 'Edited prompt' }),
     }));
   });
 
@@ -1363,12 +1601,28 @@ describe('Chat', () => {
       threadId: 'thread-1',
     }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Keep this prompt',
-      messages: [{ role: 'user', content: 'Keep this prompt' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Keep this prompt',
+        messages: [{ role: 'user', content: 'Keep this prompt' }],
+      },
     }));
   });
 
   it('retries an assistant response as a selected sibling branch', async () => {
+    contextEntries.set([{
+      id: 'codex-current',
+      bookId: 'book-1',
+      type: 'lore',
+      name: 'Current lore',
+      alias: null,
+      description: null,
+      image: null,
+      status: 'active',
+      trackingSetting: 'manual',
+      createdAt: '',
+      lastEditedAt: '',
+    }]);
     await createComponent({
       snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
       paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
@@ -1385,6 +1639,7 @@ describe('Chat', () => {
       position: 1,
     });
     selectedThread = makeThreadDetail({ messages: [user, assistant] });
+    component.onContextChange(['codex:codex-current']);
 
     await component.retryMessage('assistant-1');
 
@@ -1393,8 +1648,16 @@ describe('Chat', () => {
       branchGroupId: 'assistant-group',
     }));
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Prompt',
-      messages: [{ role: 'user', content: 'Prompt' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Prompt',
+        messages: [{ role: 'user', content: 'Prompt' }],
+      },
+    }));
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: ['codex-current'],
     }));
   });
 
@@ -1850,9 +2113,34 @@ describe('Chat', () => {
     expect(component.isDetachedMode).toBe(true);
     expect(chatWindowService.getDetachedSession).toHaveBeenCalledWith('session-1');
     expect(chatStore.enterBook).toHaveBeenCalledWith('book-1');
+    expect(libraryService.getBooks).toHaveBeenCalled();
     expect(contextTrie.loadForContext).toHaveBeenCalledWith('book-1');
     expect(chatStore.openThread).toHaveBeenCalledWith('thread-1');
     expect(fixture.nativeElement.querySelector('.detach-btn')).toBeNull();
+  });
+
+  it('refreshes detached chat context when Codex changes in another window', async () => {
+    chatWindowService.getDetachedSession.mockResolvedValueOnce({
+      sessionId: 'session-1',
+      bookId: 'book-1',
+      selectedThreadId: 'thread-1',
+    });
+
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ sessionId: 'session-1' }),
+      },
+      parent: null,
+    });
+
+    codexEntryChangedCallback?.({ bookId: 'other-book' });
+    codexEntryChangedCallback?.({ bookId: 'book-1' });
+
+    expect(contextTrie.refreshCurrentContext).toHaveBeenCalledTimes(1);
+
+    fixture.destroy();
+
+    expect(codexEntryChangedCallback).toBeNull();
   });
 
   it('starts a new detached chat when detached without a selected thread', async () => {

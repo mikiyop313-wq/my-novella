@@ -2,6 +2,7 @@ import type { CodexEntryDto, CodexEntryType } from '../../../../../../shared/mod
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
 import type { AiModel, AiModelProviderGroup } from '../../../../../../shared/models/ai.model';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
+import { filterHierarchyForContext } from '../../../../../../shared/utils/manuscript-context-inclusion';
 import type {
   DropdownMenu,
   DropdownOption,
@@ -11,6 +12,7 @@ import type {
 export type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 
 export interface AiContextSelection {
+  includeBookMetadata: boolean;
   includeFullOutline: boolean;
   manuscriptRefs: AiManuscriptContextRef[];
   codexEntryIds: string[];
@@ -32,6 +34,11 @@ export interface AiContextDropdownSource {
   codexLoading: boolean;
   hierarchyError: string | null;
   codexError: string | null;
+  bookMetadata?: {
+    availableFields: readonly string[];
+    loading: boolean;
+    error: string | null;
+  };
 }
 
 interface CodexCategory {
@@ -49,11 +56,12 @@ const CODEX_CATEGORIES: readonly CodexCategory[] = [
 ];
 
 export function buildContextDropdownSections(source: AiContextDropdownSource): DropdownSection<string>[] {
+  const hierarchy = filterHierarchyForContext(source.hierarchy);
   const activeCodexEntries = [...source.codexEntries]
     .filter(entry => entry.status === 'active' && entry.trackingSetting !== 'never_include')
     .sort((a, b) => a.name.localeCompare(b.name));
-  const allScenes = scenesForActs(source.hierarchy);
-  const allManuscriptValues = manuscriptValuesForNovel(source.hierarchy);
+  const allScenes = scenesForActs(hierarchy);
+  const allManuscriptValues = manuscriptValuesForNovel(hierarchy);
 
   const outlineOptions: DropdownOption<string>[] = [{
     value: 'outline',
@@ -68,7 +76,7 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
       count: allScenes.length,
       disabled: allScenes.length === 0,
       selectionValues: allManuscriptValues,
-      submenu: buildNovelMenu(source.hierarchy),
+      submenu: buildNovelMenu(hierarchy),
     });
   }
 
@@ -80,10 +88,33 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
       source.automaticallyIncludedCodexEntryIds,
     ));
 
-  return [
+  const sections: DropdownSection<string>[] = [];
+
+  if (source.bookMetadata) {
+    const { availableFields, loading, error } = source.bookMetadata;
+    const metadataAvailable = availableFields.length > 0;
+    sections.push({
+      key: 'book-metadata',
+      title: 'Book Metadata',
+      options: [{
+        value: 'book-metadata',
+        label: 'Book Metadata',
+        hint: metadataAvailable ? availableFields.join(', ') : 'No metadata available',
+        disabled: loading || !!error || !metadataAvailable,
+      }],
+      message: loading
+        ? { text: 'Loading book metadata...' }
+        : error
+          ? { text: error, tone: 'error' }
+          : undefined,
+    });
+  }
+
+  sections.push(
     {
       key: 'outline-novel',
       title: 'Outline & Novel',
+      dividerBefore: source.bookMetadata !== undefined,
       options: outlineOptions,
       message: source.hierarchyLoading
         ? { text: 'Loading novel structure...' }
@@ -102,22 +133,26 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
           ? { text: source.codexError, tone: 'error' }
           : undefined,
     },
-  ];
+  );
+
+  return sections;
 }
 
 export function contextSelectionToValues(
   selection: AiContextSelection,
   hierarchy: readonly ActDto[],
 ): string[] {
+  const selectableHierarchy = filterHierarchyForContext(hierarchy);
   const values = new Set<string>();
 
+  if (selection.includeBookMetadata) values.add('book-metadata');
   if (selection.includeFullOutline) values.add('outline');
 
   const refs = new Set<AiManuscriptContextRef>(selection.manuscriptRefs);
   if (refs.has('novel')) {
-    manuscriptValuesForNovel(hierarchy).forEach(value => values.add(value));
+    manuscriptValuesForNovel(selectableHierarchy).forEach(value => values.add(value));
   } else {
-    for (const act of hierarchy) {
+    for (const act of selectableHierarchy) {
       if (refs.has(actValue(act.id))) {
         manuscriptValuesForAct(act).forEach(value => values.add(value));
         continue;
@@ -144,23 +179,24 @@ export function dropdownValuesToContextSelection(
   values: readonly string[],
   hierarchy: readonly ActDto[],
 ): AiContextSelection {
+  const selectableHierarchy = filterHierarchyForContext(hierarchy);
   const selected = new Set(values);
   const manuscriptRefs: AiManuscriptContextRef[] = [];
 
-  const novelValues = manuscriptValuesForNovel(hierarchy);
-  if (novelValues.length > 1 && novelValues.every(value => selected.has(value))) {
+  const novelValues = manuscriptValuesForNovel(selectableHierarchy);
+  if (novelValues.length > 0 && novelValues.every(value => selected.has(value))) {
     manuscriptRefs.push('novel');
   } else {
-    for (const act of hierarchy) {
+    for (const act of selectableHierarchy) {
       const actValues = manuscriptValuesForAct(act);
-      if (actValues.length > 1 && actValues.every(value => selected.has(value))) {
+      if (actValues.length > 0 && actValues.every(value => selected.has(value))) {
         manuscriptRefs.push(actValue(act.id));
         continue;
       }
 
       for (const chapter of act.chapters ?? []) {
         const chapterValues = manuscriptValuesForChapter(chapter);
-        if (chapterValues.length > 1 && chapterValues.every(value => selected.has(value))) {
+        if (chapterValues.length > 0 && chapterValues.every(value => selected.has(value))) {
           manuscriptRefs.push(chapterValue(chapter.id));
           continue;
         }
@@ -174,6 +210,7 @@ export function dropdownValuesToContextSelection(
   }
 
   return {
+    includeBookMetadata: selected.has('book-metadata'),
     includeFullOutline: selected.has('outline'),
     manuscriptRefs,
     codexEntryIds: [...selected]
@@ -191,6 +228,25 @@ export function restoreManuscriptContextRefs(
   }
 
   return uniqueStrings(manuscriptRefs).filter(isManuscriptContextRef);
+}
+
+export function filterSelectableManuscriptRefs(
+  hierarchy: readonly ActDto[],
+  refs: readonly AiManuscriptContextRef[],
+): AiManuscriptContextRef[] {
+  const selectableHierarchy = filterHierarchyForContext(hierarchy);
+  const validRefs = new Set<AiManuscriptContextRef>();
+  if (scenesForActs(selectableHierarchy).length > 0) validRefs.add('novel');
+
+  for (const act of selectableHierarchy) {
+    validRefs.add(actValue(act.id));
+    for (const chapter of act.chapters ?? []) {
+      validRefs.add(chapterValue(chapter.id));
+      for (const scene of chapter.scenes ?? []) validRefs.add(sceneValue(scene.id));
+    }
+  }
+
+  return [...new Set(refs)].filter((ref) => validRefs.has(ref));
 }
 
 function buildNovelMenu(hierarchy: readonly ActDto[]): DropdownMenu<string> {
@@ -413,15 +469,15 @@ function scenesForChapter(chapter: ChapterDto): SceneDto[] {
 }
 
 function manuscriptValuesForNovel(hierarchy: readonly ActDto[]): string[] {
-  return ['novel', ...hierarchy.flatMap(manuscriptValuesForAct)];
+  return hierarchy.flatMap(manuscriptValuesForAct);
 }
 
 function manuscriptValuesForAct(act: ActDto): string[] {
-  return [actValue(act.id), ...(act.chapters ?? []).flatMap(manuscriptValuesForChapter)];
+  return (act.chapters ?? []).flatMap(manuscriptValuesForChapter);
 }
 
 function manuscriptValuesForChapter(chapter: ChapterDto): string[] {
-  return [chapterValue(chapter.id), ...scenesForChapter(chapter).map(scene => sceneValue(scene.id))];
+  return scenesForChapter(chapter).map(scene => sceneValue(scene.id));
 }
 
 function uniqueStrings(value: unknown): string[] {

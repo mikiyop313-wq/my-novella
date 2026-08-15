@@ -55,7 +55,8 @@
     <div class="act-wrapper" [attr.data-outline-item-id]="act.id" [style.view-transition-name]="'outline-act-' + act.id" cdkDrag>
       <div class="act-block">
         <!-- Act controls and metadata -->
-        <div class="act-header">
+        <div class="act-header" [class.is-context-excluded]="getActContextState(act) === 'excluded'"
+          [class.is-context-empty]="getActContextState(act) === 'empty'">
           <div class="act-header-left">
             <button type="button" class="btn-icon btn-collapse" (click)="toggleCollapse(act.id)">
               @if (collapsed()[act.id]) {
@@ -84,13 +85,14 @@
             @if (editing()[act.id]) {
             <span class="act-label-editing">
               Act {{ actIdx + 1 }}:
-              <input type="text" class="act-title-input" [value]="act.title || ''" placeholder="Act Title"
+              <input type="text" class="act-title-input" [value]="act.title || ''" placeholder="Untitled Act"
                 (click)="$event.stopPropagation()" (blur)="updateActTitle(act.id, $any($event.target).value)"
                 (keyup.enter)="updateActTitle(act.id, $any($event.target).value)" />
             </span>
             } @else {
-            <span class="act-label" (click)="openManuscript('act', act.id)">
-              Act {{ actIdx + 1 }}{{ act.title ? ': ' + act.title : '' }}
+            <span #actTitle class="act-label" (mouseenter)="updateOverflowTooltip(actTitle)"
+              (click)="openManuscript('act', act.id)">
+              Act {{ actIdx + 1 }}: {{ act.title || 'Untitled Act' }}
             </span>
             }
             <span class="word-count-badge">{{ getActWordCount(act) | number }} words</span>
@@ -118,7 +120,9 @@
               <div class="chapter-wrapper" [attr.data-outline-item-id]="chapter.id" [style.view-transition-name]="'outline-chapter-' + chapter.id" cdkDrag>
                 <div class="chapter-block">
                   <!-- Chapter controls and metadata -->
-                  <div class="chapter-row">
+                  <div class="chapter-row"
+                    [class.is-context-excluded]="getChapterContextState(chapter) === 'excluded'"
+                    [class.is-context-empty]="getChapterContextState(chapter) === 'empty'">
                     <div class="chapter-row-left">
                       <button type="button" class="btn-icon btn-collapse" (click)="toggleCollapse(chapter.id)">
                         @if (collapsed()[chapter.id]) {
@@ -148,15 +152,15 @@
                       <span class="chapter-label-editing">
                         Chapter {{ chapter.position + 1 }}:
                         <input type="text" class="chapter-title-input" [value]="chapter.title || ''"
-                          placeholder="Chapter Title" (click)="$event.stopPropagation()"
+                          placeholder="Untitled Chapter" (click)="$event.stopPropagation()"
                           (blur)="updateChapterTitle(chapter.id, $any($event.target).value)" (keyup.enter)="
                                     updateChapterTitle(chapter.id, $any($event.target).value)
                                   " />
                       </span>
                       } @else {
-                      <span class="chapter-label" (click)="openManuscript('chapter', chapter.id)">
-                        Chapter {{ chapter.position + 1
-                        }}{{ chapter.title ? ': ' + chapter.title : '' }}
+                      <span #chapterTitle class="chapter-label" (mouseenter)="updateOverflowTooltip(chapterTitle)"
+                        (click)="openManuscript('chapter', chapter.id)">
+                        Chapter {{ chapter.position + 1 }}: {{ chapter.title || 'Untitled Chapter' }}
                       </span>
                       }
                       <span class="word-count-badge">{{ getChapterWordCount(chapter) | number }} words</span>
@@ -187,7 +191,9 @@
                         let scIdx = $index
                         ) {
                         <div class="scene-wrapper" [attr.data-outline-item-id]="scene.id" [style.view-transition-name]="'outline-scene-' + scene.id" cdkDrag>
-                          <div class="scene-card-row">
+                          <div class="scene-card-row"
+                            [class.is-context-excluded]="getSceneContextState(scene) === 'excluded'"
+                            [class.is-context-empty]="getSceneContextState(scene) === 'empty'">
                             <div class="drag-handle scene-drag" cdkDragHandle (click)="$event.stopPropagation()">
                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -220,7 +226,8 @@
                                                 )
                                               " />
                                   } @else {
-                                  <span class="scene-title-display">
+                                  <span #sceneTitle class="scene-title-display"
+                                    (mouseenter)="updateOverflowTooltip(sceneTitle)">
                                     {{ scene.title || 'Untitled Scene' }}
                                   </span>
                                   }
@@ -243,7 +250,12 @@
                               <!-- Summary section -->
                               @if (editing()[scene.id]) {
                               <div class="scene-summary">
-                                <span class="scene-summary-label">Summary</span>
+                                <span class="scene-summary-label">
+                                  Summary
+                                  @if (isGeneratingSceneSummary(scene.id)) {
+                                  <span class="scene-summary-label-spinner" aria-hidden="true"></span>
+                                  }
+                                </span>
                                 <app-markdown-editor class="scene-summary-input"
                                   [value]="sceneSummaryValue(scene)" placeholder="Add a summary..."
                                   ariaLabel="Scene summary" (click)="$event.stopPropagation()"
@@ -258,7 +270,12 @@
                               </div>
                               } @else {
                               <div class="scene-summary">
-                                <span class="scene-summary-label">Summary</span>
+                                <span class="scene-summary-label">
+                                  Summary
+                                  @if (isGeneratingSceneSummary(scene.id)) {
+                                  <span class="scene-summary-label-spinner" aria-hidden="true"></span>
+                                  }
+                                </span>
                                 <div class="scene-summary-body">
                                   @if (scene.summary?.trim()) {
                                   <markdown class="scene-summary-markdown" [data]="scene.summary || ''"
@@ -350,7 +367,24 @@
 
 <!-- Act options menu -->
 <ng-template #actOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu" cdkMenu>
+    <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
+      [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
+      [class.is-disabled]="!hasOutlineItemContextContent('act', itemId)"
+      [disabled]="!hasOutlineItemContextContent('act', itemId)"
+      [attr.title]="hasOutlineItemContextContent('act', itemId) ? null : 'Write prose or a summary in this act before including it.'"
+      (cdkMenuItemTriggered)="toggleOutlineItemInclusion('act', itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+      <span class="outline-inclusion-label">Include act</span>
+      <span class="outline-inclusion-switch-track" aria-hidden="true">
+        <span class="outline-inclusion-switch-thumb"></span>
+      </span>
+    </button>
+    <div class="inclusion-menu-separator" role="separator"></div>
     <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -383,7 +417,24 @@
 
 <!-- Chapter options menu -->
 <ng-template #chapterOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu" cdkMenu>
+    <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
+      [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
+      [class.is-disabled]="!hasOutlineItemContextContent('chapter', itemId)"
+      [disabled]="!hasOutlineItemContextContent('chapter', itemId)"
+      [attr.title]="hasOutlineItemContextContent('chapter', itemId) ? null : 'Write prose or a summary in this chapter before including it.'"
+      (cdkMenuItemTriggered)="toggleOutlineItemInclusion('chapter', itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+      <span class="outline-inclusion-label">Include chapter</span>
+      <span class="outline-inclusion-switch-track" aria-hidden="true">
+        <span class="outline-inclusion-switch-thumb"></span>
+      </span>
+    </button>
+    <div class="inclusion-menu-separator" role="separator"></div>
     <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -416,7 +467,38 @@
 
 <!-- Scene options menu -->
 <ng-template #sceneOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu scene-options-menu" cdkMenu>
+    <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
+      [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
+      [class.is-disabled]="!hasOutlineItemContextContent('scene', itemId)"
+      [disabled]="!hasOutlineItemContextContent('scene', itemId)"
+      [attr.title]="hasOutlineItemContextContent('scene', itemId) ? null : 'Write prose or a summary in this scene before including it.'"
+      (cdkMenuItemTriggered)="toggleOutlineItemInclusion('scene', itemId)">
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+      <span class="outline-inclusion-label">Include scene</span>
+      <span class="outline-inclusion-switch-track" aria-hidden="true">
+        <span class="outline-inclusion-switch-thumb"></span>
+      </span>
+    </button>
+    <div class="inclusion-menu-separator" role="separator"></div>
+    <button class="menu-item" [cdkMenuTriggerFor]="sceneAiMenu" [cdkMenuTriggerData]="{ itemId: itemId }"
+      [cdkMenuPosition]="sceneAiMenuPositions" (cdkMenuOpened)="prepareSceneAiMenu(itemId)" cdkMenuItem>
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path
+          d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z">
+        </path>
+      </svg>
+      Ask AI
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round" width="12" height="12" style="margin-left: auto; opacity: 0.6;">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    </button>
     <button class="menu-item" cdkMenuItem (click)="toggleEdit(itemId)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -446,5 +528,46 @@
       </svg>
       Delete
     </button>
+  </div>
+</ng-template>
+
+<ng-template #sceneAiMenu let-itemId="itemId">
+  <div class="overlay-menu scene-ai-menu" cdkMenu>
+    <button class="menu-item scene-summary-generate" autocompleteKeepOpenMenuItem
+      [cdkMenuItemDisabled]="isSceneSummaryGenerationDisabled(itemId)"
+      [disabled]="isSceneSummaryGenerationDisabled(itemId)"
+      [attr.aria-busy]="isGeneratingSceneSummary(itemId) || null" aria-live="polite"
+      [title]="hasSceneProse(itemId) ? 'Generate scene summary' : 'Add scene prose before generating a summary'"
+      (click)="generateSceneSummary(itemId)">
+      @if (isGeneratingSceneSummary(itemId)) {
+      <span class="scene-summary-spinner" aria-hidden="true"></span>
+      Generating...
+      } @else {
+      Generate summary
+      }
+    </button>
+    <button class="menu-item detect-codex-entries" type="button" autocompleteKeepOpenMenuItem
+      [cdkMenuItemDisabled]="isCodexDetectionDisabled(itemId)"
+      [disabled]="isCodexDetectionDisabled(itemId)"
+      [attr.aria-busy]="isGeneratingCodexDetection(itemId) || null"
+      [title]="hasSceneProse(itemId) ? 'Detect new Codex entries' : 'Add scene prose before detecting Codex entries'"
+      (click)="detectCodexEntries(itemId)">
+      @if (isGeneratingCodexDetection(itemId)) {
+      <span class="scene-summary-spinner" aria-hidden="true"></span>
+      Detecting...
+      } @else {
+      Detect Codex entries
+      }
+    </button>
+    @if (!resolvingSummaryModel() && summaryModelResolution()?.status === 'unavailable') {
+      <button class="scene-summary-guidance" type="button" (click)="openSummaryModelSettings()">
+        {{ summaryModelGuidance() }}
+      </button>
+    }
+    @if (!resolvingSummaryModel() && codexDetectionModelResolution()?.status === 'unavailable') {
+      <button class="scene-summary-guidance" type="button" (click)="openCodexDetectionModelSettings()">
+        {{ codexDetectionModelGuidance() }}
+      </button>
+    }
   </div>
 </ng-template>

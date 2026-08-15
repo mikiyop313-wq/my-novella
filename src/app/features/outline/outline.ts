@@ -1,9 +1,10 @@
-import { Component, DestroyRef, ElementRef, HostListener, NgZone, OnInit, QueryList, ViewChild, ViewChildren, inject, signal, ChangeDetectorRef } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, NgZone, OnInit, QueryList, ViewChild, ViewChildren, computed, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import { MarkdownComponent } from 'ngx-markdown';
 
 import {
@@ -11,14 +12,55 @@ import {
   ChapterDto,
   ManuscriptMode,
   SceneDto,
+  ManuscriptContextEntityType,
+  TiptapJsonDoc,
   UpdateStructurePositionsPayload,
 } from '../../../../shared/models/manuscript.model';
+import type { SystemPromptCategory } from '../../../../shared/models/system-prompt.model';
 
 import { ToastService } from '../../shared/services/toast.service';
+import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
+import { ElectronService } from '../../core/services/electron.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
+import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
+import {
+  hasSceneContextContent,
+  isActIncludedInContext,
+  isChapterIncludedInContext,
+  isSceneIncludedInContext,
+} from '../../../../shared/utils/manuscript-context-inclusion';
+import { AutocompleteKeepOpenMenuItemDirective } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import {
+  SystemPromptModelService,
+  type SystemPromptModelResolution,
+} from '../../shared/services/system-prompt-model.service';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
+import { CodexService } from '../codex/services/codex.service';
+import { CodexDetectionStateService } from '../codex/services/codex-detection-state.service';
+import {
+  filterNewCodexEntries,
+  parseCodexDetectionResponse,
+} from '../codex/utils/codex-detection-response';
+import { buildCodexDetectionPrompt } from '../codex/utils/codex-detection-prompt';
 import { OutlineStore } from './store/outline.store';
+import { OutlineAiGenerationService } from './services/outline-ai-generation.service';
+
+type SceneCardMode = 'compact' | 'fit' | 'list';
+type OutlineContextState = 'included' | 'excluded' | 'empty';
+
+const SCENE_CARD_MODE_STORAGE_KEY = 'outline-scene-card-mode';
+
+function loadSceneCardMode(): SceneCardMode {
+  const storedMode = localStorage.getItem(SCENE_CARD_MODE_STORAGE_KEY);
+
+  if (storedMode === 'compact' || storedMode === 'fit' || storedMode === 'list') {
+    return storedMode;
+  }
+
+  return 'compact';
+}
 
 // -----------------------------------------------------------------------------
 // Drag Helpers
@@ -70,6 +112,7 @@ const transferBetween = <T>(
     ElementAnimationDirective,
     MarkdownComponent,
     MarkdownEditorComponent,
+    AutocompleteKeepOpenMenuItemDirective,
     CodexContextHighlightDirective,
   ],
   templateUrl: './outline.html',
@@ -84,8 +127,14 @@ export class Outline implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toastService = inject(ToastService);
+  readonly generationSessions = inject(AiGenerationSessionService);
+  readonly outlineAiGeneration = inject(OutlineAiGenerationService);
+  readonly codexDetectionState = inject(CodexDetectionStateService);
+  private readonly systemPromptModelService = inject(SystemPromptModelService);
+  private readonly electronService = inject(ElectronService);
   private readonly ngZone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly codexService = inject(CodexService);
 
   @ViewChild('outlineAnimation') private outlineAnimation?: ElementAnimationDirective;
   @ViewChildren(CdkMenuTrigger) private menuTriggers!: QueryList<CdkMenuTrigger>;
@@ -94,11 +143,86 @@ export class Outline implements OnInit {
   collapsed = signal<Record<string, boolean>>({});
   editing = signal<Record<string, boolean>>({});
   sceneSummaryDrafts = signal<Record<string, string>>({});
-  sceneCardMode = signal<'compact' | 'fit' | 'list'>('compact');
-
+  sceneCardMode = signal<SceneCardMode>(loadSceneCardMode());
+  summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
+  codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
+  resolvingSummaryModel = signal(false);
+  private readonly activeSceneAiMenuId = signal<string | null>(null);
+  readonly sceneAiMenuPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
+    { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
+    { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -4 },
+    { originX: 'start', originY: 'bottom', overlayX: 'end', overlayY: 'bottom', offsetX: -4 },
+  ];
   // ---------------------------------------------------------------------------
   // View State
   // ---------------------------------------------------------------------------
+
+  isOutlineItemIncluded(itemId: string): boolean {
+    const act = this.findAct(itemId);
+    if (act) return isActIncludedInContext(act);
+
+    const chapter = this.findChapter(itemId);
+    if (chapter) return isChapterIncludedInContext(chapter);
+
+    const scene = this.findScene(itemId);
+    return scene ? isSceneIncludedInContext(scene) : false;
+  }
+
+  getSceneContextState(scene: SceneDto): OutlineContextState {
+    if (!hasSceneContextContent(scene)) return 'empty';
+    return isSceneIncludedInContext(scene) ? 'included' : 'excluded';
+  }
+
+  getChapterContextState(chapter: ChapterDto): OutlineContextState {
+    const hasContextContent = chapter.scenes?.some(hasSceneContextContent) === true;
+    if (!hasContextContent) return 'empty';
+    return isChapterIncludedInContext(chapter) ? 'included' : 'excluded';
+  }
+
+  getActContextState(act: ActDto): OutlineContextState {
+    const hasContextContent = act.chapters?.some((chapter) =>
+      chapter.scenes?.some(hasSceneContextContent),
+    ) === true;
+    if (!hasContextContent) return 'empty';
+    return isActIncludedInContext(act) ? 'included' : 'excluded';
+  }
+
+  hasOutlineItemContextContent(
+    entityType: ManuscriptContextEntityType,
+    itemId: string,
+  ): boolean {
+    if (entityType === 'act') {
+      return this.findAct(itemId)?.chapters?.some((chapter) =>
+        chapter.scenes?.some(hasSceneContextContent),
+      ) === true;
+    }
+
+    if (entityType === 'chapter') {
+      return this.findChapter(itemId)?.scenes?.some(hasSceneContextContent) === true;
+    }
+
+    const scene = this.findScene(itemId);
+    return scene ? hasSceneContextContent(scene) : false;
+  }
+
+  async toggleOutlineItemInclusion(
+    entityType: ManuscriptContextEntityType,
+    itemId: string,
+  ): Promise<void> {
+    if (!this.hasOutlineItemContextContent(entityType, itemId)) return;
+
+    try {
+      await this.store.setContextInclusion({
+        entityType,
+        id: itemId,
+        included: !this.isOutlineItemIncluded(itemId),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update context inclusion.';
+      this.toastService.error(message, 'Outline');
+    }
+  }
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
@@ -147,18 +271,38 @@ export class Outline implements OnInit {
     }));
   }
 
-  setSceneCardMode(mode: 'compact' | 'fit' | 'list'): void {
+  updateOverflowTooltip(element: HTMLElement): void {
+    const isOverflowing = element.scrollWidth > element.clientWidth
+      || element.scrollHeight > element.clientHeight;
+
+    if (!isOverflowing) {
+      element.removeAttribute('title');
+      return;
+    }
+
+    const title = element.textContent?.trim();
+    if (title) {
+      element.setAttribute('title', title);
+    }
+  }
+
+  setSceneCardMode(mode: SceneCardMode): void {
     if (this.sceneCardMode() === mode) return;
 
     if (!document.startViewTransition) {
-      this.sceneCardMode.set(mode);
+      this.applySceneCardMode(mode);
       return;
     }
 
     document.startViewTransition(() => {
-      this.sceneCardMode.set(mode);
+      this.applySceneCardMode(mode);
       this.cdr.detectChanges();
     });
+  }
+
+  private applySceneCardMode(mode: SceneCardMode): void {
+    this.sceneCardMode.set(mode);
+    localStorage.setItem(SCENE_CARD_MODE_STORAGE_KEY, mode);
   }
 
   // ---------------------------------------------------------------------------
@@ -197,6 +341,7 @@ export class Outline implements OnInit {
         trigger.close();
       }
     });
+    this.activeSceneAiMenuId.set(null);
   }
 
   openManuscript(mode: ManuscriptMode, id: string): void {
@@ -379,11 +524,18 @@ export class Outline implements OnInit {
   async deleteScene(sceneId: string): Promise<void> {
     try {
       const element = this.findOutlineItemElement(sceneId);
+      const scenesGrid = element?.closest<HTMLElement>('.scenes-grid');
       await (this.outlineAnimation
-        ? this.outlineAnimation.animateBeforeDelete(element, async () => {
+        ? this.outlineAnimation.animateBeforeDeleteAndReflow({
+          target: element,
+          layoutTargets: () => Array.from(
+            scenesGrid?.querySelectorAll<HTMLElement>(':scope > .scene-wrapper') ?? [],
+          ),
+          action: async () => {
             await this.store.deleteScene(sceneId);
             this.cdr.detectChanges();
-          })
+          },
+        })
         : this.store.deleteScene(sceneId));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete scene.';
@@ -543,6 +695,266 @@ export class Outline implements OnInit {
       ...drafts,
       [sceneId]: summary,
     }));
+  }
+
+  async prepareSceneAiMenu(sceneId: string): Promise<void> {
+    this.activeSceneAiMenuId.set(sceneId);
+    const bookId = this.store.bookId();
+    this.summaryModelResolution.set(null);
+    this.codexDetectionModelResolution.set(null);
+    if (!bookId) return;
+
+    this.resolvingSummaryModel.set(true);
+    try {
+      const [summaryModel, codexDetectionModel] = await Promise.all([
+        this.resolveSceneAiModel(bookId, 'summary'),
+        this.resolveSceneAiModel(bookId, 'codexDetection'),
+      ]);
+      this.summaryModelResolution.set(summaryModel);
+      this.codexDetectionModelResolution.set(codexDetectionModel);
+    } finally {
+      this.resolvingSummaryModel.set(false);
+      setTimeout(() => {
+        document.querySelector<HTMLButtonElement>(
+          '.scene-ai-menu .scene-summary-generate',
+        )?.focus();
+      });
+    }
+  }
+
+  hasSceneProse(sceneId: string): boolean {
+    return (this.findScene(sceneId)?.wordCount ?? 0) > 0;
+  }
+
+  isGeneratingSceneSummary(sceneId: string): boolean {
+    const bookId = this.store.bookId();
+    return !!bookId && this.outlineAiGeneration.isSummaryTargetActive({ bookId, sceneId });
+  }
+
+  isSceneSummaryGenerationDisabled(sceneId: string): boolean {
+    return !this.hasSceneProse(sceneId)
+      || this.resolvingSummaryModel()
+      || this.summaryModelResolution()?.status !== 'ready'
+      || this.isGeneratingSceneSummary(sceneId);
+  }
+
+  summaryModelGuidance(): string {
+    const resolution = this.summaryModelResolution();
+    return resolution?.status === 'unavailable'
+      && resolution.reason === 'openrouter-unconfigured'
+      ? 'Configure OpenRouter in Settings'
+      : 'Choose a model in System Prompts';
+  }
+
+  openSummaryModelSettings(): void {
+    const bookId = this.store.bookId();
+    if (!bookId) return;
+    const resolution = this.summaryModelResolution();
+    const section = resolution?.status === 'unavailable'
+      && resolution.reason === 'openrouter-unconfigured'
+      ? 'ai-configuration'
+      : 'system-prompts';
+    void this.router.navigate(['/workspace', bookId, 'settings'], {
+      state: { settingsSection: section },
+    });
+  }
+
+  isGeneratingCodexDetection(sceneId: string): boolean {
+    const bookId = this.store.bookId();
+    return !!bookId && this.outlineAiGeneration.isCodexDetectionTargetActive({ bookId, sceneId });
+  }
+
+  isCodexDetectionDisabled(sceneId: string): boolean {
+    return !this.hasSceneProse(sceneId)
+      || this.resolvingSummaryModel()
+      || this.codexDetectionModelResolution()?.status !== 'ready'
+      || this.isGeneratingCodexDetection(sceneId)
+      || this.hasPendingCodexDetection(sceneId);
+  }
+
+  private hasPendingCodexDetection(sceneId: string): boolean {
+    const bookId = this.store.bookId();
+    return !!bookId && this.codexDetectionState.hasPendingDetection({ bookId, sceneId });
+  }
+
+  codexDetectionModelGuidance(): string {
+    const resolution = this.codexDetectionModelResolution();
+    return resolution?.status === 'unavailable'
+      && resolution.reason === 'openrouter-unconfigured'
+      ? 'Configure OpenRouter in Settings'
+      : 'Choose a Codex Detection model in System Prompts';
+  }
+
+  openCodexDetectionModelSettings(): void {
+    const bookId = this.store.bookId();
+    if (!bookId) return;
+    const resolution = this.codexDetectionModelResolution();
+    const section = resolution?.status === 'unavailable'
+      && resolution.reason === 'openrouter-unconfigured'
+      ? 'ai-configuration'
+      : 'system-prompts';
+    void this.router.navigate(['/workspace', bookId, 'settings'], {
+      state: { settingsSection: section },
+    });
+  }
+
+  async detectCodexEntries(sceneId: string): Promise<void> {
+    if (this.isCodexDetectionDisabled(sceneId)) return;
+
+    const bookId = this.store.bookId();
+    const selectedModel = this.codexDetectionModelResolution();
+    if (!bookId || selectedModel?.status !== 'ready') return;
+
+    const streamId = `outline-codex-detection:${sceneId}`;
+    const target = { bookId, sceneId, streamId };
+    if (!this.outlineAiGeneration.addCodexDetectionTarget(target)) return;
+
+    try {
+      const [proseBySceneId, existingEntries] = await Promise.all([
+        this.electronService.invoke(
+          'manuscript:getScenesProse',
+          { sceneIds: [sceneId] },
+        ) as Promise<Record<string, TiptapJsonDoc | null>>,
+        this.codexService.getEntries(bookId, { includeArchived: true }),
+      ]);
+      const prose = serializeTiptapDocument(proseBySceneId[sceneId] ?? null);
+      if (!prose) {
+        this.toastService.error('The scene has no prose to scan.', 'Codex Detection');
+        return;
+      }
+
+      const session = this.generationSessions.start({
+        streamId,
+        source: 'codex-detection',
+        scopeId: sceneId,
+        bookId,
+        aiPrompt: buildCodexDetectionPrompt({ prose, existingEntries }),
+        provider: selectedModel.provider,
+        modelId: selectedModel.modelId,
+      });
+      if (!session) return;
+
+      const result = await session.completion;
+      if (result.status === 'failed') {
+        throw result.error ?? new Error('Codex detection failed.');
+      }
+
+      const entries = filterNewCodexEntries({
+        detectedEntries: parseCodexDetectionResponse(result.content),
+        existingEntries,
+      });
+
+      if (entries.length === 0) {
+        this.toastService.info('No new Codex entries were detected.', 'Codex Detection');
+        return;
+      }
+
+      this.codexDetectionState.enqueue({ bookId, sceneId, entries });
+      this.closeAllMenus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Codex detection failed.';
+      this.toastService.error(message, 'Codex Detection');
+    } finally {
+      this.generationSessions.release(streamId);
+      this.outlineAiGeneration.removeCodexDetectionTarget(target);
+      this.closeSceneAiMenu(sceneId);
+    }
+  }
+
+  async generateSceneSummary(sceneId: string): Promise<void> {
+    if (this.isSceneSummaryGenerationDisabled(sceneId)) return;
+
+    const bookId = this.store.bookId();
+    const selectedModel = this.summaryModelResolution();
+    if (!bookId || selectedModel?.status !== 'ready') return;
+
+    const streamId = `outline-scene-summary:${sceneId}`;
+    const target = { bookId, sceneId, streamId };
+    if (!this.outlineAiGeneration.addSummaryTarget(target)) return;
+
+    try {
+      let proseDocument: TiptapJsonDoc | null;
+      try {
+        const proseBySceneId = await this.electronService.invoke(
+          'manuscript:getScenesProse',
+          { sceneIds: [sceneId] },
+        ) as Record<string, TiptapJsonDoc | null>;
+        proseDocument = proseBySceneId[sceneId] ?? null;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load scene prose.';
+        this.toastService.error(message, 'Outline');
+        return;
+      }
+
+      const prose = serializeTiptapDocument(proseDocument);
+      if (!prose) {
+        this.toastService.error('The scene has no prose to summarize.', 'Outline');
+        return;
+      }
+
+      let generatedSummary: string;
+      try {
+        const session = this.generationSessions.start({
+          streamId,
+          source: 'outline-summary',
+          scopeId: sceneId,
+          bookId,
+          aiPrompt: buildAiPrompt({
+            requestType: 'summary',
+            messages: [{
+              role: 'user',
+              parts: [{ type: 'section', name: 'SCENE PROSE', content: prose }],
+            }],
+          }),
+          provider: selectedModel.provider,
+          modelId: selectedModel.modelId,
+        });
+        if (!session) return;
+
+        const result = await session.completion;
+        if (result.status === 'failed') {
+          throw result.error ?? new Error('Failed to generate scene summary.');
+        }
+        generatedSummary = result.content;
+      } catch (error) {
+        console.error('Failed to generate scene summary:', error);
+        return;
+      }
+
+      const summary = generatedSummary.trim();
+      if (!summary) {
+        this.toastService.error('AI returned an empty scene summary.', 'Outline');
+        return;
+      }
+
+      try {
+        await this.store.updateScene({ id: sceneId, summary });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to save scene summary.';
+        this.toastService.error(message, 'Outline');
+      }
+    } finally {
+      this.generationSessions.release(streamId);
+      this.outlineAiGeneration.removeSummaryTarget(target);
+      this.closeSceneAiMenu(sceneId);
+    }
+  }
+
+  private closeSceneAiMenu(sceneId: string): void {
+    if (this.activeSceneAiMenuId() !== sceneId) return;
+    this.closeAllMenus();
+  }
+
+  private async resolveSceneAiModel(
+    bookId: string,
+    category: Extract<SystemPromptCategory, 'summary' | 'codexDetection'>,
+  ): Promise<SystemPromptModelResolution> {
+    try {
+      return await this.systemPromptModelService.resolveActiveModel(bookId, category);
+    } catch (error) {
+      console.error(`Failed to resolve the ${category} model:`, error);
+      return { status: 'unavailable', selectorId: null, reason: 'missing-model' };
+    }
   }
 
   private normalizeEditableValue(value: string): string {

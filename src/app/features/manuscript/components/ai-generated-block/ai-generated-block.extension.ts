@@ -20,6 +20,13 @@ export const AiGeneratedBlockExtension = (injector: Injector) => {
           parseHTML: element => element.getAttribute('data-id') || null,
           renderHTML: attributes => attributes['id'] ? { 'data-id': attributes['id'] } : {},
         },
+        sourcePromptId: {
+          default: '',
+          parseHTML: element => element.getAttribute('data-source-prompt-id') || '',
+          renderHTML: attributes => attributes['sourcePromptId']
+            ? { 'data-source-prompt-id': attributes['sourcePromptId'] }
+            : {},
+        },
         promptText: {
           default: '',
           parseHTML: element => element.getAttribute('data-prompt-text') || '',

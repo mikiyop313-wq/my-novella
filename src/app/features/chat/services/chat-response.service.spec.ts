@@ -28,11 +28,8 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
-    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
-    sceneRefs: [],
-    codexRefs: [],
     ...overrides,
   };
 }
@@ -43,6 +40,7 @@ function makeThreadDetail(overrides: Partial<ChatThreadDetailDto> = {}): ChatThr
     bookId: 'book-1',
     title: 'Draft chat',
     status: 'active',
+    lastModelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
     messages: [],
@@ -79,13 +77,19 @@ describe('ChatResponseService', () => {
     stopStream: ReturnType<typeof vi.fn>;
   };
   let chatAiContext: {
-    buildContextMessage: ReturnType<typeof vi.fn>;
+    buildContext: ReturnType<typeof vi.fn>;
   };
   let toastService: Pick<ToastService, 'error'>;
 
   const settings = {
     selectedModelId: 'openrouter/test-model',
     reasoningMode: true,
+    context: {
+      includeBookMetadata: false,
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+    },
   };
 
   beforeEach(() => {
@@ -153,7 +157,7 @@ describe('ChatResponseService', () => {
       stopStream: vi.fn(async () => undefined),
     };
     chatAiContext = {
-      buildContextMessage: vi.fn(async () => null),
+      buildContext: vi.fn(async () => null),
     };
     toastService = { error: vi.fn() };
 
@@ -191,11 +195,14 @@ describe('ChatResponseService', () => {
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'pending-user-1',
       bookId: 'book-1',
-      systemPromptCategory: 'chat',
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
       reasoningMode: true,
-      messages: [{ role: 'user', content: 'Write a scene' }],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Write a scene',
+        messages: [{ role: 'user', content: 'Write a scene' }],
+      },
     }));
     expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
       content: 'Draft reply',
@@ -206,7 +213,7 @@ describe('ChatResponseService', () => {
       status: 'complete',
       reasoningSummary: 'Checking context',
     }));
-    expect(service.isGeneratingResponse()).toBe(false);
+    expect(service.isThreadGenerating('thread-1')).toBe(false);
   });
 
   it.each([
@@ -220,6 +227,7 @@ describe('ChatResponseService', () => {
     await service.generateResponse(messages[0], 'Write a scene', {
       selectedModelId,
       reasoningMode: false,
+      context: settings.context,
     });
 
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
@@ -234,29 +242,46 @@ describe('ChatResponseService', () => {
       makeMessage({ id: 'assistant-previous', role: 'assistant', content: 'Previous reply' }),
       messages[0],
     ];
-    chatAiContext.buildContextMessage.mockResolvedValueOnce({
-      role: 'user',
-      content: '--- BEGIN STORY CONTEXT ---\nCodex context\n--- END STORY CONTEXT ---',
+    chatAiContext.buildContext.mockResolvedValueOnce('Codex context');
+
+    await service.generateResponse(messages[0], 'Write a scene', {
+      ...settings,
+      context: {
+        includeBookMetadata: false,
+        includeFullOutline: true,
+        sceneIds: ['scene-current'],
+        codexEntryIds: ['codex-current'],
+      },
     });
 
-    await service.generateResponse(messages[0], 'Write a scene', settings);
-
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
-      messages: [
-        { role: 'user', content: 'Previous Mara mention' },
-        { role: 'assistant', content: 'Previous reply' },
-        {
-          role: 'user',
-          content: '--- BEGIN STORY CONTEXT ---\nCodex context\n--- END STORY CONTEXT ---',
-        },
-        { role: 'user', content: 'Write a scene' },
-      ],
+      aiPrompt: {
+        systemPromptCategory: 'chat',
+        prompt: 'Write a scene',
+        messages: [
+          { role: 'user', content: 'Previous Mara mention' },
+          { role: 'assistant', content: 'Previous reply' },
+          {
+            role: 'user',
+            content: '--- BEGIN STORY CONTEXT ---\n\nCodex context\n\n--- END STORY CONTEXT ---',
+          },
+          { role: 'user', content: 'Write a scene' },
+        ],
+      },
     }));
-    expect(chatAiContext.buildContextMessage).toHaveBeenCalledTimes(1);
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith({
+      includeBookMetadata: false,
+      includeFullOutline: true,
+      sceneIds: ['scene-current'],
+      codexEntryIds: ['codex-current'],
+      bookId: 'book-1',
+      bookTitle: 'Draft Book',
+      hierarchy: [],
+    });
   });
 
-  it('does not start a stream when the saved message context cannot be prepared', async () => {
-    chatAiContext.buildContextMessage.mockRejectedValueOnce(new Error('Context read failed'));
+  it('does not start a stream when the composer context cannot be prepared', async () => {
+    chatAiContext.buildContext.mockRejectedValueOnce(new Error('Context read failed'));
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
 
@@ -273,7 +298,7 @@ describe('ChatResponseService', () => {
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
 
-    expect(chatAiContext.buildContextMessage).not.toHaveBeenCalled();
+    expect(chatAiContext.buildContext).not.toHaveBeenCalled();
     expect(aiStreamService.streamText).not.toHaveBeenCalled();
     expect(toastService.error).toHaveBeenCalledWith(
       'No active book is available.',
@@ -303,8 +328,11 @@ describe('ChatResponseService', () => {
     expect(titleRequest).toEqual(expect.objectContaining({
       streamId: 'title-user-1',
       bookId: 'thread-book',
-      systemPromptCategory: 'title',
-      prompt: 'Write a scene',
+      aiPrompt: {
+        systemPromptCategory: 'title',
+        prompt: 'Write a scene',
+        messages: [{ role: 'user', content: 'Write a scene' }],
+      },
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
       reasoningMode: false,
@@ -377,16 +405,6 @@ describe('ChatResponseService', () => {
     expect(chatStore.selectMessageBranch).toHaveBeenCalledWith('assistant-1');
   });
 
-  it('restores selector IDs for OpenRouter and direct-provider messages', () => {
-    expect(service.getLastUsedModelId([
-      makeMessage({ role: 'assistant', modelId: 'openrouter/test-model', provider: 'openrouter' }),
-    ])).toBe('openrouter/test-model');
-
-    expect(service.getLastUsedModelId([
-      makeMessage({ role: 'assistant', modelId: 'gpt-4o-mini', provider: 'openai' }),
-    ])).toBe('openai/gpt-4o-mini');
-  });
-
   it('stops an active response through the stream service', async () => {
     let resolveStream!: (value: string) => void;
     aiStreamService.streamText.mockImplementationOnce(() => new Promise<string>((resolve) => {
@@ -396,10 +414,153 @@ describe('ChatResponseService', () => {
     const response = service.generateResponse(messages[0], 'Write a scene', settings);
     await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
 
-    await expect(service.stopResponse()).resolves.toBeNull();
+    await expect(service.stopResponse('thread-1')).resolves.toBeNull();
     expect(aiStreamService.stopStream).toHaveBeenCalledWith('pending-user-1');
 
     resolveStream('');
     await response;
+  });
+
+  it('runs responses for different threads concurrently and keeps their state isolated', async () => {
+    const streamRequests = new Map<string, {
+      onToken?: (token: string) => void;
+    }>();
+    const streamResolvers = new Map<string, (value: string) => void>();
+    aiStreamService.streamText.mockImplementation((request: {
+      streamId: string;
+      onToken?: (token: string) => void;
+    }) => new Promise<string>((resolve) => {
+      streamRequests.set(request.streamId, request);
+      streamResolvers.set(request.streamId, resolve);
+    }));
+    chatStore.createAssistantMessage.mockImplementation(async (data: {
+      threadId: string;
+      parentMessageId?: string | null;
+    }) => makeMessage({
+      id: `assistant-${data.threadId}`,
+      threadId: data.threadId,
+      parentMessageId: data.parentMessageId ?? null,
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+    }));
+
+    const firstUser = makeMessage({ id: 'user-1', threadId: 'thread-1', content: 'First' });
+    messages = [firstUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-1', messages });
+    const firstResponse = service.generateResponse(firstUser, firstUser.content, settings);
+    await vi.waitFor(() => expect(streamRequests.has('pending-user-1')).toBe(true));
+
+    const secondUser = makeMessage({ id: 'user-2', threadId: 'thread-2', content: 'Second' });
+    messages = [secondUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-2', messages });
+    const secondResponse = service.generateResponse(secondUser, secondUser.content, settings);
+    await vi.waitFor(() => expect(streamRequests.has('pending-user-2')).toBe(true));
+
+    expect(service.generatingThreadIds()).toEqual(new Set(['thread-1', 'thread-2']));
+    streamRequests.get('pending-user-1')?.onToken?.('First reply');
+    streamRequests.get('pending-user-2')?.onToken?.('Second reply');
+    streamResolvers.get('pending-user-2')?.('Second reply');
+    await secondResponse;
+
+    expect(service.isThreadGenerating('thread-1')).toBe(true);
+    expect(service.isThreadGenerating('thread-2')).toBe(false);
+    streamResolvers.get('pending-user-1')?.('First reply');
+    await firstResponse;
+
+    expect(chatStore.updateMessage).toHaveBeenCalledWith(
+      'assistant-thread-1',
+      expect.objectContaining({ content: 'First reply', status: 'complete' }),
+    );
+    expect(chatStore.updateMessage).toHaveBeenCalledWith(
+      'assistant-thread-2',
+      expect.objectContaining({ content: 'Second reply', status: 'complete' }),
+    );
+    expect(service.generatingThreadIds().size).toBe(0);
+  });
+
+  it('generates titles concurrently for different new threads', async () => {
+    const streamResolvers = new Map<string, (value: string) => void>();
+    aiStreamService.streamText.mockImplementation((request: { streamId: string }) => (
+      new Promise<string>((resolve) => streamResolvers.set(request.streamId, resolve))
+    ));
+    chatStore.createAssistantMessage.mockImplementation(async (data: {
+      threadId: string;
+      parentMessageId?: string | null;
+    }) => makeMessage({
+      id: `assistant-${data.threadId}`,
+      threadId: data.threadId,
+      parentMessageId: data.parentMessageId ?? null,
+      role: 'assistant',
+      status: 'streaming',
+    }));
+
+    const firstUser = makeMessage({ id: 'user-1', threadId: 'thread-1', content: 'First' });
+    messages = [firstUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({
+      id: 'thread-1',
+      title: 'New chat',
+      messages,
+    });
+    const firstResponse = service.generateResponse(firstUser, firstUser.content, settings);
+    await vi.waitFor(() => expect(streamResolvers.has('pending-user-1')).toBe(true));
+
+    const secondUser = makeMessage({ id: 'user-2', threadId: 'thread-2', content: 'Second' });
+    messages = [secondUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({
+      id: 'thread-2',
+      title: 'New chat',
+      messages,
+    });
+    const secondResponse = service.generateResponse(secondUser, secondUser.content, settings);
+    await vi.waitFor(() => expect(streamResolvers.has('pending-user-2')).toBe(true));
+
+    streamResolvers.get('pending-user-1')?.('First reply');
+    streamResolvers.get('pending-user-2')?.('Second reply');
+    await vi.waitFor(() => {
+      expect(streamResolvers.has('title-user-1')).toBe(true);
+      expect(streamResolvers.has('title-user-2')).toBe(true);
+    });
+
+    streamResolvers.get('title-user-1')?.('First title');
+    streamResolvers.get('title-user-2')?.('Second title');
+    await Promise.all([firstResponse, secondResponse]);
+
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', { title: 'First title' });
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-2', { title: 'Second title' });
+  });
+
+  it('uses the originating conversation when selection changes during context preparation', async () => {
+    let resolveContext!: (value: string | null) => void;
+    chatAiContext.buildContext.mockReturnValueOnce(new Promise(resolve => resolveContext = resolve));
+    const firstUser = makeMessage({ id: 'user-1', threadId: 'thread-1', content: 'First prompt' });
+    messages = [firstUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-1', messages });
+
+    const response = service.generateResponse(firstUser, firstUser.content, settings);
+    await vi.waitFor(() => expect(chatAiContext.buildContext).toHaveBeenCalled());
+
+    const secondUser = makeMessage({ id: 'user-2', threadId: 'thread-2', content: 'Other prompt' });
+    messages = [secondUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-2', messages });
+    resolveContext(null);
+    await response;
+
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      streamId: 'pending-user-1',
+      aiPrompt: expect.objectContaining({
+        messages: [{ role: 'user', content: 'First prompt' }],
+      }),
+    }));
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
+      threadId: 'thread-1',
+      parentMessageId: 'user-1',
+    }));
   });
 });

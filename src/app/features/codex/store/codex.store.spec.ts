@@ -10,6 +10,7 @@ import { ToastService } from '../../../shared/services/toast.service';
 import { CodexContextTrieService } from '../services/codex-context-trie.service';
 import { CodexEntryPersistenceService } from '../services/codex-entry-persistence.service';
 import { CodexService } from '../services/codex.service';
+import { CodexWindowService } from '../services/codex-window.service';
 import { CodexStore } from './codex.store';
 
 describe('CodexStore', () => {
@@ -18,8 +19,12 @@ describe('CodexStore', () => {
     getEntry: ReturnType<typeof vi.fn>;
     getEntries: ReturnType<typeof vi.fn>;
   };
-  let persistenceService: { createEntry: ReturnType<typeof vi.fn> };
+  let persistenceService: {
+    createEntry: ReturnType<typeof vi.fn>;
+    deleteEntry: ReturnType<typeof vi.fn>;
+  };
   let codexContextTrie: { refreshCurrentContext: ReturnType<typeof vi.fn> };
+  let codexWindowService: { notifyDetachedEntryChanged: ReturnType<typeof vi.fn> };
   let toastService: { error: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
@@ -27,8 +32,12 @@ describe('CodexStore', () => {
       getEntry: vi.fn(),
       getEntries: vi.fn(),
     };
-    persistenceService = { createEntry: vi.fn() };
+    persistenceService = {
+      createEntry: vi.fn(),
+      deleteEntry: vi.fn(),
+    };
     codexContextTrie = { refreshCurrentContext: vi.fn() };
+    codexWindowService = { notifyDetachedEntryChanged: vi.fn() };
     toastService = { error: vi.fn() };
 
     TestBed.configureTestingModule({
@@ -37,6 +46,7 @@ describe('CodexStore', () => {
         { provide: CodexService, useValue: codexService },
         { provide: CodexEntryPersistenceService, useValue: persistenceService },
         { provide: CodexContextTrieService, useValue: codexContextTrie },
+        { provide: CodexWindowService, useValue: codexWindowService },
         { provide: ToastService, useValue: toastService },
       ],
     });
@@ -182,6 +192,23 @@ describe('CodexStore', () => {
     expect(store.selectedEntry()).toBeNull();
     expect(store.isCreatingEntry()).toBe(true);
     expect(store.isLoadingSelectedEntry()).toBe(false);
+  });
+
+  it('notifies other windows after deleting an entry', async () => {
+    const entry = createEntryDetail({ id: 'codex-2', type: 'location' });
+    codexService.getEntry.mockResolvedValueOnce(entry);
+    persistenceService.deleteEntry.mockResolvedValueOnce(undefined);
+    codexService.getEntries.mockResolvedValueOnce([]);
+    codexContextTrie.refreshCurrentContext.mockResolvedValueOnce(undefined);
+
+    await store.openEntryById(entry.id);
+    await store.deleteEntry('book-1');
+
+    expect(codexWindowService.notifyDetachedEntryChanged).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      entryId: entry.id,
+      type: entry.type,
+    });
   });
 });
 

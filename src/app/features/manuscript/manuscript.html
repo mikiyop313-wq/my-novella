@@ -358,11 +358,15 @@
   </ng-template>
 
   <div class="editor-main-layout">
-    <div class="editor-content-wrapper">
+    <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'">
       @if (store.mode() === 'scene') {
       <app-scene-header></app-scene-header>
       }
       <tiptap-editor [editor]="editor" codexContextHighlight=".tiptap"></tiptap-editor>
+
+      @if (showCreateSceneHint()) {
+      <div class="manuscript-empty-hint">Create a scene before you start writing.</div>
+      }
 
       @if (store.mode() !== 'scene') {
       <div class="add-new-section">

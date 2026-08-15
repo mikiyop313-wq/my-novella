@@ -1,7 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import type { Editor } from '@tiptap/core';
 
-import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { ElectronService } from '../../../../core/services/electron.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryStore } from '../../../library/store/book.store';
@@ -16,22 +15,28 @@ import type { AiManuscriptContextRef } from '../../../../shared/models/ai-contex
 import type { VectorSearchSetting } from '../../../../shared/models/vector-search.model';
 import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
 import {
-  type AutomaticSceneContent,
+  type ManuscriptPromptBoundary,
+  type PartialOutlineContent,
   expandManuscriptRefs,
   findCurrentSceneIdBeforePosition,
   findPreviousSceneId,
-  serializeAutomaticManuscript,
+  serializeBookContext,
   serializeCodexContext,
   serializeFullOutline,
   serializeNarrativeGuidance,
-  serializeSelectedManuscript,
+  serializePartialOutline,
   serializeTiptapDocument,
+  serializeTiptapNodes,
 } from '../../../../shared/utils/story-context-builder';
 import { extractManuscriptHierarchyById } from '../content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 import type { SimilarParagraphResult } from '../../../../../../shared/models/vector.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
+import {
+  filterHierarchyForContext,
+  isSceneIncludedInContext,
+} from '../../../../../../shared/utils/manuscript-context-inclusion';
 
 export type ManuscriptAiPointOfViewSetting = BookSettingsDto['pointOfView'] | 'global';
 
@@ -64,31 +69,58 @@ export class ManuscriptAiContextService {
   private readonly toastService = inject(ToastService);
   private readonly paragraphVectorService = inject(ParagraphVectorService);
 
-  async buildMessages(request: ManuscriptAiContextRequest): Promise<AiChatMessage[]> {
+  async buildContext(request: ManuscriptAiContextRequest): Promise<string> {
     if (!request.bookId) throw new Error('No active book is available for AI context.');
 
     const editorDoc = request.editor.state.doc;
     const currentSceneId = findCurrentSceneIdBeforePosition(editorDoc, request.promptPos);
     const currentSceneHierarchy = currentSceneId
-      ? extractManuscriptHierarchyById(request.editor, currentSceneId, request.promptId)
+      ? extractManuscriptHierarchyById(request.editor, currentSceneId)
       : null;
     const currentScene = currentSceneId
       ? findSceneById(currentSceneHierarchy, currentSceneId)
       : null;
-    const currentProseBeforePrompt = serializeTiptapDocument(currentScene?.prose);
+    const promptBoundary = currentSceneId
+      ? createPromptBoundary(currentSceneId, currentScene?.prose, request.promptId)
+      : undefined;
+    const currentContextScene = currentSceneId
+      ? findSceneById(request.hierarchy, currentSceneId)
+      : null;
+    const currentSceneIsIncluded = currentContextScene
+      ? isSceneIncludedInContext(currentContextScene)
+      : false;
+    const contextPromptBoundary = promptBoundary && !currentSceneIsIncluded
+      ? { ...promptBoundary, afterPromptProse: '' }
+      : promptBoundary;
+    const currentProseBeforePrompt = promptBoundary?.beforePromptProse ?? '';
     const selectedSceneIds = expandManuscriptRefs(request.hierarchy, request.manuscriptRefs);
-    const usesAutomaticFallback = !request.includeFullOutline && request.manuscriptRefs.length === 0;
-    const previousSceneId = usesAutomaticFallback && currentSceneId
+    const usesAutomaticProse = request.manuscriptRefs.length === 0;
+    const precedingSceneId = currentSceneId
       ? findPreviousSceneId(request.hierarchy, currentSceneId)
+      : null;
+    const hasOutlineContext = !request.includeFullOutline && currentSceneId !== null;
+    const previousSceneId = usesAutomaticProse && !currentProseBeforePrompt
+      ? precedingSceneId
       : null;
     const proseSceneIds = new Set(selectedSceneIds);
     if (previousSceneId) proseSceneIds.add(previousSceneId);
+    if (
+      request.includeFullOutline
+      && currentSceneId
+      && (usesAutomaticProse || !currentSceneIsIncluded)
+    ) {
+      proseSceneIds.add(currentSceneId);
+    }
 
     const proseBySceneId = new Map<string, string>();
     const unloadedSceneIds: string[] = [];
     for (const sceneId of proseSceneIds) {
-      const extractedHierarchy = extractManuscriptHierarchyById(request.editor, sceneId);
-      const extractedScene = findSceneById(extractedHierarchy, sceneId);
+      const extractedScene = sceneId === currentSceneId
+        ? currentScene
+        : findSceneById(
+          extractManuscriptHierarchyById(request.editor, sceneId),
+          sceneId,
+        );
       if (!extractedScene || extractedScene.prose === null) unloadedSceneIds.push(sceneId);
       else proseBySceneId.set(sceneId, serializeTiptapDocument(extractedScene.prose));
     }
@@ -96,7 +128,7 @@ export class ManuscriptAiContextService {
     if (unloadedSceneIds.length > 0) await this.saver.flushDirtySections();
 
     const [outlineHierarchy, databaseProse] = await Promise.all([
-      request.includeFullOutline
+      request.includeFullOutline || hasOutlineContext
         ? this.manuscriptStructureService.getOutline(request.bookId)
         : Promise.resolve(null),
       unloadedSceneIds.length > 0
@@ -109,39 +141,71 @@ export class ManuscriptAiContextService {
     }
 
     const manuscriptContext = request.includeFullOutline
-      ? serializeFullOutline(outlineHierarchy ?? [], request.bookTitle, proseForScenes(proseBySceneId, selectedSceneIds))
-      : request.manuscriptRefs.length > 0
-        ? serializeSelectedManuscript(
-          request.hierarchy,
-          request.bookTitle,
-          request.manuscriptRefs,
-          selectedSceneIds,
-          proseForScenes(proseBySceneId, selectedSceneIds),
-        )
-        : this.buildAutomaticContext(
-          request.hierarchy,
-          currentSceneId,
-          currentProseBeforePrompt,
-          previousSceneId,
+      ? serializeFullOutline(
+        outlineHierarchy ?? [],
+        request.bookTitle,
+        proseForScenes(
           proseBySceneId,
-        );
+          usesAutomaticProse ? proseSceneIds : selectedSceneIds,
+        ),
+        contextPromptBoundary,
+      )
+      : '';
+    const partialOutlineContent: PartialOutlineContent = {};
+    if ((usesAutomaticProse || !currentSceneIsIncluded) && currentProseBeforePrompt) {
+      partialOutlineContent.currentSceneProse = currentProseBeforePrompt;
+    }
+    if (usesAutomaticProse && previousSceneId) {
+      partialOutlineContent.previousScene = {
+        sceneId: previousSceneId,
+        prose: proseBySceneId.get(previousSceneId) ?? '',
+      };
+    }
+    if (request.manuscriptRefs.length > 0) {
+      partialOutlineContent.selectedSceneProse = proseForScenes(
+        proseBySceneId,
+        selectedSceneIds,
+      );
+      partialOutlineContent.promptBoundary = contextPromptBoundary;
+    }
+    const partialOutline = hasOutlineContext && currentSceneId
+      ? serializePartialOutline(
+        outlineHierarchy ?? [],
+        request.bookTitle,
+        currentSceneId,
+        partialOutlineContent,
+      )
+      : '';
+
+    const activeBook = this.libraryStore.books().find(book => book.id === request.bookId);
+    if (!activeBook?.settings) {
+      throw new Error('Active book narrative settings are not available for AI context.');
+    }
 
     const pointOfView = request.pointOfView === 'global'
-      ? this.resolveGlobalPointOfView(request.bookId)
+      ? activeBook.settings.pointOfView
       : request.pointOfView;
-    const povCharacter = request.povCharacterId
+    const povCharacterId = request.povCharacterId ?? activeBook.settings.povCharacterId;
+    const povCharacter = povCharacterId
       ? request.codexEntries.find(entry =>
-        entry.id === request.povCharacterId
+        entry.id === povCharacterId
         && entry.type === 'character'
         && entry.status === 'active'
         && entry.name.trim().length > 0,
       )
       : undefined;
-    const narrativeGuidance = serializeNarrativeGuidance(
+    const narrativeGuidance = serializeNarrativeGuidance({
+      language: activeBook.language,
+      proseTense: activeBook.settings.proseTense,
       pointOfView,
-      povCharacter?.name,
-      request.wordCount,
-    );
+      povCharacterName: povCharacter?.name,
+      wordCount: request.wordCount,
+    });
+    const bookContext = serializeBookContext({
+      synopsis: activeBook.synopsis,
+      synopsisAiContext: activeBook.settings.synopsisAiContext,
+      categories: activeBook.categories,
+    });
 
     const codexEntryIds = this.resolveCodexEntryIds(request, povCharacter?.id);
     const codexDetails = (await Promise.all(codexEntryIds.map(id => this.codexService.getEntry(id))))
@@ -154,45 +218,14 @@ export class ManuscriptAiContextService {
     );
     const vectorContext = await this.buildVectorContext(request);
 
-    const messages: AiChatMessage[] = [];
-    if (narrativeGuidance || manuscriptContext || codexContext || vectorContext) {
-      messages.push({
-        role: 'user',
-        content: [
-          '--- BEGIN STORY CONTEXT ---',
-          narrativeGuidance,
-          manuscriptContext,
-          codexContext,
-          vectorContext,
-          '--- END STORY CONTEXT ---',
-        ].filter(Boolean).join('\n\n'),
-      });
-    }
-    messages.push({ role: 'user', content: request.promptText });
-    return messages;
-  }
-
-  private buildAutomaticContext(
-    hierarchy: readonly ActDto[],
-    currentSceneId: string | null,
-    currentProseBeforePrompt: string,
-    previousSceneId: string | null,
-    proseBySceneId: ReadonlyMap<string, string>,
-  ): string {
-    if (!currentSceneId) return '';
-
-    const sceneContent = new Map<string, AutomaticSceneContent>();
-    if (previousSceneId) {
-      sceneContent.set(previousSceneId, {
-        label: 'Full prose',
-        text: proseBySceneId.get(previousSceneId) ?? '',
-      });
-    }
-    sceneContent.set(currentSceneId, {
-      label: 'Prose before AI prompt',
-      text: currentProseBeforePrompt,
-    });
-    return serializeAutomaticManuscript(hierarchy, sceneContent);
+    return [
+      narrativeGuidance,
+      bookContext,
+      partialOutline,
+      manuscriptContext,
+      codexContext,
+      vectorContext,
+    ].filter(Boolean).join('\n\n');
   }
 
   private resolveCodexEntryIds(
@@ -210,11 +243,6 @@ export class ManuscriptAiContextService {
       const entry = cachedEntries.get(id);
       return entry?.status === 'active' && entry.trackingSetting !== 'never_include';
     });
-  }
-
-  private resolveGlobalPointOfView(bookId: string): BookSettingsDto['pointOfView'] {
-    return this.libraryStore.books().find(book => book.id === bookId)?.settings?.pointOfView
-      ?? 'third_limited';
   }
 
   private async buildVectorContext(request: ManuscriptAiContextRequest): Promise<string> {
@@ -246,6 +274,25 @@ export class ManuscriptAiContextService {
       .find(book => book.id === request.bookId)
       ?.settings?.vectorSearchEnabled ?? true;
   }
+}
+
+function createPromptBoundary(
+  sceneId: string,
+  prose: TiptapJsonDoc | null | undefined,
+  promptId: string,
+): ManuscriptPromptBoundary {
+  const promptIndex = prose?.content.findIndex(
+    (node) => node.type === 'aiPrompt' && node.attrs?.['id'] === promptId,
+  ) ?? -1;
+  if (!prose || promptIndex < 0) {
+    throw new Error(`AI prompt '${promptId}' was not found in scene '${sceneId}'.`);
+  }
+
+  return {
+    sceneId,
+    beforePromptProse: serializeTiptapNodes(prose.content.slice(0, promptIndex)),
+    afterPromptProse: serializeTiptapNodes(prose.content.slice(promptIndex + 1)),
+  };
 }
 
 function findSceneById(
@@ -281,18 +328,32 @@ function serializeSimilarParagraphs(
   results: readonly SimilarParagraphResult[],
   hierarchy: readonly ActDto[],
 ): string {
-  if (results.length === 0) return '';
+  const contextHierarchy = filterHierarchyForContext(hierarchy);
+  const includedSceneIds = new Set(flattenSceneIds(contextHierarchy));
+  const includedResults = results.filter((result) => includedSceneIds.has(result.sceneId));
+  if (includedResults.length === 0) return '';
 
+  const resultSceneIds = new Set(includedResults.map((result) => result.sceneId));
   const sceneLocations = new Map<string, string>();
-  for (const act of hierarchy) {
-    for (const chapter of act.chapters ?? []) {
-      for (const scene of chapter.scenes ?? []) {
-        sceneLocations.set(scene.id, [
-          formatHierarchyPart('Act', act.position, act.title),
-          formatHierarchyPart('Chapter', chapter.position, chapter.title),
-          formatHierarchyPart('Scene', scene.position, scene.title),
-        ].join(' > '));
+  let actDisplayIndex = 0;
+  for (const act of contextHierarchy) {
+    const visibleChapters = (act.chapters ?? []).filter((chapter) =>
+      (chapter.scenes ?? []).some((scene) => resultSceneIds.has(scene.id)),
+    );
+    if (visibleChapters.length > 0) {
+      for (const [chapterIndex, chapter] of visibleChapters.entries()) {
+        const visibleScenes = (chapter.scenes ?? []).filter((scene) =>
+          resultSceneIds.has(scene.id),
+        );
+        for (const [sceneIndex, scene] of visibleScenes.entries()) {
+          sceneLocations.set(scene.id, [
+            formatHierarchyPart('Act', actDisplayIndex, act.title),
+            formatHierarchyPart('Chapter', chapterIndex, chapter.title),
+            formatHierarchyPart('Scene', sceneIndex, scene.title),
+          ].join(' > '));
+        }
       }
+      actDisplayIndex += 1;
     }
   }
 
@@ -303,7 +364,7 @@ function serializeSimilarParagraphs(
     - 4;
   const paragraphs: string[] = [];
 
-  for (const [index, result] of results.entries()) {
+  for (const [index, result] of includedResults.entries()) {
     if (remaining <= 0) break;
     const location = sceneLocations.get(result.sceneId) ?? `Scene: ${result.sceneId}`;
     const prefix = `${index + 1}. [${location}]\n`;
@@ -318,6 +379,12 @@ function serializeSimilarParagraphs(
   return paragraphs.length > 0
     ? `${heading}\n\n${VECTOR_CONTEXT_GUIDANCE}\n\n${paragraphs.join('\n\n')}`
     : '';
+}
+
+function flattenSceneIds(hierarchy: readonly ActDto[]): string[] {
+  return hierarchy.flatMap((act) => (act.chapters ?? []).flatMap((chapter) =>
+    (chapter.scenes ?? []).map((scene) => scene.id),
+  ));
 }
 
 function formatHierarchyPart(type: string, position: number, title: string): string {

@@ -7,6 +7,7 @@ import {
     DeleteActPayload, DeleteChapterPayload, DeleteScenePayload,
     GetArchiveOverviewPayload,
     RestoreActPayload, RestoreChapterPayload, RestoreScenePayload,
+    SetContextInclusionPayload,
     UpdateActPayload, UpdateChapterPayload, UpdateScenePayload,
     UpdateStructurePositionsPayload
 } from '../../../shared/models/manuscript.model';
@@ -98,6 +99,15 @@ export function setupManuscriptHandlers() {
             await manuscriptRepository.updateStructurePositions(payload);
         } catch (error) {
             console.error('Failed to update structure positions:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('manuscript:setContextInclusion', async (_, payload: SetContextInclusionPayload) => {
+        try {
+            return await manuscriptRepository.setContextInclusion(payload);
+        } catch (error) {
+            console.error('Failed to set manuscript context inclusion:', error);
             throw error;
         }
     });

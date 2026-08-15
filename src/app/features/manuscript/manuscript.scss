@@ -421,6 +421,14 @@
     transition: max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  .manuscript-empty-hint {
+    width: 100%;
+    max-width: var(--editor-page-width, 800px);
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    text-align: center;
+  }
+
   .add-new-section {
     width: 100%;
     max-width: var(--editor-page-width, 800px);
@@ -462,6 +470,70 @@
       line-height: var(--editor-line-height);
       text-align: var(--editor-text-align);
       color: var(--color-text);
+
+      .ai-selection-spacing {
+        margin-inline: 3px;
+        padding: 3px 5px;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+
+      .ai-selection-generating {
+        color: transparent;
+        background-image: linear-gradient(
+          105deg,
+          var(--color-text) 0%,
+          var(--color-text) 30%,
+          color-mix(in srgb, var(--color-btn-primary-bg) 55%, var(--color-text)) 42%,
+          var(--color-btn-primary-bg) 47%,
+          color-mix(in srgb, var(--color-btn-primary-bg) 30%, white) 50%,
+          var(--color-btn-primary-bg) 53%,
+          color-mix(in srgb, var(--color-btn-primary-bg) 55%, var(--color-text)) 58%,
+          var(--color-text) 70%,
+          var(--color-text) 100%
+        );
+        background-size: 220% 100%;
+        background-position: 100% 0;
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        box-decoration-break: slice;
+        -webkit-box-decoration-break: slice;
+        filter:
+          drop-shadow(0 0 2px color-mix(in srgb, var(--color-btn-primary-bg) 70%, transparent))
+          drop-shadow(0 0 6px color-mix(in srgb, var(--color-btn-primary-bg) 35%, transparent));
+        animation: ai-selection-text-glow 1.5s linear infinite;
+      }
+
+      .ai-selection-action-spacer {
+        display: block;
+        width: 100%;
+        pointer-events: none;
+      }
+
+      .ai-selection-comparison-removed {
+        color: var(--color-danger, #c94b55);
+        background: color-mix(in srgb, var(--color-danger, #c94b55) 12%, transparent);
+        text-decoration: line-through;
+        text-decoration-thickness: 1.5px;
+      }
+
+      .ai-selection-comparison-added {
+        color: var(--color-success, #2f8f5b);
+        background: color-mix(in srgb, var(--color-success, #2f8f5b) 14%, transparent);
+      }
+
+      &.manuscript-editing-forbidden-root,
+      .manuscript-editing-forbidden,
+      .manuscript-editing-forbidden * {
+        cursor: not-allowed !important;
+        caret-color: transparent;
+      }
+
+      &.manuscript-editing-forbidden-root app-manuscript-header input {
+        cursor: text !important;
+        caret-color: auto;
+      }
 
 
       // Placeholder styling
@@ -542,12 +614,14 @@
     }
   }
 
-  /* Hide native scrollbar since we use custom index scrollbar */
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  &:not(.scene-mode) {
+    /* Hide native scrollbar since we use custom index scrollbar */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 
-  &::-webkit-scrollbar {
-    display: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 }
 
@@ -733,4 +807,20 @@
 
 .font-mono {
   font-family: 'Courier Prime', monospace;
+}
+
+@keyframes ai-selection-text-glow {
+  to {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::ng-deep .tiptap .ai-selection-generating {
+    color: var(--color-btn-primary-bg);
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    filter: none;
+    animation: none;
+  }
 }

@@ -1,0 +1,51 @@
+@if (bounds(); as effectBounds) {
+  <div
+    class="ai-selection-effect"
+    [class.is-drawing]="state() === 'drawing'"
+    [class.is-generating]="state() === 'generating'"
+    [class.is-ready]="state() === 'ready'"
+    [style.top.px]="effectBounds.top"
+    [style.left.px]="effectBounds.left"
+    [style.width.px]="effectBounds.width"
+    [style.height.px]="frameHeight()"
+    [style.clip-path]="clipPath()"
+    role="status"
+    [attr.aria-label]="state() === 'ready' ? 'AI suggestion ready' : 'AI is working'">
+    <svg
+      class="ai-selection-draw-border"
+      [attr.viewBox]="'0 0 ' + effectBounds.width + ' ' + effectBounds.height"
+      preserveAspectRatio="none"
+      aria-hidden="true">
+      <rect
+        x="1.5"
+        y="1.5"
+        [attr.width]="effectBounds.width - 3"
+        [attr.height]="effectBounds.height - 3"
+        rx="10"
+        pathLength="1"></rect>
+    </svg>
+
+    @if (state() === 'ready') {
+      <div class="ai-selection-actions">
+        @if (canCompare()) {
+          <button type="button" class="compare-button"
+            [attr.aria-expanded]="isComparisonVisible()"
+            (mousedown)="$event.preventDefault()"
+            (click)="toggleComparison()">
+            {{ isComparisonVisible() ? 'Hide changes' : 'Compare' }}
+          </button>
+        }
+        <button type="button" class="cancel-button"
+          (mousedown)="$event.preventDefault()"
+          (click)="cancel()">
+          Cancel
+        </button>
+        <button type="button" class="confirm-button"
+          (mousedown)="$event.preventDefault()"
+          (click)="confirm()">
+          Confirm
+        </button>
+      </div>
+    }
+  </div>
+}

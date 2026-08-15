@@ -59,6 +59,7 @@ export const scene = sqliteTable('scenes', {
   prose: text('prose', { mode: 'json' }).$type<TiptapJsonDoc | null>(),
   summary: text('summary'),
   wordCount: integer('word_count').default(0),
+  includeInContext: integer('include_in_context', { mode: 'boolean' }).notNull().default(true),
 
   // Scene-level AI generation overrides; null means "use the book settings".
   pointOfViewOverride: text('point_of_view_override').$type<PointOfView>(),

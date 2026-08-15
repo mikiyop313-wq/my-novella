@@ -1,3 +1,4 @@
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -7,23 +8,37 @@ import { provideMarkdown } from 'ngx-markdown';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 
+import { AiStreamService } from '../../core/services/ai-stream.service';
+import { ElectronService } from '../../core/services/electron.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { CodexContextHighlightRegistryService } from '../codex/highlighting/codex-context-highlight-registry.service';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
+import { CodexService } from '../codex/services/codex.service';
+import { CodexStore } from '../codex/store/codex.store';
 import { Outline } from './outline';
 import { OutlineStore } from './store/outline.store';
+import { withEffectiveContextInclusion } from '../../../../shared/utils/manuscript-context-inclusion';
 
 describe('Outline', () => {
+  const sceneCardModeStorageKey = 'outline-scene-card-mode';
+
   let component: Outline;
   let fixture: ComponentFixture<Outline>;
   let store: any;
-  let toastService: Pick<ToastService, 'error'>;
+  let systemPromptModelService: { resolveActiveModel: ReturnType<typeof vi.fn> };
+  let aiStreamService: { streamText: ReturnType<typeof vi.fn> };
+  let electronService: { invoke: ReturnType<typeof vi.fn> };
+  let codexService: { getEntries: ReturnType<typeof vi.fn>; createEntry: ReturnType<typeof vi.fn> };
+  let codexStore: any;
+  let toastService: Pick<ToastService, 'error' | 'info' | 'success'>;
   const trieState = signal<object | null>({});
   const contextTrie = {
     trie: trieState.asReadonly(),
     findMatches: vi.fn((text: string) => findCodexMatches(text)),
+    refreshCurrentContext: vi.fn().mockResolvedValue(undefined),
   };
   const highlightRegistry = {
     setRanges: vi.fn(),
@@ -33,8 +48,10 @@ describe('Outline', () => {
   const matchChooser = { open: vi.fn() };
 
   beforeEach(async () => {
+    localStorage.removeItem(sceneCardModeStorageKey);
     trieState.set({});
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
+    contextTrie.refreshCurrentContext.mockClear();
     highlightRegistry.setRanges.mockClear();
     highlightRegistry.clearRanges.mockClear();
     highlightRegistry.getEntryIdsAtPoint.mockReset().mockReturnValue([]);
@@ -59,10 +76,51 @@ describe('Outline', () => {
       updateChapter: vi.fn().mockResolvedValue(undefined),
       updateScene: vi.fn().mockResolvedValue(undefined),
       updateStructurePositions: vi.fn().mockResolvedValue(undefined),
+      setContextInclusion: vi.fn().mockImplementation(async (payload: any) => {
+        const hierarchy = store.bookHierarchy().map((act: any) => ({
+          ...act,
+          chapters: (act.chapters ?? []).map((chapter: any) => ({
+            ...chapter,
+            scenes: (chapter.scenes ?? []).map((scene: any) => ({
+              ...scene,
+              includeInContext: payload.entityType === 'act' && act.id === payload.id
+                || payload.entityType === 'chapter' && chapter.id === payload.id
+                || payload.entityType === 'scene' && scene.id === payload.id
+                ? payload.included
+                : scene.includeInContext,
+            })),
+          })),
+        }));
+        store.bookHierarchy.set(withEffectiveContextInclusion(hierarchy));
+      }),
+    };
+
+    systemPromptModelService = {
+      resolveActiveModel: vi.fn().mockResolvedValue(readySummaryModel()),
+    };
+    aiStreamService = {
+      streamText: vi.fn().mockResolvedValue('Generated summary'),
+    };
+    electronService = {
+      invoke: vi.fn().mockResolvedValue({
+        'scene-1': proseDocument('Scene prose.'),
+      }),
+    };
+    codexService = {
+      getEntries: vi.fn().mockResolvedValue([]),
+      createEntry: vi.fn().mockResolvedValue({ id: 'created-entry' }),
+    };
+    codexStore = {
+      activeType: signal('character'),
+      searchQuery: signal(''),
+      entryFilters: signal({}),
+      loadEntries: vi.fn().mockResolvedValue(undefined),
     };
 
     toastService = {
       error: vi.fn(),
+      info: vi.fn(),
+      success: vi.fn(),
     };
 
     await TestBed.configureTestingModule({
@@ -84,6 +142,11 @@ describe('Outline', () => {
           },
         },
         { provide: OutlineStore, useValue: store },
+        { provide: SystemPromptModelService, useValue: systemPromptModelService },
+        { provide: AiStreamService, useValue: aiStreamService },
+        { provide: ElectronService, useValue: electronService },
+        { provide: CodexService, useValue: codexService },
+        { provide: CodexStore, useValue: codexStore },
         { provide: ToastService, useValue: toastService },
         { provide: CodexContextTrieService, useValue: contextTrie },
         { provide: CodexContextHighlightRegistryService, useValue: highlightRegistry },
@@ -100,6 +163,736 @@ describe('Outline', () => {
 
   it('loads the outline for the current book', () => {
     expect(store.enterBook).toHaveBeenCalledWith('book-1');
+  });
+
+  it('shows placeholders for empty act and chapter titles', () => {
+    store.bookHierarchy.set([{
+      id: 'act-1',
+      title: '',
+      chapters: [{ id: 'chapter-1', title: '', position: 0, scenes: [] }],
+    }]);
+
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.act-label')?.textContent.trim())
+      .toBe('Act 1: Untitled Act');
+    expect(fixture.nativeElement.querySelector('.chapter-label')?.textContent.trim())
+      .toBe('Chapter 1: Untitled Chapter');
+  });
+
+  it('adds title text as a tooltip only when the title overflows', () => {
+    const title = document.createElement('span');
+    title.textContent = 'A very long scene title';
+    Object.defineProperties(title, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 180 },
+      clientHeight: { configurable: true, value: 20 },
+      scrollHeight: { configurable: true, value: 20 },
+    });
+
+    component.updateOverflowTooltip(title);
+
+    expect(title.getAttribute('title')).toBe('A very long scene title');
+
+    Object.defineProperty(title, 'scrollWidth', { configurable: true, value: 100 });
+    component.updateOverflowTooltip(title);
+
+    expect(title.hasAttribute('title')).toBe(false);
+  });
+
+  it('uses compact scene cards when no mode has been saved', () => {
+    expect(component.sceneCardMode()).toBe('compact');
+  });
+
+  it('saves each selected scene card mode', () => {
+    component.setSceneCardMode('fit');
+    expect(localStorage.getItem(sceneCardModeStorageKey)).toBe('fit');
+
+    component.setSceneCardMode('list');
+    expect(localStorage.getItem(sceneCardModeStorageKey)).toBe('list');
+
+    component.setSceneCardMode('compact');
+    expect(localStorage.getItem(sceneCardModeStorageKey)).toBe('compact');
+  });
+
+  it('restores the saved scene card mode when the outline is recreated', async () => {
+    component.setSceneCardMode('list');
+    fixture.destroy();
+
+    fixture = TestBed.createComponent(Outline);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.sceneCardMode()).toBe('list');
+  });
+
+  it('uses compact scene cards when the saved mode is invalid', async () => {
+    localStorage.setItem(sceneCardModeStorageKey, 'unsupported');
+    fixture.destroy();
+
+    fixture = TestBed.createComponent(Outline);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.sceneCardMode()).toBe('compact');
+  });
+
+  it('renders a keep-open scene inclusion switch before the separated menu actions', async () => {
+    showScene('', 12);
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const menu = document.querySelector<HTMLElement>('.scene-options-menu')!;
+    const inclusionSwitch = menu.firstElementChild as HTMLButtonElement;
+
+    expect(inclusionSwitch.classList).toContain('outline-inclusion-switch');
+    expect(inclusionSwitch.textContent).toContain('Include scene');
+    expect(inclusionSwitch.getAttribute('role')).toBe('menuitemcheckbox');
+    expect(inclusionSwitch.getAttribute('aria-checked')).toBe('true');
+    expect(inclusionSwitch.nextElementSibling?.getAttribute('role')).toBe('separator');
+
+    inclusionSwitch.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.scene-options-menu')).not.toBeNull();
+    expect(inclusionSwitch.getAttribute('aria-checked')).toBe('false');
+    expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
+    expect(component.isOutlineItemIncluded('scene-2')).toBe(false);
+
+    const sceneMenuTrigger = fixture.debugElement
+      .query(By.css('.scene-more'))
+      .injector.get(CdkMenuTrigger);
+    sceneMenuTrigger.close();
+    sceneMenuTrigger.open();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.outline-inclusion-switch')?.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('disables empty scene, chapter, and act inclusion switches with explanatory tooltips', async () => {
+    showScene('   ', 0);
+
+    const menuButtons = [
+      {
+        trigger: '.act-header-right .btn-more',
+        tooltip: 'Write prose or a summary in this act before including it.',
+      },
+      {
+        trigger: '.chapter-row-right .btn-more',
+        tooltip: 'Write prose or a summary in this chapter before including it.',
+      },
+      {
+        trigger: '.scene-more',
+        tooltip: 'Write prose or a summary in this scene before including it.',
+      },
+    ];
+
+    for (const menuButton of menuButtons) {
+      const trigger = fixture.debugElement.query(By.css(menuButton.trigger));
+      trigger.nativeElement.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const inclusionSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+      expect(inclusionSwitch.disabled).toBe(true);
+      expect(inclusionSwitch.classList).toContain('is-disabled');
+      expect(inclusionSwitch.title).toBe(menuButton.tooltip);
+
+      trigger.injector.get(CdkMenuTrigger).close();
+    }
+
+    expect(store.setContextInclusion).not.toHaveBeenCalled();
+  });
+
+  it('cascades act and chapter inclusion through their scenes', async () => {
+    showScene('', 12);
+    const actMenuButton = fixture.debugElement.query(By.css('.act-header-right .btn-more'));
+    actMenuButton.nativeElement.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const actSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+    expect(actSwitch.textContent).toContain('Include act');
+    expect(actSwitch.getAttribute('aria-checked')).toBe('true');
+    actSwitch.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(component.isOutlineItemIncluded('act-1')).toBe(false);
+
+    actMenuButton.injector.get(CdkMenuTrigger).close();
+    const chapterMenuButton = fixture.debugElement.query(By.css('.chapter-row-right .btn-more'));
+    chapterMenuButton.nativeElement.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const chapterSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+    expect(chapterSwitch.textContent).toContain('Include chapter');
+    expect(chapterSwitch.getAttribute('aria-checked')).toBe('false');
+    chapterSwitch.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.isOutlineItemIncluded('chapter-1')).toBe(true);
+    expect(component.isOutlineItemIncluded('act-1')).toBe(true);
+  });
+
+  it('distinguishes excluded and empty scenes and their parent branches', () => {
+    store.bookHierarchy.set(withEffectiveContextInclusion([
+      {
+        id: 'act-1',
+        title: 'Act 1',
+        chapters: [
+          {
+            id: 'chapter-1',
+            title: 'Chapter 1',
+            scenes: [
+              {
+                id: 'scene-1',
+                title: 'Excluded Scene',
+                summary: 'Excluded summary',
+                wordCount: 12,
+                includeInContext: false,
+              },
+            ],
+          },
+          {
+            id: 'chapter-2',
+            title: 'Chapter 2',
+            scenes: [
+              {
+                id: 'scene-2',
+                title: 'Included Scene',
+                summary: 'Included summary',
+                wordCount: 12,
+                includeInContext: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'act-2',
+        title: 'Act 2',
+        chapters: [
+          {
+            id: 'chapter-3',
+            title: 'Chapter 3',
+            scenes: [
+              {
+                id: 'scene-3',
+                title: 'Excluded Scene',
+                summary: 'Excluded summary',
+                wordCount: 12,
+                includeInContext: false,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'act-3',
+        title: 'Act 3',
+        chapters: [
+          {
+            id: 'chapter-4',
+            title: 'Chapter 4',
+            scenes: [
+              {
+                id: 'scene-4',
+                title: 'Empty Scene',
+                summary: '',
+                wordCount: 0,
+                includeInContext: true,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any));
+    fixture.detectChanges();
+
+    const actHeaders = fixture.nativeElement.querySelectorAll('.act-header');
+    const chapterRows = fixture.nativeElement.querySelectorAll('.chapter-row');
+    const sceneRows = fixture.nativeElement.querySelectorAll(
+      '.scene-wrapper[data-outline-item-id] > .scene-card-row',
+    );
+
+    expect(actHeaders[0].classList).not.toContain('is-context-excluded');
+    expect(actHeaders[1].classList).toContain('is-context-excluded');
+    expect(actHeaders[2].classList).toContain('is-context-empty');
+    expect(chapterRows[0].classList).toContain('is-context-excluded');
+    expect(chapterRows[1].classList).not.toContain('is-context-excluded');
+    expect(chapterRows[2].classList).toContain('is-context-excluded');
+    expect(chapterRows[3].classList).toContain('is-context-empty');
+    expect(sceneRows[0].classList).toContain('is-context-excluded');
+    expect(sceneRows[1].classList).not.toContain('is-context-excluded');
+    expect(sceneRows[2].classList).toContain('is-context-excluded');
+    expect(sceneRows[3].classList).toContain('is-context-empty');
+    expect(fixture.nativeElement.querySelector('.outline-context-state-badge')).toBeNull();
+  });
+
+  it('toggles scene inclusion from the keyboard and resets it with the component', async () => {
+    showScene('', 12);
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const inclusionSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+    inclusionSwitch.focus();
+    inclusionSwitch.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ' ',
+      code: 'Space',
+      bubbles: true,
+    }));
+    inclusionSwitch.dispatchEvent(new KeyboardEvent('keyup', {
+      key: ' ',
+      code: 'Space',
+      bubbles: true,
+    }));
+    inclusionSwitch.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
+    expect(document.querySelector('.scene-options-menu')).not.toBeNull();
+
+    fixture.destroy();
+    fixture = TestBed.createComponent(Outline);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
+  });
+
+  it('resolves the active Summary and Codex Detection models when the scene AI menu opens', async () => {
+    await component.prepareSceneAiMenu('scene-1');
+
+    expect(systemPromptModelService.resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
+    expect(systemPromptModelService.resolveActiveModel).toHaveBeenCalledWith(
+      'book-1',
+      'codexDetection',
+    );
+    expect(component.summaryModelResolution()).toEqual(readySummaryModel());
+    expect(component.codexDetectionModelResolution()).toEqual(readySummaryModel());
+  });
+
+  it('disables scene summary generation without prose or an available model', () => {
+    showScene('', 0);
+    component.summaryModelResolution.set(readySummaryModel());
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+
+    showScene('', 12);
+    component.summaryModelResolution.set(null);
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+
+    component.summaryModelResolution.set(readySummaryModel());
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(false);
+  });
+
+  it('generates and replaces a scene summary from only that scene prose', async () => {
+    showScene('Old summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockResolvedValueOnce('  New generated summary.  ');
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(electronService.invoke).toHaveBeenCalledWith(
+      'manuscript:getScenesProse',
+      { sceneIds: ['scene-1'] },
+    );
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      streamId: 'outline-scene-summary:scene-1',
+      bookId: 'book-1',
+      aiPrompt: {
+        systemPromptCategory: 'summary',
+        prompt: [
+          '--- BEGIN SCENE PROSE ---',
+          'Scene prose.',
+          '--- END SCENE PROSE ---',
+        ].join('\n\n'),
+        messages: [{
+          role: 'user',
+          content: [
+            '--- BEGIN SCENE PROSE ---',
+            'Scene prose.',
+            '--- END SCENE PROSE ---',
+          ].join('\n\n'),
+        }],
+      },
+      provider: 'openai',
+      modelId: 'gpt-5',
+    }));
+    expect(store.updateScene).toHaveBeenCalledWith({
+      id: 'scene-1',
+      summary: 'New generated summary.',
+    });
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+  });
+
+  it('generates summaries for different scenes concurrently and cleans up each scene independently', async () => {
+    showScenes([
+      { id: 'scene-1', summary: 'Old first summary', wordCount: 12 },
+      { id: 'scene-2', summary: 'Old second summary', wordCount: 18 },
+    ]);
+    component.summaryModelResolution.set(readySummaryModel());
+    electronService.invoke.mockImplementation((channel: string, payload: { sceneIds: string[] }) => {
+      if (channel !== 'manuscript:getScenesProse') return Promise.resolve(null);
+
+      const sceneId = payload.sceneIds[0];
+      return Promise.resolve({ [sceneId]: proseDocument(`${sceneId} prose.`) });
+    });
+    const first = createDeferred<string>();
+    const second = createDeferred<string>();
+    aiStreamService.streamText.mockImplementation((request: { streamId: string }) => (
+      request.streamId === 'outline-scene-summary:scene-1' ? first.promise : second.promise
+    ));
+
+    const firstGeneration = component.generateSceneSummary('scene-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(true);
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+    expect(component.isSceneSummaryGenerationDisabled('scene-2')).toBe(false);
+
+    const secondGeneration = component.generateSceneSummary('scene-2');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(component.isGeneratingSceneSummary('scene-2')).toBe(true);
+    expect(component.isSceneSummaryGenerationDisabled('scene-2')).toBe(true);
+    expect(aiStreamService.streamText).toHaveBeenCalledTimes(2);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'outline-summary',
+      scopeId: 'scene-1',
+    })).toBe(true);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'outline-summary',
+      scopeId: 'scene-2',
+    })).toBe(true);
+
+    await component.prepareSceneAiMenu('scene-2');
+    const closeAllMenus = vi.spyOn(component, 'closeAllMenus');
+    first.resolve('First generated summary');
+    await firstGeneration;
+
+    expect(store.updateScene).toHaveBeenCalledWith({
+      id: 'scene-1',
+      summary: 'First generated summary',
+    });
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+    expect(component.isGeneratingSceneSummary('scene-2')).toBe(true);
+    expect(closeAllMenus).not.toHaveBeenCalled();
+
+    second.resolve('Second generated summary');
+    await secondGeneration;
+
+    expect(store.updateScene).toHaveBeenCalledWith({
+      id: 'scene-2',
+      summary: 'Second generated summary',
+    });
+    expect(component.isGeneratingSceneSummary('scene-2')).toBe(false);
+    expect(closeAllMenus).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a duplicate summary request for the same active scene', async () => {
+    showScene('', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    const deferred = createDeferred<string>();
+    aiStreamService.streamText.mockReturnValueOnce(deferred.promise);
+
+    const generation = component.generateSceneSummary('scene-1');
+    await Promise.resolve();
+    await component.generateSceneSummary('scene-1');
+
+    expect(electronService.invoke).toHaveBeenCalledTimes(1);
+    expect(aiStreamService.streamText).toHaveBeenCalledTimes(1);
+
+    deferred.resolve('Generated once');
+    await generation;
+  });
+
+  it('removes the model picker from the scene AI submenu', async () => {
+    showScene('', 12);
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const askAiItem = [...document.querySelectorAll<HTMLButtonElement>('.overlay-menu .menu-item')]
+      .find(button => button.textContent?.includes('Ask AI'))!;
+    askAiItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.scene-ai-menu')).not.toBeNull();
+    expect(document.querySelector('.scene-summary-model-picker')).toBeNull();
+  });
+
+  it('opens detected Codex entries from the scene AI submenu', async () => {
+    showScene('', 12);
+    aiStreamService.streamText.mockResolvedValueOnce(JSON.stringify({
+      entries: [
+        { name: 'Elara Voss', type: 'character', description: 'A cartographer.' },
+        { name: 'The Glass Harbor', type: 'location', description: 'A port.' },
+      ],
+    }));
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const askAiItem = [...document.querySelectorAll<HTMLButtonElement>('.overlay-menu .menu-item')]
+      .find(button => button.textContent?.includes('Ask AI'))!;
+    askAiItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const detectEntriesItem = document.querySelector<HTMLButtonElement>('.detect-codex-entries')!;
+    detectEntriesItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.codexDetectionState.activeDetection('book-1')).toEqual({
+      bookId: 'book-1',
+      sceneId: 'scene-1',
+      entries: [
+        { name: 'Elara Voss', type: 'character', description: 'A cartographer.' },
+        { name: 'The Glass Harbor', type: 'location', description: 'A port.' },
+      ],
+    });
+    expect(codexService.getEntries).toHaveBeenCalledWith('book-1', { includeArchived: true });
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      aiPrompt: expect.objectContaining({ systemPromptCategory: 'codexDetection' }),
+      provider: 'openai',
+      modelId: 'gpt-5',
+    }));
+
+  });
+
+  it('detects Codex entries for different scenes concurrently and queues results by completion', async () => {
+    showScenes([
+      { id: 'scene-1', summary: '', wordCount: 12 },
+      { id: 'scene-2', summary: '', wordCount: 18 },
+    ]);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    electronService.invoke.mockImplementation((channel: string, payload: { sceneIds: string[] }) => {
+      if (channel !== 'manuscript:getScenesProse') return Promise.resolve(null);
+
+      const sceneId = payload.sceneIds[0];
+      return Promise.resolve({ [sceneId]: proseDocument(`${sceneId} prose.`) });
+    });
+    const first = createDeferred<string>();
+    const second = createDeferred<string>();
+    aiStreamService.streamText.mockImplementation((request: { streamId: string }) => (
+      request.streamId === 'outline-codex-detection:scene-1' ? first.promise : second.promise
+    ));
+
+    const firstDetection = component.detectCodexEntries('scene-1');
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalledTimes(1));
+    const secondDetection = component.detectCodexEntries('scene-2');
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalledTimes(2));
+
+    expect(component.isGeneratingCodexDetection('scene-1')).toBe(true);
+    expect(component.isGeneratingCodexDetection('scene-2')).toBe(true);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'codex-detection',
+      scopeId: 'scene-1',
+    })).toBe(true);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'codex-detection',
+      scopeId: 'scene-2',
+    })).toBe(true);
+
+    second.resolve(JSON.stringify({
+      entries: [{ name: 'Second result', type: 'location', description: 'Finished first.' }],
+    }));
+    await secondDetection;
+
+    expect(component.codexDetectionState.activeDetection('book-1')?.sceneId).toBe('scene-2');
+    expect(component.isGeneratingCodexDetection('scene-1')).toBe(true);
+    expect(component.isGeneratingCodexDetection('scene-2')).toBe(false);
+
+    first.resolve(JSON.stringify({
+      entries: [{ name: 'First result', type: 'character', description: 'Finished second.' }],
+    }));
+    await firstDetection;
+
+    expect(component.codexDetectionState.nextQueued('book-1')?.sceneId).toBe('scene-1');
+    expect(component.isGeneratingCodexDetection('scene-1')).toBe(false);
+  });
+
+  it('ignores another Codex detection request for the same active scene', async () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    const deferred = createDeferred<string>();
+    aiStreamService.streamText.mockReturnValueOnce(deferred.promise);
+
+    const detection = component.detectCodexEntries('scene-1');
+    await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalledOnce());
+    await component.detectCodexEntries('scene-1');
+
+    expect(electronService.invoke).toHaveBeenCalledTimes(1);
+    expect(aiStreamService.streamText).toHaveBeenCalledTimes(1);
+
+    deferred.resolve('{"entries":[]}');
+    await detection;
+  });
+
+  it('disables another Codex detection while that scene has an unreviewed result', () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    component.codexDetectionState.enqueue({
+      bookId: 'book-1',
+      sceneId: 'scene-1',
+      entries: [{ name: 'Elara', type: 'character', description: 'A cartographer.' }],
+    });
+
+    expect(component.isCodexDetectionDisabled('scene-1')).toBe(true);
+  });
+
+  it('rejects an invalid Codex detection response without opening the modal', async () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockResolvedValueOnce('```json\n{"entries":[]}\n```');
+
+    await component.detectCodexEntries('scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith(
+      'AI returned invalid JSON for Codex detection.',
+      'Codex Detection',
+    );
+    expect(component.codexDetectionState.activeDetection('book-1')).toBeNull();
+    expect(document.querySelector('.codex-detection-modal')).toBeNull();
+  });
+
+  it('filters existing Codex names and reports when no new entries remain', async () => {
+    showScene('', 12);
+    component.codexDetectionModelResolution.set(readySummaryModel());
+    codexService.getEntries.mockResolvedValueOnce([codexEntry('Elara Voss', 'Elara')]);
+    aiStreamService.streamText.mockResolvedValueOnce(JSON.stringify({
+      entries: [
+        { name: 'elara', type: 'character', description: 'Already known.' },
+      ],
+    }));
+
+    await component.detectCodexEntries('scene-1');
+
+    expect(toastService.info).toHaveBeenCalledWith(
+      'No new Codex entries were detected.',
+      'Codex Detection',
+    );
+    expect(component.codexDetectionState.activeDetection('book-1')).toBeNull();
+  });
+
+  it('keeps the scene AI submenu open with a loader while generation is active', async () => {
+    showScene('', 12);
+    const deferred = createDeferred<string>();
+    aiStreamService.streamText.mockReturnValueOnce(deferred.promise);
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const askAiItem = [...document.querySelectorAll<HTMLButtonElement>('.overlay-menu .menu-item')]
+      .find(button => button.textContent?.includes('Ask AI'))!;
+    askAiItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    (document.querySelector('.scene-summary-generate') as HTMLButtonElement).click();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.scene-ai-menu')).not.toBeNull();
+    expect(document.querySelector('.scene-summary-spinner')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.scene-summary-label-spinner')).not.toBeNull();
+    expect(document.querySelector('.scene-summary-generate')?.textContent).toContain('Generating...');
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+
+    await component.generateSceneSummary('scene-1');
+    expect(electronService.invoke).toHaveBeenCalledTimes(1);
+
+    deferred.resolve('Finished summary');
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+    expect(fixture.nativeElement.querySelector('.scene-summary-label-spinner')).toBeNull();
+    expect(document.querySelector('.scene-ai-menu')).toBeNull();
+  });
+
+  it('preserves the existing summary when scene prose serializes to empty text', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    electronService.invoke.mockResolvedValueOnce({ 'scene-1': proseDocument('') });
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(aiStreamService.streamText).not.toHaveBeenCalled();
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith(
+      'The scene has no prose to summarize.',
+      'Outline',
+    );
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+  });
+
+  it('reports prose-loading failures without changing the existing summary', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    electronService.invoke.mockRejectedValueOnce(new Error('Could not load prose'));
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(aiStreamService.streamText).not.toHaveBeenCalled();
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith('Could not load prose', 'Outline');
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+  });
+
+  it('preserves the existing summary when AI returns an empty response', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockResolvedValueOnce('   ');
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).toHaveBeenCalledWith(
+      'AI returned an empty scene summary.',
+      'Outline',
+    );
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+  });
+
+  it('preserves the existing summary and avoids duplicate provider toasts when AI fails', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    aiStreamService.streamText.mockRejectedValueOnce(new Error('Provider failed'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(store.updateScene).not.toHaveBeenCalled();
+    expect(toastService.error).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalled();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+    consoleError.mockRestore();
+  });
+
+  it('preserves the previous summary and reports persistence failures', async () => {
+    showScene('Keep this summary', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    store.updateScene.mockRejectedValueOnce(new Error('Could not save summary'));
+
+    await component.generateSceneSummary('scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith('Could not save summary', 'Outline');
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
   });
 
   it('creates an act through the outline store', async () => {
@@ -486,7 +1279,13 @@ describe('Outline', () => {
     expect(mockTrigger2.close).not.toHaveBeenCalled();
   });
 
-  function showScene(summary: string): void {
+  function showScene(summary: string, wordCount = 0): void {
+    showScenes([{ id: 'scene-1', summary, wordCount }]);
+  }
+
+  function showScenes(
+    scenes: Array<{ id: string; summary: string; wordCount: number }>,
+  ): void {
     store.bookHierarchy.set([
       {
         id: 'act-1',
@@ -495,9 +1294,10 @@ describe('Outline', () => {
           {
             id: 'chapter-1',
             title: 'Chapter 1',
-            scenes: [
-              { id: 'scene-1', title: 'Scene 1', summary, wordCount: 0 },
-            ],
+            scenes: scenes.map((scene, index) => ({
+              ...scene,
+              title: `Scene ${index + 1}`,
+            })),
           },
         ],
       },
@@ -524,4 +1324,45 @@ function findCodexMatches(text: string) {
     endIndex: match.index + match[0].length,
     text: match[0],
   }));
+}
+
+function proseDocument(text: string) {
+  return {
+    type: 'doc' as const,
+    content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
+  };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(resolver => resolve = resolver);
+  return { promise, resolve };
+}
+
+function readySummaryModel() {
+  return {
+    status: 'ready' as const,
+    selectorId: 'openai/gpt-5',
+    provider: 'openai',
+    modelId: 'gpt-5',
+  };
+}
+
+function codexEntry(name: string, alias: string | null) {
+  return {
+    id: 'codex-1',
+    bookId: 'book-1',
+    type: 'character' as const,
+    name,
+    alias,
+    description: null,
+    image: null,
+    status: 'archived' as const,
+    trackingSetting: 'include_when_detected' as const,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastEditedAt: '2026-01-01T00:00:00.000Z',
+  };
 }

@@ -116,6 +116,20 @@
         }
       }
 
+      &:disabled,
+      &:disabled:hover {
+        opacity: 0.6;
+        color: color-mix(in srgb, var(--color-text-secondary) 65%, transparent);
+        background: transparent;
+        border-color: transparent;
+        cursor: not-allowed;
+        pointer-events: none;
+
+        svg {
+          transform: none;
+        }
+      }
+
       &.rephrase-btn {
         color: color-mix(in srgb, var(--color-text-primary) 90%, transparent);
         background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
@@ -146,6 +160,74 @@
 .bubble-menu-divider {
   height: 1px;
   background: color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.ai-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--color-border);
+}
+
+.ai-other-section {
+  padding: 6px;
+
+  label {
+    display: block;
+    margin: 0 4px 6px;
+    color: var(--color-text-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+}
+
+.ai-other-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  input {
+    min-width: 0;
+    width: 200px;
+    height: 32px;
+    padding: 0 10px;
+    color: var(--color-text-primary);
+    background: var(--color-surface);
+    border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+    border-radius: 7px;
+    font: inherit;
+    font-size: 0.8rem;
+    outline: none;
+
+    &::placeholder {
+      color: var(--color-text-secondary);
+    }
+
+    &:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+    }
+  }
+
+  button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: white;
+    background: var(--color-primary);
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+
+    &:hover {
+      filter: brightness(1.1);
+    }
+  }
 }
 
 // Bottom Row: Standard Formatting Controls

@@ -101,6 +101,15 @@
               <ng-container *ngTemplateOutlet="rowContent; context: { $implicit: option, state: state }" />
             </button>
             } @else {
+            @if (keepParentMenuOpen()) {
+            <button type="button" class="menu-row submenu-row" autocompleteKeepOpenMenuItem
+              [cdkMenuItemDisabled]="!!option.disabled" [disabled]="option.disabled"
+              [autocompleteHoverMenuTriggerFor]="option.disabled ? null : childMenu"
+              [autocompleteHoverMenuOwner]="submenuHoverOwner" [autocompleteHoverMenuDepth]="depth"
+              (click)="selectOption(option)">
+              <ng-container *ngTemplateOutlet="rowContent; context: { $implicit: option, state: state }" />
+            </button>
+            } @else {
             <button type="button" class="menu-row submenu-row" cdkMenuItem
               [cdkMenuItemDisabled]="!!option.disabled" [disabled]="option.disabled"
               [autocompleteHoverMenuTriggerFor]="option.disabled ? null : childMenu"
@@ -108,6 +117,7 @@
               (click)="selectOption(option)">
               <ng-container *ngTemplateOutlet="rowContent; context: { $implicit: option, state: state }" />
             </button>
+            }
             }
 
             <ng-template #childMenu>
@@ -122,10 +132,18 @@
               <ng-container *ngTemplateOutlet="rowContent; context: { $implicit: option, state: state }" />
             </button>
             } @else {
+            @if (keepParentMenuOpen()) {
+            <button type="button" class="menu-row" autocompleteKeepOpenMenuItem
+              [cdkMenuItemDisabled]="!!option.disabled" [disabled]="option.disabled"
+              (click)="selectOption(option)">
+              <ng-container *ngTemplateOutlet="rowContent; context: { $implicit: option, state: state }" />
+            </button>
+            } @else {
             <button type="button" class="menu-row" cdkMenuItem [cdkMenuItemDisabled]="!!option.disabled"
               [disabled]="option.disabled" (click)="selectOption(option)">
               <ng-container *ngTemplateOutlet="rowContent; context: { $implicit: option, state: state }" />
             </button>
+            }
             }
           }
 

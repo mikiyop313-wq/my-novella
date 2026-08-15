@@ -5,11 +5,13 @@ import {
   ActDto,
   ChapterDto,
   SceneDto,
+  SetContextInclusionPayload,
   UpdateActPayload,
   UpdateChapterPayload,
   UpdateScenePayload,
   UpdateStructurePositionsPayload,
 } from '../../../../../shared/models/manuscript.model';
+import { withEffectiveContextInclusion } from '../../../../../shared/utils/manuscript-context-inclusion';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
 
 // -----------------------------------------------------------------------------
@@ -46,6 +48,12 @@ const normalizeChapter = (chapter: ChapterDto): ChapterDto => ({
   ...chapter,
   scenes: chapter.scenes ?? [],
 });
+
+const normalizeOutline = (outline: ActDto[]): ActDto[] =>
+  withEffectiveContextInclusion(outline.map((act) => ({
+    ...normalizeAct(act),
+    chapters: (act.chapters ?? []).map(normalizeChapter),
+  })));
 
 // -----------------------------------------------------------------------------
 // Position Helpers
@@ -136,28 +144,28 @@ export const OutlineStore = signalStore(
     // Local append helpers update the in-memory hierarchy after backend creates.
     const appendAct = (act: ActDto): void => {
       patchState(store, {
-        outline: [...store.outline(), normalizeAct(act)],
+        outline: normalizeOutline([...store.outline(), normalizeAct(act)]),
       });
     };
 
     const appendChapter = (chapter: ChapterDto): void => {
       patchState(store, {
         // Replace only the matching act, then append the new chapter immutably.
-        outline: store.outline().map(act =>
+        outline: normalizeOutline(store.outline().map(act =>
           act.id === chapter.actId
             ? {
                 ...act,
                 chapters: [...(act.chapters ?? []), normalizeChapter(chapter)],
               }
             : act,
-        ),
+        )),
       });
     };
 
     const appendScene = (scene: SceneDto): void => {
       patchState(store, {
         // Walk acts and chapters until the owning chapter is found.
-        outline: store.outline().map(act => ({
+        outline: normalizeOutline(store.outline().map(act => ({
           ...act,
           chapters: (act.chapters ?? []).map(chapter =>
             chapter.id === scene.chapterId
@@ -167,7 +175,7 @@ export const OutlineStore = signalStore(
                 }
               : chapter,
           ),
-        })),
+        }))),
       });
     };
 
@@ -211,7 +219,7 @@ export const OutlineStore = signalStore(
 
     const patchActMetadata = (payload: UpdateActPayload): void => {
       patchState(store, {
-        outline: store.outline().map(act =>
+        outline: normalizeOutline(store.outline().map(act =>
           act.id === payload.id
             ? {
                 ...act,
@@ -219,13 +227,13 @@ export const OutlineStore = signalStore(
                 ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
               }
             : act,
-        ),
+        )),
       });
     };
 
     const patchChapterMetadata = (payload: UpdateChapterPayload): void => {
       patchState(store, {
-        outline: store.outline().map(act => ({
+        outline: normalizeOutline(store.outline().map(act => ({
           ...act,
           chapters: (act.chapters ?? []).map(chapter =>
             chapter.id === payload.id
@@ -236,13 +244,13 @@ export const OutlineStore = signalStore(
                 }
               : chapter,
           ),
-        })),
+        }))),
       });
     };
 
     const patchSceneMetadata = (payload: UpdateScenePayload): void => {
       patchState(store, {
-        outline: store.outline().map(act => ({
+        outline: normalizeOutline(store.outline().map(act => ({
           ...act,
           chapters: (act.chapters ?? []).map(chapter => ({
             ...chapter,
@@ -256,7 +264,7 @@ export const OutlineStore = signalStore(
                 : scene,
             ),
           })),
-        })),
+        }))),
       });
     };
 
@@ -276,7 +284,7 @@ export const OutlineStore = signalStore(
         try {
           const outline = await manuscriptStructureService.getOutline(bookId);
           patchState(store, {
-            outline,
+            outline: normalizeOutline(outline),
             isLoading: false,
           });
         } catch (error) {
@@ -437,6 +445,12 @@ export const OutlineStore = signalStore(
         } catch (error) {
           throw error;
         }
+      },
+
+      async setContextInclusion(payload: SetContextInclusionPayload): Promise<void> {
+        patchState(store, { error: null });
+        const outline = await manuscriptStructureService.setContextInclusion(payload);
+        patchState(store, { outline: normalizeOutline(outline) });
       },
 
       // -----------------------------------------------------------------------

@@ -19,6 +19,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MarkdownComponent } from 'ngx-markdown';
 
+import type { BookDto } from '../../../../shared/models/book.model';
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { buildContextHighlightSegments } from '../../../../shared/utils/context-highlighter';
 import { AiStore } from '../../core/store/ai.store';
@@ -30,12 +31,19 @@ import {
   type MarkdownKeywordHighlight,
 } from '../../shared/components/markdown-editor/markdown-editor.extensions';
 import { ToastService } from '../../shared/services/toast.service';
-import { expandManuscriptRefs } from '../../shared/utils/story-context-builder';
+import {
+  type BookContext,
+  expandManuscriptRefs,
+} from '../../shared/utils/story-context-builder';
+import { filterSelectableManuscriptRefs } from '../manuscript/components/ai-prompt/ai-prompt-dropdown-options';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
+import { CodexWindowService } from '../codex/services/codex-window.service';
+import { LibraryService } from '../library/services/library.service';
 import {
   getAutomaticallyIncludedCodexEntryIds,
+  reconcileSelectedCodexEntryIds,
   removeAutomaticallyIncludedCodexEntryIds,
 } from '../manuscript/components/ai-prompt/ai-prompt-codex-context';
 import {
@@ -48,7 +56,10 @@ import {
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
 import { WorkspaceStore } from '../workspace/workspace.store';
 import { ChatThreads } from './components/chat-threads/chat-threads';
-import { ChatResponseService } from './services/chat-response.service';
+import {
+  ChatResponseService,
+  type ChatResponseSettings,
+} from './services/chat-response.service';
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
 
@@ -85,9 +96,11 @@ export class Chat implements OnInit, OnDestroy {
   private readonly chatWindowService = inject(ChatWindowService);
   private readonly toastService = inject(ToastService);
   private readonly codexContextTrie = inject(CodexContextTrieService);
+  private readonly codexWindowService = inject(CodexWindowService);
   private readonly codexMatchChooser = inject(CodexMatchChooserService);
   private readonly workspaceBookStore = inject(WorkspaceBookStore);
   private readonly workspaceStore = inject(WorkspaceStore);
+  private readonly libraryService = inject(LibraryService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
 
@@ -121,9 +134,13 @@ export class Chat implements OnInit, OnDestroy {
   readonly isAutoScrollEnabled = signal(true);
   readonly isChatAtBottom = signal(true);
   readonly includeFullOutline = signal(false);
+  readonly includeBookMetadata = signal(false);
   readonly contextManuscriptRefs = signal<AiManuscriptContextRef[]>([]);
   readonly contextCodexEntryIds = signal<string[]>([]);
   readonly automaticallyIncludedCodexEntryIds = signal<ReadonlySet<string>>(new Set());
+  readonly contextBook = signal<BookDto | null>(null);
+  readonly contextBookLoading = signal(false);
+  readonly contextBookError = signal<string | null>(null);
 
   readonly contextHierarchy = this.workspaceBookStore.bookHierarchy;
   readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
@@ -134,6 +151,7 @@ export class Chat implements OnInit, OnDestroy {
   readonly contextCodexError = this.codexContextTrie.error;
 
   private cleanupDetachedWindowClosedListener: (() => void) | null = null;
+  private cleanupCodexEntryChangedListener: (() => void) | null = null;
   private copyConfirmationTimeout: ReturnType<typeof setTimeout> | null = null;
   private scrollAnimationFrame: number | null = null;
   private streamingScrollAnimationFrame: number | null = null;
@@ -149,14 +167,16 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   readonly isAiResponseActive = computed(() => (
-    this.response.isGeneratingResponse() ||
+    this.isGeneratingResponse() ||
     this.chatStore.messages().some((message) => this.isMessageStreaming(message))
   ));
 
-  // Template aliases keep the response state readable without exposing a
-  // second source of truth in the component.
-  readonly isGeneratingResponse = this.response.isGeneratingResponse;
-  readonly isStoppingResponse = this.response.isStoppingResponse;
+  readonly isGeneratingResponse = computed(() => (
+    this.response.isThreadGenerating(this.chatStore.selectedThread()?.id)
+  ));
+  readonly isStoppingResponse = computed(() => (
+    this.response.isThreadStopping(this.chatStore.selectedThread()?.id)
+  ));
 
   readonly showScrollToBottom = computed(() => (
     this.hasActiveConversation && !this.isAutoScrollEnabled() && !this.isChatAtBottom()
@@ -169,6 +189,12 @@ export class Chat implements OnInit, OnDestroy {
       error: this.aiStore.error(),
     })
   ));
+
+  readonly hasSelectedModel = computed(() => {
+    const selectedModelId = this.selectedModelId();
+    return !!selectedModelId
+      && this.aiStore.models().some((model) => model.id === selectedModelId);
+  });
 
   readonly supportsReasoning = computed(() => {
     const modelId = this.selectedModelId();
@@ -193,6 +219,32 @@ export class Chat implements OnInit, OnDestroy {
       }));
   });
 
+  readonly contextBookMetadata = computed<BookContext | null>(() => {
+    const book = this.contextBook();
+    if (!book) return null;
+
+    return {
+      synopsis: book.synopsis,
+      synopsisAiContext: book.settings?.synopsisAiContext === true,
+      categories: book.categories,
+    };
+  });
+
+  readonly contextBookMetadataFields = computed<string[]>(() => {
+    const metadata = this.contextBookMetadata();
+    if (!metadata) return [];
+
+    const fields: string[] = [];
+    if (metadata.synopsisAiContext && metadata.synopsis?.trim()) fields.push('Synopsis');
+    if (metadata.categories?.some(category => category.type === 'genre' && category.name.trim())) {
+      fields.push('Genres');
+    }
+    if (metadata.categories?.some(category => category.type === 'trope' && category.name.trim())) {
+      fields.push('Tropes');
+    }
+    return fields;
+  });
+
   readonly contextDropdownSections = computed(() => buildContextDropdownSections({
     hierarchy: this.contextHierarchy(),
     codexEntries: this.contextCodexEntries(),
@@ -201,9 +253,15 @@ export class Chat implements OnInit, OnDestroy {
     codexLoading: this.contextCodexLoading(),
     hierarchyError: this.contextHierarchyError(),
     codexError: this.contextCodexError(),
+    bookMetadata: {
+      availableFields: this.contextBookMetadataFields(),
+      loading: this.contextBookLoading(),
+      error: this.contextBookError(),
+    },
   }));
 
   readonly selectedContextValues = computed(() => contextSelectionToValues({
+    includeBookMetadata: this.includeBookMetadata(),
     includeFullOutline: this.includeFullOutline(),
     manuscriptRefs: this.contextManuscriptRefs(),
     codexEntryIds: this.contextCodexEntryIds(),
@@ -239,6 +297,7 @@ export class Chat implements OnInit, OnDestroy {
         && !this.aiStore.models().some((model) => model.id === selectedModelId)
       ) {
         this.selectedModelId.set(null);
+        this.editingMessageId = null;
       }
     });
 
@@ -247,6 +306,15 @@ export class Chat implements OnInit, OnDestroy {
       this.contextCodexEntries();
       this.contextCodexTrie();
       this.scheduleContextAvailabilityRefresh();
+    });
+
+    effect(() => {
+      if (this.contextHierarchyLoading()) return;
+      const currentRefs = this.contextManuscriptRefs();
+      const selectableRefs = filterSelectableManuscriptRefs(this.contextHierarchy(), currentRefs);
+      if (selectableRefs.length === currentRefs.length
+        && selectableRefs.every((ref, index) => ref === currentRefs[index])) return;
+      this.contextManuscriptRefs.set(selectableRefs);
     });
 
     afterRenderEffect(() => {
@@ -279,6 +347,7 @@ export class Chat implements OnInit, OnDestroy {
     this.initializeConversationState(initialThreadId, isNewChatRoute);
 
     void this.loadContextHierarchy(bookId);
+    void this.loadBookMetadata(bookId);
     await this.enterWorkspaceChat(bookId, initialThreadId, isNewChatRoute);
     this.route.paramMap?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       void this.syncThreadFromRoute(params.get('threadId'));
@@ -295,6 +364,7 @@ export class Chat implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.contextTrackingDestroyed = true;
     this.cleanupDetachedWindowClosedListener?.();
+    this.cleanupCodexEntryChangedListener?.();
     this.cancelFluidScroll();
     this.cancelStreamingAutoScroll();
 
@@ -315,6 +385,8 @@ export class Chat implements OnInit, OnDestroy {
     this.chatStore.closeThread();
     this.hasActiveConversation = true;
     this.selectedThreadId = null;
+    this.selectedModelId.set(null);
+    this.reasoningMode.set(false);
 
     if (!this.isDetachedMode) {
       await this.navigateToNewChat(replaceUrl);
@@ -345,11 +417,27 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   async archiveThread(id: string): Promise<void> {
+    if (this.response.isThreadGenerating(id)) return;
+
     await this.removeThreadWithAnimation(id, () => this.chatStore.archiveThread(id));
   }
 
   async deleteThread(id: string): Promise<void> {
+    if (this.response.isThreadGenerating(id)) return;
+
     await this.removeThreadWithAnimation(id, () => this.chatStore.deleteThread(id));
+  }
+
+  isThreadGenerating(threadId: string): boolean {
+    return this.response.isThreadGenerating(threadId);
+  }
+
+  getThreadManagementTooltip(threadId: string, action: 'archive' | 'delete'): string {
+    if (!this.response.isThreadGenerating(threadId)) {
+      return action === 'archive' ? 'Archive' : 'Delete';
+    }
+
+    return `Stop or wait for generation to finish before ${action === 'archive' ? 'archiving' : 'deleting'} this thread.`;
   }
 
   async renameThread(event: { id: string; title: string }): Promise<void> {
@@ -502,19 +590,18 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   isPromptSubmitDisabled(): boolean {
-    return this.chatStore.isSaving() || this.isAiResponseActive();
+    return !this.hasSelectedModel()
+      || this.chatStore.isSaving()
+      || this.isAiResponseActive();
   }
 
   isSendButtonDisabled(): boolean {
-    const selectedModelId = this.selectedModelId();
-    return !selectedModelId
-      || !this.aiStore.models().some((model) => model.id === selectedModelId)
-      || this.isPromptSubmitDisabled();
+    return this.isPromptSubmitDisabled();
   }
 
   isSendOrStopDisabled(): boolean {
-    return this.response.isGeneratingResponse()
-      ? this.response.isStoppingResponse()
+    return this.isGeneratingResponse()
+      ? this.isStoppingResponse()
       : this.isSendButtonDisabled();
   }
 
@@ -524,11 +611,29 @@ export class Chat implements OnInit, OnDestroy {
     }
   }
 
+  async onModelSelectionChange(modelId: string | null): Promise<void> {
+    this.selectedModelId.set(modelId);
+    if (!modelId) {
+      this.editingMessageId = null;
+    }
+
+    const thread = this.chatStore.selectedThread();
+    if (!thread) return;
+
+    await this.chatStore.updateThread(thread.id, { lastModelId: modelId });
+  }
+
   openComposerKeyword(event: MarkdownKeywordClick): void {
     this.codexMatchChooser.open(event.entryIds, event.clientX, event.clientY);
   }
 
   refreshContextAvailability(): void {
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) return;
+
     const detectedEntryIds = new Set<string>();
     for (const line of this.composerValue().split(/\r?\n/)) {
       for (const match of this.codexContextTrie.findMatches(line)) {
@@ -548,10 +653,11 @@ export class Chat implements OnInit, OnDestroy {
     }
 
     const selectedEntryIds = this.contextCodexEntryIds();
-    const reconciledEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+    const reconciledEntryIds = reconcileSelectedCodexEntryIds({
       selectedEntryIds,
+      entries: this.contextCodexEntries(),
       automaticallyIncludedEntryIds,
-    );
+    });
     if (reconciledEntryIds.length !== selectedEntryIds.length) {
       this.contextCodexEntryIds.set(reconciledEntryIds);
     }
@@ -569,6 +675,7 @@ export class Chat implements OnInit, OnDestroy {
     );
 
     this.includeFullOutline.set(selection.includeFullOutline);
+    this.includeBookMetadata.set(selection.includeBookMetadata);
     this.contextManuscriptRefs.set(manuscriptRefs);
     this.contextCodexEntryIds.set(codexEntryIds);
   }
@@ -577,34 +684,18 @@ export class Chat implements OnInit, OnDestroy {
     const content = this.composerValue().trim();
     if (!content || this.isSendButtonDisabled()) return;
 
-    this.refreshContextAvailability();
-    if (
-      this.contextCodexLoading()
-      || this.contextCodexError()
-      || this.contextCodexTrie() === null
-    ) {
-      this.toastService.error('Codex context is not available yet.', 'AI Context');
-      return;
-    }
-    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
-      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
-      return;
-    }
+    const responseSettings = this.getResponseSettings();
+    if (!responseSettings) return;
 
-    const sceneIds = [...expandManuscriptRefs(
-      this.contextHierarchy(),
-      this.contextManuscriptRefs(),
-    )];
-    const codexEntryIds = [...new Set([
-      ...this.contextCodexEntryIds(),
-      ...this.automaticallyIncludedCodexEntryIds(),
-    ])];
-    const userMessage = await this.chatStore.sendMessage(content, {
-      includeFullOutline: this.includeFullOutline(),
-      sceneIds,
-      codexEntryIds,
-    });
+    const isUnsavedChat = this.chatStore.selectedThread() === null;
+    const userMessage = await this.chatStore.sendMessage(content);
     if (!userMessage || this.chatStore.error()) return;
+
+    if (isUnsavedChat && responseSettings.selectedModelId) {
+      await this.chatStore.updateThread(userMessage.threadId, {
+        lastModelId: responseSettings.selectedModelId,
+      });
+    }
 
     this.composerValue.set('');
 
@@ -616,12 +707,15 @@ export class Chat implements OnInit, OnDestroy {
     }
 
     this.prepareForResponse();
-    await this.response.generateResponse(userMessage, content, this.getResponseSettings());
+    await this.response.generateResponse(userMessage, content, responseSettings);
   }
 
   async handleSendOrStop(): Promise<void> {
-    if (this.response.isGeneratingResponse()) {
-      const error = await this.response.stopResponse();
+    if (this.isGeneratingResponse()) {
+      const threadId = this.chatStore.selectedThread()?.id;
+      if (!threadId) return;
+
+      const error = await this.response.stopResponse(threadId);
       if (error) this.reportError(error);
       return;
     }
@@ -640,7 +734,7 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   editMessage(messageId: string): void {
-    if (this.chatStore.isSaving() || this.isAiResponseActive()) return;
+    if (this.isPromptSubmitDisabled()) return;
 
     const message = this.chatStore.visibleMessages().find((item) => item.id === messageId);
     if (!message || message.role !== 'user') return;
@@ -659,13 +753,15 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   async saveMessageEdit(messageId: string, content: string): Promise<void> {
-    if (this.editingMessageId !== messageId || this.chatStore.isSaving() || this.isAiResponseActive()) return;
+    if (this.editingMessageId !== messageId || this.isPromptSubmitDisabled()) return;
 
     const message = this.chatStore.visibleMessages().find((item) => item.id === messageId);
     const trimmedContent = content.trim();
     if (!message || message.role !== 'user' || !trimmedContent) return;
 
     const responseSettings = this.getResponseSettings();
+    if (!responseSettings) return;
+
     this.editingMessageId = null;
 
     if (trimmedContent === message.content.trim()) {
@@ -712,8 +808,13 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   async retryMessage(messageId: string): Promise<void> {
+    if (this.isPromptSubmitDisabled()) return;
+
+    const responseSettings = this.getResponseSettings();
+    if (!responseSettings) return;
+
     this.prepareForResponse();
-    await this.response.retryMessage(messageId, this.getResponseSettings());
+    await this.response.retryMessage(messageId, responseSettings);
   }
 
   async previousMessageBranch(messageId: string): Promise<void> {
@@ -788,6 +889,8 @@ export class Chat implements OnInit, OnDestroy {
     if (this.isNewChatThreadId(threadId) || isNewChatRoute) {
       this.selectedThreadId = null;
       this.hasActiveConversation = true;
+      this.selectedModelId.set(null);
+      this.reasoningMode.set(false);
       return;
     }
 
@@ -829,6 +932,10 @@ export class Chat implements OnInit, OnDestroy {
       const hadSavedThreadOpen = this.selectedThreadId !== null;
       this.hasActiveConversation = true;
       this.selectedThreadId = null;
+      if (hadSavedThreadOpen) {
+        this.selectedModelId.set(null);
+        this.reasoningMode.set(false);
+      }
       if (hadSavedThreadOpen || !this.chatStore.selectedThread()) {
         this.chatStore.closeThread();
       }
@@ -837,8 +944,13 @@ export class Chat implements OnInit, OnDestroy {
 
     if (!threadId) {
       if (this.isNewChatRoute()) {
+        const hadSavedThreadOpen = this.selectedThreadId !== null;
         this.hasActiveConversation = true;
         this.selectedThreadId = null;
+        if (hadSavedThreadOpen) {
+          this.selectedModelId.set(null);
+          this.reasoningMode.set(false);
+        }
         this.chatStore.closeThread();
         return;
       }
@@ -852,6 +964,8 @@ export class Chat implements OnInit, OnDestroy {
     if (this.chatStore.selectedThread()?.id === threadId) {
       this.selectedThreadId = threadId;
       this.hasActiveConversation = true;
+      this.selectedModelId.set(this.chatStore.selectedThread()?.lastModelId ?? null);
+      this.reasoningMode.set(false);
       return;
     }
 
@@ -873,8 +987,9 @@ export class Chat implements OnInit, OnDestroy {
       return;
     }
 
-    this.selectedModelId.set(this.response.getLastUsedModelId(this.chatStore.visibleMessages()));
+    this.selectedModelId.set(this.chatStore.selectedThread()?.lastModelId ?? null);
     this.reasoningMode.set(false);
+    this.response.rehydrateThread(id);
   }
 
   private async openOrFocusDetachedChat(): Promise<boolean> {
@@ -903,9 +1018,18 @@ export class Chat implements OnInit, OnDestroy {
         throw new Error('Detached chat session could not be found.');
       }
 
+      this.cleanupCodexEntryChangedListener = this.codexWindowService.onDetachedEntryChanged(
+        event => {
+          if (event.bookId === session.bookId) {
+            void this.codexContextTrie.refreshCurrentContext();
+          }
+        },
+      );
+
       void this.codexContextTrie.loadForContext(session.bookId);
       void this.workspaceStore.enterBook(session.bookId);
       void this.loadContextHierarchy(session.bookId);
+      void this.loadBookMetadata(session.bookId);
       await this.chatStore.enterBook(session.bookId);
       if (session.selectedThreadId) {
         await this.selectThread(session.selectedThreadId);
@@ -926,10 +1050,37 @@ export class Chat implements OnInit, OnDestroy {
     this.isChatAtBottom.set(true);
   }
 
-  private getResponseSettings() {
+  private getResponseSettings(): ChatResponseSettings | null {
+    this.refreshContextAvailability();
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) {
+      this.toastService.error('Codex context is not available yet.', 'AI Context');
+      return null;
+    }
+    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
+      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
+      return null;
+    }
+
     return {
       selectedModelId: this.selectedModelId(),
       reasoningMode: this.reasoningMode(),
+      context: {
+        includeBookMetadata: this.includeBookMetadata(),
+        bookContext: this.contextBookMetadata() ?? undefined,
+        includeFullOutline: this.includeFullOutline(),
+        sceneIds: [...expandManuscriptRefs(
+          this.contextHierarchy(),
+          this.contextManuscriptRefs(),
+        )],
+        codexEntryIds: [...new Set([
+          ...this.contextCodexEntryIds(),
+          ...this.automaticallyIncludedCodexEntryIds(),
+        ])],
+      },
     };
   }
 
@@ -938,6 +1089,25 @@ export class Chat implements OnInit, OnDestroy {
       await this.workspaceBookStore.loadBookHierarchy('book', bookId);
     } catch {
       // The store exposes the error to the context dropdown and send guard.
+    }
+  }
+
+  private async loadBookMetadata(bookId: string): Promise<void> {
+    this.contextBookLoading.set(true);
+    this.contextBookError.set(null);
+
+    try {
+      const books = await this.libraryService.getBooks();
+      const book = books.find(candidate => candidate.id === bookId);
+      if (!book) throw new Error('Book metadata is not available.');
+      this.contextBook.set(book);
+    } catch (error) {
+      this.contextBook.set(null);
+      this.contextBookError.set(
+        error instanceof Error ? error.message : 'Failed to load book metadata.',
+      );
+    } finally {
+      this.contextBookLoading.set(false);
     }
   }
 

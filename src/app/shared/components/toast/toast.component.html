@@ -8,8 +8,11 @@
         <h4 class="toast-title">{{ toast().title }}</h4>
       }
       <p class="toast-message">{{ toast().message }}</p>
+      @if (toast().action; as action) {
+        <button type="button" class="toast-action-btn" (click)="runAction()">{{ action.label }}</button>
+      }
     </div>
-    <button class="toast-close-btn" (click)="close.emit()" aria-label="Close notification">
+    <button type="button" class="toast-close-btn" (click)="close.emit()" aria-label="Close notification">
       <span class="material-symbols-outlined">close</span>
     </button>
   </div>

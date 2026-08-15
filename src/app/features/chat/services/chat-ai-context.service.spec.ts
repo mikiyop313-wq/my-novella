@@ -1,7 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
-import type { ChatMessageDetailDto } from '../../../../../shared/models/chat.model';
 import type { CodexEntryDetailDto } from '../../../../../shared/models/codex.model';
 import type { ActDto, TiptapJsonDoc } from '../../../../../shared/models/manuscript.model';
 import { ElectronService } from '../../../core/services/electron.service';
@@ -32,8 +31,11 @@ describe('ChatAiContextService', () => {
   });
 
   it('returns no context without refs or Full Outline', async () => {
-    await expect(service.buildContextMessage({
-      userMessage: makeMessage(),
+    await expect(service.buildContext({
+      includeBookMetadata: false,
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
       bookId: 'book-1',
       hierarchy: hierarchy(),
     })).resolves.toBeNull();
@@ -42,7 +44,7 @@ describe('ChatAiContextService', () => {
     expect(codexService.getEntry).not.toHaveBeenCalled();
   });
 
-  it('serializes selected scene prose and Codex details for the current message snapshot', async () => {
+  it('serializes selected scene prose and Codex details for the current generation snapshot', async () => {
     const prose: TiptapJsonDoc = {
       type: 'doc',
       content: [{
@@ -53,11 +55,11 @@ describe('ChatAiContextService', () => {
     electronService.invoke.mockResolvedValueOnce({ 'scene-1': prose });
     codexService.getEntry.mockResolvedValueOnce(codexEntry());
 
-    const result = await service.buildContextMessage({
-      userMessage: makeMessage({
-        sceneRefs: [{ messageId: 'user-1', sceneId: 'scene-1' }],
-        codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
-      }),
+    const result = await service.buildContext({
+      includeBookMetadata: false,
+      includeFullOutline: false,
+      sceneIds: ['scene-1'],
+      codexEntryIds: ['codex-1'],
       bookId: 'book-1',
       bookTitle: 'Night Draft',
       hierarchy: hierarchy(),
@@ -67,18 +69,79 @@ describe('ChatAiContextService', () => {
       'manuscript:getScenesProse',
       { sceneIds: ['scene-1'] },
     );
-    expect(result?.content).toContain('## Selected Manuscript Context');
-    expect(result?.content).toContain('Mara enters the observatory.');
-    expect(result?.content).toContain('## Codex Context');
-    expect(result?.content).toContain('Name: Mara Vale');
-    expect(result?.content).toContain('Arrival: Enters the observatory.');
+    expect(result).toContain('## Manuscript Context');
+    expect(result).not.toContain('## Outline');
+    expect(result).not.toContain('## Full Outline');
+    expect(result).toContain('Mara enters the observatory.');
+    expect(result).toContain('## Codex Context');
+    expect(result).toContain('### Mara Vale');
+    expect(result).toContain('Title: Arrival');
+    expect(result).toContain('Description: Enters the observatory.');
+  });
+
+  it('serializes book metadata without requiring other context selections', async () => {
+    const result = await service.buildContext({
+      includeBookMetadata: true,
+      bookContext: {
+        synopsis: 'A locksmith discovers a door between worlds.',
+        synopsisAiContext: true,
+        categories: [
+          { id: 'genre-1', name: 'Fantasy', type: 'genre', isCustom: false },
+          { id: 'trope-1', name: 'Found Family', type: 'trope', isCustom: false },
+        ],
+      },
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+      bookId: 'book-1',
+      hierarchy: hierarchy(),
+    });
+
+    expect(result).toBe([
+      '## Book Context',
+      '',
+      'Synopsis:',
+      'A locksmith discovers a door between worlds.',
+      'Genres: Fantasy',
+      'Tropes: Found Family',
+    ].join('\n'));
+    expect(electronService.invoke).not.toHaveBeenCalled();
+    expect(codexService.getEntry).not.toHaveBeenCalled();
+  });
+
+  it('serializes Codex-only context without manuscript structure', async () => {
+    codexService.getEntry.mockResolvedValueOnce(codexEntry());
+
+    const result = await service.buildContext({
+      includeBookMetadata: false,
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: ['codex-1'],
+      bookId: 'book-1',
+      bookTitle: 'Night Draft',
+      hierarchy: hierarchy(),
+    });
+
+    expect(electronService.invoke).not.toHaveBeenCalled();
+    expect(codexService.getEntry).toHaveBeenCalledWith('codex-1');
+    expect(result).toContain('## Codex Context');
+    expect(result).not.toContain('## Manuscript Context');
+    expect(result).not.toContain('## Outline');
+    expect(result).not.toContain('## Full Outline');
+    expect(result).not.toContain('BEGIN NOVEL');
+    expect(result).not.toContain('BEGIN ACT');
+    expect(result).not.toContain('BEGIN CHAPTER');
+    expect(result).not.toContain('BEGIN SCENE');
   });
 
   it('loads and serializes Full Outline independently from selected scenes', async () => {
     electronService.invoke.mockResolvedValueOnce(hierarchy());
 
-    const result = await service.buildContextMessage({
-      userMessage: makeMessage({ includeFullOutline: true }),
+    const result = await service.buildContext({
+      includeBookMetadata: false,
+      includeFullOutline: true,
+      sceneIds: [],
+      codexEntryIds: [],
       bookId: 'book-1',
       bookTitle: 'Night Draft',
       hierarchy: hierarchy(),
@@ -88,38 +151,10 @@ describe('ChatAiContextService', () => {
       'manuscript:getOutline',
       { bookId: 'book-1' },
     );
-    expect(result?.content).toContain('## Full Outline');
-    expect(result?.content).toContain('Opening summary.');
+    expect(result).toContain('## Full Outline');
+    expect(result).toContain('Opening summary.');
   });
 });
-
-function makeMessage(
-  overrides: Partial<ChatMessageDetailDto> = {},
-): ChatMessageDetailDto {
-  return {
-    id: 'user-1',
-    threadId: 'thread-1',
-    parentMessageId: null,
-    branchGroupId: 'branch-1',
-    branchOrder: 0,
-    role: 'user',
-    content: 'Continue the story',
-    status: 'complete',
-    position: 0,
-    modelId: null,
-    provider: null,
-    inputTokens: null,
-    outputTokens: null,
-    reasoningSummary: null,
-    error: null,
-    includeFullOutline: false,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    lastEditedAt: '2026-01-01T00:00:00.000Z',
-    sceneRefs: [],
-    codexRefs: [],
-    ...overrides,
-  };
-}
 
 function hierarchy(): ActDto[] {
   return [{

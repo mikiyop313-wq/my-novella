@@ -58,6 +58,14 @@ Keep the prose natural and coherent.
 Return only the shortened prose.`,
   },
 
+  /** Codex-entry detection system prompts. */
+  codexDetection: {
+    default: `You identify new Codex entries in fiction prose for a novelist.
+Detect distinct characters, locations, important objects, lore, subplots, and other story concepts that deserve reusable reference entries.
+Use the supplied existing Codex names and aliases to avoid proposing entries that already exist.
+Write a concise, factual description for each entry using only information supported by the supplied prose.`,
+  },
+
   /** Chat-thread title system prompts. */
   title: {
     default: [
@@ -74,6 +82,21 @@ export interface BuiltInSystemPromptPreset extends SystemPromptGenerationSetting
   name: string;
   category: SystemPromptCategory;
   systemPrompt: string;
+  defaultModelId: string | null;
+}
+
+export const DEFAULT_ACTION_MODEL_ID = 'deepseek/deepseek-v4-flash';
+
+export const MODEL_BACKED_SYSTEM_PROMPT_CATEGORIES = [
+  'rephrase',
+  'summary',
+  'expand',
+  'shorten',
+  'codexDetection',
+] as const satisfies readonly SystemPromptCategory[];
+
+export function categoryUsesDefaultModel(category: SystemPromptCategory): boolean {
+  return MODEL_BACKED_SYSTEM_PROMPT_CATEGORIES.some(candidate => candidate === category);
 }
 
 const DEFAULT_GENERATION_SETTINGS: SystemPromptGenerationSettings = {
@@ -121,6 +144,12 @@ export const BUILT_IN_SYSTEM_PROMPT_PRESETS = {
     'shorten',
     AI_SYSTEM_PROMPTS.shorten.default,
   ),
+  codexDetection: builtInPreset(
+    'default-codex-detection',
+    'Default Codex Detection',
+    'codexDetection',
+    AI_SYSTEM_PROMPTS.codexDetection.default,
+  ),
   title: builtInPreset(
     'default-title',
     'Default Chat Title',
@@ -152,6 +181,7 @@ function builtInPreset(
     name,
     category,
     systemPrompt,
+    defaultModelId: categoryUsesDefaultModel(category) ? DEFAULT_ACTION_MODEL_ID : null,
     ...DEFAULT_GENERATION_SETTINGS,
   };
 }

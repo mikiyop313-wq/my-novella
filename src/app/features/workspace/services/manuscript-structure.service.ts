@@ -7,6 +7,7 @@ import {
   ChapterDto,
   ManuscriptMode,
   SceneDto,
+  SetContextInclusionPayload,
   UpdateActPayload,
   UpdateChapterPayload,
   UpdateScenePayload,
@@ -99,5 +100,9 @@ export class ManuscriptStructureService {
 
   async updateStructurePositions(payload: UpdateStructurePositionsPayload): Promise<void> {
     return await this.electronService.invoke('manuscript:updateStructurePositions', payload);
+  }
+
+  async setContextInclusion(payload: SetContextInclusionPayload): Promise<ActDto[]> {
+    return await this.electronService.invoke('manuscript:setContextInclusion', payload);
   }
 }

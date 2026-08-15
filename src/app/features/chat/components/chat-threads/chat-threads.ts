@@ -20,6 +20,7 @@ export class ChatThreads {
   private readonly injector = inject(Injector);
 
   readonly threads = input<ChatThreadDto[]>([]);
+  readonly generatingThreadIds = input<ReadonlySet<string>>(new Set());
   readonly isDetachedMode = input(false);
   readonly canDetach = input(true);
   readonly isNewChat = input(false);
@@ -61,11 +62,25 @@ export class ChatThreads {
   }
 
   deleteThread(id: string): void {
+    if (this.isThreadGenerating(id)) return;
+
     this.deleteThreadRequested.emit(id);
   }
 
   archiveThread(id: string): void {
+    if (this.isThreadGenerating(id)) return;
+
     this.archiveThreadRequested.emit(id);
+  }
+
+  isThreadGenerating(id: string): boolean {
+    return this.generatingThreadIds().has(id);
+  }
+
+  getManagementTooltip(id: string, action: 'archive' | 'delete'): string {
+    if (!this.isThreadGenerating(id)) return action === 'archive' ? 'Archive' : 'Delete';
+
+    return `Stop or wait for generation to finish before ${action === 'archive' ? 'archiving' : 'deleting'} this thread.`;
   }
 
   async animateThreadRemoval(id: string, removeThread: () => Promise<void>): Promise<void> {

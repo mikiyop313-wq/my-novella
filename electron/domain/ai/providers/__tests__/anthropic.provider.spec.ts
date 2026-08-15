@@ -4,8 +4,8 @@ const buildChatCompletionPayload = vi.hoisted(() => vi.fn());
 vi.mock('../../api-key.service', () => ({
     apiKeyService: { getApiKey: vi.fn() },
 }));
-vi.mock('../../prompt-builder.service', () => ({
-    promptBuilderService: { buildChatCompletionPayload },
+vi.mock('../../chat-completion-payload-builder.service', () => ({
+    chatCompletionPayloadBuilderService: { buildChatCompletionPayload },
 }));
 
 import { AnthropicProvider } from '../anthropic.provider';

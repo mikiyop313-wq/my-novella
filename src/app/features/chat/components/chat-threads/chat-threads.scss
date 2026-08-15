@@ -287,6 +287,38 @@
   opacity: 0.8;
 }
 
+.thread-generation-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.thread-generation-loader {
+  width: 1rem;
+  height: 1rem;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--color-text-secondary) 45%, transparent);
+  border-top-color: var(--color-text-primary, currentColor);
+  border-radius: 50%;
+  animation: thread-generation-spin 0.8s linear infinite;
+}
+
+@keyframes thread-generation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-generation-loader {
+    animation: none;
+    border-color: var(--color-text-primary, currentColor);
+  }
+}
+
 .sidebar-empty-state {
   display: flex;
   flex-direction: column;

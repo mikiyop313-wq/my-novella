@@ -8,6 +8,27 @@ export interface AiModel {
   supportsReasoning?: boolean;
 }
 
+export type AiChatMessageRole = 'system' | 'user' | 'assistant';
+
+export interface AiChatMessage {
+  role: AiChatMessageRole;
+  content: string;
+}
+
+/** Identifies data emitted by one concurrent AI generation stream. */
+export interface AiStreamEvent {
+  streamId: string;
+  token: string;
+}
+
+export interface AiGenerationAbortedEvent {
+  streamId: string;
+}
+
+export interface AbortAiGenerationRequest {
+  streamId: string;
+}
+
 export const AI_CLOUD_PROVIDER_IDS = [
   'openrouter',
   'google',

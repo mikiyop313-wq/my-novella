@@ -1,4 +1,12 @@
-import { Directive, Input, TemplateRef, ViewContainerRef, HostListener } from '@angular/core';
+import {
+  Directive,
+  EventEmitter,
+  HostListener,
+  Input,
+  Output,
+  TemplateRef,
+  ViewContainerRef,
+} from '@angular/core';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 
@@ -8,8 +16,10 @@ import { TemplatePortal } from '@angular/cdk/portal';
 })
 export class OverlayModalDirective {
   @Input('appOverlayModal') modalTemplate!: TemplateRef<any>;
+  @Output() closed = new EventEmitter<void>();
 
   private overlayRef?: OverlayRef;
+  private isClosing = false;
 
   constructor(
     private overlay: Overlay,
@@ -33,6 +43,7 @@ export class OverlayModalDirective {
       backdropClass: 'cdk-overlay-dark-backdrop',
       panelClass: 'overlay-modal-panel'
     });
+    this.isClosing = false;
 
     this.overlayRef.backdropClick().subscribe(() => this.closeModal());
 
@@ -45,7 +56,8 @@ export class OverlayModalDirective {
   }
 
   closeModal() {
-    if (this.overlayRef) {
+    if (this.overlayRef && !this.isClosing) {
+      this.isClosing = true;
       // Handle animation if necessary similar to overlay-menu
       const modalElement = this.overlayRef.overlayElement.querySelector('.overlay-modal');
       const backdropElement = this.overlayRef.backdropElement;
@@ -65,6 +77,8 @@ export class OverlayModalDirective {
     if (this.overlayRef) {
       this.overlayRef.dispose();
       this.overlayRef = undefined;
+      this.isClosing = false;
+      this.closed.emit();
     }
   }
 }

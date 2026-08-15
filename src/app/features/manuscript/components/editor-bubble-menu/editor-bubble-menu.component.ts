@@ -2,18 +2,26 @@ import { Component, ElementRef, ViewChild, signal, inject, NgZone, effect } from
 import { CommonModule } from '@angular/common';
 import { OverlayMenuDirective } from '../../../../shared/directives/overlay-menu.directive';
 import { ManuscriptStore } from '../../store/manuscript.store';
+import { findCurrentSceneIdBeforePosition } from '../../../../shared/utils/story-context-builder';
+import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+import {
+  type AiSelectionEditRequest,
+} from '../ai-selection-effect/ai-selection-effect.component';
+import { AiSelectionEffectHostComponent } from '../ai-selection-effect/ai-selection-effect-host.component';
 
 @Component({
   selector: 'app-editor-bubble-menu',
   standalone: true,
-  imports: [CommonModule, OverlayMenuDirective],
+  imports: [CommonModule, OverlayMenuDirective, AiSelectionEffectHostComponent],
   templateUrl: './editor-bubble-menu.component.html',
   styleUrl: './editor-bubble-menu.component.scss'
 })
 export class EditorBubbleMenuComponent {
   @ViewChild('menuRef') menuRef!: ElementRef<HTMLDivElement>;
+  @ViewChild(AiSelectionEffectHostComponent) aiSelectionEffect!: AiSelectionEffectHostComponent;
 
   readonly store = inject(ManuscriptStore);
+  readonly aiStreamEditor = inject(AiStreamEditorService);
   private zone = inject(NgZone);
 
   // Responsive signals for UI
@@ -22,6 +30,7 @@ export class EditorBubbleMenuComponent {
   top = signal(0);
   left = signal(0);
   wordCount = signal(0);
+  private blurTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     effect((onCleanup) => {
@@ -43,6 +52,7 @@ export class EditorBubbleMenuComponent {
 
           window.removeEventListener('resize', this.onSelectionUpdate);
           window.removeEventListener('scroll', this.onSelectionUpdate, true);
+          this.clearBlurTimer();
         });
       }
     });
@@ -56,8 +66,10 @@ export class EditorBubbleMenuComponent {
 
   private onBlur = () => {
     // Delay hiding slightly to allow clicks on formatting buttons inside the menu
-    setTimeout(() => {
+    this.clearBlurTimer();
+    this.blurTimer = setTimeout(() => {
       this.zone.run(() => {
+        this.blurTimer = null;
         const activeEl = document.activeElement;
         if (this.menuRef?.nativeElement && activeEl && this.menuRef.nativeElement.contains(activeEl)) {
           return;
@@ -145,26 +157,62 @@ export class EditorBubbleMenuComponent {
     }
   }
 
-  // AI assistant stubs as requested (empty methods for now)
-  rephrase(): void {
-    const text = this.getSelectedText();
-    console.log('AI Action - Rephrase triggered for: ', text);
+  rephrase(): boolean {
+    return this.startAiEdit({
+      category: 'rephrase',
+      instruction: 'Rephrase the marked passage.',
+      actionLabel: 'Rephrase',
+    });
   }
 
-  shorten(): void {
-    const text = this.getSelectedText();
-    console.log('AI Action - Shorten triggered for: ', text);
+  shorten(): boolean {
+    return this.startAiEdit({
+      category: 'shorten',
+      instruction: 'Shorten the marked passage.',
+      actionLabel: 'Shorten',
+    });
   }
 
-  expand(): void {
-    const text = this.getSelectedText();
-    console.log('AI Action - Expand triggered for: ', text);
+  expand(): boolean {
+    return this.startAiEdit({
+      category: 'expand',
+      instruction: 'Expand the marked passage.',
+      actionLabel: 'Expand',
+    });
   }
 
-  private getSelectedText(): string {
+  other(prompt: string): boolean {
+    const instruction = prompt.trim();
+    if (!instruction) return false;
+
+    return this.startAiEdit({
+      category: 'rephrase',
+      instruction,
+      actionLabel: 'Other',
+    });
+  }
+
+  isAskAiDisabled(): boolean {
     const currentEditor = this.store.editor();
-    if (!currentEditor) return '';
-    const { state } = currentEditor;
-    return state.doc.textBetween(state.selection.from, state.selection.to, ' ');
+    if (!currentEditor) return false;
+
+    const sceneId = findCurrentSceneIdBeforePosition(
+      currentEditor.state.doc,
+      currentEditor.state.selection.from,
+    );
+    return sceneId ? this.aiStreamEditor.hasActiveSceneGeneration(sceneId) : false;
+  }
+
+  private startAiEdit(request: AiSelectionEditRequest): boolean {
+    if (this.isAskAiDisabled()) return false;
+
+    const started = this.aiSelectionEffect.startEdit(request);
+    if (started) this.isVisible.set(false);
+    return started;
+  }
+
+  private clearBlurTimer(): void {
+    if (this.blurTimer !== null) clearTimeout(this.blurTimer);
+    this.blurTimer = null;
   }
 }

@@ -25,6 +25,7 @@ describe('Manuscript', () => {
   let nextFrameId: number;
   let originalRequestAnimationFrame: typeof window.requestAnimationFrame;
   let originalCancelAnimationFrame: typeof window.cancelAnimationFrame;
+  let originalResizeObserver: typeof ResizeObserver | undefined;
   const trieState = signal<object | null>({});
   const contextTrie = {
     trie: trieState.asReadonly(),
@@ -58,6 +59,7 @@ describe('Manuscript', () => {
     nextFrameId = 1;
     originalRequestAnimationFrame = window.requestAnimationFrame;
     originalCancelAnimationFrame = window.cancelAnimationFrame;
+    originalResizeObserver = globalThis.ResizeObserver;
     Object.defineProperty(window, 'requestAnimationFrame', {
       configurable: true,
       writable: true,
@@ -71,6 +73,15 @@ describe('Manuscript', () => {
       configurable: true,
       writable: true,
       value: vi.fn((id: number) => frameCallbacks.delete(id)),
+    });
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      writable: true,
+      value: class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
     });
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findMatches(text));
     contextTrie.loadForContext.mockClear();
@@ -130,10 +141,36 @@ describe('Manuscript', () => {
       writable: true,
       value: originalCancelAnimationFrame,
     });
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      writable: true,
+      value: originalResizeObserver,
+    });
   });
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('shows a create-scene hint only while the loaded scope has no scenes', () => {
+    component.hasLoadedContent.set(true);
+    component.hasSceneNodes.set(false);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.manuscript-empty-hint')?.textContent)
+      .toContain('Create a scene before you start writing.');
+
+    const editor = component.editor!;
+    const sceneSummary = editor.schema.nodes['sceneSummary'].create({ id: 'scene-1' });
+    const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, [
+      sceneSummary,
+      editor.schema.nodes['paragraph'].create(),
+    ]);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.manuscript-empty-hint')).toBeNull();
   });
 
   it('renders pending, active, and updated indexing states', async () => {
@@ -263,6 +300,9 @@ describe('Manuscript', () => {
     component.store.setRouteParams('act', 'act-1');
     expect(component.currentScopeLabel()).toBe('Act 1: The Beginning');
 
+    component.store.setActiveSection('scene', 'scene-1');
+    expect(component.currentScopeLabel()).toBe('Act 1: The Beginning');
+
     component.store.setRouteParams('chapter', 'chapter-1');
     expect(component.currentScopeLabel()).toBe('Chapter 3: First Steps');
 
@@ -324,9 +364,16 @@ describe('Manuscript', () => {
   });
 
   function setEditorContent(): void {
-    component.editor!.commands.setContent({
+    component.editor!.chain().command(({ tr }) => {
+      tr.setMeta('skipSaver', true);
+      return true;
+    }).setContent({
       type: 'doc',
       content: [
+        {
+          type: 'sceneSummary',
+          attrs: { id: 'scene-1', chapterId: 'chapter-1', title: '', summary: '', position: 0 },
+        },
         {
           type: 'paragraph',
           content: [
@@ -337,7 +384,7 @@ describe('Manuscript', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'Silver' }] },
         { type: 'paragraph', content: [{ type: 'text', text: 'Key' }] },
       ],
-    });
+    }).run();
   }
 
   function flushFrames(): void {

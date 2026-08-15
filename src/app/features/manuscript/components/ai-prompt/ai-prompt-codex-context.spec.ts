@@ -4,6 +4,7 @@ import type { CodexEntryDto, CodexTrackingSetting } from '../../../../../../shar
 import {
   findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
+  reconcileSelectedCodexEntryIds,
   removeAutomaticallyIncludedCodexEntryIds,
 } from './ai-prompt-codex-context';
 
@@ -69,6 +70,20 @@ describe('AI prompt Codex context', () => {
       ['always', 'detected', 'manual', 'never'],
       automatic,
     )).toEqual(['manual', 'never']);
+  });
+
+  it('reconciles selections against active entries and automatic tracking', () => {
+    const entries = [
+      createEntry('manual', 'manual'),
+      createEntry('automatic', 'always_include'),
+      createEntry('archived', 'manual', 'archived'),
+    ];
+
+    expect(reconcileSelectedCodexEntryIds({
+      selectedEntryIds: ['manual', 'automatic', 'archived', 'deleted'],
+      entries,
+      automaticallyIncludedEntryIds: new Set(['automatic']),
+    })).toEqual(['manual']);
   });
 });
 

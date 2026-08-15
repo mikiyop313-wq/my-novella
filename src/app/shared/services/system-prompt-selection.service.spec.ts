@@ -119,6 +119,7 @@ function activeIds(
     summary: 'default-summary',
     expand: 'default-expand',
     shorten: 'default-shorten',
+    codexDetection: 'default-codex-detection',
     title: 'default-title',
     ...overrides,
   };

@@ -5,19 +5,15 @@ import { db } from '../index';
 import {
   books,
   chatBranchSelections,
-  chatMessageCodexRefs,
   chatMessages,
-  chatMessageSceneRefs,
   chatThreads,
 } from '../schema';
 import {
   ChatBranchSelectionDto,
-  ChatMessageCodexRefDto,
   CreateChatMessageDto,
   CreateChatThreadDto,
   ChatMessageDetailDto,
   ChatMessageDto,
-  ChatMessageSceneRefDto,
   ChatThreadDetailDto,
   ChatThreadDto,
   UpdateChatMessageDto,
@@ -30,13 +26,7 @@ type ChatThreadUpdate = Partial<Omit<ChatThreadInsert, 'id' | 'bookId' | 'create
 type ChatMessageEntity = typeof chatMessages.$inferSelect;
 type ChatMessageInsert = typeof chatMessages.$inferInsert;
 type ChatMessageUpdate = Partial<Omit<ChatMessageInsert, 'id' | 'threadId' | 'createdAt'>>;
-type ChatMessageSceneRefEntity = typeof chatMessageSceneRefs.$inferSelect;
-type ChatMessageCodexRefEntity = typeof chatMessageCodexRefs.$inferSelect;
 type ChatBranchSelectionEntity = typeof chatBranchSelections.$inferSelect;
-type ChatMessageWithRefs = ChatMessageEntity & {
-  sceneRefs?: ChatMessageSceneRefEntity[];
-  codexRefs?: ChatMessageCodexRefEntity[];
-};
 
 export type CreateChatThreadData = CreateChatThreadDto;
 export type UpdateChatThreadData = UpdateChatThreadDto;
@@ -54,6 +44,7 @@ export class ChatRepository {
       bookId: thread.bookId,
       title: thread.title,
       status: thread.status,
+      lastModelId: thread.lastModelId,
       createdAt: this.dateToIso(thread.createdAt),
       lastEditedAt: this.dateToIso(thread.lastEditedAt),
     };
@@ -76,31 +67,8 @@ export class ChatRepository {
       outputTokens: message.outputTokens,
       reasoningSummary: message.reasoningSummary,
       error: message.error,
-      includeFullOutline: message.includeFullOutline,
       createdAt: this.dateToIso(message.createdAt),
       lastEditedAt: this.dateToIso(message.lastEditedAt),
-    };
-  }
-
-  private mapMessageDetailToDto(message: ChatMessageWithRefs): ChatMessageDetailDto {
-    return {
-      ...this.mapMessageToDto(message),
-      sceneRefs: (message.sceneRefs ?? []).map((ref) => this.mapSceneRefToDto(ref)),
-      codexRefs: (message.codexRefs ?? []).map((ref) => this.mapCodexRefToDto(ref)),
-    };
-  }
-
-  private mapSceneRefToDto(ref: ChatMessageSceneRefEntity): ChatMessageSceneRefDto {
-    return {
-      messageId: ref.messageId,
-      sceneId: ref.sceneId,
-    };
-  }
-
-  private mapCodexRefToDto(ref: ChatMessageCodexRefEntity): ChatMessageCodexRefDto {
-    return {
-      messageId: ref.messageId,
-      codexEntryId: ref.codexEntryId,
     };
   }
 
@@ -121,6 +89,7 @@ export class ChatRepository {
       bookId: data.bookId,
       title: data.title ?? 'New chat',
       status: data.status ?? 'active',
+      lastModelId: data.lastModelId ?? null,
     };
   }
 
@@ -131,6 +100,7 @@ export class ChatRepository {
 
     if (data.title !== undefined) updatePayload.title = data.title;
     if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.lastModelId !== undefined) updatePayload.lastModelId = data.lastModelId;
 
     return updatePayload;
   }
@@ -156,7 +126,6 @@ export class ChatRepository {
       outputTokens: data.outputTokens ?? null,
       reasoningSummary: data.reasoningSummary ?? null,
       error: data.error ?? null,
-      includeFullOutline: data.includeFullOutline ?? false,
     };
   }
 
@@ -183,10 +152,6 @@ export class ChatRepository {
     if (data.reasoningSummary !== undefined)
       updatePayload.reasoningSummary = data.reasoningSummary;
     if (data.error !== undefined) updatePayload.error = data.error;
-    if (data.includeFullOutline !== undefined) {
-      updatePayload.includeFullOutline = data.includeFullOutline;
-    }
-
     return updatePayload;
   }
 
@@ -230,13 +195,9 @@ export class ChatRepository {
     const messages = await db.query.chatMessages.findMany({
       where: eq(chatMessages.threadId, threadId),
       orderBy: [asc(chatMessages.position), asc(chatMessages.branchOrder), asc(chatMessages.createdAt)],
-      with: {
-        sceneRefs: true,
-        codexRefs: true,
-      },
     });
 
-    return messages.map((message) => this.mapMessageDetailToDto(message));
+    return messages.map((message) => this.mapMessageToDto(message));
   }
 
   async getBranchSelections(threadId: string): Promise<ChatBranchSelectionDto[]> {
@@ -309,7 +270,6 @@ export class ChatRepository {
       .values(this.createMessageInsert(data, position, branchGroupId, branchOrder))
       .returning();
 
-    await this.replaceMessageRefs(created.id, data.sceneIds, data.codexEntryIds);
     await this.ensureDefaultBranchSelection(created.threadId, created.branchGroupId, created.id);
     await this.touchThreadLastEdited(created.threadId);
 
@@ -367,7 +327,6 @@ export class ChatRepository {
       return undefined;
     }
 
-    await this.replaceMessageRefs(updated.id, data.sceneIds, data.codexEntryIds);
     await this.touchThreadLastEdited(updated.threadId);
 
     return this.getMessage(updated.id);
@@ -397,13 +356,9 @@ export class ChatRepository {
   private async getMessage(id: string): Promise<ChatMessageDetailDto | undefined> {
     const message = await db.query.chatMessages.findFirst({
       where: eq(chatMessages.id, id),
-      with: {
-        sceneRefs: true,
-        codexRefs: true,
-      },
     });
 
-    return message ? this.mapMessageDetailToDto(message) : undefined;
+    return message ? this.mapMessageToDto(message) : undefined;
   }
 
   private async ensureThreadExists(threadId: string): Promise<void> {
@@ -447,34 +402,6 @@ export class ChatRepository {
       .insert(chatBranchSelections)
       .values({ threadId, branchGroupId, selectedMessageId })
       .onConflictDoNothing();
-  }
-
-  private async replaceMessageRefs(
-    messageId: string,
-    sceneIds?: string[],
-    codexEntryIds?: string[],
-  ): Promise<void> {
-    if (sceneIds !== undefined) {
-      await db.delete(chatMessageSceneRefs).where(eq(chatMessageSceneRefs.messageId, messageId));
-
-      if (sceneIds.length > 0) {
-        await db
-          .insert(chatMessageSceneRefs)
-          .values(sceneIds.map((sceneId) => ({ messageId, sceneId })))
-          .onConflictDoNothing();
-      }
-    }
-
-    if (codexEntryIds !== undefined) {
-      await db.delete(chatMessageCodexRefs).where(eq(chatMessageCodexRefs.messageId, messageId));
-
-      if (codexEntryIds.length > 0) {
-        await db
-          .insert(chatMessageCodexRefs)
-          .values(codexEntryIds.map((codexEntryId) => ({ messageId, codexEntryId })))
-          .onConflictDoNothing();
-      }
-    }
   }
 
   private async touchThreadLastEdited(threadId: string): Promise<void> {

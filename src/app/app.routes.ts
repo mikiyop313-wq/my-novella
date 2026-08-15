@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { manuscriptSelectionGenerationGuard } from './core/guards/manuscript-selection-generation.guard';
 
 
 export const routes: Routes = [
@@ -14,7 +15,7 @@ export const routes: Routes = [
     data: { animation: 'WorkspacePage' },
     children: [
       { path: 'outline', loadComponent: () => import('./features/outline/outline').then(m => m.Outline), data: { animation: 'OutlinePage' } },
-      { path: 'manuscript/:mode/:id', loadComponent: () => import('./features/manuscript/manuscript').then(m => m.Manuscript), data: { animation: 'ManuscriptPage' } },
+      { path: 'manuscript/:mode/:id', loadComponent: () => import('./features/manuscript/manuscript').then(m => m.Manuscript), canDeactivate: [manuscriptSelectionGenerationGuard], data: { animation: 'ManuscriptPage' } },
       { path: 'threads', loadComponent: () => import('./features/chat/chat').then(m => m.Chat), data: { animation: 'ChatPage' } },
       { path: 'new-chat', redirectTo: 'thread/new-chat', pathMatch: 'full' },
       { path: 'thread/:threadId', loadComponent: () => import('./features/chat/chat').then(m => m.Chat), data: { animation: 'ChatPage' } },

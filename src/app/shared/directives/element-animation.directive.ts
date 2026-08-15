@@ -14,6 +14,12 @@ type ElementAnimationTarget = ElementRef<HTMLElement> | HTMLElement | null | und
 type ElementAnimationTargets = ElementAnimationTarget | readonly ElementAnimationTarget[];
 type ElementAnimationTargetSource = ElementAnimationTargets | (() => ElementAnimationTargets);
 
+interface DeleteAndReflowAnimation {
+  target: ElementAnimationTargetSource;
+  layoutTargets: ElementAnimationTargetSource;
+  action: AnimationAction;
+}
+
 @Directive({
   selector: '[appElementAnimation]',
   exportAs: 'appElementAnimation',
@@ -63,6 +69,35 @@ export class ElementAnimationDirective {
     }
   }
 
+  async animateBeforeDeleteAndReflow({
+    target,
+    layoutTargets,
+    action,
+  }: DeleteAndReflowAnimation): Promise<void> {
+    const elements = this.resolveElements(target);
+
+    if (this.prefersReducedMotion() || elements.length === 0) {
+      await action();
+      return;
+    }
+
+    this.addClass(elements, this.appElementAnimationLeaveClass);
+    await this.waitForMotion();
+
+    const previousPositions = new Map(
+      this.resolveElements(layoutTargets).map(element => [element, element.getBoundingClientRect()]),
+    );
+
+    try {
+      await action();
+      await this.waitForRender();
+      await this.animateReflow(previousPositions, this.resolveElements(layoutTargets));
+    } catch (error) {
+      this.removeClass(elements, this.appElementAnimationLeaveClass);
+      throw error;
+    }
+  }
+
   private async playClass(
     targets: ElementAnimationTargetSource | undefined,
     className: string,
@@ -92,6 +127,36 @@ export class ElementAnimationDirective {
     for (const element of elements) {
       element.classList.remove(className);
     }
+  }
+
+  private async animateReflow(
+    previousPositions: ReadonlyMap<HTMLElement, DOMRect>,
+    elements: readonly HTMLElement[],
+  ): Promise<void> {
+    const animations = elements.flatMap(element => {
+      const previousPosition = previousPositions.get(element);
+      if (!previousPosition) return [];
+
+      const currentPosition = element.getBoundingClientRect();
+      const offsetX = previousPosition.left - currentPosition.left;
+      const offsetY = previousPosition.top - currentPosition.top;
+      if (offsetX === 0 && offsetY === 0) return [];
+
+      const animation = element.animate(
+        [
+          { transform: `translate(${offsetX}px, ${offsetY}px)` },
+          { transform: 'translate(0, 0)' },
+        ],
+        {
+          duration: this.appElementAnimationDurationMs,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        },
+      );
+
+      return [animation.finished.catch(() => undefined)];
+    });
+
+    await Promise.all(animations);
   }
 
   private resolveElements(targets: ElementAnimationTargetSource | undefined): HTMLElement[] {

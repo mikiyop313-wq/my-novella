@@ -6,29 +6,25 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
-import {
-  ManuscriptAiContextService,
-  type ManuscriptAiPointOfViewSetting,
-} from '../../helpers/ai/manuscript-ai-context.service';
+import { ManuscriptAiRequestService } from '../../helpers/ai/manuscript-ai-request.service';
+import type { ManuscriptAiPointOfViewSetting } from '../../helpers/ai/manuscript-ai-context.service';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
-import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { CodexContextHighlightDirective } from '../../../codex/highlighting/codex-context-highlight.directive';
 import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
-import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
+import { findCurrentSceneIdBeforePosition } from '../../../../shared/utils/story-context-builder';
 import {
   isVectorSearchSetting,
   type VectorSearchSetting,
 } from '../../../../shared/models/vector-search.model';
-import { ToastService } from '../../../../shared/services/toast.service';
-import { resolveAiModelTarget } from '../../../../shared/utils/ai-model-selection';
 import {
   findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
+  reconcileSelectedCodexEntryIds,
   removeAutomaticallyIncludedCodexEntryIds,
 } from './ai-prompt-codex-context';
 import {
@@ -38,6 +34,7 @@ import {
   buildModelDropdownSections,
   contextSelectionToValues,
   dropdownValuesToContextSelection,
+  filterSelectableManuscriptRefs,
   restoreManuscriptContextRefs,
 } from './ai-prompt-dropdown-options';
 
@@ -86,12 +83,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   private readonly aiStore = inject(AiStore);
   private readonly aiStreamEditor = inject(AiStreamEditorService);
-  private readonly manuscriptAiContext = inject(ManuscriptAiContextService);
+  private readonly manuscriptAiRequest = inject(ManuscriptAiRequestService);
   private readonly manuscriptStore = inject(ManuscriptStore);
   private readonly workspaceBookStore = inject(WorkspaceBookStore);
-  private readonly workspaceStore = inject(WorkspaceStore);
   private readonly codexContext = inject(CodexContextTrieService);
-  private readonly toastService = inject(ToastService);
 
   readonly contextHierarchy = this.manuscriptStore.bookHierarchy;
   readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
@@ -156,6 +151,20 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   isLoading = computed(() => this.loadingStatus() !== 'idle');
 
+  isSceneGenerationBlocked = computed(() => {
+    const pos = this.currentNodePosition();
+    if (pos === null) return false;
+
+    const sceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, pos);
+    if (!sceneId) return false;
+
+    return this.aiStreamEditor.hasActiveSceneGeneration(sceneId)
+      && !this.aiStreamEditor.isSceneGenerationOwner({
+        sceneId,
+        ownerId: this.blockId(),
+      });
+  });
+
   selectedModelName = computed(() => {
     const id = this.selectedModel();
 
@@ -171,6 +180,12 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const selectedModel = this.selectedModel();
     return !!selectedModel && this.allModels().some((model) => model.id === selectedModel);
   });
+
+  isSendDisabled = computed(() => (
+    !this.promptText().trim()
+    || !this.isSelectedModelAvailable()
+    || this.isSceneGenerationBlocked()
+  ));
 
   modelDropdownSections = computed(() => buildModelDropdownSections({
     providers: this.aiStore.modelProviders(),
@@ -189,6 +204,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   }));
 
   selectedContextValues = computed(() => contextSelectionToValues({
+    includeBookMetadata: false,
     includeFullOutline: this.includeFullOutline(),
     manuscriptRefs: this.contextManuscriptRefs(),
     codexEntryIds: this.contextCodexEntryIds(),
@@ -233,6 +249,21 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       this.contextCodexTrie();
       if (this.contextTrackingInitialized) this.scheduleContextAvailabilityRefresh();
     });
+
+    effect(() => {
+      if (!this.modelSelectionInitialized() || this.contextHierarchyLoading()) return;
+
+      const currentRefs = this.contextManuscriptRefs();
+      const selectableRefs = filterSelectableManuscriptRefs(this.contextHierarchy(), currentRefs);
+      if (selectableRefs.length === currentRefs.length
+        && selectableRefs.every((ref, index) => ref === currentRefs[index])) return;
+
+      this.contextManuscriptRefs.set(selectableRefs);
+      this.updateAttributes()({
+        contextManuscriptRefs: selectableRefs,
+        contextSceneIds: [],
+      });
+    });
   }
 
 
@@ -266,7 +297,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   ngOnDestroy(): void {
     this.contextTrackingDestroyed = true;
     this.editor().off('transaction', this.onEditorTransaction);
-    this.aiStreamEditor.loadingState.delete(this.blockId());
+    const blockId = this.blockId();
+    if (!this.aiStreamEditor.hasActivePromptGeneration(blockId)) {
+      this.aiStreamEditor.loadingState.delete(blockId);
+    }
   }
 
 
@@ -382,86 +416,59 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   async onSubmit(): Promise<void> {
     const blockId = this.blockId();
 
-    if (this.isLoading()) return;
+    if (this.isLoading() || this.isSceneGenerationBlocked()) return;
 
     const text = this.promptText().trim();
     const pos = this.currentNodePosition();
 
     if (!text || pos === null || !this.isSelectedModelAvailable()) return;
 
-    const { provider, modelId } = this.resolveSelectedModel();
+    const sceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, pos);
+    if (!sceneId || !this.aiStreamEditor.acquireSceneGeneration({
+      sceneId,
+      ownerId: blockId,
+    })) return;
 
     this.refreshContextAvailability();
-    if (
-      this.contextCodexLoading()
-      || this.contextCodexError()
-      || this.contextCodexTrie() === null
-    ) {
-      this.toastService.error('Codex context is not available yet.', 'AI Context');
-      return;
-    }
-    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
-      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
-      return;
-    }
-
     const loadingSig = this.loadingSignal(blockId);
     loadingSig?.set('loading');
 
-    const bookId = this.workspaceStore.bookId();
-    if (!bookId) {
-      this.toastService.error('No active book is available.', 'AI Generation');
-      loadingSig?.set('idle');
-      return;
-    }
-
-    let messages: AiChatMessage[];
     try {
-      messages = await this.manuscriptAiContext.buildMessages({
+      const prepared = await this.manuscriptAiRequest.prepare({
         editor: this.editor(),
         promptPos: pos,
-        promptId: blockId,
-        promptText: text,
-        bookId,
-        bookTitle: this.workspaceStore.bookTitle(),
-        hierarchy: this.contextHierarchy(),
-        includeFullOutline: this.includeFullOutline(),
-        manuscriptRefs: this.contextManuscriptRefs(),
-        manualCodexEntryIds: this.contextCodexEntryIds(),
-        automaticCodexEntryIds: this.automaticallyIncludedCodexEntryIds(),
-        codexEntries: this.contextCodexEntries(),
-        wordCount: this.wordCount(),
-        pointOfView: this.pov(),
-        povCharacterId: this.povCharacter(),
-        vectorSearch: this.vectorSearch(),
+        promptAttrs: this.node().attrs,
+        requestMessages: [{
+          role: 'user',
+          parts: [{ type: 'text', content: text }],
+        }],
+        contextPromptText: text,
       });
-    } catch (error) {
-      console.error('AI context preparation failed:', error);
-      this.toastService.error('Could not prepare the selected story context.', 'AI Context');
-      loadingSig?.set('idle');
-      return;
-    }
+      if (!prepared) return;
 
-    const latestPos = this.currentNodePosition();
-    if (latestPos === null) {
-      loadingSig?.set('idle');
-      return;
-    }
+      const latestPos = this.currentNodePosition();
+      if (latestPos === null) return;
+      if (!this.aiStreamEditor.isSceneGenerationOwner({ sceneId, ownerId: blockId })) return;
 
-    try {
-      await this.aiStreamEditor.generateNewBlock(
-        this.editor(),
-        latestPos + this.node().nodeSize,
-        text,
-        provider,
-        modelId,
-        this.reasoningMode(),
-        bookId,
-        blockId,
-        messages,
-      );
+      const responseId = crypto.randomUUID();
+      const latestSceneId = findCurrentSceneIdBeforePosition(this.editor().state.doc, latestPos);
+      if (latestSceneId !== sceneId) return;
+
+      await this.aiStreamEditor.generateNewBlock({
+        editor: this.editor(),
+        insertPos: latestPos + this.node().nodeSize,
+        aiPrompt: prepared.aiPrompt,
+        provider: prepared.provider,
+        modelId: prepared.modelId,
+        reasoningMode: prepared.reasoningMode,
+        bookId: prepared.bookId,
+        responseId,
+        sourcePromptId: blockId,
+        sceneId,
+      });
     } finally {
       loadingSig?.set('idle');
+      this.aiStreamEditor.releaseSceneGeneration({ sceneId, ownerId: blockId });
     }
   }
 
@@ -469,7 +476,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const blockId = this.blockId();
     const loadingSig = this.loadingSignal(blockId);
 
-    await this.aiStreamEditor.stopGeneration(blockId);
+    await this.aiStreamEditor.stopPromptGeneration(blockId);
 
     loadingSig?.set('idle');
   }
@@ -527,9 +534,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       });
     }
 
-    if (!this.aiStreamEditor.loadingState.has(blockId)) {
-      this.aiStreamEditor.loadingState.set(blockId, signal('idle'));
-    }
+    this.aiStreamEditor.ensurePromptLoadingState(blockId);
   }
 
   /** Returns the stable ID used to connect this prompt with its loading state. */
@@ -554,6 +559,12 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   /** Rechecks tracking immediately before presenting the context menu. */
   refreshContextAvailability(): void {
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) return;
+
     const pos = this.currentNodePosition();
     if (pos === null) return;
 
@@ -573,10 +584,11 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     }
 
     const selectedEntryIds = this.contextCodexEntryIds();
-    const reconciledEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+    const reconciledEntryIds = reconcileSelectedCodexEntryIds({
       selectedEntryIds,
+      entries: this.contextCodexEntries(),
       automaticallyIncludedEntryIds,
-    );
+    });
 
     if (reconciledEntryIds.length !== selectedEntryIds.length) {
       this.contextCodexEntryIds.set(reconciledEntryIds);
@@ -599,17 +611,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   /** Get the per-block loading signal managed by the AI stream service. */
   private loadingSignal(blockId: string): WritableSignal<LoadingStatus> | undefined {
     return this.aiStreamEditor.loadingState.get(blockId);
-  }
-
-  /** Translate the selected UI model into the provider/model IDs expected by the stream service. */
-  private resolveSelectedModel(): { provider: string; modelId: string } {
-    const selectedModelObj = this.allModels().find(model => model.id === this.selectedModel());
-
-    if (!selectedModelObj) {
-      return { provider: 'openrouter', modelId: '' };
-    }
-
-    return resolveAiModelTarget(selectedModelObj);
   }
 
   private contextTrackingInitialized = false;

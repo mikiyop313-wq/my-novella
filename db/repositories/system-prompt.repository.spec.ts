@@ -18,6 +18,18 @@ vi.mock('../index', () => ({
 describe('SystemPromptRepository', () => {
   let sqlite: Database.Database;
   let repository: import('./system-prompt.repository').SystemPromptRepository;
+  const appSettings = new Map<string, string>();
+  const settingsStore = {
+    get: vi.fn((key: string) => Promise.resolve(appSettings.get(key) ?? null)),
+    set: vi.fn((key: string, value: string) => {
+      appSettings.set(key, value);
+      return Promise.resolve();
+    }),
+    delete: vi.fn((key: string) => {
+      appSettings.delete(key);
+      return Promise.resolve();
+    }),
+  };
 
   beforeAll(async () => {
     sqlite = new Database(':memory:');
@@ -36,6 +48,7 @@ describe('SystemPromptRepository', () => {
         max_output_tokens integer,
         presence_penalty real DEFAULT 0 NOT NULL,
         frequency_penalty real DEFAULT 0 NOT NULL,
+        default_model_id text,
         created_at integer DEFAULT (unixepoch()) NOT NULL,
         last_edited_at integer DEFAULT (unixepoch()) NOT NULL,
         CONSTRAINT system_prompt_presets_scope_book_check CHECK (
@@ -57,10 +70,11 @@ describe('SystemPromptRepository', () => {
     mockedDatabase.value = drizzle(sqlite, { schema });
 
     const { SystemPromptRepository } = await import('./system-prompt.repository');
-    repository = new SystemPromptRepository();
+    repository = new SystemPromptRepository(settingsStore);
   });
 
   beforeEach(() => {
+    appSettings.clear();
     sqlite.exec(`
       DELETE FROM active_system_prompt_presets;
       DELETE FROM system_prompt_presets;
@@ -98,6 +112,40 @@ describe('SystemPromptRepository', () => {
     });
     expect(created.createdAt).toEqual(expect.any(String));
     expect(created.lastEditedAt).toEqual(expect.any(String));
+  });
+
+  it('persists custom preset models and resolves legacy presets through the built-in default', async () => {
+    const custom = await repository.create({
+      ...bookPreset('book-1', 'Summary Model', 'summary'),
+      defaultModelId: 'openai/gpt-5',
+    });
+    await repository.setActivePreset('book-1', 'summary', custom.id);
+
+    await expect(repository.resolveActiveModel('book-1', 'summary')).resolves.toEqual({
+      presetId: custom.id,
+      defaultModelId: 'openai/gpt-5',
+    });
+
+    const legacy = await repository.create({
+      ...bookPreset('book-1', 'Legacy Summary', 'summary'),
+      defaultModelId: null,
+    });
+    await repository.setActivePreset('book-1', 'summary', legacy.id);
+    await expect(repository.resolveActiveModel('book-1', 'summary')).resolves.toEqual({
+      presetId: legacy.id,
+      defaultModelId: 'deepseek/deepseek-v4-flash',
+    });
+  });
+
+  it('stores built-in model overrides globally', async () => {
+    await repository.setBuiltInDefaultModelId('default-summary', 'openai/gpt-5');
+
+    await expect(repository.getBuiltInDefaultModelId('default-summary'))
+      .resolves.toBe('openai/gpt-5');
+    await expect(repository.resolveActiveModel('book-1', 'summary')).resolves.toEqual({
+      presetId: 'default-summary',
+      defaultModelId: 'openai/gpt-5',
+    });
   });
 
   it('lists global presets and only presets belonging to the requested book', async () => {
@@ -260,6 +308,7 @@ function basePreset(
     maxOutputTokens: null,
     presencePenalty: 0,
     frequencyPenalty: 0,
+    defaultModelId: null,
     ...generation,
   };
 }

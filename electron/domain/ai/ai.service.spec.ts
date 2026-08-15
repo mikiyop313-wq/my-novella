@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('./api-key.service', () => ({
     apiKeyService: { getApiKey: vi.fn() },
 }));
-vi.mock('./prompt-builder.service', () => ({
-    promptBuilderService: { buildChatCompletionPayload: vi.fn() },
+vi.mock('./chat-completion-payload-builder.service', () => ({
+    chatCompletionPayloadBuilderService: { buildChatCompletionPayload: vi.fn() },
 }));
 vi.mock('./ai-configuration.service', () => ({
     aiConfigurationService: { getServerUrl: vi.fn() },

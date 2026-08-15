@@ -1,17 +1,16 @@
 import { Injectable, inject } from '@angular/core';
 
-import type { ChatMessageDetailDto } from '../../../../../shared/models/chat.model';
 import type { CodexEntryDetailDto } from '../../../../../shared/models/codex.model';
 import type {
   ActDto,
   SceneDto,
   TiptapJsonDoc,
 } from '../../../../../shared/models/manuscript.model';
-import type { AiChatMessage } from '../../../core/services/ai-state.service';
 import { ElectronService } from '../../../core/services/electron.service';
-import type { AiManuscriptContextRef } from '../../../shared/models/ai-context.model';
 import {
+  type BookContext,
   flattenScenes,
+  serializeBookContext,
   serializeCodexContext,
   serializeFullOutline,
   serializeSelectedManuscript,
@@ -19,9 +18,14 @@ import {
 } from '../../../shared/utils/story-context-builder';
 import { CodexService } from '../../codex/services/codex.service';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
+import { filterHierarchyForContext } from '../../../../../shared/utils/manuscript-context-inclusion';
 
 export interface ChatAiContextRequest {
-  userMessage: ChatMessageDetailDto;
+  includeBookMetadata: boolean;
+  bookContext?: BookContext;
+  includeFullOutline: boolean;
+  sceneIds: readonly string[];
+  codexEntryIds: readonly string[];
   bookId: string;
   bookTitle?: string;
   hierarchy: readonly ActDto[];
@@ -33,14 +37,16 @@ export class ChatAiContextService {
   private readonly codexService = inject(CodexService);
   private readonly manuscriptStructureService = inject(ManuscriptStructureService);
 
-  async buildContextMessage(request: ChatAiContextRequest): Promise<AiChatMessage | null> {
-    const sceneIds = uniqueStrings(request.userMessage.sceneRefs.map((ref) => ref.sceneId));
-    const codexEntryIds = uniqueStrings(
-      request.userMessage.codexRefs.map((ref) => ref.codexEntryId),
-    );
+  async buildContext(request: ChatAiContextRequest): Promise<string | null> {
+    const sceneIds = uniqueStrings(request.sceneIds);
+    const codexEntryIds = uniqueStrings(request.codexEntryIds);
+    const bookContext = request.includeBookMetadata && request.bookContext
+      ? serializeBookContext(request.bookContext)
+      : '';
 
     if (
-      !request.userMessage.includeFullOutline
+      !bookContext
+      && !request.includeFullOutline
       && sceneIds.length === 0
       && codexEntryIds.length === 0
     ) {
@@ -48,7 +54,7 @@ export class ChatAiContextService {
     }
 
     const [outlineHierarchy, sceneProse, codexDetails] = await Promise.all([
-      request.userMessage.includeFullOutline
+      request.includeFullOutline
         ? this.manuscriptStructureService.getOutline(request.bookId)
         : Promise.resolve(null),
       sceneIds.length > 0
@@ -66,10 +72,7 @@ export class ChatAiContextService {
         serializeTiptapDocument(sceneProse[sceneId]),
       ]),
     );
-    const manuscriptRefs = sceneIds.map(
-      (sceneId): AiManuscriptContextRef => `scene:${sceneId}`,
-    );
-    const manuscriptContext = request.userMessage.includeFullOutline
+    const manuscriptContext = request.includeFullOutline
       ? serializeFullOutline(
           outlineHierarchy ?? [],
           request.bookTitle,
@@ -78,14 +81,13 @@ export class ChatAiContextService {
       : serializeSelectedManuscript(
           request.hierarchy,
           request.bookTitle,
-          manuscriptRefs,
           selectedSceneIds,
           proseBySceneId,
         );
     const progressionSceneId = this.resolveProgressionSceneId(
       request.hierarchy,
       selectedSceneIds,
-      request.userMessage.includeFullOutline,
+      request.includeFullOutline,
     );
     const codexContext = serializeCodexContext(
       codexDetails.filter(
@@ -95,20 +97,14 @@ export class ChatAiContextService {
       progressionSceneId,
     );
     const content = [
+      bookContext,
       manuscriptContext,
       codexContext,
     ].filter(Boolean).join('\n\n');
 
     if (!content) return null;
 
-    return {
-      role: 'user',
-      content: [
-        '--- BEGIN STORY CONTEXT ---',
-        content,
-        '--- END STORY CONTEXT ---',
-      ].join('\n\n'),
-    };
+    return content;
   }
 
   private resolveProgressionSceneId(
@@ -116,7 +112,7 @@ export class ChatAiContextService {
     selectedSceneIds: ReadonlySet<string>,
     includeFullOutline: boolean,
   ): string | null {
-    const orderedScenes = flattenScenes(hierarchy);
+    const orderedScenes = flattenScenes(filterHierarchyForContext(hierarchy));
     if (includeFullOutline) return orderedScenes.at(-1)?.id ?? null;
 
     return [...orderedScenes]

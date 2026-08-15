@@ -29,6 +29,7 @@ export class ManuscriptIndexScrollComponent implements OnDestroy {
   
   thumbTop = signal<number>(0);
   thumbHeight = signal<number>(0);
+  isDragging = signal(false);
 
   private observer: IntersectionObserver | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -36,6 +37,8 @@ export class ManuscriptIndexScrollComponent implements OnDestroy {
   private scrollListener: any;
   private isClickScrolling = false;
   private clickScrollTimeout: any;
+  private dragStartY = 0;
+  private dragStartScrollTop = 0;
 
   constructor(private ngZone: NgZone, private elementRef: ElementRef) {
     effect(() => {
@@ -58,8 +61,54 @@ export class ManuscriptIndexScrollComponent implements OnDestroy {
     }, 1000);
   }
 
+  onTrackPointerDown(event: PointerEvent) {
+    if (!this.scrollContainer) return;
+
+    const target = event.target as HTMLElement;
+    if (target.closest('.scrollbar-marker') || target.closest('.scrollbar-thumb')) return;
+
+    const track = event.currentTarget as HTMLElement;
+    const trackRect = track.getBoundingClientRect();
+    const pointerOffset = event.clientY - trackRect.top;
+    const scrollTop = (pointerOffset / trackRect.height) * this.scrollContainer.scrollHeight
+      - this.scrollContainer.clientHeight / 2;
+
+    this.scrollContainer.scrollTo({ top: scrollTop, behavior: 'smooth' });
+  }
+
+  onThumbPointerDown(event: PointerEvent) {
+    if (!this.scrollContainer) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.dragStartY = event.clientY;
+    this.dragStartScrollTop = this.scrollContainer.scrollTop;
+    this.isDragging.set(true);
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  }
+
+  onThumbPointerMove(event: PointerEvent) {
+    if (!this.isDragging() || !this.scrollContainer) return;
+
+    const track = (event.currentTarget as HTMLElement).parentElement;
+    if (!track || track.clientHeight === 0) return;
+
+    const scrollDelta = (event.clientY - this.dragStartY)
+      * this.scrollContainer.scrollHeight / track.clientHeight;
+    this.scrollContainer.scrollTop = this.dragStartScrollTop + scrollDelta;
+  }
+
+  onThumbPointerUp(event: PointerEvent) {
+    if (!this.isDragging()) return;
+
+    this.isDragging.set(false);
+    const thumb = event.currentTarget as HTMLElement;
+    if (thumb.hasPointerCapture(event.pointerId)) thumb.releasePointerCapture(event.pointerId);
+  }
+
   isActive(item: ManuscriptIndexItem): boolean {
-    const activeId = this.store.activeEntityId();
+    const activeId = this.store.activeSectionId();
     if (activeId === item.id) return true;
 
     // Also highlight ancestor chapter and act when a deeper item is active

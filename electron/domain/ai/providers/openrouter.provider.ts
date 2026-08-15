@@ -2,7 +2,7 @@ import type { AiModel } from '../../../../shared/models/ai.model';
 import { apiKeyService } from '../api-key.service';
 import type { ApiKeyService } from '../api-key.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
-import { promptBuilderService } from '../prompt-builder.service';
+import { chatCompletionPayloadBuilderService } from '../chat-completion-payload-builder.service';
 import type { AiProvider } from './ai-provider.interface';
 import {
     asObject,
@@ -34,7 +34,7 @@ export class OpenRouterProvider implements AiProvider {
 
         try {
             const modelId = requireModelId(request.modelId, this.name);
-            const payload = await promptBuilderService.buildChatCompletionPayload(
+            const payload = await chatCompletionPayloadBuilderService.buildChatCompletionPayload(
                 request,
                 modelId,
             );

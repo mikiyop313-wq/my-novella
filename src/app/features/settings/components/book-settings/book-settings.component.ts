@@ -81,10 +81,17 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   readonly config = inject(ConfigStore);
 
   readonly isBookContext = this.router.url.startsWith('/workspace/');
+  private readonly requestedSettingsSection = this.isBookContext
+    ? settingsSectionFromHistory()
+    : null;
   readonly activeSection = signal<SettingsSection>(
-    this.isBookContext ? 'general' : 'editor-display',
+    this.requestedSettingsSection ?? (this.isBookContext ? 'general' : 'editor-display'),
   );
-  readonly activeView = signal<SettingsView>(this.isBookContext ? 'book' : 'general');
+  readonly activeView = signal<SettingsView>(
+    this.requestedSettingsSection === 'ai-configuration'
+      ? 'general'
+      : this.isBookContext ? 'book' : 'general',
+  );
   readonly activeBookId = computed(() =>
     this.isBookContext ? this.workspaceStore.bookId() : null,
   );
@@ -155,7 +162,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     }
 
     try {
-      const [books] = await Promise.all([
+      const [books, charactersLoaded] = await Promise.all([
         this.libraryService.getBooks(),
         this.loadCharacters(bookId),
         this.config.loadLanguages(),
@@ -170,7 +177,11 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
         return;
       }
 
-      this.book.set(activeBook);
+      this.book.set(
+        charactersLoaded
+          ? await this.clearUnavailablePovCharacter(activeBook)
+          : activeBook,
+      );
     } catch (error) {
       this.book.set(null);
       this.loadError.set(error instanceof Error ? error.message : 'Unable to load book settings.');
@@ -581,7 +592,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     };
   }
 
-  private async loadCharacters(bookId: string): Promise<void> {
+  private async loadCharacters(bookId: string): Promise<boolean> {
     try {
       const characters = await this.codexService.getEntries(bookId, {
         type: 'character',
@@ -593,9 +604,25 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
           label: character.name,
         })),
       );
+      return true;
     } catch {
       this.characters.set([]);
+      return false;
     }
+  }
+
+  private async clearUnavailablePovCharacter(book: BookDto): Promise<BookDto> {
+    const povCharacterId = book.settings?.povCharacterId;
+    if (
+      !povCharacterId
+      || this.characters().some(character => character.value === povCharacterId)
+    ) {
+      return book;
+    }
+
+    return this.libraryService.updateBook(book.id, {
+      settings: this.mergeSettings(book, { povCharacterId: null }),
+    });
   }
 
   private fieldValue(field: EditableField, book: BookDto): string {
@@ -674,4 +701,11 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
         (option.subOptions ? this.optionExists(option.subOptions, value) : false),
     );
   }
+}
+
+function settingsSectionFromHistory(): SettingsSection | null {
+  const requested = globalThis.history?.state?.['settingsSection'];
+  return requested === 'system-prompts' || requested === 'ai-configuration'
+    ? requested
+    : null;
 }

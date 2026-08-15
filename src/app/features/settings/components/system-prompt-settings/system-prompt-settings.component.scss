@@ -599,6 +599,16 @@ button {
   gap: 8px;
 }
 
+.field-help {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+
+  &.is-warning {
+    color: var(--color-warning, #b7791f);
+  }
+}
+
 .field-heading,
 .range-heading {
   display: flex;

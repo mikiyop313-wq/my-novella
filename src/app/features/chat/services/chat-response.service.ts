@@ -1,17 +1,24 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 
 import {
   type ChatMessageDetailDto,
   type ChatThreadDetailDto,
 } from '../../../../../shared/models/chat.model';
 import { AiStore } from '../../../core/store/ai.store';
-import { type AiChatMessage } from '../../../core/services/ai-state.service';
-import { AiStreamService } from '../../../core/services/ai-stream.service';
+import { AiGenerationSessionService } from '../../../core/services/ai-generation-session.service';
 import { ToastService } from '../../../shared/services/toast.service';
+import {
+  buildAiPrompt,
+  type AiPromptMessageInput,
+  type BuiltAiPrompt,
+} from '../../../shared/utils/ai-prompt-builder';
 import { resolveAiModelTarget } from '../../../shared/utils/ai-model-selection';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
 import { WorkspaceStore } from '../../workspace/workspace.store';
-import { ChatAiContextService } from './chat-ai-context.service';
+import {
+  ChatAiContextService,
+  type ChatAiContextRequest,
+} from './chat-ai-context.service';
 import { ChatStore } from '../store/chat.store';
 
 const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
@@ -19,6 +26,10 @@ const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
 export interface ChatResponseSettings {
   selectedModelId: string | null;
   reasoningMode: boolean;
+  context: Pick<
+    ChatAiContextRequest,
+    'includeBookMetadata' | 'bookContext' | 'includeFullOutline' | 'sceneIds' | 'codexEntryIds'
+  >;
   branchGroupId?: string;
   selectCreatedBranch?: boolean;
 }
@@ -26,6 +37,14 @@ export interface ChatResponseSettings {
 interface ResolvedModel {
   provider: string;
   modelId: string;
+}
+
+interface ActiveChatResponse {
+  threadId: string;
+  streamId: string;
+  assistantMessageId: string | null;
+  sessionId: string | null;
+  stopping: boolean;
 }
 
 /**
@@ -39,7 +58,7 @@ export class ChatResponseService {
   // ---------------------------------------------------------------------------
 
   private readonly aiStore = inject(AiStore);
-  private readonly aiStreamService = inject(AiStreamService);
+  private readonly generationSessions = inject(AiGenerationSessionService);
   private readonly chatAiContext = inject(ChatAiContextService);
   private readonly chatStore = inject(ChatStore);
   private readonly toastService = inject(ToastService);
@@ -50,13 +69,12 @@ export class ChatResponseService {
   // Response State
   // ---------------------------------------------------------------------------
 
-  private readonly generatingResponse = signal(false);
-  private readonly stoppingResponse = signal(false);
+  private readonly activeResponses = signal<ReadonlyMap<string, ActiveChatResponse>>(new Map());
   private readonly responseRenderVersion = signal(0);
-  private activeStreamId: string | null = null;
 
-  readonly isGeneratingResponse = this.generatingResponse.asReadonly();
-  readonly isStoppingResponse = this.stoppingResponse.asReadonly();
+  readonly generatingThreadIds = computed<ReadonlySet<string>>(
+    () => new Set(this.activeResponses().keys()),
+  );
   readonly renderVersion = this.responseRenderVersion.asReadonly();
 
   // ---------------------------------------------------------------------------
@@ -69,7 +87,8 @@ export class ChatResponseService {
     prompt: string,
     settings: ChatResponseSettings,
   ): Promise<void> {
-    if (this.generatingResponse()) return;
+    const threadId = userMessage.threadId;
+    if (this.isThreadGenerating(threadId)) return;
 
     const bookId = this.chatStore.bookId();
     if (!bookId) {
@@ -78,32 +97,48 @@ export class ChatResponseService {
     }
 
     const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
-    let messages: AiChatMessage[];
+    const selectedThread = this.chatStore.selectedThread();
+    const threadMessages = [...this.chatStore.visibleMessages()];
+    const shouldGenerateTitle = this.shouldGenerateThreadTitle(
+      selectedThread,
+      userMessage,
+      threadMessages,
+    );
+    const titleBookId = shouldGenerateTitle ? selectedThread.bookId : null;
+    const streamId = `pending-${userMessage.id}`;
+    this.setActiveResponse({
+      threadId,
+      streamId,
+      assistantMessageId: null,
+      sessionId: null,
+      stopping: false,
+    });
+    this.requestRender();
+
+    let aiPrompt: BuiltAiPrompt;
     try {
-      messages = await this.buildAiMessages(userMessage);
+      aiPrompt = await this.buildChatAiPrompt(
+        userMessage,
+        prompt,
+        settings.context,
+        threadMessages,
+        bookId,
+      );
     } catch (error) {
       console.error('[ChatResponseService] AI context preparation failed:', error);
       this.toastService.error(
         'Could not prepare the selected story context.',
         'AI Context',
       );
+      this.clearActiveResponse(threadId, streamId);
       return;
     }
-    const streamId = `pending-${userMessage.id}`;
-    const threadId = userMessage.threadId;
-    const selectedThread = this.chatStore.selectedThread();
-    const shouldGenerateTitle = this.shouldGenerateThreadTitle(selectedThread, userMessage);
-    const titleBookId = shouldGenerateTitle ? selectedThread.bookId : null;
 
     let assistantMessage: ChatMessageDetailDto | null = null;
     let assistantMessagePromise: Promise<ChatMessageDetailDto | null> | null = null;
     let lastStreamingPatch: Promise<void> = Promise.resolve();
     let streamedContent = '';
     let reasoningSummary = '';
-
-    this.activeStreamId = streamId;
-    this.generatingResponse.set(true);
-    this.requestRender();
 
     // Do not create an empty assistant message until the stream has useful
     // output, but keep one shared promise once creation starts.
@@ -129,6 +164,9 @@ export class ChatResponseService {
             }
 
             assistantMessage = message;
+            this.patchActiveResponse(threadId, streamId, {
+              assistantMessageId: message?.id ?? null,
+            });
             return message;
           });
       }
@@ -153,17 +191,17 @@ export class ChatResponseService {
     };
 
     try {
-      const generatedText = await this.aiStreamService.streamText({
+      const session = this.generationSessions.start({
         streamId,
+        source: 'chat-response',
+        scopeId: threadId,
         bookId,
-        systemPromptCategory: 'chat',
-        prompt,
-        messages,
+        aiPrompt,
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: settings.reasoningMode,
-        onToken: (token) => {
-          streamedContent += token;
+        onContentChange: (content) => {
+          streamedContent = content;
           if (!streamedContent.trim()) return;
 
           queueStreamingPatch({
@@ -171,17 +209,27 @@ export class ChatResponseService {
             ...(reasoningSummary.trim() ? { reasoningSummary } : {}),
           });
         },
-        onReasoningUpdate: (reasoningText) => {
+        onReasoningChange: (reasoningText) => {
           reasoningSummary = reasoningText;
           if (assistantMessage || assistantMessagePromise) {
             queueStreamingPatch({ reasoningSummary });
           }
         },
       });
+      if (!session) return;
+      this.patchActiveResponse(threadId, streamId, { sessionId: session.id });
+
+      const result = await session.completion;
 
       await lastStreamingPatch;
 
-      const finalContent = streamedContent || generatedText;
+      streamedContent = result.content;
+      reasoningSummary = result.reasoning;
+      const finalContent = result.content;
+
+      if (result.status === 'failed') {
+        throw result.error ?? new Error('Failed to generate AI response.');
+      }
 
       // Some providers can finish without returning visible content. In that
       // case there is no assistant message worth showing or persisting.
@@ -196,7 +244,7 @@ export class ChatResponseService {
       const finalReasoningSummary = this.getReasoningSummary(reasoningSummary);
       const data = {
         content: finalContent,
-        status: 'complete' as const,
+        status: result.status === 'stopped' ? 'aborted' as const : 'complete' as const,
         modelId,
         provider,
         reasoningSummary: finalReasoningSummary,
@@ -209,7 +257,8 @@ export class ChatResponseService {
       // The local patch keeps the UI responsive; the update persists the final
       // status and metadata once streaming has settled.
       await this.chatStore.updateMessage(assistantMessage.id, data);
-      if (shouldGenerateTitle && titleBookId) {
+      this.generationSessions.release(streamId);
+      if (result.status === 'complete' && shouldGenerateTitle && titleBookId) {
         await this.generateThreadTitle(userMessage, titleBookId, provider, modelId);
       }
     } catch (error) {
@@ -237,36 +286,60 @@ export class ChatResponseService {
       this.requestRender();
       await this.chatStore.updateMessage(assistantMessage.id, data);
     } finally {
-      this.generatingResponse.set(false);
-      if (this.activeStreamId === streamId) {
-        this.activeStreamId = null;
-      }
+      this.generationSessions.release(streamId);
+      this.clearActiveResponse(threadId, streamId);
       this.requestRender();
     }
   }
 
-  /** Stops the active response and returns a displayable error when aborting fails. */
-  async stopResponse(): Promise<string | null> {
-    if (!this.activeStreamId || this.stoppingResponse()) return null;
+  isThreadGenerating(threadId: string | null | undefined): boolean {
+    const activeResponses = this.activeResponses();
+    return !!threadId && activeResponses.has(threadId);
+  }
 
-    this.stoppingResponse.set(true);
+  isThreadStopping(threadId: string | null | undefined): boolean {
+    const activeResponses = this.activeResponses();
+    return !!threadId && activeResponses.get(threadId)?.stopping === true;
+  }
+
+  rehydrateThread(threadId: string): void {
+    const activeResponse = this.activeResponses().get(threadId);
+    if (!activeResponse?.assistantMessageId || !activeResponse.sessionId) return;
+
+    const session = this.generationSessions.getSession(activeResponse.sessionId);
+    if (!session) return;
+
+    this.chatStore.patchStreamingMessage(activeResponse.assistantMessageId, {
+      content: session.content(),
+      reasoningSummary: this.getReasoningSummary(session.reasoning()),
+    });
+    this.requestRender();
+  }
+
+  /** Stops one thread's active response and returns a displayable error when aborting fails. */
+  async stopResponse(threadId: string): Promise<string | null> {
+    const activeResponse = this.activeResponses().get(threadId);
+    if (!activeResponse || activeResponse.stopping) return null;
+
+    this.patchActiveResponse(threadId, activeResponse.streamId, { stopping: true });
     try {
-      await this.aiStreamService.stopStream(this.activeStreamId);
+      await this.generationSessions.stop(activeResponse.streamId);
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : 'Failed to stop the AI response.';
     } finally {
-      this.stoppingResponse.set(false);
+      this.patchActiveResponse(threadId, activeResponse.streamId, { stopping: false });
     }
   }
 
   async retryMessage(messageId: string, settings: ChatResponseSettings): Promise<void> {
-    if (this.chatStore.isSaving() || this.generatingResponse()) return;
+    if (this.chatStore.isSaving()) return;
 
     const assistantMessage = this.chatStore
       .visibleMessages()
       .find((message) => message.id === messageId);
     if (!assistantMessage || assistantMessage.role !== 'assistant') return;
+    if (this.isThreadGenerating(assistantMessage.threadId)) return;
 
     const userMessage = this.chatStore
       .messages()
@@ -295,34 +368,17 @@ export class ChatResponseService {
     });
   }
 
-  /** Resolves the matching selector ID for the most recent assistant response. */
-  getLastUsedModelId(messages: ChatMessageDetailDto[]): string | null {
-    const lastAssistantMessage = [...messages]
-      .reverse()
-      .find((message) => message.role === 'assistant' && !!message.modelId);
-
-    if (!lastAssistantMessage?.modelId) return null;
-
-    const savedModelId = lastAssistantMessage.modelId;
-    const savedProvider = lastAssistantMessage.provider;
-    const matchingModel = this.aiStore.models().find((model) => {
-      const target = resolveAiModelTarget(model);
-      return target.provider === savedProvider && target.modelId === savedModelId;
-    });
-
-    return (
-      matchingModel?.id ??
-      this.getDirectModelSelectorId(savedProvider, savedModelId) ??
-      savedModelId
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Private Helpers
   // ---------------------------------------------------------------------------
 
-  private async buildAiMessages(userMessage: ChatMessageDetailDto): Promise<AiChatMessage[]> {
-    const threadMessages = this.chatStore.visibleMessages();
+  private async buildChatAiPrompt(
+    userMessage: ChatMessageDetailDto,
+    prompt: string,
+    contextSelection: ChatResponseSettings['context'],
+    threadMessages: readonly ChatMessageDetailDto[],
+    bookId: string,
+  ): Promise<BuiltAiPrompt> {
     const userMessageIndex = threadMessages.findIndex((message) => message.id === userMessage.id);
     const messages =
       userMessageIndex === -1
@@ -337,24 +393,34 @@ export class ChatResponseService {
           (message.status === 'complete' || message.id === userMessage.id) &&
           message.content.trim().length > 0,
       );
-    const bookId = this.chatStore.bookId();
-    const contextMessage = bookId
-      ? await this.chatAiContext.buildContextMessage({
-          userMessage,
-          bookId,
-          bookTitle: this.workspaceStore.bookId() === bookId
-            ? this.workspaceStore.bookTitle()
-            : undefined,
-          hierarchy: this.workspaceBookStore.bookHierarchy(),
-        })
-      : null;
+    const context = await this.chatAiContext.buildContext({
+      ...contextSelection,
+      bookId,
+      bookTitle: this.workspaceStore.bookId() === bookId
+        ? this.workspaceStore.bookTitle()
+        : undefined,
+      hierarchy: this.workspaceBookStore.bookHierarchy(),
+    });
 
-    return includedMessages.flatMap((message) => {
-      const aiMessage = { role: message.role, content: message.content };
-      return contextMessage && message.id === userMessage.id
+    const promptMessages: AiPromptMessageInput[] = includedMessages.flatMap((message) => {
+      const aiMessage: AiPromptMessageInput = {
+        role: message.role,
+        parts: [{
+          type: 'text',
+          content: message.id === userMessage.id ? prompt : message.content,
+        }],
+      };
+      const contextMessage: AiPromptMessageInput = {
+        role: 'user',
+        parts: [{ type: 'section', name: 'STORY CONTEXT', content: context ?? '' }],
+      };
+
+      return context && message.id === userMessage.id
         ? [contextMessage, aiMessage]
         : [aiMessage];
     });
+
+    return buildAiPrompt({ requestType: 'chat', messages: promptMessages });
   }
 
   private async generateThreadTitle(
@@ -364,16 +430,31 @@ export class ChatResponseService {
     modelId: string | null,
   ): Promise<void> {
     try {
-      const rawTitle = await this.aiStreamService.streamText({
-        streamId: `title-${userMessage.id}`,
+      const streamId = `title-${userMessage.id}`;
+      const session = this.generationSessions.start({
+        streamId,
+        source: 'chat-title',
+        scopeId: userMessage.threadId,
         bookId,
-        systemPromptCategory: 'title',
-        prompt: userMessage.content,
+        aiPrompt: buildAiPrompt({
+          requestType: 'title',
+          messages: [{
+            role: 'user',
+            parts: [{ type: 'text', content: userMessage.content }],
+          }],
+        }),
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: false,
       });
-      const title = this.normalizeThreadTitle(rawTitle);
+      if (!session) return;
+
+      const result = await session.completion;
+      if (result.status === 'failed') {
+        throw result.error ?? new Error('Failed to generate chat thread title.');
+      }
+
+      const title = this.normalizeThreadTitle(result.content);
 
       if (title) {
         await this.chatStore.updateThread(userMessage.threadId, { title });
@@ -381,12 +462,16 @@ export class ChatResponseService {
     } catch (error) {
       // Title generation is opportunistic and should not fail the response.
       console.warn('[ChatResponseService] Failed to generate chat thread title:', error);
+    } finally {
+      const streamId = `title-${userMessage.id}`;
+      this.generationSessions.release(streamId);
     }
   }
 
   private shouldGenerateThreadTitle(
     thread: ChatThreadDetailDto | null,
     userMessage: ChatMessageDetailDto,
+    threadMessages: readonly ChatMessageDetailDto[],
   ): thread is ChatThreadDetailDto {
     if (
       !thread ||
@@ -395,8 +480,7 @@ export class ChatResponseService {
     )
       return false;
 
-    const userMessages = this.chatStore
-      .visibleMessages()
+    const userMessages = threadMessages
       .filter(
         (message) =>
           message.role === 'user' &&
@@ -457,14 +541,38 @@ export class ChatResponseService {
     return resolveAiModelTarget(selectedModel);
   }
 
-  private getDirectModelSelectorId(provider: string | null, modelId: string): string | null {
-    if (provider === 'openai') return `openai/${modelId}`;
-    if (provider === 'gemini' || provider === 'google') return `gemini/${modelId}`;
-    return null;
-  }
-
   private getReasoningSummary(reasoningSummary: string): string | null {
     return reasoningSummary.trim().length > 0 ? reasoningSummary : null;
+  }
+
+  private setActiveResponse(response: ActiveChatResponse): void {
+    this.activeResponses.update(responses => {
+      const nextResponses = new Map(responses);
+      nextResponses.set(response.threadId, response);
+      return nextResponses;
+    });
+  }
+
+  private patchActiveResponse(
+    threadId: string,
+    streamId: string,
+    patch: Partial<Pick<ActiveChatResponse, 'assistantMessageId' | 'sessionId' | 'stopping'>>,
+  ): void {
+    const activeResponse = this.activeResponses().get(threadId);
+    if (!activeResponse || activeResponse.streamId !== streamId) return;
+
+    this.setActiveResponse({ ...activeResponse, ...patch });
+  }
+
+  private clearActiveResponse(threadId: string, streamId: string): void {
+    const activeResponse = this.activeResponses().get(threadId);
+    if (!activeResponse || activeResponse.streamId !== streamId) return;
+
+    this.activeResponses.update(responses => {
+      const nextResponses = new Map(responses);
+      nextResponses.delete(threadId);
+      return nextResponses;
+    });
   }
 
   private requestRender(): void {

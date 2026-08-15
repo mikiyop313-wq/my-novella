@@ -15,6 +15,7 @@
   transition: all 0.2s ease;
   background: color-mix(in srgb, var(--color-text) 4%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--color-border) 50%);
+  cursor: pointer;
 }
 
 .scrollbar-thumb {
@@ -25,6 +26,12 @@
   border-radius: 5px;
   z-index: 1;
   transition: background 0.2s ease;
+  cursor: grab;
+  touch-action: none;
+
+  &.dragging {
+    cursor: grabbing;
+  }
 
   .scrollbar-track:hover & {
     background: color-mix(in srgb, var(--color-text-secondary) 60%, transparent);

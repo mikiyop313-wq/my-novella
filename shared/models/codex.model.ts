@@ -8,6 +8,12 @@ export type CodexTrackingSetting =
   | 'manual'
   | 'never_include';
 
+export interface DetectedCodexEntryDto {
+  name: string;
+  type: CodexEntryType;
+  description: string;
+}
+
 export interface CodexEntryDto {
   id: string;
   bookId: string;

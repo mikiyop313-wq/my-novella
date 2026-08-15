@@ -351,6 +351,42 @@
         }
       }
 
+      &.is-send-disabled {
+        background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+        border-color: var(--color-border);
+        box-shadow: none;
+
+        .submit-btn {
+          opacity: 0.6;
+          color: color-mix(in srgb, var(--color-text-secondary) 65%, transparent);
+        }
+
+        app-autocomplete-dropdown.model-dropdown {
+          color: var(--color-text-secondary);
+        }
+
+        .btn-divider {
+          background: var(--color-border);
+        }
+
+        &:hover {
+          background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+        }
+
+        &:active {
+          transform: none;
+        }
+      }
+
+      .submit-btn:disabled {
+        cursor: not-allowed;
+        background: transparent;
+
+        &:hover {
+          opacity: 0.6;
+        }
+      }
+
       .btn-divider {
         width: 1px;
         height: 18px;

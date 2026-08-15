@@ -14,7 +14,9 @@ import {
   UpdateChapterPayload,
   UpdateScenePayload,
   UpdateStructurePositionsPayload,
+  SetContextInclusionPayload,
 } from '../../shared/models/manuscript.model';
+import { withEffectiveContextInclusion } from '../../shared/utils/manuscript-context-inclusion';
 
 export class ManuscriptRepository {
   // -----------------------------------------------------------------------
@@ -142,7 +144,7 @@ export class ManuscriptRepository {
           with: {
             scenes: {
               where: eq(scene.status, 'active'),
-              columns: { prose: false, summary: false },
+              columns: { prose: false },
               orderBy: (scenes, { asc }) => [asc(scenes.position)],
             },
           },
@@ -151,9 +153,9 @@ export class ManuscriptRepository {
       orderBy: (acts, { asc }) => [asc(acts.position)],
     });
 
-    // The omitted fields are intentionally absent over IPC for this
-    // lightweight tree, even though the frontend DTO includes them.
-    return acts as unknown as ActDto[];
+    // Prose remains omitted. Scene summaries are retained so effective
+    // inclusion can distinguish summary-only scenes from empty scenes.
+    return withEffectiveContextInclusion(acts as unknown as ActDto[]);
   }
 
   /**
@@ -179,7 +181,46 @@ export class ManuscriptRepository {
       orderBy: (acts, { asc }) => [asc(acts.position)],
     });
 
-    return acts as unknown as ActDto[];
+    return withEffectiveContextInclusion(acts as unknown as ActDto[]);
+  }
+
+  async setContextInclusion(payload: SetContextInclusionPayload): Promise<ActDto[]> {
+    const target = await this.resolveActiveContextTarget(payload);
+    if (!target) {
+      throw new Error(`The active ${payload.entityType} could not be found.`);
+    }
+
+    db.transaction((tx) => {
+      if (payload.entityType === 'scene') {
+        tx.update(scene)
+          .set({ includeInContext: payload.included })
+          .where(and(eq(scene.id, payload.id), eq(scene.status, 'active')))
+          .run();
+        return;
+      }
+
+      if (payload.entityType === 'chapter') {
+        tx.update(scene)
+          .set({ includeInContext: payload.included })
+          .where(and(eq(scene.chapterId, payload.id), eq(scene.status, 'active')))
+          .run();
+        return;
+      }
+
+      const chapterIds = tx.select({ id: chapter.id })
+        .from(chapter)
+        .where(and(eq(chapter.actId, payload.id), eq(chapter.status, 'active')))
+        .all()
+        .map((row) => row.id);
+      if (chapterIds.length > 0) {
+        tx.update(scene)
+          .set({ includeInContext: payload.included })
+          .where(and(inArray(scene.chapterId, chapterIds), eq(scene.status, 'active')))
+          .run();
+      }
+    });
+
+    return this.getOutline(target.bookId);
   }
 
   // -----------------------------------------------------------------------
@@ -196,7 +237,7 @@ export class ManuscriptRepository {
 
     const [inserted] = await db
       .insert(act)
-      .values({ title: 'New Act', bookId, position: nextPosition })
+      .values({ title: '', bookId, position: nextPosition })
       .returning();
 
     await this.touchBookLastEdited('book', bookId);
@@ -219,7 +260,7 @@ export class ManuscriptRepository {
 
     const [inserted] = await db
       .insert(chapter)
-      .values({ title: 'New Chapter', bookId: parentAct.bookId, actId, position: nextPosition })
+      .values({ title: '', bookId: parentAct.bookId, actId, position: nextPosition })
       .returning();
 
     await this.touchBookLastEdited('act', actId);
@@ -604,6 +645,16 @@ export class ManuscriptRepository {
       default:
         return undefined;
     }
+  }
+
+  private async resolveActiveContextTarget(
+    payload: SetContextInclusionPayload,
+  ): Promise<{ bookId: string } | undefined> {
+    const isActive = await this.isActiveManuscriptPath(payload.entityType, payload.id);
+    if (!isActive) return undefined;
+
+    const bookId = await this.resolveBookId(payload.entityType, payload.id);
+    return bookId ? { bookId } : undefined;
   }
 
   private async isActiveManuscriptPath(mode: ManuscriptMode, id: string): Promise<boolean> {

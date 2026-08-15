@@ -46,6 +46,14 @@ describe('manuscript archive repositories', () => {
     sqlite.close();
   });
 
+  it('creates acts and chapters with empty titles so the UI placeholders are shown', async () => {
+    const createdAct = await repository.createAct('book-1');
+    const createdChapter = await repository.createChapter(createdAct.id);
+
+    expect(createdAct.title).toBe('');
+    expect(createdChapter.title).toBe('');
+  });
+
   it('deletes active descendants while detaching archived descendants from an active act', async () => {
     insertAct(sqlite, 'act-1', 'Active Act', 'active');
     insertChapter(sqlite, 'chapter-active', 'Active Chapter', 'act-1', 'active');
@@ -209,6 +217,55 @@ describe('manuscript archive repositories', () => {
     expect(row(sqlite, 'chapters', 'chapter-1')).toBeUndefined();
     expect(row(sqlite, 'scenes', 'scene-1')).toBeUndefined();
   });
+
+  it('persists context inclusion and derives parent state from eligible scenes', async () => {
+    insertAct(sqlite, 'act-1', 'Active Act', 'active');
+    insertChapter(sqlite, 'chapter-1', 'Active Chapter', 'act-1', 'active');
+    insertScene(sqlite, 'scene-filled', 'Filled Scene', 'chapter-1', 'active');
+    insertScene(sqlite, 'scene-empty', 'Empty Scene', 'chapter-1', 'active');
+    sqlite.prepare('UPDATE scenes SET summary = ? WHERE id = ?').run('A summary', 'scene-filled');
+
+    let outline = await repository.setContextInclusion({
+      entityType: 'chapter',
+      id: 'chapter-1',
+      included: false,
+    });
+    expect(outline[0].isIncludedInContext).toBe(false);
+    expect(outline[0].chapters?.[0].scenes?.map((item) => item.includeInContext))
+      .toEqual([false, false]);
+
+    outline = await repository.setContextInclusion({
+      entityType: 'scene',
+      id: 'scene-filled',
+      included: true,
+    });
+    expect(outline[0].isIncludedInContext).toBe(true);
+    expect(outline[0].chapters?.[0].isIncludedInContext).toBe(true);
+    expect(outline[0].chapters?.[0].scenes?.[0].isIncludedInContext).toBe(true);
+    expect(outline[0].chapters?.[0].scenes?.[1].isIncludedInContext).toBe(false);
+  });
+
+  it('updates an act subtree and rejects archived context targets', async () => {
+    insertAct(sqlite, 'act-1', 'Active Act', 'active');
+    insertChapter(sqlite, 'chapter-1', 'Active Chapter', 'act-1', 'active');
+    insertScene(sqlite, 'scene-1', 'Scene', 'chapter-1', 'active');
+    sqlite.prepare('UPDATE scenes SET word_count = 10 WHERE id = ?').run('scene-1');
+
+    const outline = await repository.setContextInclusion({
+      entityType: 'act',
+      id: 'act-1',
+      included: false,
+    });
+    expect(outline[0].isIncludedInContext).toBe(false);
+    expect(row(sqlite, 'scenes', 'scene-1')).toMatchObject({ include_in_context: 0 });
+
+    await archiveRepository.archiveScene('scene-1');
+    await expect(repository.setContextInclusion({
+      entityType: 'scene',
+      id: 'scene-1',
+      included: true,
+    })).rejects.toThrow('The active scene could not be found.');
+  });
 });
 
 describe('detached narrative archive migration', () => {
@@ -318,6 +375,7 @@ function createSchema(sqlite: Database.Database): void {
       prose text,
       summary text,
       word_count integer DEFAULT 0,
+      include_in_context integer NOT NULL DEFAULT 1,
       point_of_view_override text,
       pov_character_id_override text
     );

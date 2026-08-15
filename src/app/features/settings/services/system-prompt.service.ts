@@ -35,4 +35,15 @@ export class SystemPromptService {
   async delete(id: string): Promise<{ success: boolean }> {
     return await this.electronService.invoke('system-prompts:delete', { id });
   }
+
+  async getBuiltInDefaultModelId(presetId: string): Promise<string | null> {
+    return await this.electronService.invoke('system-prompts:get-built-in-model', { presetId });
+  }
+
+  async setBuiltInDefaultModelId(presetId: string, defaultModelId: string): Promise<string> {
+    return await this.electronService.invoke('system-prompts:set-built-in-model', {
+      presetId,
+      defaultModelId,
+    });
+  }
 }

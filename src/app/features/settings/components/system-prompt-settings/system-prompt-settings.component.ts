@@ -1,6 +1,10 @@
 import { Component, OnDestroy, OnInit, computed, inject, input, signal } from '@angular/core';
 
-import { BUILT_IN_SYSTEM_PROMPT_PRESETS } from '../../../../../../shared/constants/ai-system-prompts';
+import {
+  BUILT_IN_SYSTEM_PROMPT_PRESETS,
+  DEFAULT_ACTION_MODEL_ID,
+  categoryUsesDefaultModel,
+} from '../../../../../../shared/constants/ai-system-prompts';
 import type {
   ActiveSystemPromptPresetIds,
   CreateSystemPromptPresetDto,
@@ -18,6 +22,8 @@ import {
 import { ToastService } from '../../../../shared/services/toast.service';
 import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
 import { SystemPromptService } from '../../services/system-prompt.service';
+import { AiStore } from '../../../../core/store/ai.store';
+import { buildModelDropdownSections } from '../../../manuscript/components/ai-prompt/ai-prompt-dropdown-options';
 
 interface SystemPromptPreset extends SystemPromptGenerationSettings {
   id: string;
@@ -27,6 +33,7 @@ interface SystemPromptPreset extends SystemPromptGenerationSettings {
   scope: SystemPromptScope;
   bookId: string | null;
   isBuiltIn: boolean;
+  defaultModelId: string | null;
 }
 
 type NumericPresetField = 'temperature' | 'topP' | 'presencePenalty' | 'frequencyPenalty';
@@ -43,6 +50,7 @@ const SYSTEM_PROMPT_CATEGORY_LABELS: Record<SystemPromptCategory, string> = {
   summary: 'Summary',
   expand: 'Expand',
   shorten: 'Shorten',
+  codexDetection: 'Codex Detection',
   title: 'Chat Title',
 };
 
@@ -70,11 +78,17 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   private readonly systemPromptService = inject(SystemPromptService);
   private readonly systemPromptSelectionService = inject(SystemPromptSelectionService);
   private readonly toastService = inject(ToastService);
+  readonly aiStore = inject(AiStore);
   private readonly confirmedPresets = new Map<string, SystemPromptPreset>();
   private readonly saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly presetRevisions = new Map<string, number>();
 
   readonly categories = SYSTEM_PROMPT_CATEGORIES;
+  readonly modelDropdownSections = computed(() => buildModelDropdownSections({
+    providers: this.aiStore.modelProviders(),
+    loading: this.aiStore.isLoading(),
+    error: this.aiStore.error(),
+  }));
   readonly categoryOptions: readonly DropdownOption<SystemPromptCategory>[] =
     SYSTEM_PROMPT_CATEGORIES.map((category) => ({
       value: category.id,
@@ -112,6 +126,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   );
 
   ngOnInit(): void {
+    void this.aiStore.ensureModelsLoaded();
     void this.loadPresets();
   }
 
@@ -133,11 +148,16 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
         throw new Error('A book is required to load book prompt presets.');
       }
 
-      const [available, activePresetIds] = this.globalOnly()
-        ? [await this.systemPromptService.listGlobal(), null]
+      const [available, activePresetIds, builtInPresets] = this.globalOnly()
+        ? [
+            await this.systemPromptService.listGlobal(),
+            null,
+            await this.loadBuiltInPresets(),
+          ]
         : await Promise.all([
             this.systemPromptService.listAvailable(bookId!),
             this.systemPromptSelectionService.getActivePresetIds(bookId!),
+            this.loadBuiltInPresets(),
           ]);
       const savedPresets = available.map(mapDtoToPreset);
 
@@ -145,7 +165,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       for (const preset of savedPresets) {
         this.confirmedPresets.set(preset.id, preset);
       }
-      this.presets.set([...createBuiltInPresets(), ...savedPresets]);
+      this.presets.set([...builtInPresets, ...savedPresets]);
       this.activePresetIds.set(activePresetIds);
       this.ensureValidSelection();
     } catch (error) {
@@ -240,6 +260,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       systemPrompt: '',
       ...ownershipFor(scope, this.bookId()),
       ...generationSettingsFor(category),
+      defaultModelId: categoryUsesDefaultModel(category) ? DEFAULT_ACTION_MODEL_ID : null,
     };
 
     this.isCreating.set(true);
@@ -280,6 +301,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       maxOutputTokens: selected.maxOutputTokens,
       presencePenalty: selected.presencePenalty,
       frequencyPenalty: selected.frequencyPenalty,
+      defaultModelId: selected.defaultModelId,
     };
 
     this.isCreating.set(true);
@@ -396,6 +418,39 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     if (!Number.isFinite(value)) return;
 
     this.updateSelectedPreset({ maxOutputTokens: Math.max(1, Math.round(value)) });
+  }
+
+  showsDefaultModel(category: SystemPromptCategory): boolean {
+    return categoryUsesDefaultModel(category);
+  }
+
+  isDefaultModelUnavailable(preset: SystemPromptPreset): boolean {
+    return !this.aiStore.isLoading()
+      && !!preset.defaultModelId
+      && !this.aiStore.models().some(model => model.id === preset.defaultModelId);
+  }
+
+  async selectDefaultModel(value: unknown): Promise<void> {
+    const selected = this.selectedPreset();
+    if (!selected || typeof value !== 'string' || !value.trim()) return;
+
+    if (!selected.isBuiltIn) {
+      this.updateSelectedPreset({ defaultModelId: value });
+      return;
+    }
+
+    try {
+      const defaultModelId = await this.systemPromptService.setBuiltInDefaultModelId(
+        selected.id,
+        value,
+      );
+      this.presets.update(presets => presets.map(preset =>
+        preset.id === selected.id ? { ...preset, defaultModelId } : preset,
+      ));
+      this.systemPromptSelectionService.invalidateAll();
+    } catch (error) {
+      this.showError(error, 'Unable to save this model.', 'Default model update failed');
+    }
   }
 
   isPresetPendingOrSaving(id: string): boolean {
@@ -523,15 +578,18 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   private showError(error: unknown, fallback: string, title: string): void {
     this.toastService.error(errorMessage(error, fallback), title);
   }
-}
 
-function createBuiltInPresets(): SystemPromptPreset[] {
-  return Object.values(BUILT_IN_SYSTEM_PROMPT_PRESETS).map((preset) => ({
-    ...preset,
-    scope: 'global',
-    bookId: null,
-    isBuiltIn: true,
-  }));
+  private async loadBuiltInPresets(): Promise<SystemPromptPreset[]> {
+    return await Promise.all(Object.values(BUILT_IN_SYSTEM_PROMPT_PRESETS).map(async preset => ({
+      ...preset,
+      defaultModelId: preset.defaultModelId === null
+        ? null
+        : await this.systemPromptService.getBuiltInDefaultModelId(preset.id),
+      scope: 'global' as const,
+      bookId: null,
+      isBuiltIn: true,
+    })));
+  }
 }
 
 function generationSettingsFor(category: SystemPromptCategory): SystemPromptGenerationSettings {
@@ -558,6 +616,7 @@ function mapDtoToPreset(preset: SystemPromptPresetDto): SystemPromptPreset {
     maxOutputTokens: preset.maxOutputTokens,
     presencePenalty: preset.presencePenalty,
     frequencyPenalty: preset.frequencyPenalty,
+    defaultModelId: preset.defaultModelId,
     isBuiltIn: false,
   };
 }
@@ -571,7 +630,17 @@ function updateDtoFor(preset: SystemPromptPreset): UpdateSystemPromptPresetDto {
     maxOutputTokens: preset.maxOutputTokens,
     presencePenalty: preset.presencePenalty,
     frequencyPenalty: preset.frequencyPenalty,
+    defaultModelId: preset.defaultModelId,
   };
+}
+
+function createBuiltInPresets(): SystemPromptPreset[] {
+  return Object.values(BUILT_IN_SYSTEM_PROMPT_PRESETS).map(preset => ({
+    ...preset,
+    scope: 'global',
+    bookId: null,
+    isBuiltIn: true,
+  }));
 }
 
 function categoryDefinitionFor(category: SystemPromptCategory): SystemPromptCategoryDefinition {

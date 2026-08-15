@@ -2,7 +2,7 @@ import type { AiModel, AiLocalProviderId } from '../../../../shared/models/ai.mo
 import { aiConfigurationService } from '../ai-configuration.service';
 import type { AiConfigurationService } from '../ai-configuration.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
-import { promptBuilderService } from '../prompt-builder.service';
+import { chatCompletionPayloadBuilderService } from '../chat-completion-payload-builder.service';
 import type { AiProvider } from './ai-provider.interface';
 import {
     asObject,
@@ -43,7 +43,10 @@ export class LocalOpenAiCompatibleProvider implements AiProvider {
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
         const serverUrl = await this.requireServerUrl();
         const modelId = requireModelId(request.modelId, this.name);
-        const basePayload = await promptBuilderService.buildChatCompletionPayload(request, modelId);
+        const basePayload = await chatCompletionPayloadBuilderService.buildChatCompletionPayload(
+            request,
+            modelId,
+        );
         const payload = openAiCompatiblePayload(basePayload, false);
 
         const response = await fetch(this.endpoint(serverUrl, 'chat/completions'), {

@@ -5,6 +5,7 @@ export type SystemPromptCategory =
   | 'summary'
   | 'expand'
   | 'shorten'
+  | 'codexDetection'
   | 'title';
 
 export type SystemPromptScope = 'global' | 'book';
@@ -28,12 +29,14 @@ export interface SystemPromptPresetDto extends SystemPromptGenerationSettings {
   bookId: string | null;
   createdAt: string;
   lastEditedAt: string;
+  defaultModelId: string | null;
 }
 
 interface CreateSystemPromptPresetFields extends SystemPromptGenerationSettings {
   name: string;
   systemPrompt: string;
   category: SystemPromptCategory;
+  defaultModelId: string | null;
 }
 
 export type CreateSystemPromptPresetDto = CreateSystemPromptPresetFields & SystemPromptOwnership;
@@ -47,6 +50,7 @@ export interface UpdateSystemPromptPresetDto {
   maxOutputTokens?: number | null;
   presencePenalty?: number;
   frequencyPenalty?: number;
+  defaultModelId?: string | null;
   ownership?: SystemPromptOwnership;
 }
 
@@ -87,4 +91,23 @@ export interface SetActiveSystemPromptPresetPayload {
 export interface ResetActiveSystemPromptPresetPayload {
   bookId: string;
   category: SystemPromptCategory;
+}
+
+export interface GetBuiltInSystemPromptModelPayload {
+  presetId: string;
+}
+
+export interface SetBuiltInSystemPromptModelPayload {
+  presetId: string;
+  defaultModelId: string;
+}
+
+export interface ResolveActiveSystemPromptModelPayload {
+  bookId: string;
+  category: SystemPromptCategory;
+}
+
+export interface ResolvedActiveSystemPromptModelDto {
+  presetId: string;
+  defaultModelId: string | null;
 }

@@ -1,7 +1,14 @@
 import { inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 
-import { ActDto, ManuscriptMode } from '../../../../shared/models/manuscript.model';
+import {
+  ActDto,
+  ManuscriptMode,
+  UpdateActPayload,
+  UpdateChapterPayload,
+  UpdateScenePayload,
+} from '../../../../shared/models/manuscript.model';
+import { withEffectiveContextInclusion } from '../../../../shared/utils/manuscript-context-inclusion';
 import { ManuscriptStructureService } from './services/manuscript-structure.service';
 
 export interface WorkspaceBookState {
@@ -32,7 +39,7 @@ export const WorkspaceBookStore = signalStore(
 
     setBookHierarchy(bookHierarchy: ActDto[]): void {
       patchState(store, {
-        bookHierarchy,
+        bookHierarchy: withEffectiveContextInclusion(bookHierarchy),
         isLoadingBookHierarchy: false,
         bookHierarchyError: null,
       });
@@ -47,7 +54,7 @@ export const WorkspaceBookStore = signalStore(
       try {
         const hierarchy = await manuscriptStructureService.getBookHierarchy(mode, id);
         patchState(store, {
-          bookHierarchy: hierarchy,
+          bookHierarchy: withEffectiveContextInclusion(hierarchy),
           isLoadingBookHierarchy: false,
         });
         return hierarchy;
@@ -61,36 +68,54 @@ export const WorkspaceBookStore = signalStore(
       }
     },
 
-    updateActTitle(id: string, title: string): void {
+    updateActMetadata(payload: UpdateActPayload): void {
       patchState(store, {
-        bookHierarchy: store.bookHierarchy().map(act =>
-          act.id === id ? { ...act, title } : act
-        ),
+        bookHierarchy: withEffectiveContextInclusion(store.bookHierarchy().map(act =>
+          act.id === payload.id
+            ? {
+                ...act,
+                ...(payload.title !== undefined ? { title: payload.title } : {}),
+                ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
+              }
+            : act
+        )),
       });
     },
 
-    updateChapterTitle(id: string, title: string): void {
+    updateChapterMetadata(payload: UpdateChapterPayload): void {
       patchState(store, {
-        bookHierarchy: store.bookHierarchy().map(act => ({
+        bookHierarchy: withEffectiveContextInclusion(store.bookHierarchy().map(act => ({
           ...act,
           chapters: (act.chapters || []).map(chapter =>
-            chapter.id === id ? { ...chapter, title } : chapter
+            chapter.id === payload.id
+              ? {
+                  ...chapter,
+                  ...(payload.title !== undefined ? { title: payload.title } : {}),
+                  ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
+                }
+              : chapter
           ),
-        })),
+        }))),
       });
     },
 
-    updateSceneTitle(id: string, title: string): void {
+    updateSceneMetadata(payload: UpdateScenePayload): void {
       patchState(store, {
-        bookHierarchy: store.bookHierarchy().map(act => ({
+        bookHierarchy: withEffectiveContextInclusion(store.bookHierarchy().map(act => ({
           ...act,
           chapters: (act.chapters || []).map(chapter => ({
             ...chapter,
             scenes: (chapter.scenes || []).map(scene =>
-              scene.id === id ? { ...scene, title } : scene
+              scene.id === payload.id
+                ? {
+                    ...scene,
+                    ...(payload.title !== undefined ? { title: payload.title } : {}),
+                    ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
+                  }
+                : scene
             ),
           })),
-        })),
+        }))),
       });
     },
   })),

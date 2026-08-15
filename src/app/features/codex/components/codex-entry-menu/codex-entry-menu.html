@@ -209,7 +209,9 @@
         } @else {
           <div class="progression-list">
             @for (item of sortedProgression(); track item.localId) {
-              <div class="progression-item">
+              <div
+                class="progression-item"
+                [class.context-excluded]="isSceneExcludedFromContext(item.sceneId)">
                 <div class="timeline-connector">
                   <div
                     class="timeline-dot"
@@ -236,6 +238,14 @@
                       </svg>
                     </button>
                   </div>
+                  @if (isSceneExcludedFromContext(item.sceneId)) {
+                    <span
+                      class="context-exclusion-badge"
+                      title="This milestone is saved but will not be included in AI context."
+                      aria-label="Excluded from AI context">
+                      Excluded from AI context
+                    </span>
+                  }
                   <textarea [ngModel]="item.description" (ngModelChange)="updateProgressionDescription(item.localId, $event)" placeholder="Describe what happens..." rows="2"></textarea>
                 </div>
               </div>
@@ -300,10 +310,17 @@
         <button
           class="menu-item"
           [class.selected]="isSceneSelectedForItem(scene.id, itemId)"
+          [class.context-excluded]="isSceneExcludedFromContext(scene.id)"
           (click)="updateProgressionScene(itemId, scene.id)"
           [disabled]="isSceneUnavailable(scene.id, itemId)"
+          [title]="getSceneHoverLabel(scene.id)"
           cdkMenuItem>
-          <span class="item-label">{{ scene.title || 'Untitled Scene' }}</span>
+          <span class="item-label scene-menu-label">
+            Scene {{ getSceneNumber(scene.id) }}: {{ scene.title || 'Untitled Scene' }}
+          </span>
+          @if (isSceneExcludedFromContext(scene.id)) {
+            <span class="context-exclusion-label">Excluded from AI context</span>
+          }
         </button>
       }
     } @else {

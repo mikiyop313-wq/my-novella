@@ -114,5 +114,12 @@ describe('ManuscriptStructureService', () => {
     };
     await expect(service.updateStructurePositions(payload)).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:updateStructurePositions', payload);
+
+    const inclusion = { entityType: 'chapter' as const, id: 'chapter-1', included: false };
+    await expect(service.setContextInclusion(inclusion)).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:setContextInclusion',
+      inclusion,
+    );
   });
 });

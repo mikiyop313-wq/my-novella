@@ -17,6 +17,7 @@ import {
   UpdateScenePayload,
 } from '../../../../../shared/models/manuscript.model';
 import { buildScenePatch } from '../helpers/content/manuscript-content.utils';
+import { ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META } from '../extensions/manuscript-editing-guard.extension';
 
 const FORMAT_SETTINGS_STORAGE_KEY = 'manuscript_format_global';
 
@@ -41,8 +42,10 @@ export interface FormattingSettings {
 }
 
 export interface ManuscriptState {
-  /** Currently active book, act, chapter, or scene ID. */
+  /** Book, act, chapter, or scene ID selected by the current route. */
   activeEntityId: string | null;
+  /** Section currently visible in the editor viewport. */
+  activeSectionId: string | null;
   mode: ManuscriptMode | null;
 
   settings: FormattingSettings;
@@ -78,6 +81,7 @@ const defaultSettings: FormattingSettings = {
 
 const initialState: ManuscriptState = {
   activeEntityId: null,
+  activeSectionId: null,
   mode: null,
 
   settings: defaultSettings,
@@ -148,6 +152,7 @@ function deleteNodeRangeInDoc(
   }
 
   let tr = editor.state.tr.delete(from, to);
+  tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
 
   if (targetType === ACT_HEADER_NODE) {
     tr = decrementFollowingActPositions(tr, from);
@@ -236,7 +241,7 @@ export const ManuscriptStore = signalStore(
 
   withState(initialState),
 
-  withComputed(({ currentWordCount, activeEntityId, mode }, workspaceBookStore = inject(WorkspaceBookStore)) => ({
+  withComputed(({ currentWordCount, activeEntityId, activeSectionId, mode }, workspaceBookStore = inject(WorkspaceBookStore)) => ({
     bookHierarchy: computed(() => workspaceBookStore.bookHierarchy()),
 
     bookId: computed(() => mode() === 'book' ? activeEntityId() : null),
@@ -273,7 +278,7 @@ export const ManuscriptStore = signalStore(
      * can highlight all relevant levels at once.
      */
     activeAncestors: computed((): { actId: string | null; chapterId: string | null } => {
-      const id = activeEntityId();
+      const id = activeSectionId();
       if (!id) return { actId: null, chapterId: null };
 
       for (const act of workspaceBookStore.bookHierarchy()) {
@@ -311,12 +316,13 @@ export const ManuscriptStore = signalStore(
       patchState(store, {
         mode,
         activeEntityId: id,
+        activeSectionId: id,
         settings: loadStoredSettings(),
       });
     },
 
     setActiveSection(_type: 'act' | 'chapter' | 'scene', id: string): void {
-      patchState(store, { activeEntityId: id });
+      patchState(store, { activeSectionId: id });
     },
 
     setEditor(editor: Editor | null): void {
@@ -449,10 +455,7 @@ export const ManuscriptStore = signalStore(
     async updateAct(payload: UpdateActPayload): Promise<void> {
       try {
         await manuscriptStructureService.updateAct(payload);
-
-        if (payload.title !== undefined) {
-          workspaceBookStore.updateActTitle(payload.id, payload.title);
-        }
+        workspaceBookStore.updateActMetadata(payload);
       } catch (error) {
         console.error('updateAct: IPC call failed', error);
       }
@@ -461,10 +464,7 @@ export const ManuscriptStore = signalStore(
     async updateChapter(payload: UpdateChapterPayload): Promise<void> {
       try {
         await manuscriptStructureService.updateChapter(payload);
-
-        if (payload.title !== undefined) {
-          workspaceBookStore.updateChapterTitle(payload.id, payload.title);
-        }
+        workspaceBookStore.updateChapterMetadata(payload);
       } catch (error) {
         console.error('updateChapter: IPC call failed', error);
       }
@@ -473,10 +473,7 @@ export const ManuscriptStore = signalStore(
     async updateScene(payload: UpdateScenePayload): Promise<void> {
       try {
         await manuscriptStructureService.updateScene(payload);
-
-        if (payload.title !== undefined) {
-          workspaceBookStore.updateSceneTitle(payload.id, payload.title);
-        }
+        workspaceBookStore.updateSceneMetadata(payload);
       } catch (error) {
         console.error('updateScene: IPC call failed', error);
       }
@@ -511,7 +508,10 @@ export const ManuscriptStore = signalStore(
 
       const endPosition = editor.state.doc.content.size;
 
-      editor.chain().focus().insertContentAt(endPosition, [
+      editor.chain().focus().command(({ tr }) => {
+        tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+        return true;
+      }).insertContentAt(endPosition, [
         { type: ACT_HEADER_NODE, attrs: { id: act.id, title: act.title, position: act.position } },
         { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
@@ -539,7 +539,10 @@ export const ManuscriptStore = signalStore(
 
       const endPosition = editor.state.doc.content.size;
 
-      editor.chain().focus().insertContentAt(endPosition, [
+      editor.chain().focus().command(({ tr }) => {
+        tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+        return true;
+      }).insertContentAt(endPosition, [
         { type: CHAPTER_HEADER_NODE, attrs: { id: chapter.id, title: chapter.title, position: chapter.position } },
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
@@ -564,7 +567,10 @@ export const ManuscriptStore = signalStore(
       const scene = await manuscriptStructureService.createScene(chapterId);
       const endPosition = editor.state.doc.content.size;
 
-      editor.chain().focus().insertContentAt(endPosition, [
+      editor.chain().focus().command(({ tr }) => {
+        tr.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+        return true;
+      }).insertContentAt(endPosition, [
         { type: SCENE_SUMMARY_NODE, attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position } },
         { type: 'paragraph' },
       ], { updateSelection: true }).run();

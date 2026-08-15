@@ -16,7 +16,7 @@ export const INFO_MESSAGES = {
     REASONING_MODE: `<span class="info-header">Reasoning Mode</span><p>Enable or disable the AI's advanced reasoning mode.</p><p>When enabled, the AI takes more time to "think" before generating text.</p><p><strong>Recommendation:</strong> It is generally recommended to keep this <b>disabled</b> for actual prose generation. Reasoning models excel at logic, outlining, and plotting, but they can be slower and often produce a less creative or overly clinical writing style when writing fiction.</p>`
   },
   CODEX: {
-    PROGRESSION: `<span class="info-header">Story Progression</span><p>Progression milestones affect AI generation contexts dynamically.</p><p>Progression will be injected into the AI context only on the <b>current and future scenes</b>.</p><p>If you use the AI in a previous scene, the injection will be ignored.</p>`,
+    PROGRESSION: `<span class="info-header">Story Progression</span><p>Progression milestones affect AI generation contexts dynamically.</p><p>Progression will be injected into the AI context only on the <b>current and future scenes</b>.</p><p>If you use the AI in a previous scene, the injection will be ignored.</p><p>Milestones linked to excluded or empty scenes remain saved but are not included in AI context.</p>`,
     ALIAS: `<span class="info-header">Aliases</span><p>Add alternative names or titles for this entry.</p><p>Use a <b>comma (,)</b> to separate multiple aliases.</p><p>If an alias is detected in the manuscript, this entry will be injected into the AI context.</p>`
   }
 } as const;

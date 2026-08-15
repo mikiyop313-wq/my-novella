@@ -1,0 +1,268 @@
+@keyframes detection-modal-open {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes detection-modal-close {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+@keyframes entry-slide-next-a {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes entry-slide-next-b {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes entry-slide-previous-a {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes entry-slide-previous-b {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+:host {
+  display: block;
+  width: min(560px, calc(100vw - 32px));
+}
+
+.codex-detection-modal {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  animation: detection-modal-open 200ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  &.is-closed {
+    pointer-events: none;
+    animation: detection-modal-close 200ms ease forwards;
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 40%, transparent);
+
+  h2 {
+    margin: 9px 0 0;
+    font-family: var(--title-font);
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+}
+
+.title-group { min-width: 0; }
+
+.detection-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.eyebrow {
+  color: var(--color-text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: 150ms ease;
+
+  svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  &:hover:not(:disabled) {
+    background: var(--color-hover-bg);
+    color: var(--color-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-text-secondary);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.3;
+  }
+}
+
+.close-button { flex: 0 0 auto; }
+
+.navigation-button {
+  border-color: var(--color-border);
+}
+
+.entry-count {
+  min-width: 56px;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  text-align: center;
+
+  strong { color: var(--color-text-primary); }
+}
+
+.type-badge {
+  padding: 3px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-text-secondary) 8%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.slide-next-a { animation: entry-slide-next-a 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-next-b { animation: entry-slide-next-b 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-previous-a { animation: entry-slide-previous-a 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-previous-b { animation: entry-slide-previous-b 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+.modal-body {
+  height: 180px;
+  padding: 26px 24px 30px;
+  overflow-y: auto;
+
+  p {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.92rem;
+    line-height: 1.65;
+  }
+}
+
+.save-error {
+  padding: 10px 24px;
+  border-top: 1px solid color-mix(in srgb, var(--color-error, #c24141) 35%, transparent);
+  background: color-mix(in srgb, var(--color-error, #c24141) 10%, transparent);
+  color: var(--color-error, #c24141);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 35%, transparent);
+}
+
+.entry-navigation,
+.modal-actions {
+  display: flex;
+  align-items: center;
+}
+
+.entry-navigation { gap: 8px; }
+
+.modal-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 150ms ease;
+
+  svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-text-secondary);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+}
+
+.discard-button {
+  background: transparent;
+  color: var(--color-text-secondary);
+
+  &:hover {
+    background: var(--color-hover-bg);
+    color: var(--color-text-primary);
+  }
+}
+
+.add-button {
+  border-color: var(--color-text-primary);
+  background: var(--color-text-primary);
+  color: var(--color-background);
+
+  &:hover { opacity: 0.85; }
+}
+
+@media (max-width: 520px) {
+  .modal-header, .modal-body, .modal-footer { padding-inline: 18px; }
+  .modal-footer { align-items: stretch; flex-direction: column; }
+  .entry-navigation { justify-content: center; }
+  .modal-actions { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-next-a,
+  .slide-next-b,
+  .slide-previous-a,
+  .slide-previous-b {
+    animation: none;
+  }
+}

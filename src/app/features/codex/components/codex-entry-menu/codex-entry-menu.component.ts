@@ -27,6 +27,7 @@ import {
 import { buildContextHighlightSegments } from '../../../../../../shared/utils/context-highlighter';
 import { CodexMatchChooserService } from '../../highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../../services/codex-context-trie.service';
+import { isSceneIncludedInContext } from '../../../../../../shared/utils/manuscript-context-inclusion';
 
 type CodexEntryProgressionInput = CodexEntryProgressionPayload & {
   localId: string;
@@ -35,6 +36,7 @@ type CodexEntryProgressionInput = CodexEntryProgressionPayload & {
 type SceneMetadata = {
   title: string;
   rank: number;
+  includedInContext: boolean;
 };
 
 type TrackingOption = {
@@ -45,6 +47,7 @@ type TrackingOption = {
 
 const SELECT_SCENE_LABEL = 'Select scene...';
 const UNTITLED_SCENE_LABEL = 'Untitled Scene';
+const EXCLUDED_FROM_AI_CONTEXT_LABEL = 'Excluded from AI context';
 const UNRANKED_SCENE_RANK = Number.MAX_SAFE_INTEGER;
 
 @Component({
@@ -136,6 +139,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
           scenes.set(scene.id, {
             title: scene.title || UNTITLED_SCENE_LABEL,
             rank,
+            includedInContext: isSceneIncludedInContext(scene),
           });
           rank++;
         }
@@ -300,7 +304,18 @@ export class CodexEntryMenuComponent implements OnDestroy {
     if (!sceneId) return SELECT_SCENE_LABEL;
 
     const scene = this.sceneLookup().get(sceneId);
-    return scene ? `${scene.rank + 1}: ${scene.title}` : SELECT_SCENE_LABEL;
+    if (!scene) return SELECT_SCENE_LABEL;
+
+    const exclusionLabel = scene.includedInContext
+      ? ''
+      : ` — ${EXCLUDED_FROM_AI_CONTEXT_LABEL}`;
+    return `${scene.rank + 1}: ${scene.title}${exclusionLabel}`;
+  }
+
+  isSceneExcludedFromContext(sceneId: string | null): boolean {
+    if (!sceneId) return false;
+
+    return this.sceneLookup().get(sceneId)?.includedInContext === false;
   }
 
   isSceneSelectedForItem(sceneId: string, localId: string): boolean {

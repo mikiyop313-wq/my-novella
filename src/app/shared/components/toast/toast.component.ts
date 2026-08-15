@@ -1,4 +1,4 @@
-import { Component, input, output, effect } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Toast } from '../../models/toast.model';
 import { trigger, state, style, animate, transition } from '@angular/animations';
@@ -25,6 +25,14 @@ import { trigger, state, style, animate, transition } from '@angular/animations'
 export class ToastComponent {
   toast = input.required<Toast>();
   close = output<void>();
+
+  runAction(): void {
+    const action = this.toast().action;
+    if (!action) return;
+
+    this.close.emit();
+    void action.handler();
+  }
 
   getIconName(type: string): string {
     switch (type) {
