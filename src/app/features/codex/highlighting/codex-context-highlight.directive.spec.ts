@@ -217,6 +217,39 @@ describe('CodexContextHighlightDirective', () => {
     expect(chooser.open).toHaveBeenCalledWith(['codex-2', 'codex-1'], 12, 20);
   });
 
+  it('shows a pointer cursor only while hovering a highlighted keyword', () => {
+    flushFrames();
+    const target = fixture.nativeElement.querySelector('.inline') as HTMLElement;
+
+    registry.getEntryIdsAtPoint.mockReturnValueOnce(['codex-1']);
+    target.dispatchEvent(
+      new MouseEvent('mousemove', { bubbles: true, clientX: 12, clientY: 20 }),
+    );
+    expect(host().style.cursor).toBe('pointer');
+
+    registry.getEntryIdsAtPoint.mockReturnValueOnce([]);
+    target.dispatchEvent(
+      new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: 20 }),
+    );
+    expect(host().style.cursor).toBe('');
+
+    registry.getEntryIdsAtPoint.mockReturnValueOnce(['codex-1']);
+    target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+    host().dispatchEvent(new MouseEvent('mouseleave'));
+    expect(host().style.cursor).toBe('');
+  });
+
+  it('keeps the default cursor over interactive descendants', () => {
+    flushFrames();
+    registry.getEntryIdsAtPoint.mockReturnValue(['codex-1']);
+    const button = fixture.nativeElement.querySelector('button') as HTMLElement;
+
+    button.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+
+    expect(host().style.cursor).toBe('');
+    expect(registry.getEntryIdsAtPoint).not.toHaveBeenCalled();
+  });
+
   it('ignores guarded and unmatched clicks without changing content', () => {
     flushFrames();
     const originalHtml = host().innerHTML;

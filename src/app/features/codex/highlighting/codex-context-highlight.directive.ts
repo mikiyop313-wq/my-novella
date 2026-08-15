@@ -70,11 +70,13 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
   private readonly chooser = inject(CodexMatchChooserService);
   private readonly entryOpener = inject(CodexEntryOpenerService);
   private readonly rangeOwner = {};
+  private readonly initialCursor = this.host.style.cursor;
   private selector = '';
   private observer: MutationObserver | null = null;
   private scanFrame: number | null = null;
   private initialized = false;
   private destroyed = false;
+  private cursorOverHighlight = false;
 
   @Input()
   set codexContextHighlight(value: string | null | undefined) {
@@ -107,7 +109,24 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
     const view = this.host.ownerDocument.defaultView;
     if (view && this.scanFrame !== null) view.cancelAnimationFrame(this.scanFrame);
     this.scanFrame = null;
+    this.setHighlightCursor(false);
     this.registry.clearRanges(this.rangeOwner);
+  }
+
+  @HostListener('mousemove', ['$event'])
+  handleMouseMove(event: MouseEvent): void {
+    const target = event.target;
+    const isInteractive = target instanceof Element && !!target.closest(INTERACTIVE_SELECTOR);
+    const isHighlight =
+      !isInteractive &&
+      this.registry.getEntryIdsAtPoint(event.clientX, event.clientY).length > 0;
+
+    this.setHighlightCursor(isHighlight);
+  }
+
+  @HostListener('mouseleave')
+  handleMouseLeave(): void {
+    this.setHighlightCursor(false);
   }
 
   @HostListener('click', ['$event'])
@@ -135,6 +154,13 @@ export class CodexContextHighlightDirective implements AfterViewInit, OnDestroy 
     } else {
       this.chooser.open(entryIds, event.clientX, event.clientY);
     }
+  }
+
+  private setHighlightCursor(isHighlight: boolean): void {
+    if (this.cursorOverHighlight === isHighlight) return;
+
+    this.cursorOverHighlight = isHighlight;
+    this.host.style.cursor = isHighlight ? 'pointer' : this.initialCursor;
   }
 
   private scheduleScan(): void {
