@@ -67,6 +67,24 @@ export function setupManuscriptHandlers() {
         }
     });
 
+    ipcMain.handle('manuscript:createActStructure', async (_, { bookId }: CreateActPayload) => {
+        try {
+            return await manuscriptRepository.createActStructure(bookId);
+        } catch (error) {
+            console.error('Failed to create act structure:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('manuscript:createChapterStructure', async (_, { actId }: CreateChapterPayload) => {
+        try {
+            return await manuscriptRepository.createChapterStructure(actId);
+        } catch (error) {
+            console.error('Failed to create chapter structure:', error);
+            throw error;
+        }
+    });
+
     ipcMain.handle('manuscript:updateAct', async (_, payload: UpdateActPayload) => {
         try {
             return await manuscriptRepository.updateAct(payload);

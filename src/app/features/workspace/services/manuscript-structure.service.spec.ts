@@ -55,6 +55,18 @@ describe('ManuscriptStructureService', () => {
     await expect(service.createScene('chapter-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:createScene', { chapterId: 'chapter-1' });
 
+    await expect(service.createActStructure('book-1')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:createActStructure',
+      { bookId: 'book-1' },
+    );
+
+    await expect(service.createChapterStructure('act-1')).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:createChapterStructure',
+      { actId: 'act-1' },
+    );
+
     await expect(service.deleteAct('act-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:deleteAct', { id: 'act-1' });
 

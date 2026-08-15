@@ -340,9 +340,15 @@
     transition: all 0.15s ease;
     box-sizing: border-box;
 
-    &:hover {
+    &:hover:not(:disabled) {
       background: var(--color-hover-bg);
       color: var(--color-text-primary);
+    }
+
+    &:disabled {
+      color: var(--color-text-secondary);
+      cursor: not-allowed;
+      opacity: 0.45;
     }
 
     &.selected {

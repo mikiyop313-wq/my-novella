@@ -87,9 +87,14 @@ export class Manuscript implements OnInit, OnDestroy {
 
   indexItems = signal<ManuscriptIndexItem[]>([]);
   hasLoadedContent = signal(false);
+  hasActNodes = signal(false);
+  hasChapterNodes = signal(false);
   hasSceneNodes = signal(false);
+  private isNavigatingAfterRemoval = false;
 
   showCreateSceneHint = computed(() => this.hasLoadedContent() && !this.hasSceneNodes());
+  canInsertChapter = computed(() => this.hasActNodes());
+  canInsertScene = computed(() => this.hasChapterNodes());
 
   currentScopeLabel = computed<string>(() => {
     const mode = this.store.mode();
@@ -171,6 +176,7 @@ export class Manuscript implements OnInit, OnDestroy {
     this.route.params.subscribe(async params => {
       this.aiStreamEditor.beginViewChange();
       try {
+        this.isNavigatingAfterRemoval = false;
         // Route changes reuse this component, so flush pending prose and vector
         // updates before replacing the editor document.
         await this.saver.flushDirtySections();
@@ -238,11 +244,15 @@ export class Manuscript implements OnInit, OnDestroy {
       ],
 
       onUpdate: ({ transaction }) => {
-        this.refreshSceneAvailability();
+        this.refreshStructureAvailability();
         this.refreshIndexItems();
 
         if (transaction.docChanged && !transaction.getMeta('skipSaver')) {
           this.saver.onDocumentChanged(transaction, this.editor!);
+        }
+
+        if (transaction.docChanged) {
+          void this.navigateAfterActiveScopeRemoval();
         }
       },
     });
@@ -270,11 +280,11 @@ export class Manuscript implements OnInit, OnDestroy {
       this.saver.seedCleanSnapshots(this.editor!);
       this.aiStreamEditor.syncActiveGenerations(this.editor!);
       this.hasLoadedContent.set(true);
-      this.refreshSceneAvailability();
+      this.refreshStructureAvailability();
       this.refreshIndexItems();
     } catch (error) {
       this.hasLoadedContent.set(true);
-      this.refreshSceneAvailability();
+      this.refreshStructureAvailability();
       console.error('Failed to load manuscript content:', error);
     }
   }
@@ -296,16 +306,31 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
   /** Delegates cascaded DB writes and Tiptap insertion to the store. */
-  insertAct(): void {
-    this.store.insertAct();
+  async insertAct(): Promise<void> {
+    try {
+      await this.store.insertAct();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create act.';
+      this.toastService.error(message, 'Manuscript');
+    }
   }
 
-  insertChapter(): void {
-    this.store.insertChapter();
+  async insertChapter(): Promise<void> {
+    try {
+      await this.store.insertChapter();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create chapter.';
+      this.toastService.error(message, 'Manuscript');
+    }
   }
 
-  insertScene(): void {
-    this.store.insertScene();
+  async insertScene(): Promise<void> {
+    try {
+      await this.store.insertScene();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create scene.';
+      this.toastService.error(message, 'Manuscript');
+    }
   }
 
 
@@ -426,14 +451,72 @@ export class Manuscript implements OnInit, OnDestroy {
     this.indexItems.set(items);
   }
 
-  private refreshSceneAvailability(): void {
+  private refreshStructureAvailability(): void {
+    let hasAct = false;
+    let hasChapter = false;
     let hasScene = false;
 
     this.editor?.state.doc.forEach(node => {
+      if (node.type.name === 'actHeader') hasAct = true;
+      if (node.type.name === 'chapterHeader') hasChapter = true;
       if (node.type.name === 'sceneSummary') hasScene = true;
     });
 
+    this.hasActNodes.set(hasAct);
+    this.hasChapterNodes.set(hasChapter);
     this.hasSceneNodes.set(hasScene);
+  }
+
+  private async navigateAfterActiveScopeRemoval(): Promise<void> {
+    if (
+      !this.hasLoadedContent()
+      || this.isNavigatingAfterRemoval
+      || this.activeScopeExistsInEditor()
+    ) return;
+
+    const bookId = this.getWorkspaceBookId();
+    if (!bookId) return;
+
+    this.isNavigatingAfterRemoval = true;
+
+    try {
+      await this.saver.flushStructuralChanges();
+      const navigated = await this.router.navigate(
+        ['/workspace', bookId, 'manuscript', 'book', bookId],
+        { replaceUrl: true },
+      );
+
+      if (!navigated) {
+        this.isNavigatingAfterRemoval = false;
+      }
+    } catch (error) {
+      this.isNavigatingAfterRemoval = false;
+      const message = error instanceof Error
+        ? error.message
+        : 'Failed to switch manuscript view after removing the active section.';
+      this.toastService.error(message, 'Manuscript');
+    }
+  }
+
+  private activeScopeExistsInEditor(): boolean {
+    const mode = this.store.mode();
+    const activeEntityId = this.store.activeEntityId();
+    if (!this.editor || !mode || !activeEntityId || mode === 'book') return true;
+
+    const nodeType = mode === 'act'
+      ? 'actHeader'
+      : mode === 'chapter'
+        ? 'chapterHeader'
+        : 'sceneSummary';
+    let exists = false;
+
+    this.editor.state.doc.forEach(node => {
+      if (node.type.name === nodeType && node.attrs['id'] === activeEntityId) {
+        exists = true;
+      }
+    });
+
+    return exists;
   }
 
   private getWorkspaceBookId(): string | null {

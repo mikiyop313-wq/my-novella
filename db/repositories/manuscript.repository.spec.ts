@@ -33,6 +33,7 @@ describe('manuscript archive repositories', () => {
   });
 
   beforeEach(() => {
+    sqlite.exec('DROP TRIGGER IF EXISTS fail_scene_insert;');
     sqlite.exec(`
       DELETE FROM scenes;
       DELETE FROM chapters;
@@ -52,6 +53,52 @@ describe('manuscript archive repositories', () => {
 
     expect(createdAct.title).toBe('');
     expect(createdChapter.title).toBe('');
+  });
+
+  it('creates an act, initial chapter, and initial scene in one structure operation', async () => {
+    const created = await repository.createActStructure('book-1');
+
+    expect(created.act).toMatchObject({ bookId: 'book-1', position: 0, title: '' });
+    expect(created.chapter).toMatchObject({ actId: created.act.id, position: 0, title: '' });
+    expect(created.scene).toMatchObject({ chapterId: created.chapter.id, position: 0, title: '' });
+    expect(row(sqlite, 'acts', created.act.id)).toBeDefined();
+    expect(row(sqlite, 'chapters', created.chapter.id)).toBeDefined();
+    expect(row(sqlite, 'scenes', created.scene.id)).toBeDefined();
+  });
+
+  it('rolls back the full act structure when its initial scene cannot be created', async () => {
+    const originalLastEditedAt = row(sqlite, 'books', 'book-1')?.['last_edited_at'];
+    sqlite.exec(`
+      CREATE TRIGGER fail_scene_insert
+      BEFORE INSERT ON scenes
+      BEGIN
+        SELECT RAISE(ABORT, 'scene insert failed');
+      END;
+    `);
+
+    await expect(repository.createActStructure('book-1')).rejects.toThrow('scene insert failed');
+
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM acts').get()).toMatchObject({ count: 0 });
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM chapters').get()).toMatchObject({ count: 0 });
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM scenes').get()).toMatchObject({ count: 0 });
+    expect(row(sqlite, 'books', 'book-1')?.['last_edited_at']).toBe(originalLastEditedAt);
+  });
+
+  it('rolls back a new chapter when its initial scene cannot be created', async () => {
+    insertAct(sqlite, 'act-1', 'Existing Act', 'active');
+    sqlite.exec(`
+      CREATE TRIGGER fail_scene_insert
+      BEFORE INSERT ON scenes
+      BEGIN
+        SELECT RAISE(ABORT, 'scene insert failed');
+      END;
+    `);
+
+    await expect(repository.createChapterStructure('act-1')).rejects.toThrow('scene insert failed');
+
+    expect(row(sqlite, 'acts', 'act-1')).toBeDefined();
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM chapters').get()).toMatchObject({ count: 0 });
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM scenes').get()).toMatchObject({ count: 0 });
   });
 
   it('deletes active descendants while detaching archived descendants from an active act', async () => {

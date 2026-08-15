@@ -11,6 +11,12 @@ export interface ManuscriptRoute {
   id: string;
 }
 
+export interface RemovedManuscriptEntity {
+  bookId: string;
+  mode: Exclude<ManuscriptMode, 'book'>;
+  id: string;
+}
+
 export interface WorkspaceState {
   bookId: string | null;
   bookTitle: string;
@@ -86,6 +92,22 @@ export const WorkspaceStore = signalStore(
 
     getLastManuscriptRoute(bookId: string): ManuscriptRoute | null {
       return store.lastManuscriptRoutes()[bookId] ?? null;
+    },
+
+    resetLastManuscriptRouteForRemovedEntity({
+      bookId,
+      mode,
+      id,
+    }: RemovedManuscriptEntity): void {
+      const route = store.lastManuscriptRoutes()[bookId];
+      if (route?.mode !== mode || route.id !== id) return;
+
+      patchState(store, {
+        lastManuscriptRoutes: {
+          ...store.lastManuscriptRoutes(),
+          [bookId]: { mode: 'book', id: bookId },
+        },
+      });
     },
 
     openSidebar(): void {

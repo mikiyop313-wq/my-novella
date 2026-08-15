@@ -5,6 +5,8 @@ import {
   ActDto,
   ArchiveOverviewDto,
   ChapterDto,
+  CreatedActStructureDto,
+  CreatedChapterStructureDto,
   ManuscriptMode,
   SceneDto,
   SetContextInclusionPayload,
@@ -45,6 +47,14 @@ export class ManuscriptStructureService {
 
   async createScene(chapterId: string): Promise<SceneDto> {
     return await this.electronService.invoke('manuscript:createScene', { chapterId });
+  }
+
+  async createActStructure(bookId: string): Promise<CreatedActStructureDto> {
+    return await this.electronService.invoke('manuscript:createActStructure', { bookId });
+  }
+
+  async createChapterStructure(actId: string): Promise<CreatedChapterStructureDto> {
+    return await this.electronService.invoke('manuscript:createChapterStructure', { actId });
   }
 
   async deleteAct(id: string): Promise<void> {

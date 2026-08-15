@@ -1,17 +1,17 @@
-import { Component, OnInit, signal, computed } from '@angular/core';
+import { Component, OnInit, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkMenuModule } from '@angular/cdk/menu';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { ManuscriptStore } from '../../store/manuscript.store';
-import { inject } from '@angular/core';
-import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 
 @Component({
   selector: 'app-manuscript-header',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CdkMenuModule],
   templateUrl: './manuscript-header.component.html',
   styleUrl: './manuscript-header.component.scss'
 })
@@ -22,7 +22,7 @@ export class ManuscriptHeaderComponent extends AngularNodeViewComponent implemen
   entityId = computed<string>(() => this.node()?.attrs['id'] || '');
 
   store = inject(ManuscriptStore);
-  private confirmService = inject(ConfirmModalService);
+  private toastService = inject(ToastService);
   private titleUpdateSubject = new Subject<string>();
 
   ngOnInit(): void {
@@ -53,6 +53,19 @@ export class ManuscriptHeaderComponent extends AngularNodeViewComponent implemen
       this.store.deleteAct(this.entityId());
     } else {
       this.store.deleteChapter(this.entityId());
+    }
+  }
+
+  async archiveSection(): Promise<void> {
+    try {
+      if (this.headerType() === 'act') {
+        await this.store.archiveAct(this.entityId());
+      } else {
+        await this.store.archiveChapter(this.entityId());
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Failed to archive ${this.headerType()}.`;
+      this.toastService.error(message, 'Manuscript');
     }
   }
 }

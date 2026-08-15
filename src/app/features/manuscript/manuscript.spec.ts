@@ -13,9 +13,11 @@ import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.se
 import { Manuscript } from './manuscript';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
 import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
+import { ToastService } from '../../shared/services/toast.service';
 
 const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
+import { WorkspaceStore } from '../workspace/workspace.store';
 import type { ActDto } from '../../../../shared/models/manuscript.model';
 
 describe('Manuscript', () => {
@@ -26,6 +28,8 @@ describe('Manuscript', () => {
   let originalRequestAnimationFrame: typeof window.requestAnimationFrame;
   let originalCancelAnimationFrame: typeof window.cancelAnimationFrame;
   let originalResizeObserver: typeof ResizeObserver | undefined;
+  let originalIntersectionObserver: typeof IntersectionObserver | undefined;
+  let routerNavigate: ReturnType<typeof vi.fn>;
   const trieState = signal<object | null>({});
   const contextTrie = {
     trie: trieState.asReadonly(),
@@ -60,6 +64,7 @@ describe('Manuscript', () => {
     originalRequestAnimationFrame = window.requestAnimationFrame;
     originalCancelAnimationFrame = window.cancelAnimationFrame;
     originalResizeObserver = globalThis.ResizeObserver;
+    originalIntersectionObserver = globalThis.IntersectionObserver;
     Object.defineProperty(window, 'requestAnimationFrame', {
       configurable: true,
       writable: true,
@@ -83,11 +88,25 @@ describe('Manuscript', () => {
         disconnect(): void {}
       },
     });
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      writable: true,
+      value: class {
+        root = null;
+        rootMargin = '';
+        thresholds = [];
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+        takeRecords(): IntersectionObserverEntry[] { return []; }
+      },
+    });
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findMatches(text));
     contextTrie.loadForContext.mockClear();
     registry.setRanges.mockClear();
     registry.clearRanges.mockClear();
     trieState.set({});
+    routerNavigate = vi.fn().mockResolvedValue(true);
 
     await TestBed.configureTestingModule({
       imports: [Manuscript],
@@ -106,7 +125,7 @@ describe('Manuscript', () => {
         {
           provide: Router,
           useValue: {
-            navigate: () => Promise.resolve(true),
+            navigate: routerNavigate,
           },
         },
         {
@@ -146,6 +165,11 @@ describe('Manuscript', () => {
       writable: true,
       value: originalResizeObserver,
     });
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      writable: true,
+      value: originalIntersectionObserver,
+    });
   });
 
   it('should create', () => {
@@ -171,6 +195,49 @@ describe('Manuscript', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.manuscript-empty-hint')).toBeNull();
+  });
+
+  it.each([
+    ['insertAct', 'Act creation failed'],
+    ['insertChapter', 'Chapter creation failed'],
+    ['insertScene', 'Scene creation failed'],
+  ] as const)('shows a toast when %s fails', async (method, message) => {
+    const toastError = vi.spyOn(TestBed.inject(ToastService), 'error');
+    vi.spyOn(component.store, method).mockRejectedValueOnce(new Error(message));
+
+    await component[method]();
+
+    expect(toastError).toHaveBeenCalledWith(message, 'Manuscript');
+  });
+
+  it('uses a fallback toast message for a non-Error creation failure', async () => {
+    const toastError = vi.spyOn(TestBed.inject(ToastService), 'error');
+    vi.spyOn(component.store, 'insertAct').mockRejectedValueOnce('failed');
+
+    await component.insertAct();
+
+    expect(toastError).toHaveBeenCalledWith('Failed to create act.', 'Manuscript');
+  });
+
+  it('enables hierarchy creation only when the required parent exists', () => {
+    expect(component.canInsertChapter()).toBe(false);
+    expect(component.canInsertScene()).toBe(false);
+
+    const editor = component.editor!;
+    const actHeader = editor.schema.nodes['actHeader'].create({ id: 'act-1' });
+    let tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, actHeader);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+
+    expect(component.canInsertChapter()).toBe(true);
+    expect(component.canInsertScene()).toBe(false);
+
+    const chapterHeader = editor.schema.nodes['chapterHeader'].create({ id: 'chapter-1' });
+    tr = editor.state.tr.insert(editor.state.doc.content.size, chapterHeader);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+
+    expect(component.canInsertScene()).toBe(true);
   });
 
   it('renders pending, active, and updated indexing states', async () => {
@@ -327,6 +394,156 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
   });
 
+  it('indexes the first act structure inserted into an empty book', async () => {
+    electronInvoke.mockImplementation(async (channel: string) => {
+      if (channel === 'manuscript:createActStructure') {
+        return {
+          act: {
+            id: 'act-new',
+            title: 'Opening',
+            bookId: 'book-1',
+            position: 0,
+            status: 'active',
+            summary: null,
+          },
+          chapter: {
+            id: 'chapter-new',
+            title: 'Arrival',
+            actId: 'act-new',
+            position: 0,
+            status: 'active',
+            summary: null,
+          },
+          scene: {
+            id: 'scene-new',
+            title: 'The Door',
+            chapterId: 'chapter-new',
+            position: 0,
+            status: 'active',
+            summary: null,
+            prose: null,
+            wordCount: 0,
+            pointOfViewOverride: null,
+            povCharacterIdOverride: null,
+          },
+        };
+      }
+      return undefined;
+    });
+
+    await component.store.insertAct();
+
+    expect(component.indexItems()).toEqual([
+      { id: 'act-new', label: 'Act 1: Opening', type: 'act' },
+      { id: 'chapter-new', label: 'Chapter 1: Arrival', type: 'chapter' },
+      { id: 'scene-new', label: 'The Door', type: 'scene' },
+    ]);
+  });
+
+  it.each([
+    { mode: 'scene' as const, id: 'scene-1', deleteEntity: 'deleteScene' as const, channel: 'manuscript:deleteScene' },
+    { mode: 'chapter' as const, id: 'chapter-1', deleteEntity: 'deleteChapter' as const, channel: 'manuscript:deleteChapter' },
+    { mode: 'act' as const, id: 'act-1', deleteEntity: 'deleteAct' as const, channel: 'manuscript:deleteAct' },
+  ])('persists and navigates after deleting the active $mode', async ({
+    mode,
+    id,
+    deleteEntity,
+    channel,
+  }) => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams(mode, id);
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode, id });
+    routerNavigate.mockClear();
+    electronInvoke.mockClear();
+
+    component.store[deleteEntity](id);
+
+    await vi.waitFor(() => {
+      expect(electronInvoke).toHaveBeenCalledWith(channel, { id });
+      expect(routerNavigate).toHaveBeenCalledWith(
+        ['/workspace', 'book-1', 'manuscript', 'book', 'book-1'],
+        { replaceUrl: true },
+      );
+      expect(electronInvoke.mock.invocationCallOrder.at(-1))
+        .toBeLessThan(routerNavigate.mock.invocationCallOrder[0]);
+      expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+        mode: 'book',
+        id: 'book-1',
+      });
+    });
+  });
+
+  it.each([
+    { mode: 'scene' as const, id: 'scene-1', archiveEntity: 'archiveScene' as const, channel: 'manuscript:archiveScene' },
+    { mode: 'chapter' as const, id: 'chapter-1', archiveEntity: 'archiveChapter' as const, channel: 'manuscript:archiveChapter' },
+    { mode: 'act' as const, id: 'act-1', archiveEntity: 'archiveAct' as const, channel: 'manuscript:archiveAct' },
+  ])('navigates after archiving the active $mode', async ({
+    mode,
+    id,
+    archiveEntity,
+    channel,
+  }) => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams(mode, id);
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode, id });
+    routerNavigate.mockClear();
+    electronInvoke.mockClear();
+
+    await component.store[archiveEntity](id);
+
+    expect(electronInvoke).toHaveBeenCalledWith(channel, { id });
+    await vi.waitFor(() => expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'book', 'book-1'],
+      { replaceUrl: true },
+    ));
+    expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+      mode: 'book',
+      id: 'book-1',
+    });
+  });
+
+  it('does not navigate when removing a nested entity from a broader view', async () => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams('chapter', 'chapter-1');
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode: 'chapter', id: 'chapter-1' });
+    routerNavigate.mockClear();
+
+    await component.store.archiveScene('scene-1');
+
+    expect(routerNavigate).not.toHaveBeenCalled();
+    expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+      mode: 'chapter',
+      id: 'chapter-1',
+    });
+  });
+
+  it('retains the active entity and route when archiving fails', async () => {
+    setRemovalHierarchyAndDocument();
+    component.store.setRouteParams('act', 'act-1');
+    const workspaceStore = TestBed.inject(WorkspaceStore);
+    await workspaceStore.enterBook('book-1');
+    workspaceStore.rememberManuscriptRoute('book-1', { mode: 'act', id: 'act-1' });
+    routerNavigate.mockClear();
+    electronInvoke.mockRejectedValueOnce(new Error('Archive failed'));
+
+    await expect(component.store.archiveAct('act-1')).rejects.toThrow('Archive failed');
+
+    expect(component.editor?.getJSON().content?.some(node => (
+      node.type === 'actHeader' && node.attrs?.['id'] === 'act-1'
+    ))).toBe(true);
+    expect(routerNavigate).not.toHaveBeenCalled();
+    expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
+      mode: 'act',
+      id: 'act-1',
+    });
+  });
+
   it('highlights across inline marks without joining separate editor blocks', async () => {
     setEditorContent();
     await Promise.resolve();
@@ -385,6 +602,48 @@ describe('Manuscript', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'Key' }] },
       ],
     }).run();
+  }
+
+  function setRemovalHierarchyAndDocument(): void {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'Scene',
+          chapterId: 'chapter-1',
+          position: 0,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }]);
+
+    const editor = component.editor!;
+    const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, [
+      editor.schema.nodes['actHeader'].create({ id: 'act-1', bookId: 'book-1' }),
+      editor.schema.nodes['chapterHeader'].create({ id: 'chapter-1', actId: 'act-1' }),
+      editor.schema.nodes['sceneSummary'].create({ id: 'scene-1', chapterId: 'chapter-1' }),
+      editor.schema.nodes['paragraph'].create(),
+    ]);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
   }
 
   function flushFrames(): void {
