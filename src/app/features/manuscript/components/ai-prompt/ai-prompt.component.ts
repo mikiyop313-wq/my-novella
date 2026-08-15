@@ -6,13 +6,10 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
-import {
-  ManuscriptAiContextService,
-  type ManuscriptAiPointOfViewSetting,
-} from '../../helpers/ai/manuscript-ai-context.service';
+import { ManuscriptAiRequestService } from '../../helpers/ai/manuscript-ai-request.service';
+import type { ManuscriptAiPointOfViewSetting } from '../../helpers/ai/manuscript-ai-context.service';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
-import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { CodexContextHighlightDirective } from '../../../codex/highlighting/codex-context-highlight.directive';
 import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
@@ -23,9 +20,6 @@ import {
   isVectorSearchSetting,
   type VectorSearchSetting,
 } from '../../../../shared/models/vector-search.model';
-import { ToastService } from '../../../../shared/services/toast.service';
-import { resolveAiModelTarget } from '../../../../shared/utils/ai-model-selection';
-import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 import {
   findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
@@ -87,12 +81,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   private readonly aiStore = inject(AiStore);
   private readonly aiStreamEditor = inject(AiStreamEditorService);
-  private readonly manuscriptAiContext = inject(ManuscriptAiContextService);
+  private readonly manuscriptAiRequest = inject(ManuscriptAiRequestService);
   private readonly manuscriptStore = inject(ManuscriptStore);
   private readonly workspaceBookStore = inject(WorkspaceBookStore);
-  private readonly workspaceStore = inject(WorkspaceStore);
   private readonly codexContext = inject(CodexContextTrieService);
-  private readonly toastService = inject(ToastService);
 
   readonly contextHierarchy = this.manuscriptStore.bookHierarchy;
   readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
@@ -120,6 +112,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   selectedModel = signal<string | null>(null);
   private readonly modelSelectionInitialized = signal(false);
   private readonly requiresModelReselection = signal(false);
+  private activeResponseId: string | null = null;
 
   // Per-prompt generation settings persisted on the Tiptap node.
   wordCount = signal(DEFAULT_PROMPT_SETTINGS.wordCount);
@@ -383,96 +376,45 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   async onSubmit(): Promise<void> {
     const blockId = this.blockId();
 
-    if (this.isLoading()) return;
+    if (this.isLoading() || this.aiStreamEditor.hasActiveGeneration()) return;
 
     const text = this.promptText().trim();
     const pos = this.currentNodePosition();
 
     if (!text || pos === null || !this.isSelectedModelAvailable()) return;
 
-    const { provider, modelId } = this.resolveSelectedModel();
-
     this.refreshContextAvailability();
-    if (
-      this.contextCodexLoading()
-      || this.contextCodexError()
-      || this.contextCodexTrie() === null
-    ) {
-      this.toastService.error('Codex context is not available yet.', 'AI Context');
-      return;
-    }
-    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
-      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
-      return;
-    }
-
     const loadingSig = this.loadingSignal(blockId);
     loadingSig?.set('loading');
 
-    const bookId = this.workspaceStore.bookId();
-    if (!bookId) {
-      this.toastService.error('No active book is available.', 'AI Generation');
-      loadingSig?.set('idle');
-      return;
-    }
-
-    let storyContext: string;
     try {
-      storyContext = await this.manuscriptAiContext.buildContext({
+      const prepared = await this.manuscriptAiRequest.prepare({
         editor: this.editor(),
         promptPos: pos,
-        promptId: blockId,
-        promptText: text,
-        bookId,
-        bookTitle: this.workspaceStore.bookTitle(),
-        hierarchy: this.contextHierarchy(),
-        includeFullOutline: this.includeFullOutline(),
-        manuscriptRefs: this.contextManuscriptRefs(),
-        manualCodexEntryIds: this.contextCodexEntryIds(),
-        automaticCodexEntryIds: this.automaticallyIncludedCodexEntryIds(),
-        codexEntries: this.contextCodexEntries(),
-        wordCount: this.wordCount(),
-        pointOfView: this.pov(),
-        povCharacterId: this.povCharacter(),
-        vectorSearch: this.vectorSearch(),
+        promptAttrs: this.node().attrs,
+        userRequest: text,
+        contextPromptText: text,
       });
-    } catch (error) {
-      console.error('AI context preparation failed:', error);
-      this.toastService.error('Could not prepare the selected story context.', 'AI Context');
-      loadingSig?.set('idle');
-      return;
-    }
+      if (!prepared) return;
 
-    const latestPos = this.currentNodePosition();
-    if (latestPos === null) {
-      loadingSig?.set('idle');
-      return;
-    }
+      const latestPos = this.currentNodePosition();
+      if (latestPos === null) return;
 
-    try {
-      await this.aiStreamEditor.generateNewBlock(
-        this.editor(),
-        latestPos + this.node().nodeSize,
-        buildAiPrompt({
-          requestType: 'sceneBeat',
-          messages: [
-            {
-              role: 'user',
-              parts: [{ type: 'section', name: 'STORY CONTEXT', content: storyContext }],
-            },
-            {
-              role: 'user',
-              parts: [{ type: 'text', content: text }],
-            },
-          ],
-        }),
-        provider,
-        modelId,
-        this.reasoningMode(),
-        bookId,
-        blockId,
-      );
+      const responseId = crypto.randomUUID();
+      this.activeResponseId = responseId;
+      await this.aiStreamEditor.generateNewBlock({
+        editor: this.editor(),
+        insertPos: latestPos + this.node().nodeSize,
+        aiPrompt: prepared.aiPrompt,
+        provider: prepared.provider,
+        modelId: prepared.modelId,
+        reasoningMode: prepared.reasoningMode,
+        bookId: prepared.bookId,
+        responseId,
+        sourcePromptId: blockId,
+      });
     } finally {
+      this.activeResponseId = null;
       loadingSig?.set('idle');
     }
   }
@@ -481,7 +423,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const blockId = this.blockId();
     const loadingSig = this.loadingSignal(blockId);
 
-    await this.aiStreamEditor.stopGeneration(blockId);
+    if (this.activeResponseId) {
+      await this.aiStreamEditor.stopGeneration(this.activeResponseId);
+    }
 
     loadingSig?.set('idle');
   }
@@ -618,17 +562,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   /** Get the per-block loading signal managed by the AI stream service. */
   private loadingSignal(blockId: string): WritableSignal<LoadingStatus> | undefined {
     return this.aiStreamEditor.loadingState.get(blockId);
-  }
-
-  /** Translate the selected UI model into the provider/model IDs expected by the stream service. */
-  private resolveSelectedModel(): { provider: string; modelId: string } {
-    const selectedModelObj = this.allModels().find(model => model.id === this.selectedModel());
-
-    if (!selectedModelObj) {
-      return { provider: 'openrouter', modelId: '' };
-    }
-
-    return resolveAiModelTarget(selectedModelObj);
   }
 
   private contextTrackingInitialized = false;

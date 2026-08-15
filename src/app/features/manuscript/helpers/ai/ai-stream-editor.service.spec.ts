@@ -14,6 +14,8 @@ const AiGeneratedBlock = Node.create({
   content: 'block+',
   addAttributes() {
     return {
+      id: { default: '' },
+      sourcePromptId: { default: '' },
       isGenerating: { default: false },
     };
   },
@@ -78,22 +80,23 @@ describe('AiStreamEditorService', () => {
     });
     const editor = {} as Editor;
 
-    await service.generateNewBlock(
+    await service.generateNewBlock({
       editor,
-      10,
+      insertPos: 10,
       aiPrompt,
-      'openrouter',
-      'model-1',
-      false,
-      'book-1',
-      'block-1',
-    );
+      provider: 'openrouter',
+      modelId: 'model-1',
+      reasoningMode: false,
+      bookId: 'book-1',
+      responseId: 'response-1',
+      sourcePromptId: 'prompt-1',
+    });
 
     expect(insertInitialBlock).toHaveBeenCalled();
     expect(streamToBlock).toHaveBeenCalledWith(
       editor,
       12,
-      expect.objectContaining({ id: 'block-1' }),
+      expect.objectContaining({ id: 'response-1', sourcePromptId: 'prompt-1' }),
       aiPrompt,
       'openrouter',
       'model-1',
@@ -118,27 +121,73 @@ describe('AiStreamEditorService', () => {
     const editor = {} as Editor;
     const aiPrompt = textPrompt('Try again');
 
-    await service.regenerateExistingBlock(
+    await service.regenerateExistingBlock({
       editor,
-      20,
-      { id: 'block-1', promptText: 'Original prompt' },
+      blockPos: 20,
+      currentAttrs: {
+        id: 'response-1',
+        sourcePromptId: 'prompt-1',
+        promptText: 'Original prompt',
+      },
       aiPrompt,
-      'openrouter',
-      'model-1',
-      false,
-      'book-1',
-    );
+      provider: 'openrouter',
+      modelId: 'model-1',
+      reasoningMode: false,
+      bookId: 'book-1',
+      promptText: 'Updated prompt',
+    });
 
     expect(streamToBlock).toHaveBeenCalledWith(
       editor,
       21,
-      expect.objectContaining({ id: 'block-1' }),
+      expect.objectContaining({ id: 'response-1', sourcePromptId: 'prompt-1' }),
       aiPrompt,
       'openrouter',
       'model-1',
       false,
       'book-1',
     );
+    expect((service as any).markBlockAsGenerating).toHaveBeenCalledWith(
+      editor,
+      20,
+      expect.objectContaining({
+        promptText: 'Updated prompt',
+        provider: 'openrouter',
+        modelId: 'model-1',
+        reasoningMode: false,
+      }),
+    );
+
+    TestBed.resetTestingModule();
+  });
+
+  it('keeps responses for the same prompt independently addressable', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        AiStreamEditorService,
+        { provide: AiStreamService, useValue: { loadingState: new Map() } },
+      ],
+    });
+    const service = TestBed.inject(AiStreamEditorService);
+    const editor = {
+      state: {
+        doc: {
+          descendants: (callback: (node: any, pos: number) => boolean) => {
+            callback({
+              type: { name: 'aiGeneratedBlock' },
+              attrs: { id: 'response-1', sourcePromptId: 'prompt-1', isGenerating: true },
+            }, 5);
+            callback({
+              type: { name: 'aiGeneratedBlock' },
+              attrs: { id: 'response-2', sourcePromptId: 'prompt-1', isGenerating: true },
+            }, 20);
+          },
+        },
+      },
+    } as unknown as Editor;
+
+    expect((service as any).findGeneratingBlockPos(editor, 'response-1')).toBe(5);
+    expect((service as any).findGeneratingBlockPos(editor, 'response-2')).toBe(20);
 
     TestBed.resetTestingModule();
   });
@@ -173,7 +222,7 @@ describe('AiStreamEditorService', () => {
       'second line',
       '',
       '---',
-    ].join('\n'));
+    ].join('\n'), 'response-1');
 
     const content = (editor.getJSON().content?.[0].content ?? []) as any[];
 
@@ -214,7 +263,7 @@ describe('AiStreamEditorService', () => {
     const service = TestBed.inject(AiStreamEditorService);
     const editor = createGeneratingEditor();
 
-    (service as any).renderGeneratedMarkdown(editor, '**formatted**');
+    (service as any).renderGeneratedMarkdown(editor, '**formatted**', 'response-1');
 
     const block = editor.state.doc.nodeAt(0)!;
     service.applyBlock(editor, 0, block.nodeSize, block.content);
@@ -238,7 +287,11 @@ describe('AiStreamEditorService', () => {
     const service = TestBed.inject(AiStreamEditorService);
     const editor = createGeneratingEditor();
 
-    expect(() => (service as any).renderGeneratedMarkdown(editor, 'Plain text with **unfinished')).not.toThrow();
+    expect(() => (service as any).renderGeneratedMarkdown(
+      editor,
+      'Plain text with **unfinished',
+      'response-1',
+    )).not.toThrow();
     expect(editor.state.doc.textContent).toBe('Plain text with **unfinished');
 
     editor.destroy();
@@ -263,7 +316,11 @@ function createGeneratingEditor(): Editor {
       type: 'doc',
       content: [{
         type: 'aiGeneratedBlock',
-        attrs: { isGenerating: true },
+        attrs: {
+          id: 'response-1',
+          sourcePromptId: 'prompt-1',
+          isGenerating: true,
+        },
         content: [{ type: 'paragraph' }],
       }],
     },

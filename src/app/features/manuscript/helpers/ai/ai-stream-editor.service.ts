@@ -6,6 +6,30 @@ import type { BuiltAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 
 type GeneratedBlockAttrs = Record<string, any>;
 
+export interface GenerateNewBlockRequest {
+  editor: Editor;
+  insertPos: number;
+  aiPrompt: BuiltAiPrompt;
+  provider: string;
+  modelId: string;
+  reasoningMode: boolean;
+  bookId: string;
+  responseId: string;
+  sourcePromptId: string;
+}
+
+export interface RegenerateExistingBlockRequest {
+  editor: Editor;
+  blockPos: number;
+  currentAttrs: GeneratedBlockAttrs;
+  aiPrompt: BuiltAiPrompt;
+  provider: string;
+  modelId: string;
+  reasoningMode: boolean;
+  bookId: string;
+  promptText: string;
+}
+
 const AI_GENERATED_BLOCK_NODE = 'aiGeneratedBlock';
 const PARAGRAPH_NODE = 'paragraph';
 
@@ -42,22 +66,29 @@ export class AiStreamEditorService {
     await this.aiStreamService.stopStream(blockId);
   }
 
+  /** The shared AI transport currently supports one active generation at a time. */
+  hasActiveGeneration(): boolean {
+    return [...this.loadingState.values()].some(status => status() !== 'idle');
+  }
+
   /**
    * Inserts a new aiGeneratedBlock after a prompt node and streams into it.
    * Called by AiPromptComponent when the user submits a prompt.
    */
-  async generateNewBlock(
-    editor: Editor,
-    insertPos: number,
-    aiPrompt: BuiltAiPrompt,
-    provider: string,
-    modelId: string,
-    reasoningMode: boolean,
-    bookId: string,
-    blockId?: string,
-  ): Promise<void> {
+  async generateNewBlock({
+    editor,
+    insertPos,
+    aiPrompt,
+    provider,
+    modelId,
+    reasoningMode,
+    bookId,
+    responseId,
+    sourcePromptId,
+  }: GenerateNewBlockRequest): Promise<void> {
     const blockAttrs = this.createGeneratingBlockAttrs({
-      id: blockId || crypto.randomUUID(),
+      id: responseId,
+      sourcePromptId,
       promptText: aiPrompt.prompt,
       provider,
       modelId,
@@ -82,26 +113,28 @@ export class AiStreamEditorService {
    * Clears an existing aiGeneratedBlock and streams a fresh response into it.
    * Used by AiGeneratedBlockComponent for "Try Again" and "Modify".
    */
-  async regenerateExistingBlock(
-    editor: Editor,
-    blockPos: number,
-    currentAttrs: GeneratedBlockAttrs,
-    aiPrompt: BuiltAiPrompt,
-    provider: string,
-    modelId: string,
-    reasoningMode: boolean,
-    bookId: string,
-  ): Promise<void> {
+  async regenerateExistingBlock({
+    editor,
+    blockPos,
+    currentAttrs,
+    aiPrompt,
+    provider,
+    modelId,
+    reasoningMode,
+    bookId,
+    promptText,
+  }: RegenerateExistingBlockRequest): Promise<void> {
     const blockAttrs = this.createGeneratingBlockAttrs({
       id: currentAttrs['id'],
-      promptText: currentAttrs['promptText'] || '',
+      sourcePromptId: currentAttrs['sourcePromptId'],
+      promptText,
       provider,
       modelId,
       reasoningMode,
       reasoningText: '',
     });
 
-    this.markBlockAsGenerating(editor, blockPos, currentAttrs);
+    this.markBlockAsGenerating(editor, blockPos, blockAttrs);
 
     const startInsertPos = this.resetBlockContent(editor, blockPos);
     if (startInsertPos === null) return;
@@ -298,10 +331,10 @@ export class AiStreamEditorService {
       }
 
       if (hasError && !hasWrittenContent) {
-        this.removeGeneratingBlock(editor);
+        this.removeGeneratingBlock(editor, blockAttrs['id']);
       } else {
-        this.renderGeneratedMarkdown(editor, markdownSource);
-        this.finalizeGeneratingBlock(editor, reasoningBuffer);
+        this.renderGeneratedMarkdown(editor, markdownSource, blockAttrs['id']);
+        this.finalizeGeneratingBlock(editor, reasoningBuffer, blockAttrs['id']);
         this.stoppedBlocks.delete(blockAttrs['id']);
       }
     }
@@ -353,10 +386,10 @@ export class AiStreamEditorService {
   // ---------------------------------------------------------------------------
 
   /** Converts completed AI Markdown into regular Tiptap content inside its review block. */
-  private renderGeneratedMarkdown(editor: Editor, markdown: string): void {
+  private renderGeneratedMarkdown(editor: Editor, markdown: string, blockId: string): void {
     if (!markdown) return;
 
-    const blockPos = this.findGeneratingBlockPos(editor);
+    const blockPos = this.findGeneratingBlockPos(editor, blockId);
     if (blockPos === null || !editor.markdown) return;
 
     const blockNode = editor.state.doc.nodeAt(blockPos);
@@ -391,7 +424,7 @@ export class AiStreamEditorService {
     blockAttrs: GeneratedBlockAttrs,
     reasoningText: string
   ): void {
-    const resolvedPos = this.findGeneratingBlockPos(editor);
+    const resolvedPos = this.findGeneratingBlockPos(editor, blockAttrs['id']);
     if (resolvedPos === null) return;
 
     const tr = editor.state.tr.setNodeMarkup(resolvedPos, undefined, {
@@ -403,8 +436,8 @@ export class AiStreamEditorService {
     editor.view.dispatch(tr);
   }
 
-  private removeGeneratingBlock(editor: Editor): void {
-    const foundPos = this.findGeneratingBlockPos(editor);
+  private removeGeneratingBlock(editor: Editor, blockId: string): void {
+    const foundPos = this.findGeneratingBlockPos(editor, blockId);
     if (foundPos === null) return;
 
     const foundNode = editor.state.doc.nodeAt(foundPos);
@@ -415,8 +448,8 @@ export class AiStreamEditorService {
     editor.view.dispatch(tr);
   }
 
-  private finalizeGeneratingBlock(editor: Editor, reasoningText: string): void {
-    const foundPos = this.findGeneratingBlockPos(editor);
+  private finalizeGeneratingBlock(editor: Editor, reasoningText: string, blockId: string): void {
+    const foundPos = this.findGeneratingBlockPos(editor, blockId);
     if (foundPos === null) return;
 
     const foundNode = editor.state.doc.nodeAt(foundPos);
@@ -426,6 +459,7 @@ export class AiStreamEditorService {
       type: AI_GENERATED_BLOCK_NODE,
       attrs: {
         id: foundNode.attrs['id'],
+        sourcePromptId: foundNode.attrs['sourcePromptId'] || '',
         promptText: foundNode.attrs['promptText'] || '',
         provider: foundNode.attrs['provider'] || '',
         modelId: foundNode.attrs['modelId'] || '',
@@ -451,11 +485,15 @@ export class AiStreamEditorService {
    * Re-resolves the generating block because streamed insertions can shift the
    * original position captured when generation started.
    */
-  private findGeneratingBlockPos(editor: Editor): number | null {
+  private findGeneratingBlockPos(editor: Editor, blockId: string): number | null {
     let blockPos: number | null = null;
 
     editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === AI_GENERATED_BLOCK_NODE && node.attrs['isGenerating']) {
+      if (
+        node.type.name === AI_GENERATED_BLOCK_NODE
+        && node.attrs['id'] === blockId
+        && node.attrs['isGenerating']
+      ) {
         blockPos = pos;
         return false;
       }

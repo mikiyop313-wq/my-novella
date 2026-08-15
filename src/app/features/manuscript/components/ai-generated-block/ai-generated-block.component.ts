@@ -4,10 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+import {
+  ManuscriptAiRequestService,
+  buildManuscriptAiModificationText,
+} from '../../helpers/ai/manuscript-ai-request.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { ToastService } from '../../../../shared/services/toast.service';
-import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
-import { WorkspaceStore } from '../../../workspace/workspace.store';
 
 // ---------------------------------------------------------------------------
 //  Local Types
@@ -27,8 +29,8 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   // ---------------------------------------------------------------------------
 
   private readonly aiStreamEditor = inject(AiStreamEditorService);
+  private readonly manuscriptAiRequest = inject(ManuscriptAiRequestService);
   private readonly toastService = inject(ToastService);
-  private readonly workspaceStore = inject(WorkspaceStore);
 
 
   // ---------------------------------------------------------------------------
@@ -58,11 +60,8 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     return loadingSig ? loadingSig() !== 'idle' : false;
   });
 
-  promptText = computed(() => this.node().attrs['promptText'] || '');
-  provider = computed(() => this.node().attrs['provider'] || '');
   modelId = computed(() => this.node().attrs['modelId'] || '');
   reasoningText = computed(() => this.node().attrs['reasoningText'] || '');
-  reasoningMode = computed(() => this.node().attrs['reasoningMode'] || false);
 
   /** True only while the AI is actively streaming; false once the block is finalized. */
   isGenerating = computed(() => this.node().attrs['isGenerating'] === true);
@@ -146,12 +145,12 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   }
 
   tryAgain(): void {
-    if (this.isLoading()) return;
+    if (this.isLoading() || this.aiStreamEditor.hasActiveGeneration()) return;
 
     const loadingSig = this.loadingSignal(this.blockId());
     loadingSig?.set('loading');
 
-    this.generateNewText(this.promptText()).finally(() => {
+    this.regenerateResponse(null).finally(() => {
       loadingSig?.set('idle');
     });
   }
@@ -160,15 +159,15 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     const requestedChange = this.modifyPrompt().trim();
     const loadingSig = this.loadingSignal(this.blockId());
 
-    if (!requestedChange || this.isLoading()) return;
+    if (
+      !requestedChange
+      || this.isLoading()
+      || this.aiStreamEditor.hasActiveGeneration()
+    ) return;
 
-    const combinedPrompt = this.buildModifyPrompt(requestedChange);
-
-    this.isModifying.set(false);
-    this.modifyPrompt.set('');
     loadingSig?.set('loading');
 
-    await this.generateNewText(combinedPrompt).finally(() => {
+    await this.regenerateResponse(requestedChange).finally(() => {
       loadingSig?.set('idle');
     });
   }
@@ -211,6 +210,10 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     return this.node().attrs['id'] || '';
   }
 
+  private sourcePromptId(): string {
+    return this.node().attrs['sourcePromptId'] || '';
+  }
+
   /** Safely read the current node position from the Tiptap NodeView API. */
   private currentNodePosition(): number | null {
     if (typeof this.getPos !== 'function') return null;
@@ -223,40 +226,53 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
     return this.aiStreamEditor.loadingState.get(blockId);
   }
 
-  /** Build a regeneration prompt that preserves the original request and output. */
-  private buildModifyPrompt(requestedChange: string): string {
-    return [
-      `Original request: ${this.promptText()}`,
-      `Generated text:\n${this.node().textContent}`,
-      `User request to change:\n${requestedChange}`
-    ].join('\n\n');
-  }
-
-  private async generateNewText(prompt: string): Promise<void> {
-    const pos = this.currentNodePosition();
-    const bookId = this.workspaceStore.bookId();
-
-    if (pos === null) return;
-    if (!bookId) {
-      this.toastService.error('No active book is available.', 'AI Generation');
+  private async regenerateResponse(requestedChange: string | null): Promise<void> {
+    const editor = this.editor();
+    const source = this.manuscriptAiRequest.findPromptSource(editor, this.sourcePromptId());
+    if (!source) {
+      this.toastService.error('The original AI prompt could not be found.', 'AI Generation');
       return;
     }
 
-    await this.aiStreamEditor.regenerateExistingBlock(
-      this.editor(),
-      pos,
-      { ...this.node().attrs },
-      buildAiPrompt({
-        requestType: 'sceneBeat',
-        messages: [{
-          role: 'user',
-          parts: [{ type: 'text', content: prompt }],
-        }],
-      }),
-      this.provider(),
-      this.modelId(),
-      this.reasoningMode(),
-      bookId,
-    );
+    const promptText = typeof source.node.attrs['promptText'] === 'string'
+      ? source.node.attrs['promptText'].trim()
+      : '';
+    const modificationText = requestedChange
+      ? buildManuscriptAiModificationText({
+        promptText,
+        generatedText: this.node().textContent,
+        requestedChange,
+      })
+      : null;
+    const userRequest = modificationText?.userRequest ?? promptText;
+    const contextPromptText = modificationText?.contextPromptText ?? promptText;
+    const prepared = await this.manuscriptAiRequest.prepare({
+      editor,
+      promptPos: source.pos,
+      promptAttrs: source.node.attrs,
+      userRequest,
+      contextPromptText,
+    });
+    if (!prepared) return;
+
+    const blockPos = this.currentNodePosition();
+    if (blockPos === null) return;
+
+    if (requestedChange) {
+      this.isModifying.set(false);
+      this.modifyPrompt.set('');
+    }
+
+    await this.aiStreamEditor.regenerateExistingBlock({
+      editor,
+      blockPos,
+      currentAttrs: { ...this.node().attrs },
+      aiPrompt: prepared.aiPrompt,
+      provider: prepared.provider,
+      modelId: prepared.modelId,
+      reasoningMode: prepared.reasoningMode,
+      bookId: prepared.bookId,
+      promptText: prepared.promptText,
+    });
   }
 }
