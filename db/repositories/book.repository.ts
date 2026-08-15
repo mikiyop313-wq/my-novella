@@ -2,6 +2,7 @@ import { db } from '../index';
 import { books, categories, bookTags, language, subcategories, bookSettings } from '../schema';
 import { eq } from 'drizzle-orm';
 import { BookDto, CreateBookDto, UpdateBookDto, CategoryDto } from '../../shared/models/book.model';
+import { EmbeddingModel } from '../../shared/models/vector.model';
 
 type BookEntity = typeof books.$inferSelect;
 
@@ -28,7 +29,8 @@ export class BookRepository {
                     proseTense: bs.proseTense,
                     pointOfView: bs.pointOfView,
                     synopsisAiContext: bs.synopsisAiContext,
-                    povCharacterId: bs.povCharacterId
+                    povCharacterId: bs.povCharacterId,
+                    embeddingModel: bs.embeddingModel
                 }
             } : {})
         };
@@ -89,7 +91,8 @@ export class BookRepository {
             proseTense: settings?.proseTense || 'past',
             pointOfView: settings?.pointOfView || 'third_limited',
             synopsisAiContext: settings?.synopsisAiContext ?? true,
-            povCharacterId: settings?.povCharacterId || null
+            povCharacterId: settings?.povCharacterId || null,
+            embeddingModel: settings?.embeddingModel || 'local'
         });
 
         if (categoriesToSave && categoriesToSave.length > 0) {
@@ -133,6 +136,7 @@ export class BookRepository {
             if (settings.pointOfView !== undefined) updatePayload.pointOfView = settings.pointOfView;
             if (settings.synopsisAiContext !== undefined) updatePayload.synopsisAiContext = settings.synopsisAiContext;
             if (settings.povCharacterId !== undefined) updatePayload.povCharacterId = settings.povCharacterId;
+            if (settings.embeddingModel !== undefined) updatePayload.embeddingModel = settings.embeddingModel;
 
             if (Object.keys(updatePayload).length > 0) {
                 await db.update(bookSettings)
@@ -190,6 +194,14 @@ export class BookRepository {
                 subcategories: true
             }
         });
+    }
+
+    async getEmbeddingModel(bookId: string): Promise<EmbeddingModel> {
+        const settings = await db.query.bookSettings.findFirst({
+            where: eq(bookSettings.bookSettingId, bookId),
+            columns: { embeddingModel: true },
+        });
+        return settings?.embeddingModel ?? 'local';
     }
 }
 

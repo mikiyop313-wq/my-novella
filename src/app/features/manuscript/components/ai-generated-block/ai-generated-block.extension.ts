@@ -15,6 +15,11 @@ export const AiGeneratedBlockExtension = (injector: Injector) => {
 
     addAttributes() {
       return {
+        id: {
+          default: null,
+          parseHTML: element => element.getAttribute('data-id') || null,
+          renderHTML: attributes => attributes['id'] ? { 'data-id': attributes['id'] } : {},
+        },
         promptText: {
           default: '',
           parseHTML: element => element.getAttribute('data-prompt-text') || '',
@@ -34,6 +39,16 @@ export const AiGeneratedBlockExtension = (injector: Injector) => {
           default: false,
           parseHTML: element => element.getAttribute('data-is-generating') === 'true',
           renderHTML: attributes => attributes['isGenerating'] ? { 'data-is-generating': 'true' } : {},
+        },
+        reasoningText: {
+          default: '',
+          parseHTML: element => element.getAttribute('data-reasoning-text') || '',
+          renderHTML: attributes => attributes['reasoningText'] ? { 'data-reasoning-text': attributes['reasoningText'] } : {},
+        },
+        reasoningMode: {
+          default: false,
+          parseHTML: element => element.getAttribute('data-reasoning-mode') === 'true',
+          renderHTML: attributes => attributes['reasoningMode'] ? { 'data-reasoning-mode': 'true' } : {},
         }
       };
     },

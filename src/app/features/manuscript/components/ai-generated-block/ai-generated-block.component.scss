@@ -16,6 +16,57 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   }
 
+  .reasoning-block {
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-hover-bg);
+    overflow: hidden;
+    animation: slideDownFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+    .reasoning-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      user-select: none;
+      background: color-mix(in srgb, var(--color-surface) 50%, transparent);
+      transition: background 0.2s ease;
+
+      &:hover {
+        background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+      }
+
+      svg {
+        color: var(--color-text-secondary);
+        transition: transform 0.2s ease;
+        &.expanded {
+          transform: rotate(90deg);
+        }
+      }
+
+      .reasoning-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+    }
+
+    .reasoning-content {
+      padding: 1rem;
+      font-size: 0.95rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      font-family: monospace;
+      border-top: 1px solid var(--color-border);
+      background: color-mix(in srgb, var(--color-surface) 20%, transparent);
+      white-space: pre-wrap;
+    }
+  }
+
   .ai-generated-content {
     /* Use the theme's secondary text color for AI text */
     color: var(--color-text-secondary);
@@ -37,6 +88,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    animation: slideUpFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 
     .main-actions {
       display: flex;
@@ -153,5 +205,27 @@
 @keyframes rotate {
   100% {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes slideDownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

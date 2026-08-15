@@ -6,6 +6,7 @@ import { LibraryStore } from '../../../library/store/book.store';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
+import { AiStore } from '../../store/ai.store';
 
 @Component({
   selector: 'app-ai-prompt-settings',
@@ -19,15 +20,31 @@ export class AiPromptSettingsComponent {
   pov = input<string>('global');
   povCharacter = input<string | null>(null);
   vectorSearch = input<string>('global');
+  selectedModel = input<string | null>(null);
+  reasoningMode = input<boolean>(false);
 
   wordCountChange = output<number>();
   povChange = output<string>();
   povCharacterChange = output<string | null>();
   vectorSearchChange = output<string>();
+  reasoningModeChange = output<boolean>();
   reset = output<void>();
 
   private store = inject(ManuscriptStore);
   private libraryStore = inject(LibraryStore);
+  private aiStore = inject(AiStore);
+
+  /**
+   * Whether the currently selected model supports reasoning/thinking mode.
+   * Determined at the IPC layer by checking supported_parameters from the
+   * OpenRouter API response — no client-side heuristics needed.
+   */
+  supportsReasoning = computed(() => {
+    const modelId = this.selectedModel();
+    if (!modelId) return false;
+    const model = this.aiStore.models().find((m: any) => m.id === modelId);
+    return model?.supportsReasoning === true;
+  });
 
   bookId = computed(() => this.store.bookId());
   characters = signal<DropdownOption[]>([]); // Empty state by default
@@ -43,6 +60,14 @@ export class AiPromptSettingsComponent {
       const id = this.store.bookId();
       if (id) {
         this.libraryStore.loadBooks();
+      }
+    });
+
+    // When the model changes to one that doesn't support reasoning,
+    // automatically turn off reasoning mode.
+    effect(() => {
+      if (!this.supportsReasoning() && this.reasoningMode()) {
+        this.reasoningModeChange.emit(false);
       }
     });
   }
@@ -110,5 +135,10 @@ export class AiPromptSettingsComponent {
 
   onReset() {
     this.reset.emit();
+  }
+
+  onReasoningModeToggleChange(event: Event) {
+    const target = event.target as HTMLInputElement;
+    this.reasoningModeChange.emit(target.checked);
   }
 }

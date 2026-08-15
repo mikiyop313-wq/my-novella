@@ -5,7 +5,9 @@ export interface AiPromptRequest {
     temperature?: number;
     maxTokens?: number;
     systemMessage?: string;
+    reasoningMode?: boolean;
     onToken?: (token: string) => void;
+    onReasoningToken?: (token: string) => void;
 }
 
 export interface AiPromptResponse {

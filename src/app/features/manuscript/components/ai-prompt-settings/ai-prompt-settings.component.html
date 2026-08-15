@@ -31,20 +31,18 @@
             </span>
           </div>
           <div class="word-presets">
-            <button type="button" class="preset-chip" [class.active]="wordCount() === 250" (click)="onWordCountPresetSelect(250)">250</button>
-            <button type="button" class="preset-chip" [class.active]="wordCount() === 500" (click)="onWordCountPresetSelect(500)">500</button>
-            <button type="button" class="preset-chip" [class.active]="wordCount() === 1000" (click)="onWordCountPresetSelect(1000)">1000</button>
-            <button type="button" class="preset-chip" [class.active]="wordCount() === 1500" (click)="onWordCountPresetSelect(1500)">1500</button>
+            <button type="button" class="preset-chip" [class.active]="wordCount() === 250"
+              (click)="onWordCountPresetSelect(250)">250</button>
+            <button type="button" class="preset-chip" [class.active]="wordCount() === 500"
+              (click)="onWordCountPresetSelect(500)">500</button>
+            <button type="button" class="preset-chip" [class.active]="wordCount() === 1000"
+              (click)="onWordCountPresetSelect(1000)">1000</button>
+            <button type="button" class="preset-chip" [class.active]="wordCount() === 1500"
+              (click)="onWordCountPresetSelect(1500)">1500</button>
           </div>
           <div class="custom-words-input-wrapper">
-            <input 
-              type="number" 
-              min="10" 
-              max="10000" 
-              [value]="wordCount()" 
-              (input)="onCustomWordCountInput($event)"
-              placeholder="Custom words..."
-              class="custom-words-input" />
+            <input type="number" min="10" max="10000" [value]="wordCount()" (input)="onCustomWordCountInput($event)"
+              placeholder="Custom words..." class="custom-words-input" />
             <span class="input-suffix">words</span>
           </div>
         </div>
@@ -55,10 +53,7 @@
             POINT OF VIEW OVERRIDE
             <app-info-icon [infoText]="INFO.POV"></app-info-icon>
           </span>
-          <app-autocomplete-dropdown 
-            [showSearchBar]="false" 
-            [options]="povOptions()" 
-            [selectedValue]="pov()" 
+          <app-autocomplete-dropdown [showSearchBar]="false" [options]="povOptions()" [selectedValue]="pov()"
             (selectionChange)="onPOVSelectionChange($event)">
           </app-autocomplete-dropdown>
         </div>
@@ -70,26 +65,24 @@
             <app-info-icon [infoText]="INFO.POV_CHARACTER"></app-info-icon>
           </span>
           @if (characters().length > 0) {
-            <app-autocomplete-dropdown 
-              [options]="characters()" 
-              [selectedValue]="povCharacter()"
-              placeholder="Select character..."
-              (selectionChange)="onPovCharacterSelectionChange($event)">
-            </app-autocomplete-dropdown>
+          <app-autocomplete-dropdown [options]="characters()" [selectedValue]="povCharacter()"
+            placeholder="Select character..." (selectionChange)="onPovCharacterSelectionChange($event)">
+          </app-autocomplete-dropdown>
           } @else {
-            <div class="disabled-dropdown">
-              <span class="placeholder-text">No characters defined</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </div>
-            <div class="character-empty-state">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="empty-icon">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-              <span>No characters in Codex yet. You can create them in Codex.</span>
-            </div>
+          <div class="disabled-dropdown">
+            <span class="placeholder-text">No characters defined</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+          <div class="character-empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"
+              class="empty-icon">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span>No characters in Codex yet. You can create them in Codex.</span>
+          </div>
           }
         </div>
 
@@ -99,32 +92,67 @@
             VECTOR SEARCH CONTEXT
             <app-info-icon [infoText]="INFO.VECTOR_SEARCH"></app-info-icon>
           </span>
-          
+
           <div class="vector-controls">
             <!-- Main Toggle Switch -->
             <div class="toggle-control">
               <label class="premium-switch" [class.disabled]="vectorSearch() === 'global'">
-                <input 
-                  type="checkbox" 
-                  [checked]="vectorSearch() === 'global' || vectorSearch() === 'enabled'" 
-                  [disabled]="vectorSearch() === 'global'"
-                  (change)="onVectorSearchToggleChange($event)" />
+                <input type="checkbox" [checked]="vectorSearch() === 'global' || vectorSearch() === 'enabled'"
+                  [disabled]="vectorSearch() === 'global'" (change)="onVectorSearchToggleChange($event)" />
                 <span class="switch-slider"></span>
               </label>
               <span class="switch-status" [class.inherited]="vectorSearch() === 'global'">
-                {{ vectorSearch() === 'global' ? 'Inherited (Enabled)' : (vectorSearch() === 'enabled' ? 'Enabled' : 'Disabled') }}
+                {{ vectorSearch() === 'global' ? 'Inherited (Enabled)' : (vectorSearch() === 'enabled' ? 'Enabled' :
+                'Disabled') }}
               </span>
             </div>
-            
+
             <!-- Inherit Checkbox -->
             <label class="inherit-checkbox-label">
-              <input 
-                type="checkbox" 
-                [checked]="vectorSearch() === 'global'" 
-                (change)="onInheritVectorSearchChange($event)"
-                class="premium-checkbox" />
+              <input type="checkbox" [checked]="vectorSearch() === 'global'"
+                (change)="onInheritVectorSearchChange($event)" class="premium-checkbox" />
               <span>Inherit global setting</span>
             </label>
+          </div>
+        </div>
+
+        <!-- Reasoning Mode Toggle -->
+        <div class="form-group vector-group">
+          <span class="section-label">
+            REASONING MODE
+            <app-info-icon [infoText]="INFO.REASONING_MODE"></app-info-icon>
+          </span>
+
+          <div class="vector-controls">
+            <!-- Main Toggle Switch -->
+            <div class="toggle-control">
+              <label class="premium-switch" [class.disabled]="!supportsReasoning()">
+                <input type="checkbox" [checked]="supportsReasoning() && reasoningMode()"
+                  [disabled]="!supportsReasoning()" (change)="onReasoningModeToggleChange($event)" />
+                <span class="switch-slider"></span>
+              </label>
+              <span class="switch-status" [class.inherited]="!supportsReasoning()">
+                @if (!supportsReasoning()) {
+                Not Supported
+                } @else if (reasoningMode()) {
+                Enabled
+                } @else {
+                Disabled
+                }
+              </span>
+            </div>
+
+            @if (!supportsReasoning()) {
+            <div class="reasoning-unsupported-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"
+                style="flex-shrink:0">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span>The selected model does not support reasoning mode.</span>
+            </div>
+            }
           </div>
         </div>
       </div>
@@ -132,8 +160,10 @@
 
     <!-- Footer Actions -->
     <div class="modal-footer">
-      <button class="btn-reset" (click)="onReset()" [disabled]="wordCount() === 500 && pov() === 'global' && !povCharacter() && vectorSearch() === 'global'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12" class="reset-icon">
+      <button class="btn-reset" (click)="onReset()"
+        [disabled]="wordCount() === 500 && pov() === 'global' && !povCharacter() && vectorSearch() === 'global'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"
+          class="reset-icon">
           <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
         </svg>
         Reset Overrides

@@ -6,14 +6,22 @@ export class AIStateService {
     model: string = '';
     toastService = inject(ToastService);
 
-    async generate(promptText: string, model?: string, modelId?: string, onToken?: (token: string) => void) {
+    async generate(promptText: string, model?: string, modelId?: string, onToken?: (token: string) => void, reasoningMode?: boolean, onReasoningToken?: (token: string) => void) {
         // Default to openai if the user hasn't selected one yet
         const providerToUse = model || this.model || 'openrouter';
 
-        let cleanup: (() => void) | undefined;
+        let cleanupToken: (() => void) | undefined;
+        let cleanupReasoning: (() => void) | undefined;
+        
         if (onToken && window.electronAPI.onMessage) {
-            cleanup = window.electronAPI.onMessage('ai:generate-stream', (token: string) => {
+            cleanupToken = window.electronAPI.onMessage('ai:generate-stream', (token: string) => {
                 onToken(token);
+            });
+        }
+
+        if (onReasoningToken && window.electronAPI.onMessage) {
+            cleanupReasoning = window.electronAPI.onMessage('ai:generate-reasoning-stream', (token: string) => {
+                onReasoningToken(token);
             });
         }
 
@@ -21,13 +29,16 @@ export class AIStateService {
             const response = await window.electronAPI.invoke('ai:generate', {
                 model: providerToUse,
                 modelId: modelId,
-                prompt: promptText
+                prompt: promptText,
+                reasoningMode: reasoningMode ?? false
             });
 
-            if (cleanup) cleanup();
+            if (cleanupToken) cleanupToken();
+            if (cleanupReasoning) cleanupReasoning();
             return response.text;
         } catch (e) {
-            if (cleanup) cleanup();
+            if (cleanupToken) cleanupToken();
+            if (cleanupReasoning) cleanupReasoning();
             console.error("Failed to generate text:", e);
             if (e instanceof Error) {
                 if (e.message.includes('429')) {

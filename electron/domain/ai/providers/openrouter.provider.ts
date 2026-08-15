@@ -33,7 +33,8 @@ export class OpenRouterProvider implements AiProvider {
                     ],
                     temperature: request.temperature ?? 0.5,
                     max_tokens: request.maxTokens,
-                    stream: true
+                    stream: true,
+                    ...(request.reasoningMode ? { reasoning: { enabled: true, effort: 'medium' } } : {})
                 })
             });
 
@@ -62,10 +63,15 @@ export class OpenRouterProvider implements AiProvider {
                             try {
                                 const parsed = JSON.parse(dataStr);
                                 const token = parsed.choices[0]?.delta?.content || '';
+                                const reasoningToken = parsed.choices[0]?.delta?.reasoning || '';
                                 fullText += token;
 
                                 if (request.onToken && token) {
                                     request.onToken(token);
+                                }
+                                
+                                if (request.onReasoningToken && reasoningToken) {
+                                    request.onReasoningToken(reasoningToken);
                                 }
                             } catch (e) {
                                 console.error("Failed to parse stream chunk", e);
