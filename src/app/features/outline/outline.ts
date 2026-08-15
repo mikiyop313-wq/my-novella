@@ -147,10 +147,10 @@ export class Outline implements OnInit {
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
   resolvingSummaryModel = signal(false);
-  generatingSummarySceneId = computed(() => this.outlineAiGeneration.summaryTarget()?.sceneId ?? null);
   generatingCodexDetectionSceneId = computed(
     () => this.outlineAiGeneration.codexDetectionTarget()?.sceneId ?? null,
   );
+  private readonly activeSceneAiMenuId = signal<string | null>(null);
   readonly sceneAiMenuPositions: ConnectedPosition[] = [
     { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
     { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
@@ -344,6 +344,7 @@ export class Outline implements OnInit {
         trigger.close();
       }
     });
+    this.activeSceneAiMenuId.set(null);
   }
 
   openManuscript(mode: ManuscriptMode, id: string): void {
@@ -699,7 +700,8 @@ export class Outline implements OnInit {
     }));
   }
 
-  async prepareSceneAiMenu(): Promise<void> {
+  async prepareSceneAiMenu(sceneId: string): Promise<void> {
+    this.activeSceneAiMenuId.set(sceneId);
     const bookId = this.store.bookId();
     this.summaryModelResolution.set(null);
     this.codexDetectionModelResolution.set(null);
@@ -728,15 +730,15 @@ export class Outline implements OnInit {
   }
 
   isGeneratingSceneSummary(sceneId: string): boolean {
-    return this.generatingSummarySceneId() === sceneId;
+    const bookId = this.store.bookId();
+    return !!bookId && this.outlineAiGeneration.isSummaryTargetActive({ bookId, sceneId });
   }
 
   isSceneSummaryGenerationDisabled(sceneId: string): boolean {
     return !this.hasSceneProse(sceneId)
       || this.resolvingSummaryModel()
       || this.summaryModelResolution()?.status !== 'ready'
-      || this.generationSessions.hasActiveSession('outline-summary')
-      || this.generatingSummarySceneId() !== null;
+      || this.isGeneratingSceneSummary(sceneId);
   }
 
   summaryModelGuidance(): string {
@@ -800,8 +802,8 @@ export class Outline implements OnInit {
     const selectedModel = this.codexDetectionModelResolution();
     if (!bookId || selectedModel?.status !== 'ready') return;
 
-    this.outlineAiGeneration.codexDetectionTarget.set({ bookId, sceneId });
     const streamId = `outline-codex-detection:${sceneId}`;
+    this.outlineAiGeneration.codexDetectionTarget.set({ bookId, sceneId });
     try {
       const [proseBySceneId, existingEntries] = await Promise.all([
         this.electronService.invoke(
@@ -849,7 +851,7 @@ export class Outline implements OnInit {
     } finally {
       this.generationSessions.release(streamId);
       this.outlineAiGeneration.codexDetectionTarget.set(null);
-      this.closeAllMenus();
+      this.closeSceneAiMenu(sceneId);
     }
   }
 
@@ -860,8 +862,9 @@ export class Outline implements OnInit {
     const selectedModel = this.summaryModelResolution();
     if (!bookId || selectedModel?.status !== 'ready') return;
 
-    this.outlineAiGeneration.summaryTarget.set({ bookId, sceneId });
     const streamId = `outline-scene-summary:${sceneId}`;
+    const target = { bookId, sceneId, streamId };
+    if (!this.outlineAiGeneration.addSummaryTarget(target)) return;
 
     try {
       let proseDocument: TiptapJsonDoc | null;
@@ -888,6 +891,7 @@ export class Outline implements OnInit {
         const session = this.generationSessions.start({
           streamId,
           source: 'outline-summary',
+          scopeId: sceneId,
           bookId,
           aiPrompt: buildAiPrompt({
             requestType: 'summary',
@@ -925,9 +929,14 @@ export class Outline implements OnInit {
       }
     } finally {
       this.generationSessions.release(streamId);
-      this.outlineAiGeneration.summaryTarget.set(null);
-      this.closeAllMenus();
+      this.outlineAiGeneration.removeSummaryTarget(target);
+      this.closeSceneAiMenu(sceneId);
     }
+  }
+
+  private closeSceneAiMenu(sceneId: string): void {
+    if (this.activeSceneAiMenuId() !== sceneId) return;
+    this.closeAllMenus();
   }
 
   private async resolveSceneAiModel(

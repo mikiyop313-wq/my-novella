@@ -472,7 +472,7 @@ describe('Outline', () => {
   });
 
   it('resolves the active Summary and Codex Detection models when the scene AI menu opens', async () => {
-    await component.prepareSceneAiMenu();
+    await component.prepareSceneAiMenu('scene-1');
 
     expect(systemPromptModelService.resolveActiveModel).toHaveBeenCalledWith('book-1', 'summary');
     expect(systemPromptModelService.resolveActiveModel).toHaveBeenCalledWith(
@@ -533,7 +533,90 @@ describe('Outline', () => {
       id: 'scene-1',
       summary: 'New generated summary.',
     });
-    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+  });
+
+  it('generates summaries for different scenes concurrently and cleans up each scene independently', async () => {
+    showScenes([
+      { id: 'scene-1', summary: 'Old first summary', wordCount: 12 },
+      { id: 'scene-2', summary: 'Old second summary', wordCount: 18 },
+    ]);
+    component.summaryModelResolution.set(readySummaryModel());
+    electronService.invoke.mockImplementation((channel: string, payload: { sceneIds: string[] }) => {
+      if (channel !== 'manuscript:getScenesProse') return Promise.resolve(null);
+
+      const sceneId = payload.sceneIds[0];
+      return Promise.resolve({ [sceneId]: proseDocument(`${sceneId} prose.`) });
+    });
+    const first = createDeferred<string>();
+    const second = createDeferred<string>();
+    aiStreamService.streamText.mockImplementation((request: { streamId: string }) => (
+      request.streamId === 'outline-scene-summary:scene-1' ? first.promise : second.promise
+    ));
+
+    const firstGeneration = component.generateSceneSummary('scene-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(true);
+    expect(component.isSceneSummaryGenerationDisabled('scene-1')).toBe(true);
+    expect(component.isSceneSummaryGenerationDisabled('scene-2')).toBe(false);
+
+    const secondGeneration = component.generateSceneSummary('scene-2');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(component.isGeneratingSceneSummary('scene-2')).toBe(true);
+    expect(component.isSceneSummaryGenerationDisabled('scene-2')).toBe(true);
+    expect(aiStreamService.streamText).toHaveBeenCalledTimes(2);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'outline-summary',
+      scopeId: 'scene-1',
+    })).toBe(true);
+    expect(component.generationSessions.hasActiveScopedSession({
+      source: 'outline-summary',
+      scopeId: 'scene-2',
+    })).toBe(true);
+
+    await component.prepareSceneAiMenu('scene-2');
+    const closeAllMenus = vi.spyOn(component, 'closeAllMenus');
+    first.resolve('First generated summary');
+    await firstGeneration;
+
+    expect(store.updateScene).toHaveBeenCalledWith({
+      id: 'scene-1',
+      summary: 'First generated summary',
+    });
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
+    expect(component.isGeneratingSceneSummary('scene-2')).toBe(true);
+    expect(closeAllMenus).not.toHaveBeenCalled();
+
+    second.resolve('Second generated summary');
+    await secondGeneration;
+
+    expect(store.updateScene).toHaveBeenCalledWith({
+      id: 'scene-2',
+      summary: 'Second generated summary',
+    });
+    expect(component.isGeneratingSceneSummary('scene-2')).toBe(false);
+    expect(closeAllMenus).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a duplicate summary request for the same active scene', async () => {
+    showScene('', 12);
+    component.summaryModelResolution.set(readySummaryModel());
+    const deferred = createDeferred<string>();
+    aiStreamService.streamText.mockReturnValueOnce(deferred.promise);
+
+    const generation = component.generateSceneSummary('scene-1');
+    await Promise.resolve();
+    await component.generateSceneSummary('scene-1');
+
+    expect(electronService.invoke).toHaveBeenCalledTimes(1);
+    expect(aiStreamService.streamText).toHaveBeenCalledTimes(1);
+
+    deferred.resolve('Generated once');
+    await generation;
   });
 
   it('removes the model picker from the scene AI submenu', async () => {
@@ -655,7 +738,7 @@ describe('Outline', () => {
     await Promise.resolve();
     fixture.detectChanges();
 
-    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
     expect(fixture.nativeElement.querySelector('.scene-summary-label-spinner')).toBeNull();
     expect(document.querySelector('.scene-ai-menu')).toBeNull();
   });
@@ -673,7 +756,7 @@ describe('Outline', () => {
       'The scene has no prose to summarize.',
       'Outline',
     );
-    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
   });
 
   it('reports prose-loading failures without changing the existing summary', async () => {
@@ -686,7 +769,7 @@ describe('Outline', () => {
     expect(aiStreamService.streamText).not.toHaveBeenCalled();
     expect(store.updateScene).not.toHaveBeenCalled();
     expect(toastService.error).toHaveBeenCalledWith('Could not load prose', 'Outline');
-    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
   });
 
   it('preserves the existing summary when AI returns an empty response', async () => {
@@ -701,7 +784,7 @@ describe('Outline', () => {
       'AI returned an empty scene summary.',
       'Outline',
     );
-    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
   });
 
   it('preserves the existing summary and avoids duplicate provider toasts when AI fails', async () => {
@@ -715,7 +798,7 @@ describe('Outline', () => {
     expect(store.updateScene).not.toHaveBeenCalled();
     expect(toastService.error).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalled();
-    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
     consoleError.mockRestore();
   });
 
@@ -727,7 +810,7 @@ describe('Outline', () => {
     await component.generateSceneSummary('scene-1');
 
     expect(toastService.error).toHaveBeenCalledWith('Could not save summary', 'Outline');
-    expect(component.generatingSummarySceneId()).toBeNull();
+    expect(component.isGeneratingSceneSummary('scene-1')).toBe(false);
   });
 
   it('creates an act through the outline store', async () => {
@@ -1115,6 +1198,12 @@ describe('Outline', () => {
   });
 
   function showScene(summary: string, wordCount = 0): void {
+    showScenes([{ id: 'scene-1', summary, wordCount }]);
+  }
+
+  function showScenes(
+    scenes: Array<{ id: string; summary: string; wordCount: number }>,
+  ): void {
     store.bookHierarchy.set([
       {
         id: 'act-1',
@@ -1123,9 +1212,10 @@ describe('Outline', () => {
           {
             id: 'chapter-1',
             title: 'Chapter 1',
-            scenes: [
-              { id: 'scene-1', title: 'Scene 1', summary, wordCount },
-            ],
+            scenes: scenes.map((scene, index) => ({
+              ...scene,
+              title: `Scene ${index + 1}`,
+            })),
           },
         ],
       },
