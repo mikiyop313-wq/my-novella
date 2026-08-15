@@ -6,24 +6,31 @@ import { AngularNodeViewComponent } from 'ngx-tiptap';
 
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
+import { ManuscriptAiContextService } from '../../helpers/ai/manuscript-ai-context.service';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
+import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { CodexContextHighlightDirective } from '../../../codex/highlighting/codex-context-highlight.directive';
 import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
+import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { ToastService } from '../../../../shared/services/toast.service';
 import {
-  findDetectedCodexEntryIdsAbovePrompt,
+  findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
   removeAutomaticallyIncludedCodexEntryIds,
 } from './ai-prompt-codex-context';
 import {
   type AiContextSelection,
+  type AiManuscriptContextRef,
   type AiPromptModel,
   buildContextDropdownSections,
   buildModelDropdownSections,
   contextSelectionToValues,
   dropdownValuesToContextSelection,
+  restoreManuscriptContextRefs,
 } from './ai-prompt-dropdown-options';
 
 // ---------------------------------------------------------------------------
@@ -53,7 +60,13 @@ const DEFAULT_PROMPT_SETTINGS: PromptSettings = {
 @Component({
   selector: 'app-ai-prompt',
   standalone: true,
-  imports: [CommonModule, FormsModule, AiPromptSettingsComponent, AutocompleteDropdownComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    AiPromptSettingsComponent,
+    AutocompleteDropdownComponent,
+    CodexContextHighlightDirective,
+  ],
   templateUrl: './ai-prompt.component.html',
   styleUrl: './ai-prompt.component.scss'
 })
@@ -65,9 +78,12 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   private readonly aiStore = inject(AiStore);
   private readonly aiStreamEditor = inject(AiStreamEditorService);
+  private readonly manuscriptAiContext = inject(ManuscriptAiContextService);
   private readonly manuscriptStore = inject(ManuscriptStore);
   private readonly workspaceBookStore = inject(WorkspaceBookStore);
+  private readonly workspaceStore = inject(WorkspaceStore);
   private readonly codexContext = inject(CodexContextTrieService);
+  private readonly toastService = inject(ToastService);
 
   readonly contextHierarchy = this.manuscriptStore.bookHierarchy;
   readonly contextHierarchyLoading = this.workspaceBookStore.isLoadingBookHierarchy;
@@ -106,7 +122,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   // ---------------------------------------------------------------------------
 
   includeFullOutline = signal(false);
-  contextSceneIds = signal<string[]>([]);
+  contextManuscriptRefs = signal<AiManuscriptContextRef[]>([]);
   contextCodexEntryIds = signal<string[]>([]);
   automaticallyIncludedCodexEntryIds = signal<ReadonlySet<string>>(new Set());
 
@@ -155,9 +171,9 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   selectedContextValues = computed(() => contextSelectionToValues({
     includeFullOutline: this.includeFullOutline(),
-    sceneIds: this.contextSceneIds(),
+    manuscriptRefs: this.contextManuscriptRefs(),
     codexEntryIds: this.contextCodexEntryIds(),
-  }));
+  }, this.contextHierarchy()));
 
 
   // ---------------------------------------------------------------------------
@@ -239,6 +255,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
     this.promptText.set(text);
     this.updateAttributes()({ promptText: text });
+    this.scheduleContextAvailabilityRefresh();
   }
 
 
@@ -276,19 +293,23 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   }
 
   onContextChange(values: readonly string[]): void {
-    const selection: AiContextSelection = dropdownValuesToContextSelection(values);
-    const sceneIds = [...new Set(selection.sceneIds)];
+    const selection: AiContextSelection = dropdownValuesToContextSelection(
+      values,
+      this.contextHierarchy(),
+    );
+    const manuscriptRefs = [...new Set(selection.manuscriptRefs)];
     const codexEntryIds = removeAutomaticallyIncludedCodexEntryIds(
       [...new Set(selection.codexEntryIds)],
       this.automaticallyIncludedCodexEntryIds(),
     );
 
     this.includeFullOutline.set(selection.includeFullOutline);
-    this.contextSceneIds.set(sceneIds);
+    this.contextManuscriptRefs.set(manuscriptRefs);
     this.contextCodexEntryIds.set(codexEntryIds);
     this.updateAttributes()({
       includeFullOutline: selection.includeFullOutline,
-      contextSceneIds: sceneIds,
+      contextManuscriptRefs: manuscriptRefs,
+      contextSceneIds: [],
       contextCodexEntryIds: codexEntryIds,
     });
   }
@@ -309,6 +330,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     }
 
     this.updateAttributes()({ promptText: text });
+    this.scheduleContextAvailabilityRefresh();
   }
 
   clearPrompt(): void {
@@ -332,21 +354,67 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
     if (!text || pos === null) return;
 
-    const insertAt: number = pos + this.node().nodeSize;
     const { provider, modelId } = this.resolveSelectedModel();
+
+    this.refreshContextAvailability();
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) {
+      this.toastService.error('Codex context is not available yet.', 'AI Context');
+      return;
+    }
+    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
+      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
+      return;
+    }
 
     const loadingSig = this.loadingSignal(blockId);
     loadingSig?.set('loading');
 
+    let messages: AiChatMessage[];
+    try {
+      const bookId = this.workspaceStore.bookId();
+      if (!bookId) throw new Error('No active book is available.');
+
+      messages = await this.manuscriptAiContext.buildMessages({
+        editor: this.editor(),
+        promptPos: pos,
+        promptId: blockId,
+        promptText: text,
+        bookId,
+        bookTitle: this.workspaceStore.bookTitle(),
+        hierarchy: this.contextHierarchy(),
+        includeFullOutline: this.includeFullOutline(),
+        manuscriptRefs: this.contextManuscriptRefs(),
+        manualCodexEntryIds: this.contextCodexEntryIds(),
+        automaticCodexEntryIds: this.automaticallyIncludedCodexEntryIds(),
+        codexEntries: this.contextCodexEntries(),
+      });
+    } catch (error) {
+      console.error('AI context preparation failed:', error);
+      this.toastService.error('Could not prepare the selected story context.', 'AI Context');
+      loadingSig?.set('idle');
+      return;
+    }
+
+    const latestPos = this.currentNodePosition();
+    if (latestPos === null) {
+      loadingSig?.set('idle');
+      return;
+    }
+
     try {
       await this.aiStreamEditor.generateNewBlock(
         this.editor(),
-        insertAt,
+        latestPos + this.node().nodeSize,
         text,
         provider,
         modelId,
         this.reasoningMode(),
-        blockId
+        blockId,
+        messages,
       );
     } finally {
       loadingSig?.set('idle');
@@ -375,7 +443,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.promptText.set(attrs['promptText'] || '');
     this.selectedModel.set(attrs['selectedModel'] || null);
     this.includeFullOutline.set(attrs['includeFullOutline'] === true);
-    this.contextSceneIds.set(this.restoreStringArray(attrs['contextSceneIds']));
+    this.contextManuscriptRefs.set(restoreManuscriptContextRefs(
+      attrs['contextManuscriptRefs'],
+      attrs['contextSceneIds'],
+    ));
     this.contextCodexEntryIds.set(this.restoreStringArray(attrs['contextCodexEntryIds']));
     this.applySettings({
       wordCount: attrs['wordCount'] || DEFAULT_PROMPT_SETTINGS.wordCount,
@@ -440,9 +511,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     const pos = this.currentNodePosition();
     if (pos === null) return;
 
-    const detectedEntryIds = findDetectedCodexEntryIdsAbovePrompt(
+    const detectedEntryIds = findDetectedCodexEntryIdsForPrompt(
       this.editor().state.doc,
       pos,
+      this.promptText(),
       text => this.codexContext.findMatches(text),
     );
     const automaticallyIncludedEntryIds = getAutomaticallyIncludedCodexEntryIds(

@@ -25,8 +25,8 @@ import { SceneSummaryExtension } from './components/scene/scene-summary/scene-su
 import { UniqueIdExtension } from './extensions/unique-id.extension';
 import {
   buildEditorContentLazy,
+  extractManuscriptHierarchyById,
   extractTextFromManuscriptData,
-  getProseTextById,
 } from './helpers/content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
 import { AiStore } from '../../core/store/ai.store';
@@ -343,8 +343,11 @@ export class Manuscript implements OnInit, OnDestroy {
       return;
     }
 
-    const data = getProseTextById(this.editor);
-    if (!data || !Array.isArray(data)) return;
+    const activeEntityId = this.store.activeEntityId();
+    if (!activeEntityId) return;
+
+    const data = extractManuscriptHierarchyById(this.editor, activeEntityId);
+    if (!data) return;
 
     const items: ManuscriptIndexItem[] = [];
 

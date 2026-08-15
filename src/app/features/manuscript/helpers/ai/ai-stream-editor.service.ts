@@ -2,6 +2,7 @@ import { Injectable, WritableSignal, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
 
 import { AiStreamService, LoadingStatus } from '../../../../core/services/ai-stream.service';
+import type { AiChatMessage } from '../../../../core/services/ai-state.service';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
 
 type GeneratedBlockAttrs = Record<string, any>;
@@ -54,7 +55,8 @@ export class AiStreamEditorService {
     provider: string,
     modelId: string,
     reasoningMode: boolean,
-    blockId?: string
+    blockId?: string,
+    messages?: AiChatMessage[],
   ): Promise<void> {
     // Keep retrieval/vector context current before the AI request is built.
     await this.saver.flushParagraphVectorChanges();
@@ -76,7 +78,8 @@ export class AiStreamEditorService {
       promptText,
       provider,
       modelId,
-      reasoningMode
+      reasoningMode,
+      messages,
     );
   }
 
@@ -212,7 +215,8 @@ export class AiStreamEditorService {
     promptText: string,
     provider: string,
     modelId: string | undefined,
-    reasoningMode: boolean
+    reasoningMode: boolean,
+    messages?: AiChatMessage[],
   ): Promise<void> {
     let currentInsertPos = startInsertPos;
     let hasError = false;
@@ -260,6 +264,7 @@ export class AiStreamEditorService {
         provider,
         modelId,
         reasoningMode,
+        messages,
         onToken: token => {
           if (!token) return;
 

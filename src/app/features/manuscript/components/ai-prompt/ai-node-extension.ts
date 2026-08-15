@@ -18,6 +18,14 @@ const parseStringArrayAttribute = (element: HTMLElement, attribute: string): str
   }
 };
 
+const parseNullableStringArrayAttribute = (
+  element: HTMLElement,
+  attribute: string,
+): string[] | null => {
+  if (!element.hasAttribute(attribute)) return null;
+  return parseStringArrayAttribute(element, attribute);
+};
+
 export const AiPromptExtension = (injector: Injector) => {
   return Node.create({
     name: 'aiPrompt',
@@ -77,6 +85,13 @@ export const AiPromptExtension = (injector: Injector) => {
           default: [],
           parseHTML: element => parseStringArrayAttribute(element, 'data-context-scene-ids'),
           renderHTML: attributes => ({ 'data-context-scene-ids': JSON.stringify(attributes['contextSceneIds'] ?? []) }),
+        },
+        contextManuscriptRefs: {
+          default: null,
+          parseHTML: element => parseNullableStringArrayAttribute(element, 'data-context-manuscript-refs'),
+          renderHTML: attributes => Array.isArray(attributes['contextManuscriptRefs'])
+            ? { 'data-context-manuscript-refs': JSON.stringify(attributes['contextManuscriptRefs']) }
+            : {},
         },
         contextCodexEntryIds: {
           default: [],

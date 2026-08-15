@@ -2,7 +2,7 @@ import { Schema, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import type { CodexEntryDto, CodexTrackingSetting } from '../../../../../../shared/models/codex.model';
 import {
-  findDetectedCodexEntryIdsAbovePrompt,
+  findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
   removeAutomaticallyIncludedCodexEntryIds,
 } from './ai-prompt-codex-context';
@@ -20,9 +20,20 @@ describe('AI prompt Codex context', () => {
       paragraph('Future Villain'),
     ]);
 
-    expect(findDetectedCodexEntryIdsAbovePrompt(doc, findNodePos(doc, 'aiPrompt'), findMatches)).toEqual(
+    expect(findDetectedCodexEntryIdsForPrompt(doc, findNodePos(doc, 'aiPrompt'), '', findMatches)).toEqual(
       new Set(['mara']),
     );
+  });
+
+  it('detects prompt keywords without joining terms across prompt lines', () => {
+    const doc = createDoc([sceneSummary(), aiPrompt()]);
+
+    expect(findDetectedCodexEntryIdsForPrompt(
+      doc,
+      findNodePos(doc, 'aiPrompt'),
+      'Ask Mara Vale about the key.\nSilver\nKey',
+      findMatches,
+    )).toEqual(new Set(['mara']));
   });
 
   it('does not reuse a previous scene after an act or chapter boundary', () => {
@@ -33,7 +44,12 @@ describe('AI prompt Codex context', () => {
       aiPrompt(),
     ]);
 
-    expect(findDetectedCodexEntryIdsAbovePrompt(doc, findNodePos(doc, 'aiPrompt'), findMatches).size).toBe(0);
+    expect(findDetectedCodexEntryIdsForPrompt(
+      doc,
+      findNodePos(doc, 'aiPrompt'),
+      '',
+      findMatches,
+    ).size).toBe(0);
   });
 
   it('applies only the automatic tracking modes and removes their persisted selections', () => {

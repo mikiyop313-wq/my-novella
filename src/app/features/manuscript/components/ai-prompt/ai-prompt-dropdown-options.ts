@@ -6,9 +6,15 @@ import type {
   DropdownSection,
 } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 
+export type AiManuscriptContextRef =
+  | 'novel'
+  | `act:${string}`
+  | `chapter:${string}`
+  | `scene:${string}`;
+
 export interface AiContextSelection {
   includeFullOutline: boolean;
-  sceneIds: string[];
+  manuscriptRefs: AiManuscriptContextRef[];
   codexEntryIds: string[];
 }
 
@@ -51,10 +57,10 @@ const DIRECT_PROVIDER_NAMES: Record<string, string> = {
 
 export function buildContextDropdownSections(source: AiContextDropdownSource): DropdownSection<string>[] {
   const activeCodexEntries = [...source.codexEntries]
-    .filter(entry => entry.status === 'active')
+    .filter(entry => entry.status === 'active' && entry.trackingSetting !== 'never_include')
     .sort((a, b) => a.name.localeCompare(b.name));
   const allScenes = scenesForActs(source.hierarchy);
-  const allSceneValues = allScenes.map(scene => sceneValue(scene.id));
+  const allManuscriptValues = manuscriptValuesForNovel(source.hierarchy);
 
   const outlineOptions: DropdownOption<string>[] = [{
     value: 'outline',
@@ -68,7 +74,7 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
       label: 'Novel',
       count: allScenes.length,
       disabled: allScenes.length === 0,
-      selectionValues: allSceneValues,
+      selectionValues: allManuscriptValues,
       submenu: buildNovelMenu(source.hierarchy),
     });
   }
@@ -106,21 +112,92 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
   ];
 }
 
-export function contextSelectionToValues(selection: AiContextSelection): string[] {
-  return [
-    ...(selection.includeFullOutline ? ['outline'] : []),
-    ...selection.sceneIds.map(sceneValue),
-    ...selection.codexEntryIds.map(codexValue),
-  ];
+export function contextSelectionToValues(
+  selection: AiContextSelection,
+  hierarchy: readonly ActDto[],
+): string[] {
+  const values = new Set<string>();
+
+  if (selection.includeFullOutline) values.add('outline');
+
+  const refs = new Set<AiManuscriptContextRef>(selection.manuscriptRefs);
+  if (refs.has('novel')) {
+    manuscriptValuesForNovel(hierarchy).forEach(value => values.add(value));
+  } else {
+    for (const act of hierarchy) {
+      if (refs.has(actValue(act.id))) {
+        manuscriptValuesForAct(act).forEach(value => values.add(value));
+        continue;
+      }
+
+      for (const chapter of act.chapters ?? []) {
+        if (refs.has(chapterValue(chapter.id))) {
+          manuscriptValuesForChapter(chapter).forEach(value => values.add(value));
+          continue;
+        }
+
+        for (const scene of chapter.scenes ?? []) {
+          if (refs.has(sceneValue(scene.id))) values.add(sceneValue(scene.id));
+        }
+      }
+    }
+  }
+
+  selection.codexEntryIds.forEach(id => values.add(codexValue(id)));
+  return [...values];
 }
 
-export function dropdownValuesToContextSelection(values: readonly string[]): AiContextSelection {
-  const uniqueValues = [...new Set(values)];
+export function dropdownValuesToContextSelection(
+  values: readonly string[],
+  hierarchy: readonly ActDto[],
+): AiContextSelection {
+  const selected = new Set(values);
+  const manuscriptRefs: AiManuscriptContextRef[] = [];
+
+  const novelValues = manuscriptValuesForNovel(hierarchy);
+  if (novelValues.length > 1 && novelValues.every(value => selected.has(value))) {
+    manuscriptRefs.push('novel');
+  } else {
+    for (const act of hierarchy) {
+      const actValues = manuscriptValuesForAct(act);
+      if (actValues.length > 1 && actValues.every(value => selected.has(value))) {
+        manuscriptRefs.push(actValue(act.id));
+        continue;
+      }
+
+      for (const chapter of act.chapters ?? []) {
+        const chapterValues = manuscriptValuesForChapter(chapter);
+        if (chapterValues.length > 1 && chapterValues.every(value => selected.has(value))) {
+          manuscriptRefs.push(chapterValue(chapter.id));
+          continue;
+        }
+
+        for (const scene of chapter.scenes ?? []) {
+          const value = sceneValue(scene.id);
+          if (selected.has(value)) manuscriptRefs.push(value);
+        }
+      }
+    }
+  }
+
   return {
-    includeFullOutline: uniqueValues.includes('outline'),
-    sceneIds: uniqueValues.filter(value => value.startsWith('scene:')).map(value => value.slice(6)),
-    codexEntryIds: uniqueValues.filter(value => value.startsWith('codex:')).map(value => value.slice(6)),
+    includeFullOutline: selected.has('outline'),
+    manuscriptRefs,
+    codexEntryIds: [...selected]
+      .filter(value => value.startsWith('codex:'))
+      .map(value => value.slice(6)),
   };
+}
+
+export function restoreManuscriptContextRefs(
+  manuscriptRefs: unknown,
+  legacySceneIds: unknown,
+): AiManuscriptContextRef[] {
+  if (manuscriptRefs === null || manuscriptRefs === undefined) {
+    return uniqueStrings(legacySceneIds).map(id => sceneValue(id));
+  }
+
+  return uniqueStrings(manuscriptRefs).filter(isManuscriptContextRef);
 }
 
 function buildNovelMenu(hierarchy: readonly ActDto[]): DropdownMenu<string> {
@@ -129,11 +206,11 @@ function buildNovelMenu(hierarchy: readonly ActDto[]): DropdownMenu<string> {
       key: 'acts',
       options: hierarchy.map(act => {
         const scenes = scenesForAct(act);
-        const values = scenes.map(scene => sceneValue(scene.id));
+        const values = manuscriptValuesForAct(act);
         return {
           value: `branch:act:${act.id}`,
           label: act.title || 'Untitled Act',
-          disabled: values.length === 0,
+          disabled: scenes.length === 0,
           selectionValues: values,
           submenu: buildActMenu(act),
         };
@@ -148,11 +225,11 @@ function buildActMenu(act: ActDto): DropdownMenu<string> {
       key: `chapters:${act.id}`,
       options: (act.chapters ?? []).map(chapter => {
         const scenes = scenesForChapter(chapter);
-        const values = scenes.map(scene => sceneValue(scene.id));
+        const values = manuscriptValuesForChapter(chapter);
         return {
           value: `branch:chapter:${chapter.id}`,
           label: chapter.title || 'Untitled Chapter',
-          disabled: values.length === 0,
+          disabled: scenes.length === 0,
           selectionValues: values,
           submenu: buildChapterMenu(chapter),
         };
@@ -199,7 +276,7 @@ function buildCodexCategoryOption(
             searchTerms: entry.alias ? [entry.alias] : undefined,
             disabled: automaticallyIncluded,
             hint: automaticallyIncluded
-              ? entry.trackingSetting === 'always_include' ? 'Always included' : 'Detected above'
+              ? entry.trackingSetting === 'always_include' ? 'Always included' : 'Detected in context'
               : undefined,
           };
         }),
@@ -282,8 +359,16 @@ function directProviderDisplayName(providerId: string): string {
   return DIRECT_PROVIDER_NAMES[providerId] ?? providerId.charAt(0).toUpperCase() + providerId.slice(1);
 }
 
-function sceneValue(id: string): string {
+function sceneValue(id: string): `scene:${string}` {
   return `scene:${id}`;
+}
+
+function actValue(id: string): `act:${string}` {
+  return `act:${id}`;
+}
+
+function chapterValue(id: string): `chapter:${string}` {
+  return `chapter:${id}`;
 }
 
 function codexValue(id: string): string {
@@ -300,4 +385,28 @@ function scenesForAct(act: ActDto): SceneDto[] {
 
 function scenesForChapter(chapter: ChapterDto): SceneDto[] {
   return [...(chapter.scenes ?? [])];
+}
+
+function manuscriptValuesForNovel(hierarchy: readonly ActDto[]): string[] {
+  return ['novel', ...hierarchy.flatMap(manuscriptValuesForAct)];
+}
+
+function manuscriptValuesForAct(act: ActDto): string[] {
+  return [actValue(act.id), ...(act.chapters ?? []).flatMap(manuscriptValuesForChapter)];
+}
+
+function manuscriptValuesForChapter(chapter: ChapterDto): string[] {
+  return [chapterValue(chapter.id), ...scenesForChapter(chapter).map(scene => sceneValue(scene.id))];
+}
+
+function uniqueStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))];
+}
+
+function isManuscriptContextRef(value: string): value is AiManuscriptContextRef {
+  return value === 'novel'
+    || value.startsWith('act:')
+    || value.startsWith('chapter:')
+    || value.startsWith('scene:');
 }

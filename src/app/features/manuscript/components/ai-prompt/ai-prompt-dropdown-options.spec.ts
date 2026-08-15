@@ -7,6 +7,7 @@ import {
   buildModelDropdownSections,
   contextSelectionToValues,
   dropdownValuesToContextSelection,
+  restoreManuscriptContextRefs,
 } from './ai-prompt-dropdown-options';
 
 describe('AI prompt dropdown options', () => {
@@ -27,8 +28,22 @@ describe('AI prompt dropdown options', () => {
 
     expect(sections[0].title).toBe('Outline & Novel');
     expect(novel.count).toBe(3);
-    expect(novel.selectionValues).toEqual(['scene:scene-1', 'scene:scene-2', 'scene:scene-3']);
-    expect(act.selectionValues).toEqual(['scene:scene-1', 'scene:scene-2']);
+    expect(novel.selectionValues).toEqual([
+      'novel',
+      'act:act-1',
+      'chapter:chapter-1',
+      'scene:scene-1',
+      'scene:scene-2',
+      'act:act-2',
+      'chapter:chapter-2',
+      'scene:scene-3',
+    ]);
+    expect(act.selectionValues).toEqual([
+      'act:act-1',
+      'chapter:chapter-1',
+      'scene:scene-1',
+      'scene:scene-2',
+    ]);
     expect(chapter.submenu!.sections[0].options.map(option => option.label)).toEqual(['Opening', 'Crossroads']);
   });
 
@@ -39,6 +54,7 @@ describe('AI prompt dropdown options', () => {
         createCodexEntry('char-2', 'Zara', 'character'),
         createCodexEntry('char-1', 'Ari', 'character', 'active', 'The Protagonist'),
         createCodexEntry('archived', 'Old Hero', 'character', 'archived'),
+        createCodexEntry('never', 'Secret Hero', 'character', 'active', null, 'never_include'),
       ],
       automaticallyIncludedCodexEntryIds: new Set(),
       hierarchyLoading: false,
@@ -84,7 +100,7 @@ describe('AI prompt dropdown options', () => {
       hint: entry.hint,
     }))).toEqual([
       { value: 'codex:always', disabled: true, hint: 'Always included' },
-      { value: 'codex:detected', disabled: true, hint: 'Detected above' },
+      { value: 'codex:detected', disabled: true, hint: 'Detected in context' },
       { value: 'codex:manual', disabled: false, hint: undefined },
     ]);
     expect(locations.disabled).toBe(false);
@@ -96,16 +112,58 @@ describe('AI prompt dropdown options', () => {
   it('round-trips persisted context state and ignores branch identifiers', () => {
     const values = contextSelectionToValues({
       includeFullOutline: true,
-      sceneIds: ['scene-1'],
+      manuscriptRefs: ['scene:scene-1'],
       codexEntryIds: ['entry-1'],
-    });
+    }, createHierarchy());
 
     expect(values).toEqual(['outline', 'scene:scene-1', 'codex:entry-1']);
-    expect(dropdownValuesToContextSelection([...values, 'branch:novel', 'scene:scene-1'])).toEqual({
+    expect(dropdownValuesToContextSelection(
+      [...values, 'branch:novel', 'scene:scene-1'],
+      createHierarchy(),
+    )).toEqual({
       includeFullOutline: true,
-      sceneIds: ['scene-1'],
+      manuscriptRefs: ['scene:scene-1'],
       codexEntryIds: ['entry-1'],
     });
+  });
+
+  it('canonicalizes aggregate markers without promoting manually selected scenes', () => {
+    const hierarchy = createHierarchy();
+    const chapterValues = [
+      'chapter:chapter-1',
+      'scene:scene-1',
+      'scene:scene-2',
+    ];
+
+    expect(dropdownValuesToContextSelection(chapterValues, hierarchy).manuscriptRefs)
+      .toEqual(['chapter:chapter-1']);
+    expect(dropdownValuesToContextSelection(
+      ['scene:scene-1', 'scene:scene-2'],
+      hierarchy,
+    ).manuscriptRefs).toEqual(['scene:scene-1', 'scene:scene-2']);
+  });
+
+  it('invalidates incomplete ancestors while preserving complete sibling aggregates', () => {
+    const hierarchy = createHierarchy();
+    const selectedNovel = contextSelectionToValues({
+      includeFullOutline: false,
+      manuscriptRefs: ['novel'],
+      codexEntryIds: [],
+    }, hierarchy);
+
+    const result = dropdownValuesToContextSelection(
+      selectedNovel.filter(value => value !== 'scene:scene-1'),
+      hierarchy,
+    );
+
+    expect(result.manuscriptRefs).toEqual(['scene:scene-2', 'act:act-2']);
+  });
+
+  it('restores legacy scene IDs only when the new attribute is absent', () => {
+    expect(restoreManuscriptContextRefs(null, ['scene-1', 'scene-1'])).toEqual(['scene:scene-1']);
+    expect(restoreManuscriptContextRefs([], ['scene-1'])).toEqual([]);
+    expect(restoreManuscriptContextRefs(['chapter:chapter-1'], ['scene-1']))
+      .toEqual(['chapter:chapter-1']);
   });
 
   it('exposes loading and error messages without stale selectable branches', () => {

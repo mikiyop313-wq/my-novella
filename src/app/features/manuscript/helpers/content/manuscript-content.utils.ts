@@ -112,68 +112,142 @@ export function buildScenePatch(prose: TiptapJsonDoc | null): TiptapNode[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Reads the editor document back into nested manuscript DTOs.
- * If `id` is provided, returns the matching act/chapter/scene; otherwise
- * returns the whole document as an array of acts.
+ * Extracts a manuscript entity as an act-rooted hierarchy. Unrelated sibling
+ * entities are omitted, while the ancestors of chapter and scene targets are
+ * retained so consumers can preserve manuscript structure.
+ *
+ * When `beforeAiPromptId` is supplied, `id` must identify a scene. The scene's
+ * prose is truncated immediately before that prompt node.
  */
-export function getProseTextById(editor: Editor | undefined, id?: string): ManuscriptDataDto | ActDto[] | null {
+export function extractManuscriptHierarchyById(
+  editor: Editor | undefined,
+  id: string,
+  beforeAiPromptId?: string,
+): ActDto[] | null {
   if (!editor || !editor.state?.doc) return null;
 
-  const acts: ActDto[] = [];
+  const result: ActDto[] = [];
+  let targetKind: 'book' | 'act' | 'chapter' | 'scene' | null = null;
   let currentAct: ActDto | null = null;
   let currentChapter: ChapterDto | null = null;
   let currentScene: SceneDto | null = null;
+  let resultAct: ActDto | null = null;
+  let resultChapter: ChapterDto | null = null;
+  let resultScene: SceneDto | null = null;
+  let foundPrompt = beforeAiPromptId === undefined;
 
-  editor.state.doc.forEach(node => {
+  const doc = editor.state.doc;
+  for (let index = 0; index < doc.childCount; index++) {
+    const node = doc.child(index);
+
     if (node.type.name === 'actHeader') {
+      if (targetKind && targetKind !== 'book') break;
+
       currentAct = createActFromNode(node);
-      acts.push(currentAct);
       currentChapter = null;
       currentScene = null;
-      return;
+      resultChapter = null;
+      resultScene = null;
+
+      if (targetKind === 'book') {
+        resultAct = currentAct;
+        result.push(resultAct);
+      } else if (currentAct.bookId === id) {
+        if (beforeAiPromptId !== undefined) return null;
+        targetKind = 'book';
+        resultAct = currentAct;
+        result.push(resultAct);
+      } else if (currentAct.id === id) {
+        if (beforeAiPromptId !== undefined) return null;
+        targetKind = 'act';
+        resultAct = currentAct;
+        result.push(resultAct);
+      } else {
+        resultAct = null;
+      }
+      continue;
     }
 
     if (node.type.name === 'chapterHeader') {
+      if (targetKind === 'chapter' || targetKind === 'scene') break;
+
       currentChapter = createChapterFromNode(node, currentAct?.id || '');
-
-      if (!currentAct) {
-        currentAct = createEmptyAct([currentChapter]);
-        acts.push(currentAct);
-      } else {
-        currentAct.chapters!.push(currentChapter);
-      }
-
       currentScene = null;
-      return;
+      resultScene = null;
+
+      if (targetKind === 'book' || targetKind === 'act') {
+        if (!resultAct) continue;
+        resultChapter = currentChapter;
+        resultAct.chapters!.push(resultChapter);
+      } else if (currentChapter.id === id) {
+        if (beforeAiPromptId !== undefined) return null;
+        targetKind = 'chapter';
+        resultAct = cloneActWithoutChildren(
+          currentAct ?? createEmptyAct([], currentChapter.actId),
+        );
+        resultChapter = currentChapter;
+        resultAct.chapters!.push(resultChapter);
+        result.push(resultAct);
+      } else {
+        resultChapter = null;
+      }
+      continue;
     }
 
     if (node.type.name === 'sceneSummary') {
+      if (targetKind === 'scene') break;
+
       currentScene = createSceneFromNode(node, currentChapter?.id || '');
-
-      if (!currentChapter) {
-        currentChapter = createEmptyChapter(currentAct?.id || '', [currentScene]);
-
-        if (!currentAct) {
-          currentAct = createEmptyAct([currentChapter]);
-          acts.push(currentAct);
-        } else {
-          currentAct.chapters!.push(currentChapter);
+      if (targetKind === 'book' || targetKind === 'act' || targetKind === 'chapter') {
+        if (!resultChapter) {
+          resultChapter = createEmptyChapter(
+            currentAct?.id || '',
+            [],
+            currentScene.chapterId,
+          );
+          resultAct?.chapters!.push(resultChapter);
         }
+        resultScene = currentScene;
+        resultChapter.scenes!.push(resultScene);
+      } else if (currentScene.id === id) {
+        targetKind = 'scene';
+        const ancestorChapter = currentChapter
+          ?? createEmptyChapter(currentAct?.id || '', [], currentScene.chapterId);
+        resultAct = cloneActWithoutChildren(
+          currentAct ?? createEmptyAct([], ancestorChapter.actId),
+        );
+        resultChapter = cloneChapterWithoutScenes(ancestorChapter);
+        resultScene = currentScene;
+        resultChapter.scenes!.push(resultScene);
+        resultAct.chapters!.push(resultChapter);
+        result.push(resultAct);
       } else {
-        currentChapter.scenes!.push(currentScene);
+        resultScene = null;
       }
-
-      return;
+      continue;
     }
 
-    if (currentScene) {
-      currentScene.prose!.content.push(node.toJSON());
+    if (!resultScene) continue;
+
+    if (node.type.name === 'sceneSkeleton') {
+      resultScene.prose = null;
+      continue;
     }
-  });
 
-  if (!id) return acts;
+    if (targetKind === 'scene' && beforeAiPromptId !== undefined) {
+      if (node.type.name === 'aiPrompt' && node.attrs['id'] === beforeAiPromptId) {
+        foundPrompt = true;
+        continue;
+      }
+      if (foundPrompt) continue;
+    }
 
-  return findManuscriptDataById(acts, id);
+    resultScene.prose?.content.push(node.toJSON());
+  }
+
+  if (!targetKind) return null;
+  if (targetKind === 'scene' && !foundPrompt) return null;
+  return result;
 }
 
 export function extractTextFromJsonNode(node: any): string {
@@ -214,8 +288,8 @@ export function extractTextFromManuscriptData(data: ManuscriptDataDto | ActDto[]
 /**
  * Returns manuscript context as simple hierarchical HTML for the AI request.
  */
-export function getAiContextById(editor: Editor | undefined, id?: string): string {
-  const data = getProseTextById(editor, id);
+export function getAiContextById(editor: Editor | undefined, id: string): string {
+  const data = extractManuscriptHierarchyById(editor, id);
   if (!data) return '';
 
   return buildHtmlFromManuscriptData(data);
@@ -253,8 +327,9 @@ export function buildHtmlFromManuscriptData(data: ManuscriptDataDto | ActDto[] |
  * Counts the total words in a scene by rebuilding that scene from the editor.
  */
 export function countWordsInScene(editor: Editor | undefined, sceneId: string): number {
-  const scene = getProseTextById(editor, sceneId) as SceneDto | null;
-  if (!scene || !('prose' in scene)) return 0;
+  const hierarchy = extractManuscriptHierarchyById(editor, sceneId);
+  const scene = hierarchy?.[0]?.chapters?.[0]?.scenes?.[0];
+  if (!scene) return 0;
 
   const text = extractTextFromManuscriptData(scene);
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -283,21 +358,27 @@ function pushSceneNodes(content: TiptapNode[], scene: SceneDto): void {
 function pushActHeaderNode(content: TiptapNode[], act: ActDto): void {
   content.push({
     type: 'actHeader',
-    attrs: { id: act.id, title: act.title, position: act.position },
+    attrs: { id: act.id, bookId: act.bookId, title: act.title, position: act.position },
   });
 }
 
 function pushChapterHeaderNode(content: TiptapNode[], chapter: ChapterDto): void {
   content.push({
     type: 'chapterHeader',
-    attrs: { id: chapter.id, title: chapter.title, position: chapter.position },
+    attrs: { id: chapter.id, actId: chapter.actId, title: chapter.title, position: chapter.position },
   });
 }
 
 function pushSceneSummaryNode(content: TiptapNode[], scene: SceneDto): void {
   content.push({
     type: 'sceneSummary',
-    attrs: { id: scene.id, title: scene.title, summary: scene.summary, position: scene.position },
+    attrs: {
+      id: scene.id,
+      chapterId: scene.chapterId,
+      title: scene.title,
+      summary: scene.summary,
+      position: scene.position,
+    },
   });
 }
 
@@ -323,7 +404,7 @@ function createActFromNode(node: any): ActDto {
     id: node.attrs['id'],
     title: node.attrs['title'] || '',
     position: node.attrs['position'] || 0,
-    bookId: '',
+    bookId: node.attrs['bookId'] || '',
     status: 'active',
     summary: null,
     chapters: [],
@@ -335,7 +416,7 @@ function createChapterFromNode(node: any, actId: string): ChapterDto {
     id: node.attrs['id'],
     title: node.attrs['title'] || '',
     position: node.attrs['position'] || 0,
-    actId,
+    actId: node.attrs['actId'] || actId,
     status: 'active',
     summary: null,
     scenes: [],
@@ -347,7 +428,7 @@ function createSceneFromNode(node: any, chapterId: string): SceneDto {
     id: node.attrs['id'],
     title: node.attrs['title'] || '',
     position: node.attrs['position'] || 0,
-    chapterId,
+    chapterId: node.attrs['chapterId'] || chapterId,
     status: 'active',
     summary: node.attrs['summary'] || null,
     prose: { type: 'doc', content: [] },
@@ -357,9 +438,9 @@ function createSceneFromNode(node: any, chapterId: string): SceneDto {
   };
 }
 
-function createEmptyAct(chapters: ChapterDto[] = []): ActDto {
+function createEmptyAct(chapters: ChapterDto[] = [], id = ''): ActDto {
   return {
-    id: '',
+    id,
     title: '',
     position: 0,
     bookId: '',
@@ -369,9 +450,9 @@ function createEmptyAct(chapters: ChapterDto[] = []): ActDto {
   };
 }
 
-function createEmptyChapter(actId: string, scenes: SceneDto[] = []): ChapterDto {
+function createEmptyChapter(actId: string, scenes: SceneDto[] = [], id = ''): ChapterDto {
   return {
-    id: '',
+    id,
     title: '',
     position: 0,
     actId,
@@ -381,20 +462,12 @@ function createEmptyChapter(actId: string, scenes: SceneDto[] = []): ChapterDto 
   };
 }
 
-function findManuscriptDataById(acts: ActDto[], id: string): ManuscriptDataDto | null {
-  for (const act of acts) {
-    if (act.id === id) return act;
+function cloneActWithoutChildren(act: ActDto): ActDto {
+  return { ...act, chapters: [] };
+}
 
-    for (const chapter of act.chapters || []) {
-      if (chapter.id === id) return chapter;
-
-      for (const scene of chapter.scenes || []) {
-        if (scene.id === id) return scene;
-      }
-    }
-  }
-
-  return null;
+function cloneChapterWithoutScenes(chapter: ChapterDto): ChapterDto {
+  return { ...chapter, scenes: [] };
 }
 
 function buildSceneHtml(scene: SceneDto): string {

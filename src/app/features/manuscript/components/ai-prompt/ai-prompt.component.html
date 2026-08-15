@@ -43,7 +43,8 @@
 
     <!-- Prompt Input Body -->
     <div class="card-body">
-      <div class="prompt-textarea" #promptInput contenteditable="true" (input)="onInput($event)" (focus)="onFocus()"
+      <div class="prompt-textarea" #promptInput contenteditable="true" codexContextHighlight
+        (input)="onInput($event)" (focus)="onFocus()"
         (blur)="onBlur()" [class.empty]="isEmpty()"
         data-placeholder="Ask AI to write, brainstorm, or refine. Try: 'Write a suspenseful scene...'"></div>
     </div>

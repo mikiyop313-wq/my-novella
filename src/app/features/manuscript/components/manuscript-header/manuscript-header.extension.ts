@@ -18,6 +18,11 @@ export const ActHeaderExtension = (injector: Injector) => {
           parseHTML: element => element.getAttribute('data-id') || '',
           renderHTML: attributes => ({ 'data-id': attributes['id'] }),
         },
+        bookId: {
+          default: '',
+          parseHTML: element => element.getAttribute('data-book-id') || '',
+          renderHTML: attributes => ({ 'data-book-id': attributes['bookId'] }),
+        },
         title: {
           default: '',
           parseHTML: element => element.getAttribute('data-title') || '',
@@ -59,6 +64,11 @@ export const ChapterHeaderExtension = (injector: Injector) => {
           default: '',
           parseHTML: element => element.getAttribute('data-id') || '',
           renderHTML: attributes => ({ 'data-id': attributes['id'] }),
+        },
+        actId: {
+          default: '',
+          parseHTML: element => element.getAttribute('data-act-id') || '',
+          renderHTML: attributes => ({ 'data-act-id': attributes['actId'] }),
         },
         title: {
           default: '',

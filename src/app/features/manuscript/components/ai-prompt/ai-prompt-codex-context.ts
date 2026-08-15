@@ -14,13 +14,14 @@ const SCENE_NODE = 'sceneSummary';
 const STRUCTURAL_BOUNDARY_NODES = new Set(['actHeader', 'chapterHeader']);
 
 /**
- * Finds Codex entries mentioned before a prompt within its current scene.
- * Each ProseMirror text block is matched independently so separate paragraphs
- * cannot accidentally form one multi-word Codex term.
+ * Finds Codex entries mentioned before a prompt within its current scene or in
+ * the prompt text itself. Every prose block and prompt line is matched
+ * independently so separate blocks cannot form one multi-word Codex term.
  */
-export function findDetectedCodexEntryIdsAbovePrompt(
+export function findDetectedCodexEntryIdsForPrompt(
   doc: ProseMirrorNode,
   promptPos: number,
+  promptText: string,
   findMatches: FindCodexMatches,
 ): Set<string> {
   let sceneContentStart: number | null = null;
@@ -36,17 +37,22 @@ export function findDetectedCodexEntryIdsAbovePrompt(
   });
 
   const entryIds = new Set<string>();
-  if (sceneContentStart === null || sceneContentStart >= promptPos) return entryIds;
-
-  doc.nodesBetween(sceneContentStart, promptPos, node => {
-    if (!node.isTextblock) return true;
-
-    for (const match of findMatches(node.textContent)) {
+  const addMatches = (text: string): void => {
+    for (const match of findMatches(text)) {
       if (match.value.entryId) entryIds.add(match.value.entryId);
     }
+  };
 
-    return false;
-  });
+  if (sceneContentStart !== null && sceneContentStart < promptPos) {
+    doc.nodesBetween(sceneContentStart, promptPos, node => {
+      if (!node.isTextblock) return true;
+
+      addMatches(node.textContent);
+      return false;
+    });
+  }
+
+  for (const line of promptText.split(/\r?\n/)) addMatches(line);
 
   return entryIds;
 }
