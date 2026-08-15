@@ -507,7 +507,7 @@ describe('Outline', () => {
       'manuscript:getScenesProse',
       { sceneIds: ['scene-1'] },
     );
-    expect(aiStreamService.streamText).toHaveBeenCalledWith({
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       streamId: 'outline-scene-summary:scene-1',
       bookId: 'book-1',
       aiPrompt: {
@@ -528,7 +528,7 @@ describe('Outline', () => {
       },
       provider: 'openai',
       modelId: 'gpt-5',
-    });
+    }));
     expect(store.updateScene).toHaveBeenCalledWith({
       id: 'scene-1',
       summary: 'New generated summary.',
@@ -573,8 +573,13 @@ describe('Outline', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(document.querySelector('.codex-detection-modal')).not.toBeNull();
-    expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('Elara Voss');
+    expect(component.codexDetectionState.pendingDetection()).toEqual({
+      bookId: 'book-1',
+      entries: [
+        { name: 'Elara Voss', type: 'character', description: 'A cartographer.' },
+        { name: 'The Glass Harbor', type: 'location', description: 'A port.' },
+      ],
+    });
     expect(codexService.getEntries).toHaveBeenCalledWith('book-1', { includeArchived: true });
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       aiPrompt: expect.objectContaining({ systemPromptCategory: 'codexDetection' }),
@@ -582,14 +587,6 @@ describe('Outline', () => {
       modelId: 'gpt-5',
     }));
 
-    document.querySelector<HTMLButtonElement>(
-      '.codex-detection-modal [aria-label="Next detected entry"]',
-    )?.click();
-    fixture.detectChanges();
-
-    expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('The Glass Harbor');
-
-    document.querySelector<HTMLButtonElement>('.codex-detection-modal .close-button')?.click();
   });
 
   it('rejects an invalid Codex detection response without opening the modal', async () => {
@@ -603,7 +600,7 @@ describe('Outline', () => {
       'AI returned invalid JSON for Codex detection.',
       'Codex Detection',
     );
-    expect(component.detectedCodexEntries()).toEqual([]);
+    expect(component.codexDetectionState.pendingDetection()).toBeNull();
     expect(document.querySelector('.codex-detection-modal')).toBeNull();
   });
 
@@ -623,40 +620,7 @@ describe('Outline', () => {
       'No new Codex entries were detected.',
       'Codex Detection',
     );
-    expect(component.detectedCodexEntries()).toEqual([]);
-  });
-
-  it('adds an accepted detection and refreshes Codex state and context', async () => {
-    const entry = {
-      name: 'The Glass Harbor',
-      type: 'location' as const,
-      description: 'A storm-battered port.',
-    };
-
-    await expect(component.saveDetectedCodexEntry(entry)).resolves.toEqual({ success: true });
-
-    expect(codexService.createEntry).toHaveBeenCalledWith({
-      bookId: 'book-1',
-      ...entry,
-      trackingSetting: 'include_when_detected',
-    });
-    expect(codexStore.loadEntries).toHaveBeenCalledWith('book-1', 'character', '', {});
-    expect(contextTrie.refreshCurrentContext).toHaveBeenCalled();
-    expect(toastService.success).not.toHaveBeenCalled();
-  });
-
-  it('returns an accepted detection error without showing a toast', async () => {
-    const error = new Error('Entry name already exists.');
-    codexService.createEntry.mockRejectedValueOnce(error);
-
-    await expect(component.saveDetectedCodexEntry({
-      name: 'The Glass Harbor',
-      type: 'location',
-      description: 'A storm-battered port.',
-    })).resolves.toEqual({ success: false, error: error.message });
-
-    expect(toastService.error).not.toHaveBeenCalled();
-    expect(codexStore.loadEntries).not.toHaveBeenCalled();
+    expect(component.codexDetectionState.pendingDetection()).toBeNull();
   });
 
   it('keeps the scene AI submenu open with a loader while generation is active', async () => {

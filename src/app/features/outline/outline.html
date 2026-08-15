@@ -571,11 +571,3 @@
     }
   </div>
 </ng-template>
-
-<ng-container [appOverlayModal]="codexDetectionModal"
-  #codexDetectionModalTrigger="appOverlayModal"></ng-container>
-
-<ng-template #codexDetectionModal let-closeModal>
-  <app-codex-detection-modal [detectedEntries]="detectedCodexEntries()"
-    [saveEntry]="saveDetectedCodexEntry" (close)="closeModal()"></app-codex-detection-modal>
-</ng-template>

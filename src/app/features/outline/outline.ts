@@ -16,14 +16,12 @@ import {
   TiptapJsonDoc,
   UpdateStructurePositionsPayload,
 } from '../../../../shared/models/manuscript.model';
-import type { DetectedCodexEntryDto } from '../../../../shared/models/codex.model';
 import type { SystemPromptCategory } from '../../../../shared/models/system-prompt.model';
 
 import { ToastService } from '../../shared/services/toast.service';
-import { AiStreamService } from '../../core/services/ai-stream.service';
+import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
 import { ElectronService } from '../../core/services/electron.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
-import { OverlayModalDirective } from '../../shared/directives/overlay-modal.directive';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
@@ -38,20 +36,16 @@ import {
   SystemPromptModelService,
   type SystemPromptModelResolution,
 } from '../../shared/services/system-prompt-model.service';
-import {
-  CodexDetectionModalComponent,
-  type CodexDetectionSaveResult,
-} from '../codex/components/codex-detection-modal/codex-detection-modal.component';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { CodexService } from '../codex/services/codex.service';
-import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
-import { CodexStore } from '../codex/store/codex.store';
+import { CodexDetectionStateService } from '../codex/services/codex-detection-state.service';
 import {
   filterNewCodexEntries,
   parseCodexDetectionResponse,
 } from '../codex/utils/codex-detection-response';
 import { buildCodexDetectionPrompt } from '../codex/utils/codex-detection-prompt';
 import { OutlineStore } from './store/outline.store';
+import { OutlineAiGenerationService } from './services/outline-ai-generation.service';
 
 type SceneCardMode = 'compact' | 'fit' | 'list';
 type OutlineContextState = 'included' | 'excluded' | 'empty';
@@ -120,8 +114,6 @@ const transferBetween = <T>(
     MarkdownEditorComponent,
     AutocompleteKeepOpenMenuItemDirective,
     CodexContextHighlightDirective,
-    CodexDetectionModalComponent,
-    OverlayModalDirective,
   ],
   templateUrl: './outline.html',
   styleUrl: './outline.scss',
@@ -135,18 +127,16 @@ export class Outline implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toastService = inject(ToastService);
-  private readonly aiStreamService = inject(AiStreamService);
+  readonly generationSessions = inject(AiGenerationSessionService);
+  readonly outlineAiGeneration = inject(OutlineAiGenerationService);
+  readonly codexDetectionState = inject(CodexDetectionStateService);
   private readonly systemPromptModelService = inject(SystemPromptModelService);
   private readonly electronService = inject(ElectronService);
   private readonly ngZone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly codexService = inject(CodexService);
-  private readonly codexStore = inject(CodexStore);
-  private readonly codexContextTrie = inject(CodexContextTrieService);
 
   @ViewChild('outlineAnimation') private outlineAnimation?: ElementAnimationDirective;
-  @ViewChild('codexDetectionModalTrigger')
-  private codexDetectionModalTrigger?: OverlayModalDirective;
   @ViewChildren(CdkMenuTrigger) private menuTriggers!: QueryList<CdkMenuTrigger>;
 
   // Local UI state for collapsed sections and inline title/comment editing.
@@ -157,16 +147,16 @@ export class Outline implements OnInit {
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
   resolvingSummaryModel = signal(false);
-  generatingSummarySceneId = signal<string | null>(null);
-  generatingCodexDetectionSceneId = signal<string | null>(null);
-  detectedCodexEntries = signal<DetectedCodexEntryDto[]>([]);
+  generatingSummarySceneId = computed(() => this.outlineAiGeneration.summaryTarget()?.sceneId ?? null);
+  generatingCodexDetectionSceneId = computed(
+    () => this.outlineAiGeneration.codexDetectionTarget()?.sceneId ?? null,
+  );
   readonly sceneAiMenuPositions: ConnectedPosition[] = [
     { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
     { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
     { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -4 },
     { originX: 'start', originY: 'bottom', overlayX: 'end', overlayY: 'bottom', offsetX: -4 },
   ];
-
   // ---------------------------------------------------------------------------
   // View State
   // ---------------------------------------------------------------------------
@@ -745,6 +735,7 @@ export class Outline implements OnInit {
     return !this.hasSceneProse(sceneId)
       || this.resolvingSummaryModel()
       || this.summaryModelResolution()?.status !== 'ready'
+      || this.generationSessions.hasActiveSession()
       || this.generatingSummarySceneId() !== null
       || this.generatingCodexDetectionSceneId() !== null;
   }
@@ -778,6 +769,7 @@ export class Outline implements OnInit {
     return !this.hasSceneProse(sceneId)
       || this.resolvingSummaryModel()
       || this.codexDetectionModelResolution()?.status !== 'ready'
+      || this.generationSessions.hasActiveSession()
       || this.generatingCodexDetectionSceneId() !== null
       || this.generatingSummarySceneId() !== null;
   }
@@ -810,7 +802,8 @@ export class Outline implements OnInit {
     const selectedModel = this.codexDetectionModelResolution();
     if (!bookId || selectedModel?.status !== 'ready') return;
 
-    this.generatingCodexDetectionSceneId.set(sceneId);
+    this.outlineAiGeneration.codexDetectionTarget.set({ bookId, sceneId });
+    const streamId = `outline-codex-detection:${sceneId}`;
     try {
       const [proseBySceneId, existingEntries] = await Promise.all([
         this.electronService.invoke(
@@ -825,15 +818,23 @@ export class Outline implements OnInit {
         return;
       }
 
-      const response = await this.aiStreamService.streamText({
-        streamId: `outline-codex-detection:${sceneId}`,
+      const session = this.generationSessions.start({
+        streamId,
+        source: 'codex-detection',
         bookId,
         aiPrompt: buildCodexDetectionPrompt({ prose, existingEntries }),
         provider: selectedModel.provider,
         modelId: selectedModel.modelId,
       });
+      if (!session) return;
+
+      const result = await session.completion;
+      if (result.status === 'failed') {
+        throw result.error ?? new Error('Codex detection failed.');
+      }
+
       const entries = filterNewCodexEntries({
-        detectedEntries: parseCodexDetectionResponse(response),
+        detectedEntries: parseCodexDetectionResponse(result.content),
         existingEntries,
       });
 
@@ -842,52 +843,17 @@ export class Outline implements OnInit {
         return;
       }
 
-      this.detectedCodexEntries.set(entries);
+      this.codexDetectionState.pendingDetection.set({ bookId, entries });
       this.closeAllMenus();
-      this.codexDetectionModalTrigger?.openModal();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Codex detection failed.';
       this.toastService.error(message, 'Codex Detection');
     } finally {
-      this.generatingCodexDetectionSceneId.set(null);
+      this.generationSessions.release(streamId);
+      this.outlineAiGeneration.codexDetectionTarget.set(null);
       this.closeAllMenus();
     }
   }
-
-  readonly saveDetectedCodexEntry = async (
-    entry: DetectedCodexEntryDto,
-  ): Promise<CodexDetectionSaveResult> => {
-    const bookId = this.store.bookId();
-    if (!bookId) {
-      return { success: false, error: 'Failed to add the Codex entry.' };
-    }
-
-    try {
-      await this.codexService.createEntry({
-        bookId,
-        type: entry.type,
-        name: entry.name,
-        description: entry.description,
-        trackingSetting: 'include_when_detected',
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to add the Codex entry.';
-      return { success: false, error: message };
-    }
-
-    await this.codexStore.loadEntries(
-      bookId,
-      this.codexStore.activeType(),
-      this.codexStore.searchQuery().trim(),
-      this.codexStore.entryFilters(),
-    );
-    try {
-      await this.codexContextTrie.refreshCurrentContext();
-    } catch (error) {
-      console.error('Failed to refresh Codex context after detection:', error);
-    }
-    return { success: true };
-  };
 
   async generateSceneSummary(sceneId: string): Promise<void> {
     if (this.isSceneSummaryGenerationDisabled(sceneId)) return;
@@ -896,7 +862,8 @@ export class Outline implements OnInit {
     const selectedModel = this.summaryModelResolution();
     if (!bookId || selectedModel?.status !== 'ready') return;
 
-    this.generatingSummarySceneId.set(sceneId);
+    this.outlineAiGeneration.summaryTarget.set({ bookId, sceneId });
+    const streamId = `outline-scene-summary:${sceneId}`;
 
     try {
       let proseDocument: TiptapJsonDoc | null;
@@ -920,8 +887,9 @@ export class Outline implements OnInit {
 
       let generatedSummary: string;
       try {
-        generatedSummary = await this.aiStreamService.streamText({
-          streamId: `outline-scene-summary:${sceneId}`,
+        const session = this.generationSessions.start({
+          streamId,
+          source: 'outline-summary',
           bookId,
           aiPrompt: buildAiPrompt({
             requestType: 'summary',
@@ -933,6 +901,13 @@ export class Outline implements OnInit {
           provider: selectedModel.provider,
           modelId: selectedModel.modelId,
         });
+        if (!session) return;
+
+        const result = await session.completion;
+        if (result.status === 'failed') {
+          throw result.error ?? new Error('Failed to generate scene summary.');
+        }
+        generatedSummary = result.content;
       } catch (error) {
         console.error('Failed to generate scene summary:', error);
         return;
@@ -951,7 +926,8 @@ export class Outline implements OnInit {
         this.toastService.error(message, 'Outline');
       }
     } finally {
-      this.generatingSummarySceneId.set(null);
+      this.generationSessions.release(streamId);
+      this.outlineAiGeneration.summaryTarget.set(null);
       this.closeAllMenus();
     }
   }
