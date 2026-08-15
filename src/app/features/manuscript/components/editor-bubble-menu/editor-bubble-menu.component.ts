@@ -77,6 +77,11 @@ export class EditorBubbleMenuComponent {
   };
 
   private updateMenuPosition(): void {
+    if (this.aiSelectionEffect?.state() !== 'idle') {
+      this.isVisible.set(false);
+      return;
+    }
+
     const currentEditor = this.store.editor();
     if (!currentEditor) {
       this.isVisible.set(false);

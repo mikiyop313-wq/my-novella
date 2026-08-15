@@ -8,6 +8,7 @@
     [style.left.px]="effectBounds.left"
     [style.width.px]="effectBounds.width"
     [style.height.px]="frameHeight()"
+    [style.clip-path]="clipPath()"
     role="status"
     [attr.aria-label]="state() === 'ready' ? 'AI suggestion ready' : 'AI is working'">
     <svg
@@ -26,6 +27,14 @@
 
     @if (state() === 'ready') {
       <div class="ai-selection-actions">
+        @if (canCompare()) {
+          <button type="button" class="compare-button"
+            [attr.aria-expanded]="isComparisonVisible()"
+            (mousedown)="$event.preventDefault()"
+            (click)="toggleComparison()">
+            {{ isComparisonVisible() ? 'Hide changes' : 'Compare' }}
+          </button>
+        }
         <button type="button" class="cancel-button"
           (mousedown)="$event.preventDefault()"
           (click)="cancel()">

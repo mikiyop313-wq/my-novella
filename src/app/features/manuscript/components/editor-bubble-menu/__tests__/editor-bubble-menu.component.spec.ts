@@ -75,6 +75,15 @@ describe('EditorBubbleMenuComponent AI actions', () => {
     expect(component.isVisible()).toBe(true);
   });
 
+  it('keeps the menu hidden while the AI selection response is active', () => {
+    component.aiSelectionEffect.state.set('ready');
+    component.isVisible.set(true);
+
+    component['updateMenuPosition']();
+
+    expect(component.isVisible()).toBe(false);
+  });
+
   it('rejects a blank Other instruction without starting the effect', () => {
     const startSpy = vi.spyOn(component.aiSelectionEffect, 'startEdit');
     component.isVisible.set(true);

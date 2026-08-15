@@ -17,7 +17,7 @@
     min-width 0.28s cubic-bezier(0.25, 1, 0.5, 1);
 
   &.is-ready {
-    min-width: 168px;
+    min-width: 280px;
     border: 1.5px solid color-mix(in srgb, var(--ai-selection-color) 82%, var(--color-border));
   }
 
@@ -121,7 +121,8 @@
     }
   }
 
-  .cancel-button {
+  .cancel-button,
+  .compare-button {
     color: var(--color-text-secondary);
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -131,6 +132,12 @@
       border-color: var(--color-border);
       background: var(--color-hover-bg);
     }
+  }
+
+  .compare-button[aria-expanded="true"] {
+    color: var(--color-btn-primary-bg);
+    border-color: color-mix(in srgb, var(--color-btn-primary-bg) 55%, var(--color-border));
+    background: color-mix(in srgb, var(--color-btn-primary-bg) 10%, var(--color-surface));
   }
 
   .confirm-button {
@@ -187,4 +194,5 @@
   .ai-selection-actions {
     animation: none;
   }
+
 }

@@ -17,12 +17,16 @@ describe('AiSelectionEffectComponent', () => {
   let fixture: ComponentFixture<AiSelectionEffectComponent>;
   let editor: ReturnType<typeof createEditor>;
   let rangeRect: DOMRect;
+  let editorViewportRect: DOMRect;
   let createRangeSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     vi.useFakeTimers();
     editor = createEditor();
     rangeRect = createRect(40, 100, 220, 48);
+    editorViewportRect = createRect(0, 0, 1024, 768);
+    vi.spyOn(editor.editorViewport, 'getBoundingClientRect')
+      .mockImplementation(() => editorViewportRect);
     createRangeSpy = vi.spyOn(document, 'createRange').mockImplementation(() => ({
       setStart: vi.fn(),
       setEnd: vi.fn(),
@@ -161,6 +165,15 @@ describe('AiSelectionEffectComponent', () => {
     });
   });
 
+  it('clips the frame to the visible manuscript viewport', () => {
+    editorViewportRect = createRect(20, 120, 600, 400);
+    startEdit(component);
+    fixture.detectChanges();
+
+    const effect = fixture.nativeElement.querySelector('.ai-selection-effect') as HTMLElement;
+    expect(effect.style.clipPath).toBe('inset(30px 0px 0px 0px)');
+  });
+
   it('rejects repeated starts and invalid selections', () => {
     expect(startEdit(component)).toBe(true);
     const initialBounds = component.bounds();
@@ -199,6 +212,10 @@ function createEditor() {
   const dispatch = vi.fn();
   const registerPlugin = vi.fn();
   const unregisterPlugin = vi.fn();
+  const editorViewport = document.createElement('div');
+  editorViewport.className = 'editor-content-wrapper';
+  const editorDom = document.createElement('div');
+  editorViewport.append(editorDom);
   const on = vi.fn((event: string, handler: () => void) => handlers.set(event, handler));
   const off = vi.fn((event: string) => handlers.delete(event));
   const doc = {
@@ -220,6 +237,7 @@ function createEditor() {
       doc,
     },
     view: {
+      dom: editorDom,
       domAtPos: vi.fn((position: number) => ({
         node: textNode,
         offset: position === selection.from ? 0 : textNode.textContent?.length ?? 0,
@@ -235,6 +253,7 @@ function createEditor() {
   return {
     api,
     dispatch,
+    editorViewport,
     emit: (event: string) => handlers.get(event)?.(),
     off,
     registerPlugin,

@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, NgZone, signal } from '@angular/core';
 import type { Editor } from '@tiptap/core';
-import { Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -22,6 +22,10 @@ import { CodexService } from '../../../codex/services/codex.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { ManuscriptStore } from '../../store/manuscript.store';
+import {
+  buildAiSelectionDiff,
+  type AiSelectionDiffSegment,
+} from './ai-selection-diff';
 
 type AiSelectionEffectState = 'idle' | 'drawing' | 'generating' | 'ready';
 
@@ -35,6 +39,7 @@ interface AiSelectionBounds {
 const EFFECT_PADDING = 10;
 const EFFECT_DRAW_DURATION_MS = 600;
 const EFFECT_ACTIONS_HEIGHT = 48;
+const EFFECT_READY_MIN_WIDTH = 280;
 const AI_SELECTION_SPACING_PLUGIN_KEY = new PluginKey('aiSelectionSpacing');
 
 export type AiSelectionEditCategory = 'rephrase' | 'expand' | 'shorten';
@@ -54,10 +59,17 @@ export interface AiSelectionEditRequest {
 export class AiSelectionEffectComponent {
   readonly state = signal<AiSelectionEffectState>('idle');
   readonly bounds = signal<AiSelectionBounds | null>(null);
+  readonly clipPath = signal<string | null>(null);
+  readonly comparisonSegments = signal<AiSelectionDiffSegment[]>([]);
+  readonly isComparisonVisible = signal(false);
+  readonly canCompare = computed(() => (
+    this.state() === 'ready' && this.comparisonSegments().length > 0
+  ));
   readonly frameHeight = computed(() => {
     const currentBounds = this.bounds();
     if (!currentBounds) return 0;
-    return currentBounds.height + (this.state() === 'ready' ? EFFECT_ACTIONS_HEIGHT : 0);
+    if (this.state() !== 'ready') return currentBounds.height;
+    return currentBounds.height + EFFECT_ACTIONS_HEIGHT;
   });
 
   private readonly store = inject(ManuscriptStore);
@@ -161,6 +173,15 @@ export class AiSelectionEffectComponent {
     this.dismiss();
   }
 
+  toggleComparison(): void {
+    if (!this.canCompare()) return;
+    if (this.isComparisonVisible()) {
+      this.hideInlineComparison();
+    } else {
+      this.showInlineComparison();
+    }
+  }
+
   private readonly onSelectionUpdate = () => {
     this.zone.run(() => {
       if (this.state() === 'idle' || this.isInternalUpdate) return;
@@ -203,7 +224,7 @@ export class AiSelectionEffectComponent {
 
     this.selection = { from: selection.from, to: selection.to };
     this.editor = currentEditor;
-    this.addSelectionSpacing(currentEditor, this.selection, false, true);
+    this.addSelectionSpacing(currentEditor, this.selection, { isGenerating: true });
     if (!this.updatePosition(currentEditor)) {
       this.removeSelectionSpacing();
       this.resetSelectionState();
@@ -277,6 +298,12 @@ export class AiSelectionEffectComponent {
       }
 
       this.candidateSlice = candidateSlice;
+      if (request.category === 'rephrase' && this.originalSlice) {
+        this.comparisonSegments.set(buildAiSelectionDiff(
+          sliceText(this.originalSlice),
+          sliceText(candidateSlice),
+        ));
+      }
       this.streamId = null;
       this.previewCandidate(candidateSlice);
     } catch (error) {
@@ -368,7 +395,9 @@ export class AiSelectionEffectComponent {
 
     this.previewSelection = previewSelection;
     this.selection = previewSelection;
-    this.addSelectionSpacing(editor, previewSelection, true);
+    this.addSelectionSpacing(editor, previewSelection, {
+      reservedHeight: EFFECT_ACTIONS_HEIGHT,
+    });
     this.state.set('ready');
     this.updatePosition();
   }
@@ -406,6 +435,60 @@ export class AiSelectionEffectComponent {
     editor.commands.focus();
   }
 
+  private showInlineComparison(): void {
+    const editor = this.editor;
+    const preview = this.previewSelection;
+    if (!editor || !preview) return;
+
+    const displaySegments = createInlineComparisonSegments(this.comparisonSegments());
+    const comparisonSlice = createComparisonSlice(editor, displaySegments);
+    if (!comparisonSlice) return;
+
+    this.replaceActivePreview({
+      replacement: comparisonSlice,
+      isComparisonVisible: true,
+      comparisonSegments: displaySegments,
+    });
+  }
+
+  private hideInlineComparison(): void {
+    if (!this.candidateSlice) return;
+    this.replaceActivePreview({
+      replacement: this.candidateSlice,
+      isComparisonVisible: false,
+    });
+  }
+
+  private replaceActivePreview(options: {
+    replacement: Slice;
+    isComparisonVisible: boolean;
+    comparisonSegments?: AiSelectionDiffSegment[];
+  }): void {
+    const editor = this.editor;
+    const preview = this.previewSelection;
+    if (!editor || !preview) return;
+
+    this.removeSelectionSpacing();
+    const transaction = editor.state.tr.replaceRange(
+      preview.from,
+      preview.to,
+      options.replacement,
+    );
+    const replacementSelection = mapReplacedSelection(preview, transaction);
+    transaction.setMeta('addToHistory', false);
+    transaction.setMeta('skipSaver', true);
+    this.dispatchInternal(editor, transaction);
+
+    this.previewSelection = replacementSelection;
+    this.selection = replacementSelection;
+    this.isComparisonVisible.set(options.isComparisonVisible);
+    this.addSelectionSpacing(editor, replacementSelection, {
+      reservedHeight: EFFECT_ACTIONS_HEIGHT,
+      comparisonSegments: options.comparisonSegments,
+    });
+    this.updatePosition();
+  }
+
   private dispatchInternal(editor: Editor, transaction: Transaction): void {
     this.isInternalUpdate = true;
     try {
@@ -421,6 +504,7 @@ export class AiSelectionEffectComponent {
     this.removeSelectionSpacing();
     this.resetSelectionState();
     this.bounds.set(null);
+    this.clipPath.set(null);
     this.state.set('idle');
     if (activeStreamId) void this.aiStreamService.stopStream(activeStreamId);
   }
@@ -433,6 +517,8 @@ export class AiSelectionEffectComponent {
     this.editor = null;
     this.activeRequest = null;
     this.streamId = null;
+    this.comparisonSegments.set([]);
+    this.isComparisonVisible.set(false);
   }
 
   private updatePosition(editor = this.editor): boolean {
@@ -440,13 +526,33 @@ export class AiSelectionEffectComponent {
     const rect = this.getRangeRect(editor, this.selection);
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
 
-    this.bounds.set({
+    const effectBounds = {
       top: rect.top - EFFECT_PADDING,
       left: rect.left - EFFECT_PADDING,
       width: rect.width + EFFECT_PADDING * 2,
       height: rect.height + EFFECT_PADDING * 2,
-    });
+    };
+    const editorViewport = editor.view.dom.closest('.editor-content-wrapper');
+    if (!editorViewport) return false;
+
+    this.bounds.set(effectBounds);
+    this.clipPath.set(this.getClipPath(effectBounds, editorViewport.getBoundingClientRect()));
     return true;
+  }
+
+  private getClipPath(effectBounds: AiSelectionBounds, viewportRect: DOMRect): string {
+    const effectWidth = this.state() === 'ready'
+      ? Math.max(effectBounds.width, EFFECT_READY_MIN_WIDTH)
+      : effectBounds.width;
+    const effectHeight = this.state() === 'ready'
+      ? effectBounds.height + EFFECT_ACTIONS_HEIGHT
+      : effectBounds.height;
+    const top = Math.max(0, viewportRect.top - effectBounds.top);
+    const right = Math.max(0, effectBounds.left + effectWidth - viewportRect.right);
+    const bottom = Math.max(0, effectBounds.top + effectHeight - viewportRect.bottom);
+    const left = Math.max(0, viewportRect.left - effectBounds.left);
+
+    return `inset(${top}px ${right}px ${bottom}px ${left}px)`;
   }
 
   private getRangeRect(editor: Editor, selection: { from: number; to: number }): DOMRect | null {
@@ -470,8 +576,11 @@ export class AiSelectionEffectComponent {
   private addSelectionSpacing(
     editor: Editor,
     selection: { from: number; to: number },
-    includeActionSpace = false,
-    isGenerating = false,
+    options: {
+      reservedHeight?: number;
+      isGenerating?: boolean;
+      comparisonSegments?: AiSelectionDiffSegment[];
+    } = {},
   ): void {
     editor.registerPlugin(new Plugin({
       key: AI_SELECTION_SPACING_PLUGIN_KEY,
@@ -481,13 +590,21 @@ export class AiSelectionEffectComponent {
       props: {
         decorations: state => {
           const decorations: Decoration[] = [Decoration.inline(selection.from, selection.to, {
-            class: `ai-selection-spacing${isGenerating ? ' ai-selection-generating' : ''}`,
+            class: `ai-selection-spacing${options.isGenerating ? ' ai-selection-generating' : ''}`,
           })];
-          if (includeActionSpace) {
+          if (options.comparisonSegments) {
+            decorations.push(...createComparisonDecorations(
+              state.doc,
+              selection,
+              options.comparisonSegments,
+            ));
+          }
+          if (options.reservedHeight) {
             decorations.push(Decoration.widget(selection.to, () => {
               const spacer = document.createElement('span');
               spacer.className = 'ai-selection-action-spacer';
               spacer.contentEditable = 'false';
+              spacer.style.height = `${options.reservedHeight}px`;
               return spacer;
             }, { side: 1 }));
           }
@@ -505,14 +622,100 @@ export class AiSelectionEffectComponent {
     this.addSelectionSpacing(
       editor,
       selection,
-      this.state() === 'ready',
-      this.state() === 'drawing' || this.state() === 'generating',
+      {
+        reservedHeight: this.state() === 'ready'
+          ? EFFECT_ACTIONS_HEIGHT
+          : undefined,
+        isGenerating: this.state() === 'drawing' || this.state() === 'generating',
+        comparisonSegments: this.isComparisonVisible()
+          ? createInlineComparisonSegments(this.comparisonSegments())
+          : undefined,
+      },
     );
   }
 
   private removeSelectionSpacing(): void {
     this.editor?.unregisterPlugin(AI_SELECTION_SPACING_PLUGIN_KEY);
   }
+}
+
+function sliceText(slice: Slice): string {
+  return slice.content.textBetween(0, slice.content.size, '\n');
+}
+
+function createInlineComparisonSegments(
+  segments: AiSelectionDiffSegment[],
+): AiSelectionDiffSegment[] {
+  return segments.map((segment, index) => {
+    const nextSegment = segments[index + 1];
+    const needsWordSeparator = segment.kind === 'removed'
+      && nextSegment?.kind === 'added'
+      && /[\p{L}\p{N}]$/u.test(segment.text)
+      && /^[\p{L}\p{N}]/u.test(nextSegment.text);
+    return needsWordSeparator
+      ? { ...segment, text: `${segment.text} ` }
+      : segment;
+  });
+}
+
+function createComparisonSlice(
+  editor: Editor,
+  segments: AiSelectionDiffSegment[],
+): Slice | null {
+  const paragraphType = editor.schema.nodes['paragraph'];
+  if (!paragraphType) return null;
+
+  const comparisonText = segments.map(segment => segment.text).join('');
+  const paragraphs = comparisonText.split(/\r?\n/u).map(line => paragraphType.create(
+    null,
+    line ? editor.schema.text(line) : undefined,
+  ));
+  return Slice.maxOpen(Fragment.fromArray(paragraphs));
+}
+
+function createComparisonDecorations(
+  document: ProseMirrorNode,
+  selection: { from: number; to: number },
+  segments: AiSelectionDiffSegment[],
+): Decoration[] {
+  const styleRuns = segments
+    .map(segment => ({
+      kind: segment.kind,
+      length: segment.text.replace(/\r?\n/gu, '').length,
+    }))
+    .filter(run => run.length > 0);
+  const decorations: Decoration[] = [];
+  let runIndex = 0;
+  let consumedInRun = 0;
+
+  document.nodesBetween(selection.from, selection.to, (node, position) => {
+    if (!node.isText || !node.text) return;
+
+    const textFrom = Math.max(selection.from, position);
+    const textTo = Math.min(selection.to, position + node.nodeSize);
+    let textPosition = textFrom;
+
+    while (textPosition < textTo && runIndex < styleRuns.length) {
+      const run = styleRuns[runIndex];
+      const availableInRun = run.length - consumedInRun;
+      const decorationLength = Math.min(availableInRun, textTo - textPosition);
+      if (run.kind !== 'unchanged') {
+        decorations.push(Decoration.inline(
+          textPosition,
+          textPosition + decorationLength,
+          { class: `ai-selection-comparison-${run.kind}` },
+        ));
+      }
+      textPosition += decorationLength;
+      consumedInRun += decorationLength;
+      if (consumedInRun === run.length) {
+        runIndex += 1;
+        consumedInRun = 0;
+      }
+    }
+  });
+
+  return decorations;
 }
 
 function buildSelectionEditAiPrompt(options: {

@@ -508,8 +508,19 @@
       .ai-selection-action-spacer {
         display: block;
         width: 100%;
-        height: 48px;
         pointer-events: none;
+      }
+
+      .ai-selection-comparison-removed {
+        color: var(--color-danger, #c94b55);
+        background: color-mix(in srgb, var(--color-danger, #c94b55) 12%, transparent);
+        text-decoration: line-through;
+        text-decoration-thickness: 1.5px;
+      }
+
+      .ai-selection-comparison-added {
+        color: var(--color-success, #2f8f5b);
+        background: color-mix(in srgb, var(--color-success, #2f8f5b) 14%, transparent);
       }
 
       &.manuscript-editing-forbidden-root,

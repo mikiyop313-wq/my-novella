@@ -143,6 +143,76 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     expect(editor.getText()).not.toContain('Elias looked away.');
   });
 
+  it.each([
+    ['rephrase', 'Rephrase', 'Rephrase the marked passage.'],
+    ['rephrase', 'Other', 'Make the exchange more tense.'],
+  ] as const)('offers an inline comparison for %s/%s', async (category, actionLabel, instruction) => {
+    streamText.mockImplementation(async (request: AiStreamRequest) => {
+      request.onToken?.('Elias lowered his gaze.');
+      return 'Elias lowered his gaze.';
+    });
+
+    component.startEdit({ category, actionLabel, instruction });
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.runAllTimersAsync();
+    component.bounds.set({ top: 20, left: 20, width: 260, height: 60 });
+    fixture.detectChanges();
+
+    const compareButton = fixture.nativeElement.querySelector('.compare-button') as HTMLButtonElement | null;
+    expect(compareButton).not.toBeNull();
+    expect(compareButton?.getAttribute('aria-expanded')).toBe('false');
+    expect(component.comparisonSegments()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'removed', text: expect.stringContaining('looked') }),
+      expect.objectContaining({ kind: 'added', text: expect.stringContaining('lowered') }),
+    ]));
+
+    const previewDocument = editor.getJSON();
+    compareButton?.click();
+    fixture.detectChanges();
+
+    expect(component.isComparisonVisible()).toBe(true);
+    expect(component.frameHeight()).toBe(108);
+    expect(editor.getJSON()).not.toEqual(previewDocument);
+    expect(editor.getText()).toContain('Elias looked away lowered his gaze.');
+    expect(editor.view.dom.querySelector('.ai-selection-comparison-removed')?.textContent)
+      .toContain('looked away');
+    expect(editor.view.dom.querySelector('.ai-selection-comparison-added')?.textContent)
+      .toContain('lowered his gaze');
+    expect(editor.view.dom.querySelector<HTMLElement>('.ai-selection-action-spacer')?.style.height)
+      .toBe('48px');
+
+    (fixture.nativeElement.querySelector('.compare-button') as HTMLButtonElement | null)?.click();
+    fixture.detectChanges();
+
+    expect(component.isComparisonVisible()).toBe(false);
+    expect(editor.getJSON()).toEqual(previewDocument);
+    expect(editor.view.dom.querySelector<HTMLElement>('.ai-selection-action-spacer')?.style.height)
+      .toBe('48px');
+  });
+
+  it.each([
+    ['expand', 'Expand'],
+    ['shorten', 'Shorten'],
+  ] as const)('does not offer comparison for %s', async (category, actionLabel) => {
+    streamText.mockImplementation(async (request: AiStreamRequest) => {
+      request.onToken?.('Elias lowered his gaze.');
+      return 'Elias lowered his gaze.';
+    });
+
+    component.startEdit({
+      category,
+      actionLabel,
+      instruction: `${actionLabel} the marked passage.`,
+    });
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.runAllTimersAsync();
+    component.bounds.set({ top: 20, left: 20, width: 260, height: 60 });
+    fixture.detectChanges();
+
+    expect(component.canCompare()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.compare-button')).toBeNull();
+  });
+
   it('keeps the effect active and maps its range through surrounding edits', async () => {
     streamText.mockImplementation(async (request: AiStreamRequest) => {
       request.onToken?.('Elias lowered his gaze.');
@@ -202,6 +272,7 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     startEdit(component);
     await vi.advanceTimersByTimeAsync(600);
     await vi.runAllTimersAsync();
+    component.toggleComparison();
     editor.commands.insertContentAt(findTextPosition(editor, 'After passage.'), 'Persistent note. ');
     component.cancel();
 
@@ -209,6 +280,8 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     expect(editor.getText()).not.toContain('Elias lowered his gaze.');
     expect(editor.getText()).toContain('Persistent note. After passage.');
     expect(component.state()).toBe('idle');
+    expect(component.isComparisonVisible()).toBe(false);
+    expect(component.comparisonSegments()).toEqual([]);
   });
 
   it('commits one undoable replacement after confirmation', async () => {
@@ -220,6 +293,7 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     startEdit(component);
     await vi.advanceTimersByTimeAsync(600);
     await vi.runAllTimersAsync();
+    component.toggleComparison();
     editor.commands.insertContentAt(findTextPosition(editor, 'After passage.'), 'Persistent note. ');
     component.confirm();
 
