@@ -39,6 +39,7 @@ async function buildSceneMap(sceneIds: string[]) {
 
 async function handleUpsertParagraphs(payload: UpsertParagraphsPayload): Promise<void> {
     if (payload.upserts.length === 0) return;
+    if (!await manuscriptVectorIndexService.isBookIndexingAvailable(payload.bookId)) return;
     await manuscriptVectorIndexService.runBookOperation(
         payload.bookId,
         () => handleUpsertParagraphsNow(payload),
@@ -112,6 +113,7 @@ async function handleUpsertParagraphsNow(
 
 async function handleDeleteParagraphs(payload: DeleteParagraphsPayload): Promise<void> {
     if (payload.deletes.length === 0) return;
+    if (!await manuscriptVectorIndexService.isBookIndexingAvailable(payload.bookId)) return;
     await manuscriptVectorIndexService.runBookOperation(
         payload.bookId,
         () => handleDeleteParagraphsNow(payload),

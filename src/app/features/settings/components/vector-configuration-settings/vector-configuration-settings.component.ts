@@ -87,9 +87,12 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     if (this.localModelOperation()) return;
 
     const action = status.installed ? 'Uninstall' : 'Remove downloaded files for';
+    const affectedBooks = status.selectedBookCount > 0
+      ? ` Indexing will pause for ${status.selectedBookCount} book${status.selectedBookCount === 1 ? '' : 's'} that currently select this model until they install it again or choose another model.`
+      : '';
     this.confirmService.open(
       `${action} local model?`,
-      `${status.modelName} will be removed from this device. You can download it again later.`,
+      `${status.modelName} will be removed from this device. You can download it again later.${affectedBooks}`,
       (clearVectors) => {
         void this.uninstallLocalModel(status.modelName, clearVectors);
       },

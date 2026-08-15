@@ -293,6 +293,14 @@ export class BookRepository {
     return settings?.localEmbeddingModel ?? 'mixedbread-ai/mxbai-embed-large-v1';
   }
 
+  async getVectorSearchEnabled(bookId: string): Promise<boolean> {
+    const settings = await db.query.bookSettings.findFirst({
+      where: eq(bookSettings.bookSettingId, bookId),
+      columns: { vectorSearchEnabled: true },
+    });
+    return settings?.vectorSearchEnabled ?? true;
+  }
+
   async selectLocalEmbeddingModel(
     bookId: string,
     modelName: LocalEmbeddingModelName,

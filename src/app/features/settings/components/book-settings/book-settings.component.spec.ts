@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BookDto, UpdateBookDto } from '../../../../../../shared/models/book.model';
+import { ElectronService } from '../../../../core/services/electron.service';
 import { ThemeService, type Theme } from '../../../../core/services/theme.service';
 import { ConfigStore } from '../../../../core/store/config.store';
 import { ToastService } from '../../../../shared/services/toast.service';
@@ -15,6 +16,7 @@ import { ManuscriptStructureService } from '../../../workspace/services/manuscri
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/ai-configuration-settings.component';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
+import { BookVectorSettingsComponent } from '../book-vector-settings/book-vector-settings.component';
 import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
 import { VectorConfigurationSettingsComponent } from '../vector-configuration-settings/vector-configuration-settings.component';
 import { SystemPromptService } from '../../services/system-prompt.service';
@@ -44,6 +46,7 @@ describe('BookSettingsComponent', () => {
   let loadTropes: ReturnType<typeof vi.fn>;
   let currentTheme: WritableSignal<Theme>;
   let setTheme: ReturnType<typeof vi.fn>;
+  let electronInvoke: ReturnType<typeof vi.fn>;
 
   const book: BookDto = {
     id: 'book-1',
@@ -136,6 +139,26 @@ describe('BookSettingsComponent', () => {
     loadTropes = vi.fn().mockResolvedValue(undefined);
     currentTheme = signal<Theme>('light');
     setTheme = vi.fn((theme: Theme) => currentTheme.set(theme));
+    electronInvoke = vi.fn(async (channel: string) => {
+      if (channel === 'vectors:local-model:get-status') {
+        return [{
+          modelName: 'mixedbread-ai/mxbai-embed-large-v1',
+          displayName: 'Mixedbread mxbai Embed Large v1',
+          providerName: 'Mixedbread',
+          providerInitials: 'MB',
+          tier: 'large',
+          dimensions: 1024,
+          language: 'English',
+          installed: true,
+          cachedBytes: 1024,
+          selectedBookCount: 1,
+        }];
+      }
+      if (channel === 'vectors:local-model:get-book-selection') {
+        return { bookId: 'book-1', modelName: 'mixedbread-ai/mxbai-embed-large-v1' };
+      }
+      return undefined;
+    });
     updateBook = vi.fn().mockImplementation(
       async (_id: string, update: UpdateBookDto): Promise<BookDto> => ({
         ...book,
@@ -159,6 +182,15 @@ describe('BookSettingsComponent', () => {
         {
           provide: LibraryService,
           useValue: { getBooks, updateBook },
+        },
+        {
+          provide: ElectronService,
+          useValue: {
+            invoke: electronInvoke,
+            on: vi.fn(() => () => undefined),
+            onBeforeClose: vi.fn(),
+            removeBeforeCloseHandler: vi.fn(),
+          },
         },
         {
           provide: CodexService,
@@ -319,18 +351,36 @@ describe('BookSettingsComponent', () => {
     expect(viewPills[0]?.textContent).toContain('Book settings');
     expect(viewPills[0]?.getAttribute('aria-selected')).toBe('true');
     expect(viewPills[1]?.getAttribute('aria-selected')).toBe('false');
-    expect(sections).toHaveLength(3);
-    expect(element.querySelectorAll('.section-item > .active-indicator')).toHaveLength(3);
+    expect(sections).toHaveLength(4);
+    expect(element.querySelectorAll('.section-item > .active-indicator')).toHaveLength(4);
     expect(activeSections).toHaveLength(1);
     expect(activeSections[0]?.getAttribute('aria-current')).toBe('page');
     expect(element.querySelector('.settings-divider')).not.toBeNull();
+  });
+
+  it('opens the dedicated Vector Search section from book settings', async () => {
+    const element = fixture.nativeElement as HTMLElement;
+    const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
+
+    sections[1].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeView()).toBe('book');
+    expect(fixture.componentInstance.activeSection()).toBe('book-vector-search');
+    expect(sections[1].getAttribute('aria-current')).toBe('page');
+    expect(
+      fixture.debugElement.query(By.directive(BookVectorSettingsComponent)),
+    ).not.toBeNull();
+    expect(element.querySelector('.content-title')?.textContent).toContain('Vector Search');
   });
 
   it('loads the persistent preset editor with the active book when System Prompts is selected', async () => {
     const element = fixture.nativeElement as HTMLElement;
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
 
-    sections[1].click();
+    sections[2].click();
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -343,14 +393,14 @@ describe('BookSettingsComponent', () => {
     expect(promptSettings.bookId()).toBe('book-1');
     expect(element.querySelector('.content-title')?.textContent).toContain('System Prompts');
     expect(element.querySelectorAll('[role="option"]')).toHaveLength(1);
-    expect(sections[1].getAttribute('aria-current')).toBe('page');
+    expect(sections[2].getAttribute('aria-current')).toBe('page');
   });
 
   it('loads the archive manager when Archive is selected', async () => {
     const element = fixture.nativeElement as HTMLElement;
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
 
-    sections[2].click();
+    sections[3].click();
     fixture.detectChanges();
     const archiveComponent = fixture.debugElement.query(By.directive(ArchiveSettingsComponent))
       .componentInstance as ArchiveSettingsComponent;
@@ -363,7 +413,7 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('app-archive-settings')).not.toBeNull();
     expect(element.querySelector('.content-title')?.textContent).toContain('Archive');
     expect(element.querySelectorAll('.archive-panel [role="tab"]')).toHaveLength(3);
-    expect(sections[2].getAttribute('aria-current')).toBe('page');
+    expect(sections[3].getAttribute('aria-current')).toBe('page');
   });
 
   it('switches to general settings and changes themes from Editor & Display', () => {

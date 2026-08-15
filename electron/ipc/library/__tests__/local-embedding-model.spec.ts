@@ -120,7 +120,7 @@ describe('local embedding model IPC handlers', () => {
 
   it('persists selection through the index service and routes reindex progress', async () => {
     const sender = { send: vi.fn() };
-    mocks.selectLocalModel.mockImplementationOnce(async (_bookId, _modelName, onProgress) => {
+    mocks.selectLocalModel.mockImplementationOnce(async (_bookId, _modelName, _reindex, onProgress) => {
       onProgress({
         bookId: 'book-1',
         modelName: 'BAAI/bge-m3',
@@ -132,12 +132,13 @@ describe('local embedding model IPC handlers', () => {
 
     await mocks.handlers.get('vectors:local-model:select-for-book')?.(
       { sender },
-      { bookId: 'book-1', modelName: 'BAAI/bge-m3' },
+      { bookId: 'book-1', modelName: 'BAAI/bge-m3', reindex: true },
     );
 
     expect(mocks.selectLocalModel).toHaveBeenCalledWith(
       'book-1',
       'BAAI/bge-m3',
+      true,
       expect.any(Function),
     );
     expect(sender.send).toHaveBeenCalledWith('vectors:local-model:reindex-progress', {
@@ -157,7 +158,7 @@ describe('local embedding model IPC handlers', () => {
 
     await expect(mocks.handlers.get('vectors:local-model:select-for-book')?.(
       { sender: { send: vi.fn() } },
-      { bookId: 'book-1', modelName: 'BAAI/bge-m3' },
+      { bookId: 'book-1', modelName: 'BAAI/bge-m3', reindex: true },
     )).rejects.toThrow('must be installed');
     expect(mocks.selectLocalModel).not.toHaveBeenCalled();
   });

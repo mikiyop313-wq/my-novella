@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
     getEmbeddingProvider: vi.fn(),
     getLocalEmbeddingProvider: vi.fn(),
     selectLocalEmbeddingModel: vi.fn(),
+    getVectorSearchEnabled: vi.fn(),
+    getEmbeddingModel: vi.fn(),
+    getLocalEmbeddingModel: vi.fn(),
+    isInstalled: vi.fn(),
     getBookParagraphStates: vi.fn(),
     updateParagraphMetadata: vi.fn(),
     upsertParagraphs: vi.fn(),
@@ -27,7 +31,14 @@ vi.mock('../../../db/repositories/manuscript.repository', () => ({
 vi.mock('../../../db/repositories/book.repository', () => ({
     bookRepository: {
         selectLocalEmbeddingModel: mocks.selectLocalEmbeddingModel,
+        getVectorSearchEnabled: mocks.getVectorSearchEnabled,
+        getEmbeddingModel: mocks.getEmbeddingModel,
+        getLocalEmbeddingModel: mocks.getLocalEmbeddingModel,
     },
+}));
+
+vi.mock('../../embeddings/local-model-manager', () => ({
+    localEmbeddingModelManager: { isInstalled: mocks.isInstalled },
 }));
 
 vi.mock('../../embeddings/factory', () => ({
@@ -75,6 +86,10 @@ describe('ManuscriptVectorIndexService', () => {
         mocks.deleteParagraphs.mockResolvedValue(undefined);
         mocks.retireLegacyManuscriptTable.mockResolvedValue(undefined);
         mocks.selectLocalEmbeddingModel.mockResolvedValue(undefined);
+        mocks.getVectorSearchEnabled.mockResolvedValue(true);
+        mocks.getEmbeddingModel.mockResolvedValue('local');
+        mocks.getLocalEmbeddingModel.mockResolvedValue('BAAI/bge-m3');
+        mocks.isInstalled.mockResolvedValue(true);
         mocks.searchSimilar.mockResolvedValue([]);
         mocks.updateScene.mockResolvedValue(undefined);
         mocks.getManuscript.mockResolvedValue(manuscript([
@@ -136,7 +151,7 @@ describe('ManuscriptVectorIndexService', () => {
         ]);
     });
 
-    it('persists selection immediately and reports incremental reindex progress', async () => {
+    it('persists selection and reports incremental reindex progress', async () => {
         const progress = vi.fn();
         mocks.getBookParagraphStates.mockResolvedValue(new Map([
             ['paragraph-1', {
@@ -149,7 +164,7 @@ describe('ManuscriptVectorIndexService', () => {
             }],
         ]));
 
-        const result = await service.selectLocalModel('book-1', 'BAAI/bge-m3', progress);
+        const result = await service.selectLocalModel('book-1', 'BAAI/bge-m3', true, progress);
 
         expect(mocks.selectLocalEmbeddingModel).toHaveBeenCalledWith('book-1', 'BAAI/bge-m3');
         expect(progress).toHaveBeenLastCalledWith({
@@ -159,6 +174,7 @@ describe('ManuscriptVectorIndexService', () => {
             totalParagraphs: 2,
         });
         expect(result).toMatchObject({
+            reindexed: true,
             reusedParagraphs: 1,
             embeddedParagraphs: 1,
             deletedParagraphs: 0,
@@ -173,12 +189,13 @@ describe('ManuscriptVectorIndexService', () => {
             }),
         );
 
-        const switching = service.selectLocalModel('book-1', 'BAAI/bge-m3');
+        const switching = service.selectLocalModel('book-1', 'BAAI/bge-m3', true);
         await vi.waitFor(() => expect(provider.embedDocuments).toHaveBeenCalledOnce());
 
         await expect(service.selectLocalModel(
             'book-1',
             'mixedbread-ai/mxbai-embed-large-v1',
+            true,
         )).rejects.toThrow('already in progress');
         await expect(service.searchSimilar('book-1', 'query', 3)).rejects.toThrow(
             'unavailable while the book embedding index is rebuilding',
@@ -186,6 +203,32 @@ describe('ManuscriptVectorIndexService', () => {
 
         finishEmbedding();
         await switching;
+    });
+
+    it('persists a selection without reconciling when reindex is false', async () => {
+        await expect(service.selectLocalModel(
+            'book-1',
+            'BAAI/bge-m3',
+            false,
+        )).resolves.toEqual({
+            bookId: 'book-1',
+            modelName: 'BAAI/bge-m3',
+            reindexed: false,
+        });
+
+        expect(mocks.selectLocalEmbeddingModel).toHaveBeenCalledWith('book-1', 'BAAI/bge-m3');
+        expect(mocks.getManuscript).not.toHaveBeenCalled();
+    });
+
+    it('returns no search results when the preference is disabled or the model is missing', async () => {
+        mocks.getVectorSearchEnabled.mockResolvedValueOnce(false);
+        await expect(service.searchSimilar('book-1', 'query', 3)).resolves.toEqual([]);
+
+        mocks.isInstalled.mockResolvedValueOnce(false);
+        await expect(service.searchSimilar('book-1', 'query', 3)).resolves.toEqual([]);
+
+        expect(mocks.searchSimilar).not.toHaveBeenCalled();
+        expect(provider.embedQuery).not.toHaveBeenCalled();
     });
 });
 

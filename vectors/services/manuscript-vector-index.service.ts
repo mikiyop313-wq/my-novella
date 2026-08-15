@@ -8,7 +8,7 @@ import type {
 } from '../../shared/models/manuscript.model';
 import type {
     BookEmbeddingReindexProgress,
-    BookEmbeddingReindexResult,
+    BookEmbeddingSelectionResult,
     LocalEmbeddingModelName,
     ManuscriptVectorRecord,
     SimilarParagraphResult,
@@ -19,6 +19,7 @@ import {
 } from '../../shared/utils/paragraph-vector';
 import { bookRepository } from '../../db/repositories/book.repository';
 import { getEmbeddingProvider, getLocalEmbeddingProvider } from '../embeddings/factory';
+import { localEmbeddingModelManager } from '../embeddings/local-model-manager';
 import { assertEmbeddingDimensions, type EmbeddingProvider } from '../embeddings/types';
 import { vectorDb } from '../lancedb.connection';
 import { paragraphVectorRepository } from '../repositories/paragraph-vector.repository';
@@ -55,6 +56,8 @@ export class ManuscriptVectorIndexService {
         query: string,
         limit: number,
     ): Promise<SimilarParagraphResult[]> {
+        if (!await this.isBookIndexingAvailable(bookId)) return [];
+
         if (this.switchingBooks.has(bookId)) {
             throw new Error('Semantic search is unavailable while the book embedding index is rebuilding.');
         }
@@ -77,6 +80,15 @@ export class ManuscriptVectorIndexService {
         return this.runBookOperation(bookId, () => this.ensureBookIndexedNow(bookId));
     }
 
+    /** Returns whether the book preference and selected provider both permit vector work. */
+    async isBookIndexingAvailable(bookId: string): Promise<boolean> {
+        if (!await bookRepository.getVectorSearchEnabled(bookId)) return false;
+        if (await bookRepository.getEmbeddingModel(bookId) !== 'local') return true;
+
+        const modelName = await bookRepository.getLocalEmbeddingModel(bookId);
+        return localEmbeddingModelManager.isInstalled(modelName);
+    }
+
     /** Serializes one vector operation with all other vector work for the same book. */
     async runBookOperation<T>(bookId: string, operation: () => Promise<T>): Promise<T> {
         const previous = this.bookOperationTails.get(bookId) ?? Promise.resolve();
@@ -97,20 +109,25 @@ export class ManuscriptVectorIndexService {
         }
     }
 
-    /** Activates an installed local model immediately, then reconciles its retained vector space. */
+    /** Selects an installed local model, reconciling its retained vector space when requested. */
     async selectLocalModel(
         bookId: string,
         modelName: LocalEmbeddingModelName,
+        reindex: boolean,
         onProgress?: (progress: BookEmbeddingReindexProgress) => void,
-    ): Promise<BookEmbeddingReindexResult> {
+    ): Promise<BookEmbeddingSelectionResult> {
         if (this.switchingBooks.has(bookId)) {
             throw new Error('An embedding model switch is already in progress for this book.');
         }
 
         this.switchingBooks.add(bookId);
         try {
-            await bookRepository.selectLocalEmbeddingModel(bookId, modelName);
-            return await this.runBookOperation(bookId, async () => {
+            if (!reindex) {
+                await bookRepository.selectLocalEmbeddingModel(bookId, modelName);
+                return { bookId, modelName, reindexed: false };
+            }
+
+            const result = await this.runBookOperation(bookId, async () => {
                 const provider = getLocalEmbeddingProvider(modelName);
                 const summary = await this.reconcileBook(bookId, provider, (
                     processedParagraphs,
@@ -123,8 +140,10 @@ export class ManuscriptVectorIndexService {
                         totalParagraphs,
                     });
                 });
-                return { bookId, modelName, ...summary };
+                return { bookId, modelName, reindexed: true as const, ...summary };
             });
+            await bookRepository.selectLocalEmbeddingModel(bookId, modelName);
+            return result;
         } finally {
             this.switchingBooks.delete(bookId);
         }

@@ -159,9 +159,10 @@ export interface UninstallLocalEmbeddingModelPayload extends DownloadLocalEmbedd
     clearVectors: boolean;
 }
 
-/** Selects one installed local model for a book and reconciles its vector index. */
+/** Selects one installed local model for a book and optionally reconciles its vector index. */
 export interface SelectBookLocalEmbeddingModelPayload extends DownloadLocalEmbeddingModelPayload {
     bookId: string;
+    reindex: boolean;
 }
 
 /** Identifies the exact local model currently selected by a book. */
@@ -184,3 +185,18 @@ export interface BookEmbeddingReindexResult extends BookLocalEmbeddingModelSelec
     metadataUpdatedParagraphs: number;
     deletedParagraphs: number;
 }
+
+/** Result returned when a book model selection does not require reconciliation. */
+export interface BookEmbeddingSelectionOnlyResult extends BookLocalEmbeddingModelSelection {
+    reindexed: false;
+}
+
+/** Result returned after selecting and reconciling a book embedding model. */
+export interface BookEmbeddingSelectionReindexResult extends BookEmbeddingReindexResult {
+    reindexed: true;
+}
+
+/** Tagged result for a per-book local embedding model selection. */
+export type BookEmbeddingSelectionResult =
+    | BookEmbeddingSelectionOnlyResult
+    | BookEmbeddingSelectionReindexResult;

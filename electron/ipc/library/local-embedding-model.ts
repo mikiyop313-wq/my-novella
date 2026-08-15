@@ -60,6 +60,7 @@ export function setupLocalEmbeddingModelHandlers(): void {
             return manuscriptVectorIndexService.selectLocalModel(
                 payload.bookId,
                 payload.modelName,
+                payload.reindex,
                 progress => event.sender.send('vectors:local-model:reindex-progress', progress),
             );
         },

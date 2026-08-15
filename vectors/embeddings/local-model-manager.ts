@@ -95,6 +95,12 @@ export class LocalEmbeddingModelManager {
     };
   }
 
+  /** Returns whether an explicit installation marker exists for one supported model. */
+  async isInstalled(modelName: LocalEmbeddingModelName | string): Promise<boolean> {
+    const model = this.requireModel(modelName);
+    return pathExists(this.dependencies.getPaths(model.modelName).installationMarkerPath);
+  }
+
   /**
    * Downloads and initializes the model, then marks the installation complete.
    *
@@ -190,12 +196,6 @@ export class LocalEmbeddingModelManager {
     return this.runExclusive('uninstall', async () => {
       const model = this.requireModel(payload.modelName);
       const paths = this.dependencies.getPaths(model.modelName);
-      const selectedBookCount = await this.dependencies.countSelectedBooks(model.modelName);
-      if (selectedBookCount > 0) {
-        throw new Error(
-          `${model.displayName} is selected by ${selectedBookCount} book${selectedBookCount === 1 ? '' : 's'}. Switch those books before uninstalling it.`,
-        );
-      }
       try {
         await this.dependencies.releaseProvider(model.modelName);
 

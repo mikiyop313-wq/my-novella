@@ -72,7 +72,6 @@ export class BookModalComponent {
   selectedPovCharacter = signal<string | null>(null);
   characters = signal<DropdownOption[]>([]);
   useSynopsisInAiContext = signal<boolean>(false);
-  vectorSearchEnabled = signal<boolean>(true);
 
   // Edit Mode State
   editingField = signal<string | null>(null);
@@ -140,7 +139,6 @@ export class BookModalComponent {
       this.selectedPOV.set(book.settings.pointOfView);
       this.useSynopsisInAiContext.set(book.settings.synopsisAiContext);
       this.selectedPovCharacter.set(book.settings.povCharacterId || null);
-      this.vectorSearchEnabled.set(book.settings.vectorSearchEnabled ?? true);
     } else {
       this.useSynopsisInAiContext.set(book.synopsis !== '' ? true : false);
     }
@@ -245,12 +243,6 @@ export class BookModalComponent {
     const newVal = !this.useSynopsisInAiContext();
     this.useSynopsisInAiContext.set(newVal);
     this.saveSettings({ synopsisAiContext: newVal });
-  }
-
-  toggleVectorSearch() {
-    const enabled = !this.vectorSearchEnabled();
-    this.vectorSearchEnabled.set(enabled);
-    this.saveSettings({ vectorSearchEnabled: enabled });
   }
 
   private async saveSettings(settingsUpdate: any) {

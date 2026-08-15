@@ -100,6 +100,35 @@
         <button
           class="nav-item section-item"
           type="button"
+          [class.is-active]="activeSection() === 'book-vector-search'"
+          [attr.aria-current]="activeSection() === 'book-vector-search' ? 'page' : null"
+          (click)="selectSection('book-vector-search')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="6" cy="12" r="2"></circle>
+              <circle cx="18" cy="6" r="2"></circle>
+              <circle cx="18" cy="18" r="2"></circle>
+              <path d="m8 11 8-4M8 13l8 4"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">Vector Search</span>
+            <span class="nav-sub">Indexing &amp; model</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
+
+        <button
+          class="nav-item section-item"
+          type="button"
           [class.is-active]="activeSection() === 'system-prompts'"
           [attr.aria-current]="activeSection() === 'system-prompts' ? 'page' : null"
           (click)="selectSection('system-prompts')"
@@ -1015,6 +1044,13 @@
           </div>
         }
       </div>
+    } @else if (activeSection() === 'book-vector-search') {
+      @if (book(); as activeBook) {
+        <app-book-vector-settings
+          [book]="activeBook"
+          (bookChange)="updateBookFromChild($event)"
+        ></app-book-vector-settings>
+      }
     } @else if (activeSection() === 'system-prompts') {
       <app-system-prompt-settings [bookId]="activeBookId()!"></app-system-prompt-settings>
     } @else if (activeSection() === 'global-prompts') {

@@ -97,6 +97,15 @@ describe('LocalEmbeddingModelManager', () => {
     });
   });
 
+  it('checks installation from the completion marker without scanning cache contents', async () => {
+    const paths = pathsByModel.get(mixedbread.modelName)!;
+
+    await expect(manager.isInstalled(mixedbread.modelName)).resolves.toBe(false);
+    await mkdir(paths.modelDir, { recursive: true });
+    await writeFile(paths.installationMarkerPath, mixedbread.modelName);
+    await expect(manager.isInstalled(mixedbread.modelName)).resolves.toBe(true);
+  });
+
   it('downloads the selected model, tags progress, disposes it, then writes its marker', async () => {
     const progress = vi.fn();
     provider.download = vi.fn(async (onProgress) => {
@@ -221,14 +230,18 @@ describe('LocalEmbeddingModelManager', () => {
     expect(dependencies.clearVectors).toHaveBeenCalledWith(bgeLarge);
   });
 
-  it('blocks uninstall while the selected model is used by a book', async () => {
+  it('allows uninstall while the selected model is used by books', async () => {
     vi.mocked(dependencies.countSelectedBooks).mockResolvedValueOnce(2);
 
     await expect(manager.uninstall({
       modelName: bgeLarge.modelName,
       clearVectors: false,
-    })).rejects.toThrow('selected by 2 books');
-    expect(dependencies.releaseProvider).not.toHaveBeenCalled();
+    })).resolves.toMatchObject({
+      modelName: bgeLarge.modelName,
+      installed: false,
+      selectedBookCount: 2,
+    });
+    expect(dependencies.releaseProvider).toHaveBeenCalledWith(bgeLarge.modelName);
   });
 
   it('rejects unsupported model identifiers', async () => {

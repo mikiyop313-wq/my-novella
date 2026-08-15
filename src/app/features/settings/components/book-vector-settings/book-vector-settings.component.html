@@ -1,0 +1,118 @@
+<div class="book-vector-panel">
+  <header class="content-header">
+    <h1 class="content-title">Vector Search</h1>
+    <p class="content-subtitle">
+      Choose how this book creates embeddings for semantic manuscript context.
+    </p>
+  </header>
+
+  @if (loading()) {
+    <div class="vector-state" role="status" aria-live="polite">
+      Loading book vector settings&hellip;
+    </div>
+  } @else if (loadError()) {
+    <div class="vector-state is-error" role="alert">
+      <span>{{ loadError() }}</span>
+      <button type="button" (click)="load()">Retry</button>
+    </div>
+  } @else {
+    <div class="vector-sections">
+      <section class="vector-card" aria-labelledby="book-indexing-heading">
+        <div class="vector-card-copy">
+          <h2 id="book-indexing-heading">Book indexing</h2>
+          <p>Keep paragraph embeddings current and allow semantic manuscript search.</p>
+          @if (selectedModelUnavailable()) {
+            <p id="indexing-unavailable-reason" class="unavailable-message" role="note">
+              <strong>{{ selectedModelStatus()?.displayName }}</strong> is not installed.
+              Install it from General Settings &rarr; Vector Search, or select another installed
+              model.
+            </p>
+          }
+        </div>
+
+        <button
+          class="indexing-switch"
+          type="button"
+          role="switch"
+          [class.is-active]="effectiveIndexingEnabled()"
+          [attr.aria-checked]="effectiveIndexingEnabled()"
+          [attr.aria-describedby]="selectedModelUnavailable() ? 'indexing-unavailable-reason' : null"
+          [disabled]="operation() !== null || selectedModelUnavailable()"
+          (click)="toggleIndexing()"
+        >
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>{{ effectiveIndexingEnabled() ? 'On' : 'Off' }}</span>
+        </button>
+      </section>
+
+      <section class="vector-card model-section" aria-labelledby="embedding-model-heading">
+        <div class="vector-card-copy">
+          <h2 id="embedding-model-heading">Embedding model</h2>
+          <p>Select an installed local model for this book.</p>
+        </div>
+
+        <div class="model-list" role="radiogroup" aria-label="Installed embedding models">
+          @for (status of visibleModels(); track status.modelName) {
+            <button
+              class="model-option"
+              type="button"
+              role="radio"
+              [class.is-selected]="isSelected(status)"
+              [class.is-unavailable]="!status.installed"
+              [attr.aria-checked]="isSelected(status)"
+              [disabled]="!status.installed || operation() !== null"
+              [attr.data-model]="status.modelName"
+              (click)="selectModel(status)"
+            >
+              <span class="model-mark" aria-hidden="true">{{ status.providerInitials }}</span>
+              <span class="model-copy">
+                <span class="model-heading">
+                  <strong>{{ status.displayName }}</strong>
+                  @if (!status.installed) {
+                    <span class="model-badge">Unavailable</span>
+                  } @else if (isSelected(status)) {
+                    <span class="model-badge is-selected">Selected</span>
+                  }
+                </span>
+                <code>{{ status.modelName }}</code>
+                <span class="model-meta">
+                  {{ status.providerName }} &middot; {{ status.dimensions }} dimensions &middot;
+                  {{ status.language }}
+                </span>
+              </span>
+              <span class="radio-indicator" aria-hidden="true"><span></span></span>
+            </button>
+          } @empty {
+            <div class="no-models" role="note">
+              No local embedding models are installed. Install one from General Settings &rarr;
+              Vector Search.
+            </div>
+          }
+        </div>
+
+        @if (operation() && reindexProgress(); as progress) {
+          <div class="reindex-progress" role="status" aria-live="polite">
+            <div>
+              <span>Indexing paragraphs&hellip;</span>
+              <span>{{ progress.processedParagraphs }} / {{ progress.totalParagraphs }}</span>
+            </div>
+            <div
+              class="progress-track"
+              role="progressbar"
+              aria-label="Book embedding reindex progress"
+              [attr.aria-valuenow]="reindexPercentage()"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <span [style.width.%]="reindexPercentage()"></span>
+            </div>
+          </div>
+        }
+
+        @if (operationError()) {
+          <p class="operation-error" role="alert">{{ operationError() }}</p>
+        }
+      </section>
+    </div>
+  }
+</div>

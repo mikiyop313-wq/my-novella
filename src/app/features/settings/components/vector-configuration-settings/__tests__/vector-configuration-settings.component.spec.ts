@@ -239,6 +239,20 @@ describe('VectorConfigurationSettingsComponent', () => {
     },
   );
 
+  it('warns when uninstalling pauses indexing for selected books', () => {
+    const target = {
+      ...catalog[2],
+      installed: true,
+      cachedBytes: 1024,
+      selectedBookCount: 2,
+    };
+
+    fixture.componentInstance.requestLocalModelUninstall(target);
+
+    expect(confirmService.state().message).toContain('Indexing will pause for 2 books');
+    expect(confirmService.state().message).toContain('choose another model');
+  });
+
   it('keeps download progress and the selected tier when the settings view is recreated', async () => {
     let finishDownload: ((status: LocalEmbeddingModelStatus) => void) | undefined;
     const target = catalog[3];
@@ -338,6 +352,7 @@ describe('VectorConfigurationSettingsComponent', () => {
       language,
       installed: false,
       cachedBytes: 0,
+      selectedBookCount: 0,
     };
   }
 });
