@@ -85,14 +85,14 @@
             @if (editing()[act.id]) {
             <span class="act-label-editing">
               Act {{ actIdx + 1 }}:
-              <input type="text" class="act-title-input" [value]="act.title || ''" placeholder="Act Title"
+              <input type="text" class="act-title-input" [value]="act.title || ''" placeholder="Untitled Act"
                 (click)="$event.stopPropagation()" (blur)="updateActTitle(act.id, $any($event.target).value)"
                 (keyup.enter)="updateActTitle(act.id, $any($event.target).value)" />
             </span>
             } @else {
             <span #actTitle class="act-label" (mouseenter)="updateOverflowTooltip(actTitle)"
               (click)="openManuscript('act', act.id)">
-              Act {{ actIdx + 1 }}{{ act.title ? ': ' + act.title : '' }}
+              Act {{ actIdx + 1 }}: {{ act.title || 'Untitled Act' }}
             </span>
             }
             <span class="word-count-badge">{{ getActWordCount(act) | number }} words</span>
@@ -152,7 +152,7 @@
                       <span class="chapter-label-editing">
                         Chapter {{ chapter.position + 1 }}:
                         <input type="text" class="chapter-title-input" [value]="chapter.title || ''"
-                          placeholder="Chapter Title" (click)="$event.stopPropagation()"
+                          placeholder="Untitled Chapter" (click)="$event.stopPropagation()"
                           (blur)="updateChapterTitle(chapter.id, $any($event.target).value)" (keyup.enter)="
                                     updateChapterTitle(chapter.id, $any($event.target).value)
                                   " />
@@ -160,8 +160,7 @@
                       } @else {
                       <span #chapterTitle class="chapter-label" (mouseenter)="updateOverflowTooltip(chapterTitle)"
                         (click)="openManuscript('chapter', chapter.id)">
-                        Chapter {{ chapter.position + 1
-                        }}{{ chapter.title ? ': ' + chapter.title : '' }}
+                        Chapter {{ chapter.position + 1 }}: {{ chapter.title || 'Untitled Chapter' }}
                       </span>
                       }
                       <span class="word-count-badge">{{ getChapterWordCount(chapter) | number }} words</span>

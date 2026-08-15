@@ -46,6 +46,14 @@ describe('manuscript archive repositories', () => {
     sqlite.close();
   });
 
+  it('creates acts and chapters with empty titles so the UI placeholders are shown', async () => {
+    const createdAct = await repository.createAct('book-1');
+    const createdChapter = await repository.createChapter(createdAct.id);
+
+    expect(createdAct.title).toBe('');
+    expect(createdChapter.title).toBe('');
+  });
+
   it('deletes active descendants while detaching archived descendants from an active act', async () => {
     insertAct(sqlite, 'act-1', 'Active Act', 'active');
     insertChapter(sqlite, 'chapter-active', 'Active Chapter', 'act-1', 'active');

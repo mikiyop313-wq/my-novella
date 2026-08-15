@@ -237,7 +237,7 @@ export class ManuscriptRepository {
 
     const [inserted] = await db
       .insert(act)
-      .values({ title: 'New Act', bookId, position: nextPosition })
+      .values({ title: '', bookId, position: nextPosition })
       .returning();
 
     await this.touchBookLastEdited('book', bookId);
@@ -260,7 +260,7 @@ export class ManuscriptRepository {
 
     const [inserted] = await db
       .insert(chapter)
-      .values({ title: 'New Chapter', bookId: parentAct.bookId, actId, position: nextPosition })
+      .values({ title: '', bookId: parentAct.bookId, actId, position: nextPosition })
       .returning();
 
     await this.touchBookLastEdited('act', actId);

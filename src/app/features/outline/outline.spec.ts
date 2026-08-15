@@ -165,6 +165,21 @@ describe('Outline', () => {
     expect(store.enterBook).toHaveBeenCalledWith('book-1');
   });
 
+  it('shows placeholders for empty act and chapter titles', () => {
+    store.bookHierarchy.set([{
+      id: 'act-1',
+      title: '',
+      chapters: [{ id: 'chapter-1', title: '', position: 0, scenes: [] }],
+    }]);
+
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.act-label')?.textContent.trim())
+      .toBe('Act 1: Untitled Act');
+    expect(fixture.nativeElement.querySelector('.chapter-label')?.textContent.trim())
+      .toBe('Chapter 1: Untitled Chapter');
+  });
+
   it('adds title text as a tooltip only when the title overflows', () => {
     const title = document.createElement('span');
     title.textContent = 'A very long scene title';
