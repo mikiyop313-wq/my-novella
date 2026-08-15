@@ -18,9 +18,9 @@ export class SystemPromptSelectionService {
     const cached = this.activePresetIdsByBook.get(bookId);
     if (cached && !forceReload) return cached;
 
-    const activePresetIds = await this.electronService.invoke('system-prompts:list-active', {
+    const activePresetIds = (await this.electronService.invoke('system-prompts:list-active', {
       bookId,
-    }) as ActiveSystemPromptPresetIds;
+    })) as ActiveSystemPromptPresetIds;
     this.activePresetIdsByBook.set(bookId, activePresetIds);
     return activePresetIds;
   }
@@ -34,11 +34,11 @@ export class SystemPromptSelectionService {
     category: SystemPromptCategory,
     presetId: string,
   ): Promise<ActiveSystemPromptPresetIds> {
-    const activePresetIds = await this.electronService.invoke('system-prompts:set-active', {
+    const activePresetIds = (await this.electronService.invoke('system-prompts:set-active', {
       bookId,
       category,
       presetId,
-    }) as ActiveSystemPromptPresetIds;
+    })) as ActiveSystemPromptPresetIds;
     this.activePresetIdsByBook.set(bookId, activePresetIds);
     return activePresetIds;
   }
@@ -47,15 +47,19 @@ export class SystemPromptSelectionService {
     bookId: string,
     category: SystemPromptCategory,
   ): Promise<ActiveSystemPromptPresetIds> {
-    const activePresetIds = await this.electronService.invoke('system-prompts:reset-active', {
+    const activePresetIds = (await this.electronService.invoke('system-prompts:reset-active', {
       bookId,
       category,
-    }) as ActiveSystemPromptPresetIds;
+    })) as ActiveSystemPromptPresetIds;
     this.activePresetIdsByBook.set(bookId, activePresetIds);
     return activePresetIds;
   }
 
   invalidate(bookId: string): void {
     this.activePresetIdsByBook.delete(bookId);
+  }
+
+  invalidateAll(): void {
+    this.activePresetIdsByBook.clear();
   }
 }

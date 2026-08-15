@@ -15,10 +15,7 @@ describe('SystemPromptSelectionService', () => {
   beforeEach(() => {
     invoke = vi.fn();
     TestBed.configureTestingModule({
-      providers: [
-        SystemPromptSelectionService,
-        { provide: ElectronService, useValue: { invoke } },
-      ],
+      providers: [SystemPromptSelectionService, { provide: ElectronService, useValue: { invoke } }],
     });
     service = TestBed.inject(SystemPromptSelectionService);
   });
@@ -36,7 +33,10 @@ describe('SystemPromptSelectionService', () => {
   });
 
   it('force reloads and invalidates a cached book', async () => {
-    invoke.mockResolvedValueOnce(defaults).mockResolvedValueOnce(custom).mockResolvedValueOnce(defaults);
+    invoke
+      .mockResolvedValueOnce(defaults)
+      .mockResolvedValueOnce(custom)
+      .mockResolvedValueOnce(defaults);
 
     await service.getActivePresetIds('book-1');
     await expect(service.getActivePresetIds('book-1', true)).resolves.toBe(custom);
@@ -46,8 +46,27 @@ describe('SystemPromptSelectionService', () => {
     expect(invoke).toHaveBeenCalledTimes(3);
   });
 
+  it('invalidates cached selections for every book', async () => {
+    invoke
+      .mockResolvedValueOnce(defaults)
+      .mockResolvedValueOnce(custom)
+      .mockResolvedValueOnce(custom)
+      .mockResolvedValueOnce(defaults);
+
+    await service.getActivePresetIds('book-1');
+    await service.getActivePresetIds('book-2');
+    service.invalidateAll();
+
+    await expect(service.getActivePresetIds('book-1')).resolves.toBe(custom);
+    await expect(service.getActivePresetIds('book-2')).resolves.toBe(defaults);
+    expect(invoke).toHaveBeenCalledTimes(4);
+  });
+
   it('replaces the cache with authoritative set and reset responses', async () => {
-    invoke.mockResolvedValueOnce(defaults).mockResolvedValueOnce(custom).mockResolvedValueOnce(defaults);
+    invoke
+      .mockResolvedValueOnce(defaults)
+      .mockResolvedValueOnce(custom)
+      .mockResolvedValueOnce(defaults);
 
     await service.getActivePresetIds('book-1');
     await expect(service.setActivePreset('book-1', 'chat', 'custom-chat')).resolves.toBe(custom);
@@ -74,7 +93,9 @@ describe('SystemPromptSelectionService', () => {
     await expect(service.getActivePresetIds('book-1')).resolves.toBe(defaults);
 
     invoke.mockRejectedValueOnce(new Error('Set failed'));
-    await expect(service.setActivePreset('book-1', 'chat', 'custom-chat')).rejects.toThrow('Set failed');
+    await expect(service.setActivePreset('book-1', 'chat', 'custom-chat')).rejects.toThrow(
+      'Set failed',
+    );
     await expect(service.getActivePresetIds('book-1')).resolves.toBe(defaults);
   });
 

@@ -6,7 +6,9 @@ import type {
   CreateSystemPromptPresetDto,
   SystemPromptCategory,
   SystemPromptGenerationSettings,
+  SystemPromptOwnership,
   SystemPromptPresetDto,
+  SystemPromptScope,
   UpdateSystemPromptPresetDto,
 } from '../../../../../../shared/models/system-prompt.model';
 import {
@@ -22,6 +24,8 @@ interface SystemPromptPreset extends SystemPromptGenerationSettings {
   name: string;
   category: SystemPromptCategory;
   systemPrompt: string;
+  scope: SystemPromptScope;
+  bookId: string | null;
   isBuiltIn: boolean;
 }
 
@@ -76,6 +80,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       label: category.label,
     }));
   readonly presets = signal<SystemPromptPreset[]>(createBuiltInPresets());
+  readonly selectedScope = signal<SystemPromptScope>('global');
   readonly selectedCategory = signal<SystemPromptCategory>('chat');
   readonly selectedPresetId = signal(defaultPresetIdFor('chat'));
   readonly activePresetIds = signal<Readonly<ActiveSystemPromptPresetIds> | null>(null);
@@ -88,7 +93,15 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly pendingSaveIds = signal<ReadonlySet<string>>(new Set());
   readonly savingPresetIds = signal<ReadonlySet<string>>(new Set());
   readonly filteredPresets = computed(() =>
-    this.presets().filter((preset) => preset.category === this.selectedCategory()),
+    this.presets().filter(
+      (preset) =>
+        preset.category === this.selectedCategory() &&
+        preset.scope === this.selectedScope() &&
+        (preset.scope === 'global' || preset.bookId === this.bookId()),
+    ),
+  );
+  readonly selectedScopeLabel = computed(() =>
+    this.selectedScope() === 'global' ? 'Global' : 'Book',
   );
   readonly selectedCategoryLabel = computed(
     () => categoryDefinitionFor(this.selectedCategory()).label,
@@ -118,15 +131,13 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
         this.systemPromptService.listAvailable(this.bookId()),
         this.systemPromptSelectionService.getActivePresetIds(this.bookId()),
       ]);
-      const bookPresets = available
-        .filter((preset) => preset.scope === 'book' && preset.bookId === this.bookId())
-        .map(mapDtoToPreset);
+      const savedPresets = available.map(mapDtoToPreset);
 
       this.confirmedPresets.clear();
-      for (const preset of bookPresets) {
+      for (const preset of savedPresets) {
         this.confirmedPresets.set(preset.id, preset);
       }
-      this.presets.set([...createBuiltInPresets(), ...bookPresets]);
+      this.presets.set([...createBuiltInPresets(), ...savedPresets]);
       this.activePresetIds.set(activePresetIds);
       this.ensureValidSelection();
     } catch (error) {
@@ -179,11 +190,26 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     return this.activePresetIds()?.[category] === id;
   }
 
+  changeScope(scope: SystemPromptScope): void {
+    if (
+      (scope !== 'global' && scope !== 'book') ||
+      scope === this.selectedScope() ||
+      this.isCreating() ||
+      this.deletingPresetId() !== null ||
+      this.activatingPresetId() !== null
+    ) {
+      return;
+    }
+
+    this.selectedScope.set(scope);
+    this.selectDefaultForCurrentView();
+  }
+
   changeCategory(value: unknown): void {
     if (typeof value !== 'string' || !isSystemPromptCategory(value)) return;
 
     this.selectedCategory.set(value);
-    this.selectedPresetId.set(defaultPresetIdFor(value));
+    this.selectDefaultForCurrentView();
   }
 
   async addPreset(): Promise<void> {
@@ -196,13 +222,13 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     }
 
     const category = this.selectedCategory();
+    const scope = this.selectedScope();
 
     const data: CreateSystemPromptPresetDto = {
-      name: this.uniqueName('Untitled Preset'),
+      name: this.uniqueName('Untitled Preset', scope),
       category,
       systemPrompt: '',
-      scope: 'book',
-      bookId: this.bookId(),
+      ...ownershipFor(scope, this.bookId()),
       ...generationSettingsFor(category),
     };
 
@@ -211,7 +237,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       const created = mapDtoToPreset(await this.systemPromptService.create(data));
       this.confirmedPresets.set(created.id, created);
       this.presets.update((presets) => [...presets, created]);
-      this.selectedPresetId.set(created.id);
+      if (this.selectedScope() === scope && this.selectedCategory() === category) {
+        this.selectedPresetId.set(created.id);
+      }
     } catch (error) {
       this.showError(error, 'Unable to create this preset.', 'Preset creation failed');
     } finally {
@@ -231,12 +259,12 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const scope = this.selectedScope();
     const data: CreateSystemPromptPresetDto = {
-      name: this.uniqueName(`${selected.name.trim() || 'Untitled Preset'} Copy`),
+      name: this.uniqueName(`${selected.name.trim() || 'Untitled Preset'} Copy`, scope),
       category: selected.category,
       systemPrompt: selected.systemPrompt,
-      scope: 'book',
-      bookId: this.bookId(),
+      ...ownershipFor(scope, this.bookId()),
       temperature: selected.temperature,
       topP: selected.topP,
       maxOutputTokens: selected.maxOutputTokens,
@@ -249,7 +277,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       const created = mapDtoToPreset(await this.systemPromptService.create(data));
       this.confirmedPresets.set(created.id, created);
       this.presets.update((presets) => [...presets, created]);
-      this.selectedPresetId.set(created.id);
+      if (this.selectedScope() === scope && this.selectedCategory() === selected.category) {
+        this.selectedPresetId.set(created.id);
+      }
     } catch (error) {
       this.showError(error, 'Unable to clone this preset.', 'Preset cloning failed');
     } finally {
@@ -275,25 +305,33 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       const result = await this.systemPromptService.delete(selected.id);
       if (!result.success) throw new Error('The preset no longer exists.');
 
+      const scope = selected.scope;
       const categoryPresets = this.filteredPresets();
       const selectedIndex = categoryPresets.findIndex((preset) => preset.id === selected.id);
       const remainingPresets = this.presets().filter((preset) => preset.id !== selected.id);
       const remainingCategoryPresets = remainingPresets.filter(
-        (preset) => preset.category === selected.category,
+        (preset) =>
+          preset.category === selected.category &&
+          preset.scope === scope &&
+          (scope === 'global' || preset.bookId === this.bookId()),
       );
       const nextSelection =
         remainingCategoryPresets[Math.min(selectedIndex, remainingCategoryPresets.length - 1)];
 
       this.confirmedPresets.delete(selected.id);
       this.presets.set(remainingPresets);
-      this.selectedPresetId.set(nextSelection.id);
+      this.selectedPresetId.set(nextSelection?.id ?? '');
     } catch (error) {
       this.showError(error, 'Unable to delete this preset.', 'Preset deletion failed');
       this.deletingPresetId.set(null);
       return;
     }
 
-    this.systemPromptSelectionService.invalidate(this.bookId());
+    if (selected.scope === 'global') {
+      this.systemPromptSelectionService.invalidateAll();
+    } else {
+      this.systemPromptSelectionService.invalidate(this.bookId());
+    }
     try {
       this.activePresetIds.set(
         await this.systemPromptSelectionService.getActivePresetIds(this.bookId(), true),
@@ -425,21 +463,33 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   }
 
   private ensureValidSelection(): void {
-    const selectedExists = this.presets().some(
-      (preset) =>
-        preset.category === this.selectedCategory() && preset.id === this.selectedPresetId(),
+    const selectedExists = this.filteredPresets().some(
+      (preset) => preset.id === this.selectedPresetId(),
     );
     if (!selectedExists) {
-      this.selectedPresetId.set(defaultPresetIdFor(this.selectedCategory()));
+      this.selectDefaultForCurrentView();
     }
+  }
+
+  private selectDefaultForCurrentView(): void {
+    const visiblePresets = this.filteredPresets();
+    const defaultPreset =
+      this.selectedScope() === 'global'
+        ? visiblePresets.find((preset) => preset.id === defaultPresetIdFor(this.selectedCategory()))
+        : undefined;
+    this.selectedPresetId.set(defaultPreset?.id ?? visiblePresets[0]?.id ?? '');
   }
 
   private inputValue(event: Event): string {
     return (event.target as HTMLInputElement | HTMLTextAreaElement).value;
   }
 
-  private uniqueName(baseName: string): string {
-    const names = new Set(this.presets().map((preset) => preset.name));
+  private uniqueName(baseName: string, scope: SystemPromptScope): string {
+    const names = new Set(
+      this.presets()
+        .filter((preset) => preset.scope === scope)
+        .map((preset) => preset.name),
+    );
     if (!names.has(baseName)) return baseName;
 
     let suffix = 2;
@@ -458,6 +508,8 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
 function createBuiltInPresets(): SystemPromptPreset[] {
   return Object.values(BUILT_IN_SYSTEM_PROMPT_PRESETS).map((preset) => ({
     ...preset,
+    scope: 'global',
+    bookId: null,
     isBuiltIn: true,
   }));
 }
@@ -479,6 +531,8 @@ function mapDtoToPreset(preset: SystemPromptPresetDto): SystemPromptPreset {
     name: preset.name,
     category: preset.category,
     systemPrompt: preset.systemPrompt,
+    scope: preset.scope,
+    bookId: preset.bookId,
     temperature: preset.temperature,
     topP: preset.topP,
     maxOutputTokens: preset.maxOutputTokens,
@@ -506,6 +560,10 @@ function categoryDefinitionFor(category: SystemPromptCategory): SystemPromptCate
 
 function defaultPresetIdFor(category: SystemPromptCategory): string {
   return BUILT_IN_SYSTEM_PROMPT_PRESETS[category].id;
+}
+
+function ownershipFor(scope: SystemPromptScope, bookId: string): SystemPromptOwnership {
+  return scope === 'global' ? { scope: 'global' } : { scope: 'book', bookId };
 }
 
 function isSystemPromptCategory(value: string): value is SystemPromptCategory {

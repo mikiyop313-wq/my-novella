@@ -1,9 +1,39 @@
 <div class="settings-section-panel system-prompts-panel">
   <header class="content-header">
-    <h1 class="content-title">System Prompts</h1>
-    <p class="content-subtitle">
-      Explore categorized prompt presets and tune how the AI responds for this book.
-    </p>
+    <div class="content-header-copy">
+      <h1 class="content-title">System Prompts</h1>
+      <p class="content-subtitle">
+        @if (selectedScope() === 'global') {
+          Manage reusable presets available to every book. Activating one applies it to this book.
+        } @else {
+          Manage prompt presets available only to this book.
+        }
+      </p>
+    </div>
+    <div class="scope-selector" role="radiogroup" aria-label="Prompt preset library">
+      <label class="scope-option" [class.is-selected]="selectedScope() === 'global'">
+        <input
+          type="radio"
+          name="prompt-preset-library"
+          value="global"
+          [checked]="selectedScope() === 'global'"
+          [disabled]="isCreating() || deletingPresetId() !== null || activatingPresetId() !== null"
+          (change)="changeScope('global')"
+        />
+        <span>Global</span>
+      </label>
+      <label class="scope-option" [class.is-selected]="selectedScope() === 'book'">
+        <input
+          type="radio"
+          name="prompt-preset-library"
+          value="book"
+          [checked]="selectedScope() === 'book'"
+          [disabled]="isCreating() || deletingPresetId() !== null || activatingPresetId() !== null"
+          (change)="changeScope('book')"
+        />
+        <span>Book</span>
+      </label>
+    </div>
   </header>
 
   @if (isLoading()) {
@@ -11,7 +41,7 @@
       <span class="prompt-spinner" aria-hidden="true"></span>
       <div>
         <strong>Loading system prompts</strong>
-        <p>Preparing the saved presets for this book.</p>
+        <p>Preparing global and book presets.</p>
       </div>
     </div>
   } @else if (loadError()) {
@@ -43,7 +73,9 @@
 
         <div class="preset-panel-header">
           <div>
-            <span class="eyebrow">{{ selectedCategoryLabel() }} presets</span>
+            <span class="eyebrow">
+              {{ selectedScopeLabel() }} {{ selectedCategoryLabel() }} presets
+            </span>
             <strong>{{ filteredPresets().length }}</strong>
           </div>
           <button
@@ -97,7 +129,13 @@
               <span class="preset-copy">
                 <span class="preset-name">{{ preset.name || 'Untitled Preset' }}</span>
                 <span class="preset-meta">
-                  {{ preset.isBuiltIn ? 'Built-in default' : 'Custom preset' }}
+                  {{
+                    preset.isBuiltIn
+                      ? 'Built-in default'
+                      : preset.scope === 'global'
+                        ? 'Global preset'
+                        : 'Book preset'
+                  }}
                 </span>
               </span>
               @if (isPresetInUse(preset.id, preset.category)) {
@@ -119,6 +157,11 @@
                 <span class="built-in-badge">Default</span>
               }
             </button>
+          } @empty {
+            <div class="preset-list-empty">
+              <strong>No book presets yet</strong>
+              <p>Create a preset that belongs only to this book.</p>
+            </div>
           }
         </div>
 
@@ -127,8 +170,10 @@
             Saving changes shortly…
           } @else if (savingPresetIds().size > 0) {
             Saving changes…
+          } @else if (selectedScope() === 'global') {
+            Global presets are available to every book.
           } @else {
-            Custom presets are saved for this book.
+            Book presets are saved only for this book.
           }
         </p>
       </aside>
@@ -137,7 +182,9 @@
         <section class="preset-editor" aria-labelledby="preset-editor-heading">
           <header class="editor-header">
             <div>
-              <span class="eyebrow">{{ selectedCategoryLabel() }} preset</span>
+              <span class="eyebrow">
+                {{ selectedScopeLabel() }} {{ selectedCategoryLabel() }} preset
+              </span>
               <h2 id="preset-editor-heading">{{ preset.name || 'Untitled Preset' }}</h2>
             </div>
             <div class="preset-actions">
@@ -439,6 +486,26 @@
                 }
               </div>
             </section>
+          </div>
+        </section>
+      } @else {
+        <section class="preset-editor preset-empty-state" aria-labelledby="empty-preset-heading">
+          <div>
+            <span class="eyebrow">Book preset library</span>
+            <h2 id="empty-preset-heading">
+              Create your first {{ selectedCategoryLabel() }} preset
+            </h2>
+            <p>This preset will be available only while working in this book.</p>
+            <button
+              class="add-preset-button"
+              type="button"
+              [disabled]="
+                isCreating() || deletingPresetId() !== null || activatingPresetId() !== null
+              "
+              (click)="addPreset()"
+            >
+              {{ isCreating() ? 'Creating…' : 'Add book preset' }}
+            </button>
           </div>
         </section>
       }
