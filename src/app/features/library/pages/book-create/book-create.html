@@ -50,21 +50,10 @@
       <div class="tags-section">
         <!-- Genres -->
         <div class="input-group autocomplete-group">
-          <label>Genres</label>
+          <label>Genres & Subgenres</label>
           <app-autocomplete-dropdown [options]="genreOptions" [selectedValue]="genres.value" [multi]="true"
-            [allowCustom]="true" placeholder="Select or add genres..."
-            customAddPlaceholder="Write custom genre and press Enter..."
+            [allowCustom]="false" placeholder="Select genres..."
             (selectionChange)="onSelectionChange('genre', $event)">
-          </app-autocomplete-dropdown>
-        </div>
-
-        <!-- Subgenres -->
-        <div class="input-group autocomplete-group">
-          <label>Subgenres</label>
-          <app-autocomplete-dropdown [options]="subgenreOptions" [selectedValue]="subgenres.value" [multi]="true"
-            [allowCustom]="true" placeholder="Select or add subgenres..."
-            customAddPlaceholder="Write custom subgenre and press Enter..."
-            (selectionChange)="onSelectionChange('subgenre', $event)">
           </app-autocomplete-dropdown>
         </div>
 

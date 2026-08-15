@@ -24,6 +24,13 @@ export const categories = sqliteTable('categories', {
     unq: unique().on(t.name, t.type),
 }));
 
+export const subcategories = sqliteTable('subcategories', {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    name: text('name').notNull(),
+    isCustom: integer('is_custom', { mode: 'boolean' }).notNull().default(false),
+    parentCategoryId: text('parent_category_id').notNull().references(() => categories.id, { onDelete: 'cascade' }),
+});
+
 export const bookTags = sqliteTable('book_tags', {
     bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
     categoryId: text('category_id').notNull().references(() => categories.id, { onDelete: 'cascade' }),
@@ -58,6 +65,14 @@ export const booksRelations = relations(books, ({ many, one }) => ({
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
     bookTags: many(bookTags),
+    subcategories: many(subcategories),
+}));
+
+export const subcategoriesRelations = relations(subcategories, ({ one }) => ({
+    parentCategory: one(categories, {
+        fields: [subcategories.parentCategoryId],
+        references: [categories.id],
+    }),
 }));
 
 export const bookTagsRelations = relations(bookTags, ({ one }) => ({
