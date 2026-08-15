@@ -7,7 +7,10 @@ import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
 import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
 import { LibraryStore } from '../../../library/store/book.store';
 import { AiStore } from '../../../../core/store/ai.store';
-import { ManuscriptStore } from '../../store/manuscript.store';
+import { CodexService } from '../../../codex/services/codex.service';
+import { WorkspaceStore } from '../../../workspace/workspace.store';
+
+type CharacterLoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
 @Component({
   selector: 'app-ai-prompt-settings',
@@ -41,9 +44,10 @@ export class AiPromptSettingsComponent {
   // Dependencies
   // ---------------------------------------------------------------------------
 
-  private readonly store = inject(ManuscriptStore);
+  private readonly workspaceStore = inject(WorkspaceStore);
   private readonly libraryStore = inject(LibraryStore);
   private readonly aiStore = inject(AiStore);
+  private readonly codexService = inject(CodexService);
 
 
   // ---------------------------------------------------------------------------
@@ -62,9 +66,21 @@ export class AiPromptSettingsComponent {
     return model?.supportsReasoning === true;
   });
 
-  bookId = computed(() => this.store.bookId());
+  bookId = computed(() => this.workspaceStore.bookId());
 
   characters = signal<DropdownOption[]>([]);
+  characterLoadState = signal<CharacterLoadState>('idle');
+
+  characterEmptyText = computed(() => {
+    switch (this.characterLoadState()) {
+      case 'loading':
+        return 'Loading characters...';
+      case 'error':
+        return 'Unable to load characters.';
+      default:
+        return 'No characters in Codex.';
+    }
+  });
 
   activeBook = computed(() => {
     const id = this.bookId();
@@ -102,6 +118,7 @@ export class AiPromptSettingsComponent {
   });
 
   readonly INFO = INFO_MESSAGES.AI_PROMPT;
+  private characterLoadRequestId = 0;
 
 
   // ---------------------------------------------------------------------------
@@ -110,7 +127,12 @@ export class AiPromptSettingsComponent {
 
   constructor() {
     effect(() => {
-      const id = this.store.bookId();
+      const id = this.workspaceStore.bookId();
+
+      this.characterLoadRequestId++;
+      this.characters.set([]);
+      this.characterLoadState.set('idle');
+
       if (id) {
         this.libraryStore.loadBooks();
       }
@@ -128,6 +150,40 @@ export class AiPromptSettingsComponent {
   // ---------------------------------------------------------------------------
   // Event Handlers
   // ---------------------------------------------------------------------------
+
+  async loadPovCharacters(): Promise<void> {
+    const requestId = ++this.characterLoadRequestId;
+    const bookId = this.bookId();
+
+    this.characters.set([]);
+
+    if (!bookId) {
+      this.characterLoadState.set('loaded');
+      return;
+    }
+
+    this.characterLoadState.set('loading');
+
+    try {
+      const characters = await this.codexService.getEntries(bookId, {
+        type: 'character',
+        status: 'active',
+      });
+
+      if (requestId !== this.characterLoadRequestId || bookId !== this.bookId()) return;
+
+      this.characters.set(characters.map(character => ({
+        value: character.id,
+        label: character.name,
+      })));
+      this.characterLoadState.set('loaded');
+    } catch {
+      if (requestId !== this.characterLoadRequestId || bookId !== this.bookId()) return;
+
+      this.characters.set([]);
+      this.characterLoadState.set('error');
+    }
+  }
 
   onWordCountPresetSelect(value: number): void {
     this.wordCountChange.emit(value);

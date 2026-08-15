@@ -1,4 +1,5 @@
-<button class="settings-btn" [appOverlayModal]="settingsModalTemplate" title="Advanced Settings">
+<button class="settings-btn" [appOverlayModal]="settingsModalTemplate" title="Advanced Settings"
+  (click)="loadPovCharacters()">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
     stroke-linejoin="round" width="18" height="18">
     <circle cx="12" cy="12" r="3"></circle>
@@ -64,26 +65,10 @@
             POV CHARACTER OVERRIDE
             <app-info-icon [infoText]="INFO.POV_CHARACTER"></app-info-icon>
           </span>
-          @if (characters().length > 0) {
           <app-autocomplete-dropdown [options]="characters()" [selectedValue]="povCharacter()"
-            placeholder="Select character..." (selectionChange)="onPovCharacterSelectionChange($event)">
+            placeholder="Select character..." [emptyText]="characterEmptyText()"
+            (selectionChange)="onPovCharacterSelectionChange($event)">
           </app-autocomplete-dropdown>
-          } @else {
-          <div class="disabled-dropdown">
-            <span class="placeholder-text">No characters defined</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
-          <div class="character-empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"
-              class="empty-icon">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-            <span>No characters in Codex yet. You can create them in Codex.</span>
-          </div>
-          }
         </div>
 
         <!-- Vector DB Search Override -->

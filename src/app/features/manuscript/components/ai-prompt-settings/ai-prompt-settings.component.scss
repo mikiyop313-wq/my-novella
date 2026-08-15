@@ -221,43 +221,6 @@
       }
     }
 
-    .disabled-dropdown {
-      background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      padding: 10px 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      color: var(--color-text-secondary);
-      opacity: 0.5;
-      cursor: not-allowed;
-      font-size: 0.85rem;
-      pointer-events: none;
-
-      .placeholder-text {
-        font-style: italic;
-      }
-    }
-
-    .character-empty-state {
-      background: color-mix(in srgb, var(--color-hover-bg) 30%, transparent);
-      border: 1px dashed var(--color-border);
-      border-radius: 8px;
-      padding: 12px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      color: var(--color-text-secondary);
-      font-size: 0.75rem;
-      line-height: 1.4;
-
-      .empty-icon {
-        color: var(--color-text-secondary);
-        opacity: 0.6;
-        flex-shrink: 0;
-      }
-    }
   }
 
   .modal-footer {
