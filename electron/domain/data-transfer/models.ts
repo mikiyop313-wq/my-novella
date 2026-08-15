@@ -28,10 +28,7 @@ type CodexEntryWithBase64Image = Omit<typeof codexEntries.$inferSelect, 'image'>
   image: string | null;
 };
 
-export type DataExportBook = WithIsoDates<
-  BookWithBase64Cover,
-  'createdAt' | 'lastEditedAt'
->;
+export type DataExportBook = WithIsoDates<BookWithBase64Cover, 'createdAt' | 'lastEditedAt'>;
 export type DataExportBookSettings = typeof bookSettings.$inferSelect;
 export type DataExportCategory = typeof categories.$inferSelect;
 export type DataExportBookTag = typeof bookTags.$inferSelect;
@@ -83,13 +80,15 @@ export interface DataExportSnapshotData {
   activeSystemPromptPresets: DataExportActiveSystemPromptPreset[];
 }
 
-export type DataExportScope =
-  | { type: 'book'; bookId: string }
-  | { type: 'library' };
+export type DataExportScope = { type: 'book'; bookId: string } | { type: 'library' };
 
 export interface DataExportSnapshot {
   schemaVersion: 1;
   exportedAt: string;
   scope: DataExportScope;
   data: DataExportSnapshotData;
+}
+
+export interface DataImportResult {
+  importedBookIds: string[];
 }
