@@ -102,6 +102,73 @@ describe('AiGenerationSessionService', () => {
     );
   });
 
+  it('allows the same purpose to run concurrently for different scopes', async () => {
+    const completions = new Map<string, (value: string) => void>();
+    streamText.mockImplementation(request => new Promise(resolve => {
+      completions.set(request.streamId, resolve);
+    }));
+
+    const first = service.start({ ...request('chat-1'), scopeId: 'thread-1' })!;
+    const second = service.start({ ...request('chat-2'), scopeId: 'thread-2' })!;
+
+    expect(first.scopeId).toBe('thread-1');
+    expect(second.scopeId).toBe('thread-2');
+    expect(service.hasActiveScopedSession({
+      source: 'chat-response',
+      scopeId: 'thread-1',
+    })).toBe(true);
+
+    completions.get('chat-1')?.('First');
+    completions.get('chat-2')?.('Second');
+    await Promise.all([first.completion, second.completion]);
+  });
+
+  it('rejects a second active session for the same purpose and scope', () => {
+    streamText.mockReturnValue(new Promise(() => undefined));
+
+    const first = service.start({ ...request('chat-1'), scopeId: 'thread-1' });
+    const second = service.start({ ...request('chat-2'), scopeId: 'thread-1' });
+
+    expect(first).not.toBeNull();
+    expect(second).toBeNull();
+    expect(warning).toHaveBeenCalledWith(
+      'Another AI generation for this purpose is already in progress.',
+      'AI Generation',
+    );
+  });
+
+  it('stops one scoped session without interrupting a sibling scope', async () => {
+    let rejectFirst!: (error: unknown) => void;
+    let resolveSecond!: (content: string) => void;
+    streamText.mockImplementation(request => {
+      if (request.streamId === 'chat-1') {
+        request.onToken?.('Partial');
+        return new Promise((_, reject) => rejectFirst = reject);
+      }
+
+      return new Promise(resolve => resolveSecond = resolve);
+    });
+    stopStream.mockImplementation(async streamId => {
+      if (streamId === 'chat-1') rejectFirst(new Error('aborted'));
+    });
+
+    const first = service.start({ ...request('chat-1'), scopeId: 'thread-1' })!;
+    const second = service.start({ ...request('chat-2'), scopeId: 'thread-2' })!;
+    await service.stop(first.id);
+
+    await expect(first.completion).resolves.toMatchObject({
+      status: 'stopped',
+      content: 'Partial',
+    });
+    expect(service.hasActiveScopedSession({
+      source: 'chat-response',
+      scopeId: 'thread-2',
+    })).toBe(true);
+
+    resolveSecond('Done');
+    await second.completion;
+  });
+
   it('rejects a reused session ID even for a different purpose', async () => {
     streamText.mockResolvedValue('Done');
     const first = service.start(request('session-1'))!;
@@ -111,6 +178,20 @@ describe('AiGenerationSessionService', () => {
 
     expect(duplicate).toBeNull();
     expect(service.getSession('session-1')).toBe(first);
+    expect(warning).toHaveBeenCalledWith(
+      'This AI generation session is already being managed.',
+      'AI Generation',
+    );
+  });
+
+  it('rejects a reused session ID across different scopes', () => {
+    streamText.mockReturnValue(new Promise(() => undefined));
+
+    const first = service.start({ ...request('chat-1'), scopeId: 'thread-1' });
+    const duplicate = service.start({ ...request('chat-1'), scopeId: 'thread-2' });
+
+    expect(first).not.toBeNull();
+    expect(duplicate).toBeNull();
     expect(warning).toHaveBeenCalledWith(
       'This AI generation session is already being managed.',
       'AI Generation',

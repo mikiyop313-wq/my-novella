@@ -22,7 +22,6 @@ import { MarkdownComponent } from 'ngx-markdown';
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { buildContextHighlightSegments } from '../../../../shared/utils/context-highlighter';
 import { AiStore } from '../../core/store/ai.store';
-import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
 import { AutocompleteDropdownComponent } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import type { AiManuscriptContextRef } from '../../shared/models/ai-context.model';
@@ -86,7 +85,6 @@ export class Chat implements OnInit, OnDestroy {
   readonly chatStore = inject(ChatStore);
   readonly aiStore = inject(AiStore);
   readonly response = inject(ChatResponseService);
-  readonly generationSessions = inject(AiGenerationSessionService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -159,14 +157,16 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   readonly isAiResponseActive = computed(() => (
-    this.response.isGeneratingResponse() ||
+    this.isGeneratingResponse() ||
     this.chatStore.messages().some((message) => this.isMessageStreaming(message))
   ));
 
-  // Template aliases keep the response state readable without exposing a
-  // second source of truth in the component.
-  readonly isGeneratingResponse = this.response.isGeneratingResponse;
-  readonly isStoppingResponse = this.response.isStoppingResponse;
+  readonly isGeneratingResponse = computed(() => (
+    this.response.isThreadGenerating(this.chatStore.selectedThread()?.id)
+  ));
+  readonly isStoppingResponse = computed(() => (
+    this.response.isThreadStopping(this.chatStore.selectedThread()?.id)
+  ));
 
   readonly showScrollToBottom = computed(() => (
     this.hasActiveConversation && !this.isAutoScrollEnabled() && !this.isChatAtBottom()
@@ -374,11 +374,27 @@ export class Chat implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   async archiveThread(id: string): Promise<void> {
+    if (this.response.isThreadGenerating(id)) return;
+
     await this.removeThreadWithAnimation(id, () => this.chatStore.archiveThread(id));
   }
 
   async deleteThread(id: string): Promise<void> {
+    if (this.response.isThreadGenerating(id)) return;
+
     await this.removeThreadWithAnimation(id, () => this.chatStore.deleteThread(id));
+  }
+
+  isThreadGenerating(threadId: string): boolean {
+    return this.response.isThreadGenerating(threadId);
+  }
+
+  getThreadManagementTooltip(threadId: string, action: 'archive' | 'delete'): string {
+    if (!this.response.isThreadGenerating(threadId)) {
+      return action === 'archive' ? 'Archive' : 'Delete';
+    }
+
+    return `Stop or wait for generation to finish before ${action === 'archive' ? 'archiving' : 'deleting'} this thread.`;
   }
 
   async renameThread(event: { id: string; title: string }): Promise<void> {
@@ -533,8 +549,7 @@ export class Chat implements OnInit, OnDestroy {
   isPromptSubmitDisabled(): boolean {
     return !this.hasSelectedModel()
       || this.chatStore.isSaving()
-      || this.isAiResponseActive()
-      || this.generationSessions.hasActiveSession('chat-response');
+      || this.isAiResponseActive();
   }
 
   isSendButtonDisabled(): boolean {
@@ -542,8 +557,8 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   isSendOrStopDisabled(): boolean {
-    return this.response.isGeneratingResponse()
-      ? this.response.isStoppingResponse()
+    return this.isGeneratingResponse()
+      ? this.isStoppingResponse()
       : this.isSendButtonDisabled();
   }
 
@@ -652,8 +667,11 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   async handleSendOrStop(): Promise<void> {
-    if (this.response.isGeneratingResponse()) {
-      const error = await this.response.stopResponse();
+    if (this.isGeneratingResponse()) {
+      const threadId = this.chatStore.selectedThread()?.id;
+      if (!threadId) return;
+
+      const error = await this.response.stopResponse(threadId);
       if (error) this.reportError(error);
       return;
     }

@@ -198,8 +198,8 @@
     justify-content: center;
     width: 36px;
     height: 36px;
-    background: var(--color-primary);
-    color: white;
+    background: var(--color-btn-primary-bg);
+    color: var(--color-btn-primary-text);
     border: none;
     border-radius: 50%;
     cursor: pointer;
@@ -246,8 +246,8 @@
       }
     }
 
-    &:hover {
-      opacity: 0.9;
+    &:hover:not(:disabled) {
+      background: var(--color-btn-primary-hover);
       transform: scale(1.05);
     }
 

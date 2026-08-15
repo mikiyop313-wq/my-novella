@@ -3,7 +3,8 @@
 
     <!-- Detached Sidebar -->
     @if (showDetachedSidebar) {
-    <app-chat-threads [threads]="chatStore.threads()" [isDetachedMode]="true" [canDetach]="false"
+    <app-chat-threads [threads]="chatStore.threads()" [generatingThreadIds]="response.generatingThreadIds()"
+      [isDetachedMode]="true" [canDetach]="false"
       [isNewChat]="isNewChat" (threadSelected)="selectThread($event)"
       (newConversationRequested)="startNewConversation()" (renameThreadRequested)="renameThread($event)"
       (deleteThreadRequested)="deleteThread($event)" (archiveThreadRequested)="archiveThread($event)">
@@ -43,7 +44,8 @@
           (scroll)="handleChatBodyScroll($event)" (wheel)="handleChatBodyUserScrollIntent()"
           (touchmove)="handleChatBodyUserScrollIntent()" (keydown)="handleChatBodyUserScrollIntent()">
         @if (!hasActiveConversation && !isDetachedMode) {
-        <app-chat-threads [threads]="chatStore.threads()" [isDetachedMode]="false" [canDetach]="!isDetachedMode"
+        <app-chat-threads [threads]="chatStore.threads()" [generatingThreadIds]="response.generatingThreadIds()"
+          [isDetachedMode]="false" [canDetach]="!isDetachedMode"
           [isNewChat]="isNewChat" (threadSelected)="selectThread($event)"
           (newConversationRequested)="startNewConversation()" (detachRequested)="detachChat()"
           (renameThreadRequested)="renameThread($event)" (deleteThreadRequested)="deleteThread($event)"
@@ -211,7 +213,7 @@
                   }
                   @if (message.role === 'user') {
                   <button class="action-btn" [disabled]="isPromptSubmitDisabled()" (click)="editMessage(message.id)"
-                    title="Edit">
+                    [title]="isGeneratingResponse() ? 'Editing is unavailable while this thread is generating.' : 'Edit'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                       stroke-linejoin="round">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -220,7 +222,7 @@
                   </button>
                   } @else if (message.role === 'assistant') {
                   <button class="action-btn" [disabled]="isPromptSubmitDisabled()" (click)="retryMessage(message.id)"
-                    title="Retry">
+                    [title]="isGeneratingResponse() ? 'Retry is unavailable while this thread is generating.' : 'Retry'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                       stroke-linejoin="round">
                       <polyline points="1 4 1 10 7 10"></polyline>
@@ -364,7 +366,8 @@
       </svg>
       Rename
     </button>
-    <button class="menu-item" cdkMenuItem (click)="archiveThread(id)">
+    <button class="menu-item" cdkMenuItem [cdkMenuItemDisabled]="isThreadGenerating(id)"
+      [title]="getThreadManagementTooltip(id, 'archive')" (click)="archiveThread(id)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
         <rect x="2" y="4" width="20" height="5" rx="2" ry="2"></rect>
@@ -373,7 +376,8 @@
       </svg>
       Archive
     </button>
-    <button class="menu-item delete" cdkMenuItem (click)="deleteThread(id)">
+    <button class="menu-item delete" cdkMenuItem [cdkMenuItemDisabled]="isThreadGenerating(id)"
+      [title]="getThreadManagementTooltip(id, 'delete')" (click)="deleteThread(id)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
         <path d="M3 6h18"></path>

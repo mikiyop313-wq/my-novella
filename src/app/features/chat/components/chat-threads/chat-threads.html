@@ -86,6 +86,12 @@
               }
               <span class="thread-meta">{{ formatThreadDate(thread.lastEditedAt) }}</span>
             </span>
+            @if (isThreadGenerating(thread.id)) {
+              <span class="thread-generation-status" role="status" aria-label="Generating response"
+                title="Generating response">
+                <span class="thread-generation-loader" aria-hidden="true"></span>
+              </span>
+            }
             <button type="button" class="icon-btn thread-menu-btn" [cdkMenuTriggerFor]="threadOptionsMenu" [cdkMenuTriggerData]="{ id: thread.id, title: thread.title }" (click)="$event.stopPropagation()" aria-label="Thread options">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="1"></circle>
@@ -131,7 +137,8 @@
       </svg>
       Rename
     </button>
-    <button class="menu-item" cdkMenuItem (click)="archiveThread(id)">
+    <button class="menu-item" cdkMenuItem [cdkMenuItemDisabled]="isThreadGenerating(id)"
+      [title]="getManagementTooltip(id, 'archive')" (click)="archiveThread(id)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
         <rect x="2" y="4" width="20" height="5" rx="2" ry="2"></rect>
         <path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path>
@@ -139,7 +146,8 @@
       </svg>
       Archive
     </button>
-    <button class="menu-item delete" cdkMenuItem (click)="deleteThread(id)">
+    <button class="menu-item delete" cdkMenuItem [cdkMenuItemDisabled]="isThreadGenerating(id)"
+      [title]="getManagementTooltip(id, 'delete')" (click)="deleteThread(id)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
         <path d="M3 6h18"></path>
         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>

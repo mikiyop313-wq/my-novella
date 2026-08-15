@@ -27,6 +27,7 @@ export interface AiGenerationSessionResult {
 export interface StartAiGenerationSessionRequest
   extends Omit<AiStreamRequest, 'onToken' | 'onReasoningUpdate' | 'onStatusChange'> {
   source: AiGenerationSessionSource;
+  scopeId?: string;
   onContentChange?: (content: string) => void;
   onReasoningChange?: (reasoning: string) => void;
   onStatusChange?: (status: AiGenerationSessionStatus) => void;
@@ -35,6 +36,7 @@ export interface StartAiGenerationSessionRequest
 export interface AiGenerationSession {
   id: string;
   source: AiGenerationSessionSource;
+  scopeId: string | null;
   status: Signal<AiGenerationSessionStatus>;
   content: Signal<string>;
   reasoning: Signal<string>;
@@ -76,6 +78,21 @@ export class AiGenerationSessionService {
     ));
   }
 
+  hasActiveScopedSession({
+    source,
+    scopeId,
+  }: {
+    source: AiGenerationSessionSource;
+    scopeId: string;
+  }): boolean {
+    this.sessionsVersion();
+    return [...this.managedSessions.values()].some(session => (
+      session.source === source
+      && session.scopeId === scopeId
+      && !this.isTerminal(session.status())
+    ));
+  }
+
   start(request: StartAiGenerationSessionRequest): AiGenerationSession | null {
     if (this.managedSessions.has(request.streamId)) {
       this.toastService.warning(
@@ -85,7 +102,11 @@ export class AiGenerationSessionService {
       return null;
     }
 
-    if (this.hasActiveSession(request.source)) {
+    const scopeId = request.scopeId ?? null;
+    const hasConflictingSession = scopeId === null
+      ? this.hasActiveUnscopedSession(request.source)
+      : this.hasActiveScopedSession({ source: request.source, scopeId });
+    if (hasConflictingSession) {
       this.toastService.warning(
         'Another AI generation for this purpose is already in progress.',
         'AI Generation',
@@ -100,6 +121,7 @@ export class AiGenerationSessionService {
     const session: ManagedAiGenerationSession = {
       id: request.streamId,
       source: request.source,
+      scopeId,
       status,
       content,
       reasoning,
@@ -209,6 +231,14 @@ export class AiGenerationSessionService {
 
   private isTerminal(status: AiGenerationSessionStatus): boolean {
     return status === 'complete' || status === 'stopped' || status === 'failed';
+  }
+
+  private hasActiveUnscopedSession(source: AiGenerationSessionSource): boolean {
+    return [...this.managedSessions.values()].some(session => (
+      session.source === source
+      && session.scopeId === null
+      && !this.isTerminal(session.status())
+    ));
   }
 
   private notifySessionsChanged(): void {

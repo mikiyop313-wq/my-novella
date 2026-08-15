@@ -212,7 +212,7 @@ describe('ChatResponseService', () => {
       status: 'complete',
       reasoningSummary: 'Checking context',
     }));
-    expect(service.isGeneratingResponse()).toBe(false);
+    expect(service.isThreadGenerating('thread-1')).toBe(false);
   });
 
   it.each([
@@ -411,10 +411,153 @@ describe('ChatResponseService', () => {
     const response = service.generateResponse(messages[0], 'Write a scene', settings);
     await vi.waitFor(() => expect(aiStreamService.streamText).toHaveBeenCalled());
 
-    await expect(service.stopResponse()).resolves.toBeNull();
+    await expect(service.stopResponse('thread-1')).resolves.toBeNull();
     expect(aiStreamService.stopStream).toHaveBeenCalledWith('pending-user-1');
 
     resolveStream('');
     await response;
+  });
+
+  it('runs responses for different threads concurrently and keeps their state isolated', async () => {
+    const streamRequests = new Map<string, {
+      onToken?: (token: string) => void;
+    }>();
+    const streamResolvers = new Map<string, (value: string) => void>();
+    aiStreamService.streamText.mockImplementation((request: {
+      streamId: string;
+      onToken?: (token: string) => void;
+    }) => new Promise<string>((resolve) => {
+      streamRequests.set(request.streamId, request);
+      streamResolvers.set(request.streamId, resolve);
+    }));
+    chatStore.createAssistantMessage.mockImplementation(async (data: {
+      threadId: string;
+      parentMessageId?: string | null;
+    }) => makeMessage({
+      id: `assistant-${data.threadId}`,
+      threadId: data.threadId,
+      parentMessageId: data.parentMessageId ?? null,
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+    }));
+
+    const firstUser = makeMessage({ id: 'user-1', threadId: 'thread-1', content: 'First' });
+    messages = [firstUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-1', messages });
+    const firstResponse = service.generateResponse(firstUser, firstUser.content, settings);
+    await vi.waitFor(() => expect(streamRequests.has('pending-user-1')).toBe(true));
+
+    const secondUser = makeMessage({ id: 'user-2', threadId: 'thread-2', content: 'Second' });
+    messages = [secondUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-2', messages });
+    const secondResponse = service.generateResponse(secondUser, secondUser.content, settings);
+    await vi.waitFor(() => expect(streamRequests.has('pending-user-2')).toBe(true));
+
+    expect(service.generatingThreadIds()).toEqual(new Set(['thread-1', 'thread-2']));
+    streamRequests.get('pending-user-1')?.onToken?.('First reply');
+    streamRequests.get('pending-user-2')?.onToken?.('Second reply');
+    streamResolvers.get('pending-user-2')?.('Second reply');
+    await secondResponse;
+
+    expect(service.isThreadGenerating('thread-1')).toBe(true);
+    expect(service.isThreadGenerating('thread-2')).toBe(false);
+    streamResolvers.get('pending-user-1')?.('First reply');
+    await firstResponse;
+
+    expect(chatStore.updateMessage).toHaveBeenCalledWith(
+      'assistant-thread-1',
+      expect.objectContaining({ content: 'First reply', status: 'complete' }),
+    );
+    expect(chatStore.updateMessage).toHaveBeenCalledWith(
+      'assistant-thread-2',
+      expect.objectContaining({ content: 'Second reply', status: 'complete' }),
+    );
+    expect(service.generatingThreadIds().size).toBe(0);
+  });
+
+  it('generates titles concurrently for different new threads', async () => {
+    const streamResolvers = new Map<string, (value: string) => void>();
+    aiStreamService.streamText.mockImplementation((request: { streamId: string }) => (
+      new Promise<string>((resolve) => streamResolvers.set(request.streamId, resolve))
+    ));
+    chatStore.createAssistantMessage.mockImplementation(async (data: {
+      threadId: string;
+      parentMessageId?: string | null;
+    }) => makeMessage({
+      id: `assistant-${data.threadId}`,
+      threadId: data.threadId,
+      parentMessageId: data.parentMessageId ?? null,
+      role: 'assistant',
+      status: 'streaming',
+    }));
+
+    const firstUser = makeMessage({ id: 'user-1', threadId: 'thread-1', content: 'First' });
+    messages = [firstUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({
+      id: 'thread-1',
+      title: 'New chat',
+      messages,
+    });
+    const firstResponse = service.generateResponse(firstUser, firstUser.content, settings);
+    await vi.waitFor(() => expect(streamResolvers.has('pending-user-1')).toBe(true));
+
+    const secondUser = makeMessage({ id: 'user-2', threadId: 'thread-2', content: 'Second' });
+    messages = [secondUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({
+      id: 'thread-2',
+      title: 'New chat',
+      messages,
+    });
+    const secondResponse = service.generateResponse(secondUser, secondUser.content, settings);
+    await vi.waitFor(() => expect(streamResolvers.has('pending-user-2')).toBe(true));
+
+    streamResolvers.get('pending-user-1')?.('First reply');
+    streamResolvers.get('pending-user-2')?.('Second reply');
+    await vi.waitFor(() => {
+      expect(streamResolvers.has('title-user-1')).toBe(true);
+      expect(streamResolvers.has('title-user-2')).toBe(true);
+    });
+
+    streamResolvers.get('title-user-1')?.('First title');
+    streamResolvers.get('title-user-2')?.('Second title');
+    await Promise.all([firstResponse, secondResponse]);
+
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-1', { title: 'First title' });
+    expect(chatStore.updateThread).toHaveBeenCalledWith('thread-2', { title: 'Second title' });
+  });
+
+  it('uses the originating conversation when selection changes during context preparation', async () => {
+    let resolveContext!: (value: string | null) => void;
+    chatAiContext.buildContext.mockReturnValueOnce(new Promise(resolve => resolveContext = resolve));
+    const firstUser = makeMessage({ id: 'user-1', threadId: 'thread-1', content: 'First prompt' });
+    messages = [firstUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-1', messages });
+
+    const response = service.generateResponse(firstUser, firstUser.content, settings);
+    await vi.waitFor(() => expect(chatAiContext.buildContext).toHaveBeenCalled());
+
+    const secondUser = makeMessage({ id: 'user-2', threadId: 'thread-2', content: 'Other prompt' });
+    messages = [secondUser];
+    visibleMessages = messages;
+    selectedThread = makeThreadDetail({ id: 'thread-2', messages });
+    resolveContext(null);
+    await response;
+
+    expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
+      streamId: 'pending-user-1',
+      aiPrompt: expect.objectContaining({
+        messages: [{ role: 'user', content: 'First prompt' }],
+      }),
+    }));
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
+      threadId: 'thread-1',
+      parentMessageId: 'user-1',
+    }));
   });
 });
