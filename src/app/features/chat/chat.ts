@@ -34,8 +34,10 @@ import { expandManuscriptRefs } from '../../shared/utils/story-context-builder';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
+import { CodexWindowService } from '../codex/services/codex-window.service';
 import {
   getAutomaticallyIncludedCodexEntryIds,
+  reconcileSelectedCodexEntryIds,
   removeAutomaticallyIncludedCodexEntryIds,
 } from '../manuscript/components/ai-prompt/ai-prompt-codex-context';
 import {
@@ -88,6 +90,7 @@ export class Chat implements OnInit, OnDestroy {
   private readonly chatWindowService = inject(ChatWindowService);
   private readonly toastService = inject(ToastService);
   private readonly codexContextTrie = inject(CodexContextTrieService);
+  private readonly codexWindowService = inject(CodexWindowService);
   private readonly codexMatchChooser = inject(CodexMatchChooserService);
   private readonly workspaceBookStore = inject(WorkspaceBookStore);
   private readonly workspaceStore = inject(WorkspaceStore);
@@ -137,6 +140,7 @@ export class Chat implements OnInit, OnDestroy {
   readonly contextCodexError = this.codexContextTrie.error;
 
   private cleanupDetachedWindowClosedListener: (() => void) | null = null;
+  private cleanupCodexEntryChangedListener: (() => void) | null = null;
   private copyConfirmationTimeout: ReturnType<typeof setTimeout> | null = null;
   private scrollAnimationFrame: number | null = null;
   private streamingScrollAnimationFrame: number | null = null;
@@ -298,6 +302,7 @@ export class Chat implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.contextTrackingDestroyed = true;
     this.cleanupDetachedWindowClosedListener?.();
+    this.cleanupCodexEntryChangedListener?.();
     this.cancelFluidScroll();
     this.cancelStreamingAutoScroll();
 
@@ -532,6 +537,12 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   refreshContextAvailability(): void {
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) return;
+
     const detectedEntryIds = new Set<string>();
     for (const line of this.composerValue().split(/\r?\n/)) {
       for (const match of this.codexContextTrie.findMatches(line)) {
@@ -551,10 +562,11 @@ export class Chat implements OnInit, OnDestroy {
     }
 
     const selectedEntryIds = this.contextCodexEntryIds();
-    const reconciledEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+    const reconciledEntryIds = reconcileSelectedCodexEntryIds({
       selectedEntryIds,
+      entries: this.contextCodexEntries(),
       automaticallyIncludedEntryIds,
-    );
+    });
     if (reconciledEntryIds.length !== selectedEntryIds.length) {
       this.contextCodexEntryIds.set(reconciledEntryIds);
     }
@@ -887,6 +899,14 @@ export class Chat implements OnInit, OnDestroy {
       if (!session) {
         throw new Error('Detached chat session could not be found.');
       }
+
+      this.cleanupCodexEntryChangedListener = this.codexWindowService.onDetachedEntryChanged(
+        event => {
+          if (event.bookId === session.bookId) {
+            void this.codexContextTrie.refreshCurrentContext();
+          }
+        },
+      );
 
       void this.codexContextTrie.loadForContext(session.bookId);
       void this.workspaceStore.enterBook(session.bookId);

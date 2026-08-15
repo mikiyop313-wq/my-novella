@@ -20,6 +20,7 @@ import { CodexContextHighlightRegistryService } from '../codex/highlighting/code
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
 import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.service';
+import { CodexWindowService } from '../codex/services/codex-window.service';
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
 import { WorkspaceStore } from '../workspace/workspace.store';
 import { Chat } from './chat';
@@ -127,9 +128,13 @@ describe('Chat', () => {
     onDetachedWindowClosed: ReturnType<typeof vi.fn>;
     isBookDetached: ReturnType<typeof vi.fn>;
   };
+  let codexWindowService: {
+    onDetachedEntryChanged: ReturnType<typeof vi.fn>;
+  };
   let toastService: Pick<ToastService, 'error'>;
   let matchChooser: { open: ReturnType<typeof vi.fn> };
   let detachedWindowClosedCallback: ((event: { bookId: string; sessionId: string }) => void) | null;
+  let codexEntryChangedCallback: ((event: { bookId: string | null }) => void) | null;
   let detachedBookIds: Set<string>;
   const trieState = signal<object | null>({});
   const contextEntries = signal<any[]>([]);
@@ -142,6 +147,7 @@ describe('Chat', () => {
     error: contextError.asReadonly(),
     findMatches: vi.fn((text: string) => findCodexMatches(text)),
     loadForContext: vi.fn(),
+    refreshCurrentContext: vi.fn(),
   };
   const contextHierarchy = signal<any[]>([]);
   const contextHierarchyLoading = signal(false);
@@ -174,6 +180,7 @@ describe('Chat', () => {
         { provide: Router, useValue: router },
         { provide: ChatStore, useValue: chatStore },
         { provide: ChatWindowService, useValue: chatWindowService },
+        { provide: CodexWindowService, useValue: codexWindowService },
         { provide: AiStore, useValue: aiStore },
         { provide: AiStreamService, useValue: aiStreamService },
         { provide: ToastService, useValue: toastService },
@@ -226,6 +233,7 @@ describe('Chat', () => {
     selectedThread = null;
     threads = [];
     detachedWindowClosedCallback = null;
+    codexEntryChangedCallback = null;
     detachedBookIds = new Set();
     trieState.set({});
     contextEntries.set([]);
@@ -236,6 +244,7 @@ describe('Chat', () => {
     contextHierarchyError.set(null);
     contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
     contextTrie.loadForContext.mockClear();
+    contextTrie.refreshCurrentContext.mockClear();
     workspaceBookStore.loadBookHierarchy.mockClear();
     workspaceStore.enterBook.mockClear();
     chatAiContext.buildContext.mockClear();
@@ -393,6 +402,14 @@ describe('Chat', () => {
         };
       }),
       isBookDetached: vi.fn((bookId: string | null) => !!bookId && detachedBookIds.has(bookId)),
+    };
+    codexWindowService = {
+      onDetachedEntryChanged: vi.fn((callback: (event: { bookId: string | null }) => void) => {
+        codexEntryChangedCallback = callback;
+        return () => {
+          codexEntryChangedCallback = null;
+        };
+      }),
     };
     toastService = { error: vi.fn() };
     matchChooser = { open: vi.fn() };
@@ -879,6 +896,43 @@ describe('Chat', () => {
       codexEntryIds: [],
     }));
     expect(component.automaticallyIncludedCodexEntryIds()).toEqual(new Set());
+  });
+
+  it('removes deleted Codex selections before submitting composer context', async () => {
+    contextEntries.set([{
+      id: 'codex-manual',
+      bookId: 'book-1',
+      type: 'lore',
+      name: 'Moon Rite',
+      alias: null,
+      description: null,
+      image: null,
+      status: 'active',
+      trackingSetting: 'manual',
+      createdAt: '',
+      lastEditedAt: '',
+    }]);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'new-chat' }) },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    component.onContextChange(['codex:codex-manual']);
+    setComposerValue('Continue the scene.');
+
+    contextEntries.set([]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.contextCodexEntryIds()).toEqual([]);
+
+    await component.sendPrompt();
+
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      codexEntryIds: [],
+    }));
   });
 
   it('streams an AI response after saving the user message', async () => {
@@ -1866,6 +1920,30 @@ describe('Chat', () => {
     expect(contextTrie.loadForContext).toHaveBeenCalledWith('book-1');
     expect(chatStore.openThread).toHaveBeenCalledWith('thread-1');
     expect(fixture.nativeElement.querySelector('.detach-btn')).toBeNull();
+  });
+
+  it('refreshes detached chat context when Codex changes in another window', async () => {
+    chatWindowService.getDetachedSession.mockResolvedValueOnce({
+      sessionId: 'session-1',
+      bookId: 'book-1',
+      selectedThreadId: 'thread-1',
+    });
+
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ sessionId: 'session-1' }),
+      },
+      parent: null,
+    });
+
+    codexEntryChangedCallback?.({ bookId: 'other-book' });
+    codexEntryChangedCallback?.({ bookId: 'book-1' });
+
+    expect(contextTrie.refreshCurrentContext).toHaveBeenCalledTimes(1);
+
+    fixture.destroy();
+
+    expect(codexEntryChangedCallback).toBeNull();
   });
 
   it('starts a new detached chat when detached without a selected thread', async () => {

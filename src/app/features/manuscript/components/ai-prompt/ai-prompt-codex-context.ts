@@ -10,6 +10,12 @@ interface CodexEntryMatch {
 
 type FindCodexMatches = (text: string) => readonly CodexEntryMatch[];
 
+interface ReconcileSelectedCodexEntryIdsOptions {
+  selectedEntryIds: readonly string[];
+  entries: readonly CodexEntryDto[];
+  automaticallyIncludedEntryIds: ReadonlySet<string>;
+}
+
 const SCENE_NODE = 'sceneSummary';
 const STRUCTURAL_BOUNDARY_NODES = new Set(['actHeader', 'chapterHeader']);
 
@@ -79,4 +85,21 @@ export function removeAutomaticallyIncludedCodexEntryIds(
   automaticallyIncludedEntryIds: ReadonlySet<string>,
 ): string[] {
   return selectedEntryIds.filter(entryId => !automaticallyIncludedEntryIds.has(entryId));
+}
+
+/** Removes selections that are unavailable or already covered by automatic tracking. */
+export function reconcileSelectedCodexEntryIds({
+  selectedEntryIds,
+  entries,
+  automaticallyIncludedEntryIds,
+}: ReconcileSelectedCodexEntryIdsOptions): string[] {
+  const activeEntryIds = new Set(
+    entries
+      .filter(entry => entry.status === 'active')
+      .map(entry => entry.id),
+  );
+
+  return selectedEntryIds.filter(entryId => (
+    activeEntryIds.has(entryId) && !automaticallyIncludedEntryIds.has(entryId)
+  ));
 }

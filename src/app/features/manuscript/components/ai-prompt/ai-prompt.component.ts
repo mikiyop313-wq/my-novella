@@ -29,6 +29,7 @@ import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
 import {
   findDetectedCodexEntryIdsForPrompt,
   getAutomaticallyIncludedCodexEntryIds,
+  reconcileSelectedCodexEntryIds,
   removeAutomaticallyIncludedCodexEntryIds,
 } from './ai-prompt-codex-context';
 import {
@@ -565,6 +566,12 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   /** Rechecks tracking immediately before presenting the context menu. */
   refreshContextAvailability(): void {
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) return;
+
     const pos = this.currentNodePosition();
     if (pos === null) return;
 
@@ -584,10 +591,11 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     }
 
     const selectedEntryIds = this.contextCodexEntryIds();
-    const reconciledEntryIds = removeAutomaticallyIncludedCodexEntryIds(
+    const reconciledEntryIds = reconcileSelectedCodexEntryIds({
       selectedEntryIds,
+      entries: this.contextCodexEntries(),
       automaticallyIncludedEntryIds,
-    );
+    });
 
     if (reconciledEntryIds.length !== selectedEntryIds.length) {
       this.contextCodexEntryIds.set(reconciledEntryIds);

@@ -13,6 +13,7 @@ import { type CodexEntryMenuPayload } from '../../../../../shared/models/codex-w
 import { CodexContextTrieService } from '../services/codex-context-trie.service';
 import { CodexEntryPersistenceService } from '../services/codex-entry-persistence.service';
 import { CodexService } from '../services/codex.service';
+import { CodexWindowService } from '../services/codex-window.service';
 
 export interface CodexState {
   activeType: CodexEntryType;
@@ -50,6 +51,7 @@ export const CodexStore = signalStore(
     codexService = inject(CodexService),
     persistenceService = inject(CodexEntryPersistenceService),
     codexContextTrie = inject(CodexContextTrieService),
+    codexWindowService = inject(CodexWindowService),
     toastService = inject(ToastService),
   ) => {
     let loadRequestId = 0;
@@ -291,6 +293,11 @@ export const CodexStore = signalStore(
 
           await loadEntries(bookId, selectedEntry.type, store.searchQuery().trim());
           await codexContextTrie.refreshCurrentContext();
+          codexWindowService.notifyDetachedEntryChanged({
+            bookId,
+            entryId: selectedEntry.id,
+            type: selectedEntry.type,
+          });
           closeCreateMenu();
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to archive codex entry.';
@@ -343,6 +350,11 @@ export const CodexStore = signalStore(
 
           await loadEntries(bookId, selectedEntry.type, store.searchQuery().trim());
           await codexContextTrie.refreshCurrentContext();
+          codexWindowService.notifyDetachedEntryChanged({
+            bookId,
+            entryId: selectedEntry.id,
+            type: selectedEntry.type,
+          });
           closeCreateMenu();
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to delete codex entry.';
