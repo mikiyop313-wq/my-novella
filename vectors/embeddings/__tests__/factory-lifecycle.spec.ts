@@ -15,6 +15,10 @@ vi.mock('../../../db/repositories/book.repository', () => ({
     bookRepository: { getEmbeddingModel: vi.fn(), getLocalEmbeddingModel: vi.fn() },
 }));
 
+vi.mock('../../../db/repositories/app-settings.repository', () => ({
+    appSettingsRepository: { get: vi.fn(), set: vi.fn(), delete: vi.fn() },
+}));
+
 vi.mock('../providers/local', () => ({
     LocalEmbeddingProvider: class {
         dispose = mocks.dispose;

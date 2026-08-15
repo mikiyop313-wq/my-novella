@@ -13,6 +13,7 @@ import { setupManuscriptHandlers } from './library/manuscript';
 import { setupVectorHandlers } from './library/paragraph-vectors';
 import { setupSystemPromptHandlers } from './system-prompt/system-prompt';
 import { setupLocalEmbeddingModelHandlers } from './library/local-embedding-model';
+import { setupVectorConfigurationHandlers } from './library/vector-configuration';
 
 /** Initializes all application IPC domains once the Electron app is ready. */
 export function initializeIpc(): void {
@@ -25,6 +26,7 @@ export function initializeIpc(): void {
     setupVectorHandlers();
     setupSystemPromptHandlers();
     setupLocalEmbeddingModelHandlers();
+    setupVectorConfigurationHandlers();
 
     try {
         console.log('IPC handlers initialized');

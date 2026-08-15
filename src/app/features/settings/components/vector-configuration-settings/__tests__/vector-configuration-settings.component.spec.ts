@@ -6,6 +6,7 @@ import type {
   LocalEmbeddingModelName,
   LocalEmbeddingModelStatus,
   LocalEmbeddingModelTier,
+  VectorProviderConfiguration,
 } from '../../../../../../../shared/models/vector.model';
 import { ElectronService } from '../../../../../core/services/electron.service';
 import { ConfirmModalService } from '../../../../../shared/components/confirm-modal/confirm-modal.service';
@@ -63,8 +64,23 @@ describe('VectorConfigurationSettingsComponent', () => {
   let progressListener: ((progress: LocalEmbeddingModelDownloadProgress) => void) | undefined;
   let confirmService: ConfirmModalService;
 
+  const vectorConfiguration: VectorProviderConfiguration = {
+    apiKeys: {
+      openai: { configured: true, suffix: '1234' },
+      voyage: { configured: false, suffix: null },
+    },
+  };
+
   beforeEach(async () => {
-    invoke = vi.fn().mockResolvedValue(catalog);
+    invoke = vi.fn((channel: string) => {
+      if (channel === 'vectors:config:load') return Promise.resolve(vectorConfiguration);
+      if (channel === 'vectors:config:load-api-key') return Promise.resolve('sk-saved-1234');
+      if (channel === 'vectors:config:save-api-key') {
+        return Promise.resolve({ configured: true, suffix: 'abcd' });
+      }
+      if (channel === 'vectors:config:test-connection') return Promise.resolve();
+      return Promise.resolve(catalog);
+    });
     removeProgressListener = vi.fn();
     on = vi.fn(
       (channel: string, callback: (progress: LocalEmbeddingModelDownloadProgress) => void) => {
@@ -298,6 +314,57 @@ describe('VectorConfigurationSettingsComponent', () => {
       openai: 'sk-openai-draft',
       voyage: 'pa-voyage-draft',
     });
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Testing sends a real embedding request and may incur a small charge from the provider.',
+    );
+  });
+
+  it('loads and masks configured vector credentials, then loads the full key on focus', async () => {
+    selectProvider('openai');
+    const input = credentialInput();
+
+    expect(input.value).toContain('1234');
+    input.dispatchEvent(new FocusEvent('focus'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:load-api-key', { providerId: 'openai' });
+    expect(input.value).toBe('sk-saved-1234');
+  });
+
+  it('saves a dirty vector credential on blur', async () => {
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-secret-abcd');
+    input.dispatchEvent(new FocusEvent('blur'));
+    await fixture.whenStable();
+
+    expect(invoke).toHaveBeenCalledWith('vectors:config:save-api-key', {
+      providerId: 'voyage',
+      apiKey: 'voyage-secret-abcd',
+    });
+  });
+
+  it('saves pending edits before testing the provider connection', async () => {
+    selectProvider('voyage');
+    const input = credentialInput();
+    input.dispatchEvent(new FocusEvent('focus'));
+    updateVisibleKey('voyage-secret-abcd');
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.connection-test-button')
+      ?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const saveIndex = invoke.mock.calls.findIndex(([channel]) => channel === 'vectors:config:save-api-key');
+    const testIndex = invoke.mock.calls.findIndex(([channel]) => channel === 'vectors:config:test-connection');
+    expect(saveIndex).toBeGreaterThan(-1);
+    expect(testIndex).toBeGreaterThan(saveIndex);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Connection to Voyage AI succeeded.',
+    );
   });
 
   function modelCard(modelName: LocalEmbeddingModelName): HTMLElement {
@@ -324,13 +391,18 @@ describe('VectorConfigurationSettingsComponent', () => {
   }
 
   function updateVisibleKey(value: string): void {
+    const input = credentialInput();
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  function credentialInput(): HTMLInputElement {
     const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
       '.credential-input input',
     );
     if (!input) throw new Error('Expected an API key input for the selected provider.');
-    input.value = value;
-    input.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
+    return input;
   }
 
   function model(

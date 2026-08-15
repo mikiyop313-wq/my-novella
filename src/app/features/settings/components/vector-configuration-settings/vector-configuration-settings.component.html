@@ -184,29 +184,6 @@
       }
     </section>
 
-    <div class="preview-notice" role="note">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="10"></circle>
-        <path d="M12 16v-4"></path>
-        <path d="M12 8h.01"></path>
-      </svg>
-      <div>
-        <strong>Configuration preview</strong>
-        <p>
-          API keys entered here are not saved or used yet. Credential storage and connection testing
-          will be connected in a future update.
-        </p>
-      </div>
-    </div>
-
     <section class="provider-section" aria-labelledby="vector-providers-heading">
       <header class="section-header">
         <div class="section-icon" aria-hidden="true">
@@ -235,6 +212,7 @@
             [class.is-selected]="selectedProviderId() === provider.id"
             [attr.aria-pressed]="selectedProviderId() === provider.id"
             [attr.data-provider]="provider.id"
+            [disabled]="isConfigurationLoading()"
             (click)="selectProvider(provider.id)"
           >
             <span class="provider-mark" aria-hidden="true">
@@ -264,71 +242,76 @@
         <div class="provider-editor">
           <div class="field-heading">
             <label [for]="provider.id + '-vector-api-key'">{{ provider.name }} API key</label>
-            <span class="field-status" aria-live="polite"></span>
+            <span
+              class="field-status"
+              [class.is-error]="fieldErrors()[provider.id]"
+              aria-live="polite"
+            >{{ fieldStatus(provider.id) }}</span>
           </div>
-          <p class="field-help">This preview keeps the key only until the page is closed.</p>
+          <p class="field-help">Keys are encrypted on this device. Saving replaces the configured key.</p>
           <div class="credential-input">
             <input
               [id]="provider.id + '-vector-api-key'"
-              [type]="apiKeyInputType()"
-              [value]="apiKeyDrafts()[provider.id]"
+              [type]="apiKeyInputType(provider.id)"
+              [value]="apiKeyInputValue(provider.id)"
               [placeholder]="provider.keyPlaceholder"
+              [disabled]="isConfigurationLoading() || !!configurationLoadError()"
               autocomplete="off"
               spellcheck="false"
+              (focus)="beginApiKeyEdit(provider.id, $event)"
               (input)="updateApiKey(provider.id, $event)"
               (blur)="saveApiKeyOnBlur(provider.id)"
             />
-            <button
-              class="visibility-button"
-              type="button"
-              [attr.aria-label]="apiKeyVisible() ? 'Hide API key' : 'Show API key'"
-              [attr.aria-pressed]="apiKeyVisible()"
-              (mousedown)="$event.preventDefault()"
-              (click)="toggleApiKeyVisibility()"
-            >
-              @if (apiKeyVisible()) {
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="m3 3 18 18"></path>
-                  <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7"></path>
-                  <path
-                    d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9.5 5 9.5 5a18 18 0 0 1-2.1 2.5"
-                  ></path>
-                  <path d="M6.6 6.6C4 8.2 2.5 11 2.5 11S6.5 16 12 16c.7 0 1.4-.1 2-.2"></path>
-                </svg>
-              } @else {
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M2.5 12S6.5 7 12 7s9.5 5 9.5 5-4 5-9.5 5-9.5-5-9.5-5Z"></path>
-                  <circle cx="12" cy="12" r="2.5"></circle>
-                </svg>
-              }
-            </button>
+            @if (focusedApiKeyProvider() === provider.id) {
+              <button
+                class="visibility-button"
+                type="button"
+                [attr.aria-label]="apiKeyVisible() ? 'Hide API key' : 'Show API key'"
+                [attr.aria-pressed]="apiKeyVisible()"
+                (mousedown)="$event.preventDefault()"
+                (click)="toggleApiKeyVisibility()"
+              >
+                @if (apiKeyVisible()) {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m3 3 18 18"></path><path d="M10.6 10.7a2 2 0 0 0 2.7 2.7"></path><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9.5 5 9.5 5a18 18 0 0 1-2.1 2.5"></path><path d="M6.6 6.6C4 8.2 2.5 11 2.5 11S6.5 16 12 16c.7 0 1.4-.1 2-.2"></path>
+                  </svg>
+                } @else {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2.5 12S6.5 7 12 7s9.5 5 9.5 5-4 5-9.5 5-9.5-5-9.5-5Z"></path><circle cx="12" cy="12" r="2.5"></circle>
+                  </svg>
+                }
+              </button>
+            }
           </div>
+          <p class="field-help connection-cost-notice" role="note">
+            Testing sends a real embedding request and may incur a small charge from the provider.
+          </p>
           <div class="connection-actions">
+            @if (connectionResults()[provider.id]; as result) {
+              <span
+                class="connection-result"
+                [class.is-success]="result.status === 'success'"
+                [class.is-error]="result.status === 'error'"
+                aria-live="polite"
+              >{{ result.message }}</span>
+            }
             <button
               class="connection-test-button"
               type="button"
+              [disabled]="isConfigurationLoading() || !!configurationLoadError() || testingProvider() !== null"
+              [attr.aria-busy]="testingProvider() === provider.id"
               (mousedown)="$event.preventDefault()"
-              (click)="testConnection(provider.id)"
+              (click)="testConnection(provider.id, provider.name)"
             >
-              Test connection
+              {{ testingProvider() === provider.id ? 'Testing...' : 'Test connection' }}
             </button>
           </div>
+        </div>
+      }
+      @if (configurationLoadError()) {
+        <div class="configuration-state is-error" role="alert">
+          <span>{{ configurationLoadError() }}</span>
+          <button type="button" (click)="loadConfiguration()">Retry</button>
         </div>
       }
     </section>

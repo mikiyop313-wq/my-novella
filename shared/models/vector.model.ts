@@ -6,6 +6,32 @@
 /** The embedding model/provider used to generate a vector. */
 export type EmbeddingModel = 'local' | 'openAI' | 'voyage';
 
+export const VECTOR_CLOUD_PROVIDER_IDS = ['openai', 'voyage'] as const;
+
+export type VectorCloudProviderId = (typeof VECTOR_CLOUD_PROVIDER_IDS)[number];
+
+export interface VectorApiKeyStatus {
+    configured: boolean;
+    suffix: string | null;
+}
+
+export interface VectorProviderConfiguration {
+    apiKeys: Record<VectorCloudProviderId, VectorApiKeyStatus>;
+}
+
+export interface SaveVectorApiKeyRequest {
+    providerId: VectorCloudProviderId;
+    apiKey: string;
+}
+
+export interface LoadVectorApiKeyRequest {
+    providerId: VectorCloudProviderId;
+}
+
+export interface TestVectorProviderConnectionRequest {
+    providerId: VectorCloudProviderId;
+}
+
 /** Identifies one mutually compatible vector space. */
 export interface EmbeddingSpaceDescriptor {
     provider: EmbeddingModel;

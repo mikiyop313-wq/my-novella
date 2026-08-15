@@ -6,8 +6,12 @@
  */
 
 import { bookRepository } from '../../db/repositories/book.repository';
+import { vectorApiKeyService } from '../../electron/domain/vector/vector-api-key.service';
 import { EmbeddingProvider } from './types';
-import { EmbeddingModel } from '../../shared/models/vector.model';
+import type {
+    EmbeddingModel,
+    VectorCloudProviderId,
+} from '../../shared/models/vector.model';
 import type { LocalEmbeddingModelName } from '../../shared/models/vector.model';
 import { LocalEmbeddingProvider } from './providers/local';
 import { OpenAIEmbeddingProvider } from './providers/openai';
@@ -22,21 +26,6 @@ import {
     LOCAL_EMBEDDING_MODEL_NAME,
 } from './local-model-definition';
 
-// ---------------------------------------------------------------------------
-// API key stub
-// ---------------------------------------------------------------------------
-
-/**
- * Retrieves the API key for a given embedding provider.
- *
- * @stub This function is a placeholder. When cloud provider support is added,
- * wire this to SecureLocalStorage (or an IPC round-trip to the renderer)
- * to retrieve the key stored by the user.
- */
-export function getApiKeyForModel(_model: EmbeddingModel): string | undefined {
-    return undefined;
-}
-
 export { EmbeddingProviderUnavailableError } from './provider-selection';
 
 // ---------------------------------------------------------------------------
@@ -47,48 +36,46 @@ export { EmbeddingProviderUnavailableError } from './provider-selection';
 const providerCache = new Map<string, EmbeddingProvider>();
 const unavailableLocalModels = new Set<LocalEmbeddingModelName>();
 
+interface VectorApiKeyReader {
+    getApiKey(providerId: VectorCloudProviderId): Promise<string | null>;
+}
+
 /** Creates the configured provider for an embedding-provider selection. */
-function buildProvider(
+function buildLocalProvider(
     model: EmbeddingModel,
     localModelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
 ): EmbeddingProvider {
-    switch (model) {
-        case 'local': {
-            const definition = getLocalEmbeddingModelDefinition(localModelName);
-            const paths = getLocalEmbeddingModelPaths(localModelName);
-            return new LocalEmbeddingProvider({
-                type: 'local',
-                modelName: definition.modelName,
-                sourceModelName: definition.sourceModelName,
-                dimensions: definition.dimensions,
-                inputType: 'document',
-                quantized: definition.quantized,
-                cacheDir: paths.cacheDir,
-                installationMarkerPath: paths.installationMarkerPath,
-            });
-        }
+    if (model !== 'local') throw new EmbeddingProviderUnavailableError(model);
 
-        case 'openAI': {
-            const apiKey = requireEmbeddingApiKey('openAI', getApiKeyForModel('openAI'));
+    const definition = getLocalEmbeddingModelDefinition(localModelName);
+    const paths = getLocalEmbeddingModelPaths(localModelName);
+    return new LocalEmbeddingProvider({
+        type: 'local',
+        modelName: definition.modelName,
+        sourceModelName: definition.sourceModelName,
+        dimensions: definition.dimensions,
+        inputType: 'document',
+        quantized: definition.quantized,
+        cacheDir: paths.cacheDir,
+        installationMarkerPath: paths.installationMarkerPath,
+    });
+}
+
+function buildCloudProvider(model: Exclude<EmbeddingModel, 'local'>, apiKey: string): EmbeddingProvider {
+    switch (model) {
+        case 'openAI':
             return new OpenAIEmbeddingProvider({
                 type: 'openai',
-                modelName: 'text-embedding-3-small',
-                dimensions: 1536,
+                modelName: 'text-embedding-3-large',
+                dimensions: 3072,
                 apiKey,
             });
-        }
-
-        case 'voyage': {
-            const apiKey = requireEmbeddingApiKey('voyage', getApiKeyForModel('voyage'));
+        case 'voyage':
             return new VoyageEmbeddingProvider({
                 type: 'voyage',
                 modelName: 'voyage-3',
                 apiKey,
             });
-        }
-
-        default:
-            throw new EmbeddingProviderUnavailableError(model);
     }
 }
 
@@ -114,7 +101,21 @@ export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingPro
 
     console.log(`[EmbeddingFactory] book=${bookId} → model=${model}:${localModelName}`);
 
-    return getOrCreateProvider(model, localModelName);
+    if (model === 'local') return getOrCreateLocalProvider(localModelName);
+    return getCloudEmbeddingProvider(vectorProviderId(model));
+}
+
+/** Creates a cloud provider with the latest securely stored credential. */
+export async function getCloudEmbeddingProvider(
+    providerId: VectorCloudProviderId,
+    keys: VectorApiKeyReader = vectorApiKeyService,
+): Promise<EmbeddingProvider> {
+    const model = embeddingModel(providerId);
+    const apiKey = requireEmbeddingApiKey(
+        model,
+        (await keys.getApiKey(providerId)) ?? undefined,
+    );
+    return buildCloudProvider(model, apiKey);
 }
 
 /**
@@ -126,7 +127,7 @@ export async function getEmbeddingProvider(bookId: string): Promise<EmbeddingPro
 export function getLocalEmbeddingProvider(
     modelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
 ): LocalEmbeddingProvider {
-    return getOrCreateProvider('local', modelName) as LocalEmbeddingProvider;
+    return getOrCreateLocalProvider(modelName);
 }
 
 /**
@@ -152,17 +153,16 @@ export function restoreLocalEmbeddingProviderAccess(
 }
 
 /** Returns a cached provider or constructs it when first requested. */
-function getOrCreateProvider(
-    model: EmbeddingModel,
+function getOrCreateLocalProvider(
     localModelName: LocalEmbeddingModelName = LOCAL_EMBEDDING_MODEL_NAME,
-): EmbeddingProvider {
-    if (model === 'local' && unavailableLocalModels.has(localModelName)) {
+): LocalEmbeddingProvider {
+    if (unavailableLocalModels.has(localModelName)) {
         throw new Error('The local embedding model is being uninstalled.');
     }
 
-    const key = providerCacheKey(model, localModelName);
-    if (!providerCache.has(key)) providerCache.set(key, buildProvider(model, localModelName));
-    return providerCache.get(key)!;
+    const key = providerCacheKey('local', localModelName);
+    if (!providerCache.has(key)) providerCache.set(key, buildLocalProvider('local', localModelName));
+    return providerCache.get(key)! as LocalEmbeddingProvider;
 }
 
 function providerCacheKey(
@@ -170,4 +170,12 @@ function providerCacheKey(
     localModelName: LocalEmbeddingModelName,
 ): string {
     return model === 'local' ? `${model}:${localModelName}` : model;
+}
+
+function vectorProviderId(model: Exclude<EmbeddingModel, 'local'>): VectorCloudProviderId {
+    return model === 'openAI' ? 'openai' : 'voyage';
+}
+
+function embeddingModel(providerId: VectorCloudProviderId): Exclude<EmbeddingModel, 'local'> {
+    return providerId === 'openai' ? 'openAI' : 'voyage';
 }

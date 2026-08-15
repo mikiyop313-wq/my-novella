@@ -1,11 +1,19 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 
 import type {
-  LocalEmbeddingModelName,
-  LocalEmbeddingModelStatus,
-  LocalEmbeddingModelTier,
+    LocalEmbeddingModelName,
+    LocalEmbeddingModelStatus,
+    LocalEmbeddingModelTier,
+    LoadVectorApiKeyRequest,
+    SaveVectorApiKeyRequest,
+    TestVectorProviderConnectionRequest,
+    VectorApiKeyStatus,
+    VectorCloudProviderId,
+    VectorProviderConfiguration,
 } from '../../../../../../shared/models/vector.model';
+import { ElectronService } from '../../../../core/services/electron.service';
 import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 import {
   LocalEmbeddingModelStateService,
   type LocalModelOperationType,
@@ -13,7 +21,8 @@ import {
 
 import { AiProviderIconComponent } from '../ai-configuration-settings/ai-provider-icon.component';
 
-type VectorCloudProviderId = 'openai' | 'voyage';
+type SaveState = 'idle' | 'saving' | 'saved';
+type ConnectionResult = { status: 'success' | 'error'; message: string };
 
 interface VectorCloudProvider {
   id: VectorCloudProviderId;
@@ -29,8 +38,18 @@ interface VectorCloudProvider {
   styleUrl: '../ai-configuration-settings/ai-configuration-settings.component.scss',
 })
 export class VectorConfigurationSettingsComponent implements OnInit {
+  private readonly electronService = inject(ElectronService);
   private readonly localModelState = inject(LocalEmbeddingModelStateService);
   private readonly confirmService = inject(ConfirmModalService);
+  private readonly toastService = inject(ToastService);
+  private readonly revisions: Record<VectorCloudProviderId, number> = {
+    openai: 0,
+    voyage: 0,
+  };
+  private readonly pendingSaves: Partial<Record<VectorCloudProviderId, {
+    revision: number;
+    promise: Promise<boolean>;
+  }>> = {};
 
   readonly providers: readonly VectorCloudProvider[] = [
     {
@@ -53,10 +72,34 @@ export class VectorConfigurationSettingsComponent implements OnInit {
   ];
 
   readonly selectedProviderId = signal<VectorCloudProviderId | null>(null);
+  readonly focusedApiKeyProvider = signal<VectorCloudProviderId | null>(null);
   readonly apiKeyVisible = signal(false);
-  readonly apiKeyDrafts = signal<Record<VectorCloudProviderId, string>>({
-    openai: '',
-    voyage: '',
+  readonly apiKeyDrafts = signal<Record<VectorCloudProviderId, string | null>>({
+    openai: null,
+    voyage: null,
+  });
+  readonly isConfigurationLoading = signal(true);
+  readonly configurationLoadError = signal<string | null>(null);
+  readonly testingProvider = signal<VectorCloudProviderId | null>(null);
+  readonly connectionResults = signal<Record<VectorCloudProviderId, ConnectionResult | null>>({
+    openai: null,
+    voyage: null,
+  });
+  readonly fieldErrors = signal<Record<VectorCloudProviderId, string | null>>({
+    openai: null,
+    voyage: null,
+  });
+  private readonly apiKeyStatuses = signal<Record<VectorCloudProviderId, VectorApiKeyStatus>>({
+    openai: { configured: false, suffix: null },
+    voyage: { configured: false, suffix: null },
+  });
+  private readonly apiKeyDirty = signal<Record<VectorCloudProviderId, boolean>>({
+    openai: false,
+    voyage: false,
+  });
+  private readonly saveStates = signal<Record<VectorCloudProviderId, SaveState>>({
+    openai: 'idle',
+    voyage: 'idle',
   });
   readonly localModelStatuses = this.localModelState.statuses;
   readonly selectedLocalModelTier = this.localModelState.selectedTier;
@@ -73,6 +116,24 @@ export class VectorConfigurationSettingsComponent implements OnInit {
 
   ngOnInit(): void {
     void this.localModelState.ensureStatuses().catch(() => undefined);
+    void this.loadConfiguration();
+  }
+
+  async loadConfiguration(): Promise<void> {
+    this.isConfigurationLoading.set(true);
+    this.configurationLoadError.set(null);
+    try {
+      const configuration = await this.electronService.invoke(
+        'vectors:config:load',
+      ) as VectorProviderConfiguration;
+      this.apiKeyStatuses.set(configuration.apiKeys);
+    } catch (error) {
+      this.configurationLoadError.set(
+        this.errorMessage(error, 'Unable to load vector provider configuration.'),
+      );
+    } finally {
+      this.isConfigurationLoading.set(false);
+    }
   }
 
   async loadLocalModelStatus(): Promise<void> {
@@ -160,22 +221,193 @@ export class VectorConfigurationSettingsComponent implements OnInit {
     this.apiKeyVisible.set(false);
   }
 
+  beginApiKeyEdit(providerId: VectorCloudProviderId, event: FocusEvent): void {
+    if (this.isConfigurationLoading()) return;
+
+    const input = event.target as HTMLInputElement;
+    const revision = this.revisions[providerId];
+    this.focusedApiKeyProvider.set(providerId);
+    this.apiKeyVisible.set(false);
+    this.setFieldError(providerId, null);
+    this.setSaveState(providerId, 'idle');
+
+    if (this.apiKeyDrafts()[providerId] === null && this.apiKeyStatuses()[providerId].configured) {
+      void this.loadApiKeyForEditing(providerId, input, revision);
+    }
+    queueMicrotask(() => input.select());
+  }
+
   updateApiKey(providerId: VectorCloudProviderId, event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     this.apiKeyDrafts.update((drafts) => ({ ...drafts, [providerId]: value }));
+    this.apiKeyDirty.update((dirty) => ({ ...dirty, [providerId]: true }));
+    this.revisions[providerId] += 1;
+    this.setConnectionResult(providerId, null);
+    this.setFieldError(providerId, null);
+    this.setSaveState(providerId, 'idle');
   }
 
   toggleApiKeyVisibility(): void {
     this.apiKeyVisible.update((visible) => !visible);
   }
 
-  apiKeyInputType(): 'text' | 'password' {
+  apiKeyInputValue(providerId: VectorCloudProviderId): string {
+    if (this.focusedApiKeyProvider() === providerId) {
+      const draft = this.apiKeyDrafts()[providerId];
+      if (draft !== null) return draft;
+    }
+    const status = this.apiKeyStatuses()[providerId];
+    return status.configured ? `••••••••${status.suffix ?? ''}` : '';
+  }
+
+  apiKeyInputType(providerId: VectorCloudProviderId): 'text' | 'password' {
+    if (this.focusedApiKeyProvider() !== providerId) return 'text';
     return this.apiKeyVisible() ? 'text' : 'password';
   }
 
-  /** Persistence will be connected when the vector configuration backend is implemented. */
-  saveApiKeyOnBlur(_providerId: VectorCloudProviderId): void {}
+  fieldStatus(providerId: VectorCloudProviderId): string {
+    const error = this.fieldErrors()[providerId];
+    if (error) return error;
+    switch (this.saveStates()[providerId]) {
+      case 'saving': return 'Saving…';
+      case 'saved': return 'Saved';
+      case 'idle': return this.isConfigured(providerId) ? 'Configured' : '';
+    }
+  }
 
-  /** Connection testing will be connected when the vector configuration backend is implemented. */
-  testConnection(_providerId: VectorCloudProviderId): void {}
+  saveApiKeyOnBlur(providerId: VectorCloudProviderId): void {
+    if (this.focusedApiKeyProvider() === providerId) this.focusedApiKeyProvider.set(null);
+    this.apiKeyVisible.set(false);
+    if (this.apiKeyDirty()[providerId]) void this.saveApiKey(providerId);
+  }
+
+  async testConnection(providerId: VectorCloudProviderId, providerName: string): Promise<void> {
+    if (this.testingProvider() !== null) return;
+
+    this.testingProvider.set(providerId);
+    this.setConnectionResult(providerId, null);
+    try {
+      const saved = !this.apiKeyDirty()[providerId] || await this.saveApiKey(providerId);
+      if (!saved) return;
+
+      const request: TestVectorProviderConnectionRequest = { providerId };
+      await this.electronService.invoke('vectors:config:test-connection', request);
+      this.setConnectionResult(providerId, {
+        status: 'success',
+        message: `Connection to ${providerName} succeeded.`,
+      });
+    } catch (error) {
+      this.setConnectionResult(providerId, {
+        status: 'error',
+        message: this.errorMessage(error, `Unable to connect to ${providerName}.`),
+      });
+    } finally {
+      if (this.testingProvider() === providerId) this.testingProvider.set(null);
+    }
+  }
+
+  private saveApiKey(providerId: VectorCloudProviderId): Promise<boolean> {
+    return this.runSave(providerId, () => this.persistApiKey(providerId));
+  }
+
+  private async persistApiKey(providerId: VectorCloudProviderId): Promise<boolean> {
+    const apiKey = (this.apiKeyDrafts()[providerId] ?? '').trim();
+    const revision = this.revisions[providerId];
+    this.setSaveState(providerId, 'saving');
+    try {
+      const request: SaveVectorApiKeyRequest = { providerId, apiKey };
+      const status = await this.electronService.invoke(
+        'vectors:config:save-api-key',
+        request,
+      ) as VectorApiKeyStatus;
+      if (this.revisions[providerId] !== revision) return false;
+
+      this.apiKeyStatuses.update(statuses => ({ ...statuses, [providerId]: status }));
+      this.apiKeyDrafts.update(drafts => ({ ...drafts, [providerId]: apiKey }));
+      this.apiKeyDirty.update(dirty => ({ ...dirty, [providerId]: false }));
+      this.setFieldError(providerId, null);
+      this.setSaveState(providerId, status.configured ? 'saved' : 'idle');
+      return true;
+    } catch (error) {
+      if (this.revisions[providerId] !== revision) return false;
+      const message = this.errorMessage(error, 'Unable to save the API key.');
+      this.setFieldError(providerId, message);
+      this.toastService.error(message, 'Vector API key save failed');
+      return false;
+    }
+  }
+
+  private async loadApiKeyForEditing(
+    providerId: VectorCloudProviderId,
+    input: HTMLInputElement,
+    revision: number,
+  ): Promise<void> {
+    try {
+      const request: LoadVectorApiKeyRequest = { providerId };
+      const apiKey = await this.electronService.invoke(
+        'vectors:config:load-api-key',
+        request,
+      ) as string | null;
+      if (this.focusedApiKeyProvider() !== providerId || this.revisions[providerId] !== revision) {
+        return;
+      }
+      if (apiKey === null) {
+        this.apiKeyStatuses.update(statuses => ({
+          ...statuses,
+          [providerId]: { configured: false, suffix: null },
+        }));
+        return;
+      }
+      this.apiKeyDrafts.update(drafts => ({ ...drafts, [providerId]: apiKey }));
+      queueMicrotask(() => input.select());
+    } catch (error) {
+      if (this.focusedApiKeyProvider() !== providerId || this.revisions[providerId] !== revision) {
+        return;
+      }
+      const message = this.errorMessage(error, 'Unable to load the API key.');
+      this.setFieldError(providerId, message);
+      this.toastService.error(message, 'Vector API key load failed');
+    }
+  }
+
+  private runSave(
+    providerId: VectorCloudProviderId,
+    operation: () => Promise<boolean>,
+  ): Promise<boolean> {
+    const pendingSave = this.pendingSaves[providerId];
+    const revision = this.revisions[providerId];
+    if (pendingSave) {
+      if (pendingSave.revision === revision) return pendingSave.promise;
+      return pendingSave.promise.then(() => this.runSave(providerId, operation));
+    }
+    const save = operation();
+    this.pendingSaves[providerId] = { revision, promise: save };
+    void save.finally(() => {
+      if (this.pendingSaves[providerId]?.promise === save) delete this.pendingSaves[providerId];
+    });
+    return save;
+  }
+
+  private isConfigured(providerId: VectorCloudProviderId): boolean {
+    return this.apiKeyStatuses()[providerId].configured && !this.apiKeyDirty()[providerId];
+  }
+
+  private setSaveState(providerId: VectorCloudProviderId, state: SaveState): void {
+    this.saveStates.update(states => ({ ...states, [providerId]: state }));
+  }
+
+  private setFieldError(providerId: VectorCloudProviderId, error: string | null): void {
+    this.fieldErrors.update(errors => ({ ...errors, [providerId]: error }));
+  }
+
+  private setConnectionResult(
+    providerId: VectorCloudProviderId,
+    result: ConnectionResult | null,
+  ): void {
+    this.connectionResults.update(results => ({ ...results, [providerId]: result }));
+  }
+
+  private errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback;
+  }
 }
