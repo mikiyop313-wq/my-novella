@@ -1,5 +1,7 @@
-import { AiPromptRequest, AiPromptResponse } from './models';
-import { AiProvider } from './providers/ai-provider.interface';
+import type { AiPromptRequest, AiPromptResponse } from './models';
+import type { AiModel } from '../../../shared/models/ai.model';
+import type { AiProvider } from './providers/ai-provider.interface';
+import { AnthropicProvider } from './providers/anthropic.provider';
 import { OpenAiProvider } from './providers/openai.provider';
 import { GeminiProvider } from './providers/gemini.provider';
 import { OpenRouterProvider } from './providers/openrouter.provider';
@@ -7,14 +9,15 @@ import { OpenRouterProvider } from './providers/openrouter.provider';
 export class AiService {
     private providers: Map<string, AiProvider>;
 
-    constructor() {
+    constructor(providers: AiProvider[] = [
+        new OpenAiProvider(),
+        new GeminiProvider(),
+        new AnthropicProvider(),
+        new OpenRouterProvider(),
+    ]) {
         this.providers = new Map();
 
-        // Register providers
-        this.registerProvider(new OpenAiProvider());
-        this.registerProvider(new GeminiProvider());
-        this.registerProvider(new OpenRouterProvider());
-        // Add Claude or others here
+        providers.forEach((provider) => this.registerProvider(provider));
     }
 
     private registerProvider(provider: AiProvider) {
@@ -34,6 +37,23 @@ export class AiService {
             console.error(`[AiService] Error generating prompt with ${provider.name}:`, error);
             throw error;
         }
+    }
+
+    async listModels(): Promise<AiModel[]> {
+        const providers = [...this.providers.values()];
+        const results = await Promise.allSettled(
+            providers.map((provider) => provider.listModels()),
+        );
+
+        return results.flatMap((result, index) => {
+            if (result.status === 'fulfilled') return result.value;
+
+            console.error(
+                `[AiService] Failed to list models from ${providers[index].name}:`,
+                result.reason,
+            );
+            return [];
+        });
     }
 }
 

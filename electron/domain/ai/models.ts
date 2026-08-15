@@ -20,10 +20,14 @@ export interface AiChatCompletionPayload {
         enabled: true;
         effort: 'medium';
     };
+    reasoning_effort?: 'medium';
+    stream_options?: {
+        include_usage: true;
+    };
 }
 
 export interface AiPromptRequest {
-    model: 'openai' | 'gemini' | 'claude' | 'openrouter';
+    model: 'openai' | 'gemini' | 'anthropic' | 'openrouter';
     modelId?: string;
     prompt: string;
     messages?: AiChatMessage[];
