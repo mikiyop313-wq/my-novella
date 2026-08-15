@@ -1,0 +1,79 @@
+@property --glow-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes glowRotate {
+  to {
+    --glow-angle: 360deg;
+  }
+}
+
+@keyframes spinnerRotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulseBreath {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-reasoning-content,
+  .message-reasoning-toggle svg {
+    transition: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .chat-body {
+    padding: 18px;
+  }
+
+  .conversation-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+
+    h2 {
+      font-size: 1.32rem;
+    }
+  }
+
+  .message-row,
+  .message-row.from-system {
+    max-width: 100%;
+  }
+}

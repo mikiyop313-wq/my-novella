@@ -6,6 +6,7 @@ import { filter } from 'rxjs';
 import { WorkspaceSidebar } from './sidebar/workspace-sidebar';
 import { WorkspaceBookStore } from './workspace-book.store';
 import { WorkspaceStore } from './workspace.store';
+import { ChatStore } from '../chat/store/chat.store';
 import { routeAnimations } from '../../shared/animations/route-animations';
 
 @Component({
@@ -18,6 +19,7 @@ import { routeAnimations } from '../../shared/animations/route-animations';
 export class Workspace implements OnInit {
   readonly store = inject(WorkspaceStore);
   readonly bookStore = inject(WorkspaceBookStore);
+  readonly chatStore = inject(ChatStore);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -48,6 +50,16 @@ export class Workspace implements OnInit {
 
   getRouteAnimationData() {
     return this.contexts.getContext('primary')?.route?.snapshot?.data?.['animation'];
+  }
+
+  getChatRoute(bookId: string): string[] {
+    const selectedThread = this.chatStore.selectedThread();
+
+    if (this.chatStore.bookId() === bookId && selectedThread) {
+      return ['/workspace', bookId, 'thread', selectedThread.id];
+    }
+
+    return ['/workspace', bookId, 'threads'];
   }
 
   private navigateToDefaultOutline(bookId: string): void {
