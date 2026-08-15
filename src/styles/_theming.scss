@@ -1,61 +1,49 @@
 //GLOBAL COLOR THEME
 
 $colors-light: (
-    bg: #fafafa,
-    // Softer background than stark white
-    bg-gradient: linear-gradient(135deg, #fdfbfb 0%, #f0f2f5 100%),
-    // Elegant soft pearl gradient
+    // Base 
+    background: #fafafa,
     text: #171717,
-    // Off-black text for better readability
-    primary: #4f46e5,
-    // Royal blue accent
 
-    // Elegant Light Card
-    card-bg: #ffffff,
-    card-border: rgba(255, 255, 255, 0.08),
-    // Very subtle border
-    card-text-primary: #262626,
-    card-text-secondary: #737373,
-    card-gradient: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%),
-    card-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2),
-    // Soft, diffuse shadow
+    // Surfaces (Cards, Modals, Menus)
+    surface: #ffffff,
+    border: rgba(0, 0, 0, 0.08),
+    border-secondary: rgba(0, 0, 0, 0.5),
+    shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2),
 
-    menu-hover: lightgrey,
+    // Surface Typography
+    text-primary: #262626,
+    text-secondary: #737373,
 
-    // Button Colors
+    // Interactive Elements
+    hover-bg: rgba(0, 0, 0, 0.05),
+
+    // Buttons
     btn-primary-bg: #171717,
     btn-primary-text: #ffffff,
+    btn-primary-hover: #404040,
+    btn-outline-hover: rgba(0, 0, 0, 0.08),
 );
 
 $colors-dark: (
-    bg: #121212,
-    bg-image: url('/background/Gemini_Generated_Image_8l1k368l1k368l1k.png'),
-
-    // Deep warm espresso brown background matching your image
-    bg-gradient: radial-gradient(circle at center, #152331, #000000),
-
-    // Elegant deep espresso gradient
+    // Base
+    background: #121212,
     text: #fdf8f5,
-    // Warm off-white/cream text for perfect readability and harmony
-    primary: #f472b6,
-    // Warm pinkish accent (adjust if you had a specific primary color in mind)
 
-    // Elegant Dark Card
-    card-bg: #202020,
-    // Slightly lighter brown to stand out from the background
-    card-border: rgba(255, 255, 255, 0.08),
-    // Soft glass-like border
-    card-text-primary: #faefea,
-    card-text-secondary: #bbaaaa,
+    // Surfaces (Cards, Modals, Menus)
+    surface: #202020,
+    border: rgba(255, 255, 255, 0.08),
+    border-secondary: rgba(255, 255, 255, 0.08),
+    shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8),
 
-    // Warm muted tan for subdued text
-    card-gradient: linear-gradient(135deg, #46322d 0%, #3c2a26 100%),
-    card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8),
-    // Deeper shadow for depth
+    // Surface Typography
+    text-primary: #faefea,
+    text-secondary: #bbaaaa,
 
-    menu-hover: #ffffff25,
+    // Interactive Elements
+    hover-bg: #ffffff25,
 
-    // Button Colors
+    // Buttons
     btn-primary-bg: #c4c4c4,
     btn-primary-text: #1a1a1a,
 );
