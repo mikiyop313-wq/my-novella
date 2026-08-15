@@ -114,4 +114,21 @@ export function setupManuscriptHandlers() {
             throw error;
         }
     });
+
+    ipcMain.handle('manuscript:getScenesProse', async (_, { sceneIds }: { sceneIds: string[] }) => {
+        try {
+            return await manuscriptRepository.getScenesProse(sceneIds);
+        } catch (error) {
+            console.error('Failed to get scenes prose:', error);
+            throw error;
+        }
+    });
+    ipcMain.handle('manuscript:getBookHierarchy', async (_, { mode, id }: { mode: 'book' | 'act' | 'chapter' | 'scene', id: string }) => {
+        try {
+            return await manuscriptRepository.getBookHierarchy(mode, id);
+        } catch (error) {
+            console.error('Failed to get book hierarchy:', error);
+            throw error;
+        }
+    });
 }

@@ -267,6 +267,79 @@ export class ManuscriptRepository {
     }
 
     /**
+     * Fetches the prose JSON for a batch of scenes by their IDs.
+     * Returns a map of sceneId → TiptapJsonDoc (or null if the scene has no prose).
+     * Used by the lazy-loading skeleton patch mechanism to hydrate skeleton nodes
+     * with real content when they scroll into view.
+     */
+    async getScenesProse(sceneIds: string[]): Promise<Record<string, any>> {
+        if (sceneIds.length === 0) return {};
+
+        const rows = await db.query.scene.findMany({
+            where: (scenes, { inArray }) => inArray(scenes.id, sceneIds),
+            columns: { id: true, prose: true }
+        });
+
+        const result: Record<string, any> = {};
+        for (const row of rows) {
+            result[row.id] = row.prose ?? null;
+        }
+        return result;
+    }
+
+    /**
+     * Fetches the full book hierarchy (acts -> chapters -> scenes) without loading heavy prose.
+     * Used for building the navigation tree in the UI.
+     */
+    async getBookHierarchy(mode: 'book' | 'act' | 'chapter' | 'scene', id: string): Promise<ActDto[]> {
+        let bookId: string | undefined;
+
+        if (mode === 'book') {
+            bookId = id;
+        } else if (mode === 'act') {
+            const a = await db.query.act.findFirst({ where: eq(act.id, id) });
+            bookId = a?.bookId;
+        } else if (mode === 'chapter') {
+            const c = await db.query.chapter.findFirst({
+                where: eq(chapter.id, id),
+                with: { act: true }
+            });
+            bookId = c?.act?.bookId;
+        } else if (mode === 'scene') {
+            const s = await db.query.scene.findFirst({
+                where: eq(scene.id, id),
+                with: { chapter: { with: { act: true } } }
+            });
+            bookId = s?.chapter?.act?.bookId;
+        }
+
+        if (!bookId) return [];
+
+        const acts = await db.query.act.findMany({
+            where: eq(act.bookId, bookId),
+            columns: { summary: false },
+            with: {
+                chapters: {
+                    columns: { summary: false },
+                    orderBy: (chapters, { asc }) => [asc(chapters.position)],
+                    with: {
+                        scenes: {
+                            columns: { prose: false, summary: false },
+                            orderBy: (scenes, { asc }) => [asc(scenes.position)]
+                        }
+                    }
+                }
+            },
+            orderBy: (acts, { asc }) => [asc(acts.position)]
+        });
+
+        // The Drizzle query omits 'prose' and 'summary', but we cast to ActDto[]
+        // because the IPC bridge will serialize it and the frontend interface expects them.
+        // It's perfectly fine if those keys are undefined/missing over IPC for a lightweight tree.
+        return acts as unknown as ActDto[];
+    }
+
+    /**
      * Dynamically counts all chapters belonging to a specific book.
      */
     async getChapterCount(bookId: string): Promise<number> {

@@ -123,6 +123,54 @@
     }
   }
 
+  .view-scope-group {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    pointer-events: none; // Let clicks pass through empty space
+
+    > * {
+      pointer-events: auto; // Re-enable for children
+    }
+
+    .view-scope-btn {
+      background: transparent;
+      border-color: transparent;
+      padding: 4px 12px;
+      height: 28px;
+      font-size: 0.95rem;
+      
+      .active-style-label {
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      &:hover, &[aria-expanded="true"] {
+        background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+        border-color: transparent;
+      }
+    }
+
+    .toolbar-stats {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.7rem;
+      color: var(--color-text-secondary);
+      font-weight: 500;
+      opacity: 0.8;
+      letter-spacing: 0.03em;
+
+      .stats-divider {
+        opacity: 0.3;
+        font-size: 0.65rem;
+      }
+    }
+  }
+
   .format-toggle {
     margin-left: auto;
 
@@ -255,6 +303,16 @@
     max-width: var(--editor-page-width, 800px);
     margin-bottom: 1.5rem;
     text-align: center;
+
+    .scene-number {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--color-text-secondary);
+      margin-bottom: 0.5rem;
+      opacity: 0.7;
+    }
 
     .scene-title-input {
       width: 100%;

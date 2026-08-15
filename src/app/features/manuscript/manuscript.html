@@ -100,6 +100,31 @@
 
     <div class="toolbar-separator"></div>
 
+    <!-- View Scope & Stats -->
+    <div class="toolbar-group view-scope-group">
+      <button class="dropdown-trigger-btn view-scope-btn" [cdkMenuTriggerFor]="bookMenu" title="View Scope">
+        <span class="active-style-label">
+          @if (store.mode() === 'book') { Full Novel }
+          @else if (store.mode() === 'act') { Act }
+          @else if (store.mode() === 'chapter') { Chapter }
+          @else if (store.mode() === 'scene') { Scene }
+        </span>
+        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <div class="toolbar-stats">
+        <span>{{ store.currentWordCount() }} words</span>
+        <span class="stats-divider">|</span>
+        <span>~{{ store.estimatedPages() }} pages</span>
+        <span class="stats-divider">|</span>
+        <span>{{ store.estimatedReadTime() }} min read</span>
+      </div>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
     <!-- History / Undo Redo -->
     <div class="toolbar-group">
       <button (click)="editor.chain().focus().undo().run()" [disabled]="!editor.can().undo()" title="Undo">
@@ -252,10 +277,68 @@
     </div>
   </ng-template>
 
+  <!-- Book Hierarchy Menu Templates -->
+  <ng-template #bookMenu>
+    <div class="dropdown-menu toolbar-dropdown-menu" cdkMenu>
+      <button class="menu-item" (click)="switchViewMode('book', store.bookHierarchy()[0]?.bookId || store.bookId() || '')" cdkMenuItem>
+        <span class="item-label" style="font-weight: 600;">Full Novel</span>
+      </button>
+      @if (store.bookHierarchy().length > 0) {
+        <div class="menu-divider"></div>
+        @for (act of store.bookHierarchy(); track act.id) {
+          <button class="menu-item" [cdkMenuTriggerFor]="actMenu" [cdkMenuTriggerData]="{ $implicit: act }" cdkMenuItem>
+            <span class="item-label">{{ act.title || 'Untitled Act' }}</span>
+            <svg class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        }
+      }
+    </div>
+  </ng-template>
+
+  <ng-template #actMenu let-act>
+    <div class="dropdown-menu toolbar-dropdown-menu" cdkMenu>
+      <button class="menu-item" (click)="switchViewMode('act', act.id)" cdkMenuItem>
+        <span class="item-label" style="font-weight: 600;">View Act</span>
+      </button>
+      @if (act.chapters && act.chapters.length > 0) {
+        <div class="menu-divider"></div>
+        @for (chapter of act.chapters; track chapter.id) {
+          <button class="menu-item" [cdkMenuTriggerFor]="chapterMenu" [cdkMenuTriggerData]="{ $implicit: chapter }" cdkMenuItem>
+            <span class="item-label">{{ chapter.title || 'Untitled Chapter' }}</span>
+            <svg class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        }
+      }
+    </div>
+  </ng-template>
+
+  <ng-template #chapterMenu let-chapter>
+    <div class="dropdown-menu toolbar-dropdown-menu" cdkMenu>
+      <button class="menu-item" (click)="switchViewMode('chapter', chapter.id)" cdkMenuItem>
+        <span class="item-label" style="font-weight: 600;">View Chapter</span>
+      </button>
+      @if (chapter.scenes && chapter.scenes.length > 0) {
+        <div class="menu-divider"></div>
+        @for (scene of chapter.scenes; track scene.id) {
+          <button class="menu-item" (click)="switchViewMode('scene', scene.id)" cdkMenuItem>
+            <span class="item-label">{{ scene.title || 'Untitled Scene' }}</span>
+          </button>
+        }
+      }
+    </div>
+  </ng-template>
+
   <div class="editor-main-layout">
     <div class="editor-content-wrapper">
       @if (store.mode() === 'scene') {
         <div class="scene-title-header">
+          @if (store.sceneNumber(); as num) {
+            <div class="scene-number">Scene {{ num }}</div>
+          }
           <input type="text" class="scene-title-input" spellcheck="false" [value]="sceneTitle()" (input)="onSceneChange($event)" placeholder="Scene Title" />
         </div>
       }

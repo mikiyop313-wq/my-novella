@@ -1,4 +1,12 @@
 <div class="ai-generated-container" [class.is-loading]="isLoading()">
+  <div class="ai-header" contenteditable="false">
+    @if(modelId()) {
+    <div class="ai-model-badge">
+      <span>{{ modelId() }}</span>
+    </div>
+    }
+  </div>
+
   @if(reasoningText()){
   <div class="reasoning-block" contenteditable="false">
     <div class="reasoning-header" (click)="toggleReasoning()" title="Toggle Thinking Process">
@@ -16,7 +24,19 @@
   </div>
   }
 
-  <div class="ai-generated-content" #contentDOM data-node-view-content></div>
+  <div class="ai-generated-content" [class.is-generating]="isGenerating()" #contentDOM data-node-view-content></div>
+
+  <!-- Live word count — always visible, updates on every token -->
+  @if(wordCount() > 0){
+  <div class="word-count-row" contenteditable="false">
+    <span class="word-count-badge" [class.is-live]="isLoading()">
+      @if(isLoading()){
+      <span class="live-dot"></span>
+      }
+      {{ wordCount() }} {{ wordCount() === 1 ? 'word' : 'words' }}
+    </span>
+  </div>
+  }
 
   @if(!isLoading()){
   <div class="ai-post-actions" contenteditable="false">
@@ -28,6 +48,22 @@
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
         </svg>
         Discard
+      </button>
+      <button class="action-btn copy" (click)="copyText()" title="Copy to clipboard">
+        @if(hasCopied()) {
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Copied!
+        } @else {
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        Copy
+        }
       </button>
       <button class="action-btn retry" (click)="tryAgain()" title="Try again">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"

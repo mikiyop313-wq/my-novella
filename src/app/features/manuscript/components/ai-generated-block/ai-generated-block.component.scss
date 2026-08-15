@@ -1,26 +1,72 @@
 .ai-generated-container {
   position: relative;
-  margin: 1.5rem 0;
-  padding: 1.25rem;
-  border-radius: 12px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
+  margin: 2.5rem 0;
+  padding: 1.5rem;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  backdrop-filter: blur(12px);
 
-  /* Optional: a very subtle gradient for that premium feel */
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+  /* Premium subtle noise or gradient */
+  background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--color-text-primary), transparent);
+    opacity: 0.1;
+    transition: opacity 0.3s ease;
+  }
 
   &.is-loading {
-    opacity: 0.8;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    opacity: 0.95;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+
+    &::before {
+      opacity: 0.8;
+      background: linear-gradient(90deg, transparent, var(--color-btn-primary-bg), transparent);
+      background-size: 200% 100%;
+      animation: gradientMove 2s linear infinite;
+    }
+  }
+
+  .ai-header {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 30%, transparent);
+    user-select: none;
+
+    .ai-model-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      font-family: monospace;
+      color: var(--color-text-secondary);
+      background: color-mix(in srgb, var(--color-text-secondary) 10%, transparent);
+      padding: 0.25rem 0.75rem;
+      border-radius: 99px;
+      border: 1px solid color-mix(in srgb, var(--color-text-secondary) 15%, transparent);
+      opacity: 0.85;
+    }
   }
 
   .reasoning-block {
-    margin-bottom: 1rem;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: var(--color-hover-bg);
+    margin-bottom: 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--color-hover-bg) 60%, transparent);
+    backdrop-filter: blur(8px);
     overflow: hidden;
     animation: slideDownFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 
@@ -28,7 +74,7 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.5rem 1rem;
+      padding: 0.6rem 1rem;
       cursor: pointer;
       user-select: none;
       background: color-mix(in srgb, var(--color-surface) 50%, transparent);
@@ -77,9 +123,62 @@
     /* Slightly larger or stylized font for AI text */
     line-height: 1.6;
 
-    /* Override standard p tag color if Tiptap injects it */
+    /* Override standard p tag color if Tiptap injects it. */
     ::ng-deep p {
       color: var(--color-text-secondary) !important;
+      /* No animation by default — only active during streaming (see .is-generating below). */
+      animation: none;
+    }
+  }
+
+  /* Animate paragraphs only while the block is actively streaming.
+     .is-generating is removed the moment the block is finalized, so the
+     re-inserted paragraphs from the finalization step never play the sweep. */
+  .ai-generated-content.is-generating {
+    ::ng-deep p {
+      animation: fadeInText 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+  }
+
+  /* ── Live word count badge ─────────────────────────────────────────── */
+  .word-count-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.6rem;
+  }
+
+  .word-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: var(--color-text-secondary);
+    background: color-mix(in srgb, var(--color-text-secondary) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-text-secondary) 15%, transparent);
+    transition: all 0.3s ease;
+    user-select: none;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05);
+
+    &.is-live {
+      color: var(--color-text-primary);
+      background: color-mix(in srgb, var(--color-btn-primary-bg) 15%, transparent);
+      border-color: color-mix(in srgb, var(--color-btn-primary-bg) 30%, transparent);
+      box-shadow: 0 0 10px color-mix(in srgb, var(--color-btn-primary-bg) 20%, transparent);
+    }
+
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-btn-primary-bg);
+      opacity: 0.8;
+      animation: livePulse 1.5s ease-in-out infinite;
+      flex-shrink: 0;
+      box-shadow: 0 0 6px var(--color-btn-primary-bg);
     }
   }
 
@@ -103,17 +202,18 @@
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
-      padding: 0.4rem 0.85rem;
-      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
       font-size: 0.85rem;
       font-weight: 600;
       letter-spacing: 0.2px;
       cursor: pointer;
-      border: 1px solid var(--color-border);
-      background: var(--color-surface);
+      border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+      background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+      backdrop-filter: blur(4px);
       color: var(--color-text-secondary);
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 
       svg {
         width: 15px;
@@ -179,14 +279,15 @@
 
       .modify-input {
         flex: 1;
-        padding: 0.6rem 0.85rem;
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        background: var(--color-hover-bg);
+        padding: 0.75rem 1rem;
+        border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--color-hover-bg) 50%, transparent);
+        backdrop-filter: blur(4px);
         color: var(--color-text-primary);
-        font-size: 0.875rem;
-        transition: all 0.2s ease;
-        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.03);
+        font-size: 0.9rem;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 
         &:focus {
           outline: none;
@@ -210,6 +311,18 @@
   }
 }
 
+@keyframes gradientMove {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+
+
 @keyframes slideDownFadeIn {
   from {
     opacity: 0;
@@ -231,5 +344,36 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/** Paragraph reveal: each new <p> Tiptap inserts sweeps in left-to-right,
+    mimicking the feeling of text being typed across the line. */
+@keyframes fadeInText {
+  from {
+    opacity: 0.2;
+    clip-path: inset(0 100% 0 0 round 2px);
+    transform: translateX(-6px);
+  }
+
+  to {
+    opacity: 1;
+    clip-path: inset(0 0% 0 0 round 2px);
+    transform: translateX(0);
+  }
+}
+
+/** Pulsing dot for the live word count badge during generation. */
+@keyframes livePulse {
+
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
   }
 }

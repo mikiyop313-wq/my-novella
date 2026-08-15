@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit, Injector, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -17,12 +17,13 @@ import { SceneSummaryExtension } from './components/scene-summary/scene-summary.
 import { ManuscriptIndexScrollComponent, ManuscriptIndexItem } from './components/manuscript-index-scroll/manuscript-index-scroll.component';
 import { AiGeneratedBlockExtension } from './components/ai-generated-block/ai-generated-block.extension';
 import { UniqueIdExtension } from './extensions/unique-id.extension';
+import { SceneSkeletonExtension } from './components/scene-skeleton/scene-skeleton.extension';
 
 import { ManuscriptStore } from './store/manuscript.store';
 import { AiStore } from './store/ai.store';
 
 import { ManuscriptMode, SceneDto } from '../../../../shared/models/manuscript.model';
-import { buildEditorContent, getProseTextById, extractTextFromManuscriptData } from './helpers/manuscript-content.utils';
+import { buildEditorContentLazy, getProseTextById, extractTextFromManuscriptData } from './helpers/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/manuscript-prose-saver.service';
 
 @Component({
@@ -48,6 +49,7 @@ export class Manuscript implements OnInit, OnDestroy {
   readonly electronService = inject(ElectronService);
 
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private injector = inject(Injector);
   private saver = inject(ManuscriptProseSaverService);
 
@@ -110,8 +112,9 @@ export class Manuscript implements OnInit, OnDestroy {
           // content load is never added to the undo stack.  Without this,
           // pressing Undo on a freshly-opened manuscript would revert the
           // document to an empty state and the auto-saver would persist it.
-          const content = buildEditorContent(mode, data);
-          const newDoc = this.editor.schema.nodeFromJSON(content);
+          const { doc, skeletonSceneIds } = buildEditorContentLazy(mode, data);
+          this.store.setPendingSkeletons(skeletonSceneIds);
+          const newDoc = this.editor.schema.nodeFromJSON(doc);
           const { tr } = this.editor.state;
           tr.replaceWith(0, tr.doc.content.size, newDoc.content);
           tr.setMeta('addToHistory', false);
@@ -157,6 +160,7 @@ export class Manuscript implements OnInit, OnDestroy {
         ActHeaderExtension(this.injector),
         ChapterHeaderExtension(this.injector),
         SceneSummaryExtension(this.injector),
+        SceneSkeletonExtension(this.injector),
         UniqueIdExtension,
       ],
       onUpdate: ({ transaction }) => {
@@ -183,6 +187,12 @@ export class Manuscript implements OnInit, OnDestroy {
   insertAct() { this.store.insertAct(); }
   insertChapter() { this.store.insertChapter(); }
   insertScene() { this.store.insertScene(); }
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+  
+  switchViewMode(mode: ManuscriptMode, id: string) {
+    this.router.navigate(['/manuscript', mode, id], { replaceUrl: true });
+  }
 
   // ── Scene title input ─────────────────────────────────────────────────────
 

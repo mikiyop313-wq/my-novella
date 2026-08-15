@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
 import { ManuscriptStore } from '../store/manuscript.store';
-import { TiptapJsonDoc } from '../../../../../shared/models/manuscript.model';
+import { TiptapJsonDoc, TiptapNode } from '../../../../../shared/models/manuscript.model';
 import { countWordsInScene, extractTextFromJsonNode } from './manuscript-content.utils';
 import { ElectronService } from '../../../core/services/electron.service';
 import { ParagraphUpsert, ParagraphDelete, UpsertParagraphsPayload, DeleteParagraphsPayload } from '../../../../../shared/models/vector.model';
@@ -223,9 +223,9 @@ export class ManuscriptProseSaverService {
     if (!json.content) return;
 
     let currentSceneId: string | null = null;
-    let currentContent: Record<string, any>[] = [];
+    let currentContent: TiptapNode[] = [];
 
-    const commit = (id: string, content: Record<string, any>[]) => {
+    const commit = (id: string, content: TiptapNode[]) => {
       if (affectedIds.has(id)) {
         const wordCount = countWordsInScene(editor, id);
         this.dirtySections.set(id, {
@@ -252,8 +252,12 @@ export class ManuscriptProseSaverService {
           currentContent = [];
         }
       } else if (currentSceneId) {
-        // Accumulate prose nodes (paragraphs, headings, etc.) for the current scene
-        currentContent.push(node);
+        // Accumulate prose nodes (paragraphs, headings, etc.) for the current scene.
+        // Skip `sceneSkeleton` nodes — they are lazy-loading placeholders, not real prose,
+        // and must never be written to the database.
+        if (node.type !== 'sceneSkeleton') {
+          currentContent.push(node);
+        }
       }
     }
 

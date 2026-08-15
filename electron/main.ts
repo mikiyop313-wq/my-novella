@@ -46,6 +46,23 @@ function createWindow() {
         }
     });
 
+    // ── Instant keyboard shortcuts (bypass slow native menu bar) ─────────
+    win.webContents.on('before-input-event', (_event, input) => {
+        if (!win) return;
+        const wc = win.webContents;
+
+        // F12 or Ctrl+Shift+I → toggle DevTools
+        if (input.key === 'F12' || (input.control && input.shift && input.key === 'I')) {
+            if (wc.isDevToolsOpened()) wc.closeDevTools();
+            else wc.openDevTools();
+        }
+
+        // F5 or Ctrl+R → reload
+        if (input.key === 'F5' || (input.control && input.key === 'r')) {
+            wc.reload();
+        }
+    });
+
     win.on('closed', () => {
         win = null;
     });
