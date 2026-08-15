@@ -15,7 +15,10 @@ import {
 import { resolveAiModelTarget } from '../../../shared/utils/ai-model-selection';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
 import { WorkspaceStore } from '../../workspace/workspace.store';
-import { ChatAiContextService } from './chat-ai-context.service';
+import {
+  ChatAiContextService,
+  type ChatAiContextRequest,
+} from './chat-ai-context.service';
 import { ChatStore } from '../store/chat.store';
 
 const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
@@ -23,6 +26,10 @@ const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
 export interface ChatResponseSettings {
   selectedModelId: string | null;
   reasoningMode: boolean;
+  context: Pick<
+    ChatAiContextRequest,
+    'includeFullOutline' | 'sceneIds' | 'codexEntryIds'
+  >;
   branchGroupId?: string;
   selectCreatedBranch?: boolean;
 }
@@ -84,7 +91,7 @@ export class ChatResponseService {
     const { provider, modelId } = this.resolveSelectedModel(settings.selectedModelId);
     let aiPrompt: BuiltAiPrompt;
     try {
-      aiPrompt = await this.buildChatAiPrompt(userMessage, prompt);
+      aiPrompt = await this.buildChatAiPrompt(userMessage, prompt, settings.context);
     } catch (error) {
       console.error('[ChatResponseService] AI context preparation failed:', error);
       this.toastService.error(
@@ -326,6 +333,7 @@ export class ChatResponseService {
   private async buildChatAiPrompt(
     userMessage: ChatMessageDetailDto,
     prompt: string,
+    contextSelection: ChatResponseSettings['context'],
   ): Promise<BuiltAiPrompt> {
     const threadMessages = this.chatStore.visibleMessages();
     const userMessageIndex = threadMessages.findIndex((message) => message.id === userMessage.id);
@@ -345,7 +353,7 @@ export class ChatResponseService {
     const bookId = this.chatStore.bookId();
     const context = bookId
       ? await this.chatAiContext.buildContext({
-          userMessage,
+          ...contextSelection,
           bookId,
           bookTitle: this.workspaceStore.bookId() === bookId
             ? this.workspaceStore.bookTitle()

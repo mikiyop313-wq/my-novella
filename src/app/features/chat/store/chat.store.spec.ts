@@ -39,11 +39,8 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
-    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
-    sceneRefs: [],
-    codexRefs: [],
     ...overrides,
   };
 }
@@ -302,20 +299,15 @@ describe('ChatStore', () => {
     expect(store.messages()).toEqual([]);
   });
 
-  it('creates an edited message as a sibling branch and preserves its references', async () => {
+  it('creates an edited message as a sibling branch without context metadata', async () => {
     const source = makeMessage({
       id: 'user-1',
       content: 'Original prompt',
-      includeFullOutline: true,
-      sceneRefs: [{ messageId: 'user-1', sceneId: 'scene-1' }],
-      codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
     });
     const branch = makeMessage({
       id: 'user-2',
       content: 'Edited prompt',
       branchOrder: 1,
-      sceneRefs: [{ messageId: 'user-2', sceneId: 'scene-1' }],
-      codexRefs: [{ messageId: 'user-2', codexEntryId: 'codex-1' }],
     });
     chatService.getThread.mockResolvedValueOnce(makeThreadDetail({ messages: [source] }));
     chatService.createMessage.mockResolvedValueOnce(branch);
@@ -330,9 +322,6 @@ describe('ChatStore', () => {
       role: 'user',
       content: 'Edited prompt',
       status: 'complete',
-      includeFullOutline: true,
-      sceneIds: ['scene-1'],
-      codexEntryIds: ['codex-1'],
     });
     expect(created).toMatchObject({ id: 'user-2', branchOrder: 1 });
     expect(store.getMessageBranchCount(source)).toBe(2);

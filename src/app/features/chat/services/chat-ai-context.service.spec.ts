@@ -1,7 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
-import type { ChatMessageDetailDto } from '../../../../../shared/models/chat.model';
 import type { CodexEntryDetailDto } from '../../../../../shared/models/codex.model';
 import type { ActDto, TiptapJsonDoc } from '../../../../../shared/models/manuscript.model';
 import { ElectronService } from '../../../core/services/electron.service';
@@ -33,7 +32,9 @@ describe('ChatAiContextService', () => {
 
   it('returns no context without refs or Full Outline', async () => {
     await expect(service.buildContext({
-      userMessage: makeMessage(),
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
       bookId: 'book-1',
       hierarchy: hierarchy(),
     })).resolves.toBeNull();
@@ -42,7 +43,7 @@ describe('ChatAiContextService', () => {
     expect(codexService.getEntry).not.toHaveBeenCalled();
   });
 
-  it('serializes selected scene prose and Codex details for the current message snapshot', async () => {
+  it('serializes selected scene prose and Codex details for the current generation snapshot', async () => {
     const prose: TiptapJsonDoc = {
       type: 'doc',
       content: [{
@@ -54,10 +55,9 @@ describe('ChatAiContextService', () => {
     codexService.getEntry.mockResolvedValueOnce(codexEntry());
 
     const result = await service.buildContext({
-      userMessage: makeMessage({
-        sceneRefs: [{ messageId: 'user-1', sceneId: 'scene-1' }],
-        codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
-      }),
+      includeFullOutline: false,
+      sceneIds: ['scene-1'],
+      codexEntryIds: ['codex-1'],
       bookId: 'book-1',
       bookTitle: 'Night Draft',
       hierarchy: hierarchy(),
@@ -80,9 +80,9 @@ describe('ChatAiContextService', () => {
     codexService.getEntry.mockResolvedValueOnce(codexEntry());
 
     const result = await service.buildContext({
-      userMessage: makeMessage({
-        codexRefs: [{ messageId: 'user-1', codexEntryId: 'codex-1' }],
-      }),
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: ['codex-1'],
       bookId: 'book-1',
       bookTitle: 'Night Draft',
       hierarchy: hierarchy(),
@@ -104,7 +104,9 @@ describe('ChatAiContextService', () => {
     electronService.invoke.mockResolvedValueOnce(hierarchy());
 
     const result = await service.buildContext({
-      userMessage: makeMessage({ includeFullOutline: true }),
+      includeFullOutline: true,
+      sceneIds: [],
+      codexEntryIds: [],
       bookId: 'book-1',
       bookTitle: 'Night Draft',
       hierarchy: hierarchy(),
@@ -118,34 +120,6 @@ describe('ChatAiContextService', () => {
     expect(result).toContain('Opening summary.');
   });
 });
-
-function makeMessage(
-  overrides: Partial<ChatMessageDetailDto> = {},
-): ChatMessageDetailDto {
-  return {
-    id: 'user-1',
-    threadId: 'thread-1',
-    parentMessageId: null,
-    branchGroupId: 'branch-1',
-    branchOrder: 0,
-    role: 'user',
-    content: 'Continue the story',
-    status: 'complete',
-    position: 0,
-    modelId: null,
-    provider: null,
-    inputTokens: null,
-    outputTokens: null,
-    reasoningSummary: null,
-    error: null,
-    includeFullOutline: false,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    lastEditedAt: '2026-01-01T00:00:00.000Z',
-    sceneRefs: [],
-    codexRefs: [],
-    ...overrides,
-  };
-}
 
 function hierarchy(): ActDto[] {
   return [{

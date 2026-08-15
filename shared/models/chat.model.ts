@@ -29,19 +29,8 @@ export interface ChatMessageDto {
   outputTokens: number | null;
   reasoningSummary: string | null;
   error: string | null;
-  includeFullOutline: boolean;
   createdAt: string;
   lastEditedAt: string;
-}
-
-export interface ChatMessageSceneRefDto {
-  messageId: string;
-  sceneId: string;
-}
-
-export interface ChatMessageCodexRefDto {
-  messageId: string;
-  codexEntryId: string;
 }
 
 export interface ChatBranchSelectionDto {
@@ -50,10 +39,7 @@ export interface ChatBranchSelectionDto {
   selectedMessageId: string;
 }
 
-export interface ChatMessageDetailDto extends ChatMessageDto {
-  sceneRefs: ChatMessageSceneRefDto[];
-  codexRefs: ChatMessageCodexRefDto[];
-}
+export type ChatMessageDetailDto = ChatMessageDto;
 
 export interface ChatThreadDetailDto extends ChatThreadDto {
   messages: ChatMessageDetailDto[];
@@ -83,9 +69,6 @@ export interface CreateChatMessageDto {
   outputTokens?: number | null;
   reasoningSummary?: string | null;
   error?: string | null;
-  includeFullOutline?: boolean;
-  sceneIds?: string[];
-  codexEntryIds?: string[];
 }
 
 export type UpdateChatMessageDto = Partial<Omit<CreateChatMessageDto, 'threadId'>>;

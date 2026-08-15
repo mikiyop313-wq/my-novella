@@ -1,6 +1,5 @@
 import { Injectable, inject } from '@angular/core';
 
-import type { ChatMessageDetailDto } from '../../../../../shared/models/chat.model';
 import type { CodexEntryDetailDto } from '../../../../../shared/models/codex.model';
 import type {
   ActDto,
@@ -19,7 +18,9 @@ import { CodexService } from '../../codex/services/codex.service';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
 
 export interface ChatAiContextRequest {
-  userMessage: ChatMessageDetailDto;
+  includeFullOutline: boolean;
+  sceneIds: readonly string[];
+  codexEntryIds: readonly string[];
   bookId: string;
   bookTitle?: string;
   hierarchy: readonly ActDto[];
@@ -32,13 +33,11 @@ export class ChatAiContextService {
   private readonly manuscriptStructureService = inject(ManuscriptStructureService);
 
   async buildContext(request: ChatAiContextRequest): Promise<string | null> {
-    const sceneIds = uniqueStrings(request.userMessage.sceneRefs.map((ref) => ref.sceneId));
-    const codexEntryIds = uniqueStrings(
-      request.userMessage.codexRefs.map((ref) => ref.codexEntryId),
-    );
+    const sceneIds = uniqueStrings(request.sceneIds);
+    const codexEntryIds = uniqueStrings(request.codexEntryIds);
 
     if (
-      !request.userMessage.includeFullOutline
+      !request.includeFullOutline
       && sceneIds.length === 0
       && codexEntryIds.length === 0
     ) {
@@ -46,7 +45,7 @@ export class ChatAiContextService {
     }
 
     const [outlineHierarchy, sceneProse, codexDetails] = await Promise.all([
-      request.userMessage.includeFullOutline
+      request.includeFullOutline
         ? this.manuscriptStructureService.getOutline(request.bookId)
         : Promise.resolve(null),
       sceneIds.length > 0
@@ -64,7 +63,7 @@ export class ChatAiContextService {
         serializeTiptapDocument(sceneProse[sceneId]),
       ]),
     );
-    const manuscriptContext = request.userMessage.includeFullOutline
+    const manuscriptContext = request.includeFullOutline
       ? serializeFullOutline(
           outlineHierarchy ?? [],
           request.bookTitle,
@@ -79,7 +78,7 @@ export class ChatAiContextService {
     const progressionSceneId = this.resolveProgressionSceneId(
       request.hierarchy,
       selectedSceneIds,
-      request.userMessage.includeFullOutline,
+      request.includeFullOutline,
     );
     const codexContext = serializeCodexContext(
       codexDetails.filter(

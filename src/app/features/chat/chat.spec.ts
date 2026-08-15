@@ -70,11 +70,8 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
-    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
-    sceneRefs: [],
-    codexRefs: [],
     ...overrides,
   };
 }
@@ -745,11 +742,7 @@ describe('Chat', () => {
 
     await component.sendPrompt();
 
-    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here', {
-      includeFullOutline: false,
-      sceneIds: [],
-      codexEntryIds: [],
-    });
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Start here');
     expect(router.navigate).toHaveBeenCalledWith(['/workspace', 'book-1', 'thread', 'thread-1'], { replaceUrl: true });
   });
 
@@ -838,16 +831,14 @@ describe('Chat', () => {
 
     await component.sendPrompt();
 
-    expect(chatStore.sendMessage).toHaveBeenCalledWith(
-      'Ask Mara Vale about the opening.',
-      {
-        includeFullOutline: true,
-        sceneIds: ['scene-1'],
-        codexEntryIds: ['codex-manual', 'codex-1', 'codex-always'],
-      },
-    );
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Ask Mara Vale about the opening.');
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeFullOutline: true,
+      sceneIds: ['scene-1'],
+      codexEntryIds: ['codex-manual', 'codex-1', 'codex-always'],
+    }));
     expect(component.includeFullOutline()).toBe(true);
-    expect(component.contextManuscriptRefs()).toEqual(['scene:scene-1']);
+    expect(component.contextManuscriptRefs()).toEqual(['novel']);
     expect(component.contextCodexEntryIds()).toEqual(['codex-manual']);
   });
 
@@ -881,14 +872,12 @@ describe('Chat', () => {
 
     await component.sendPrompt();
 
-    expect(chatStore.sendMessage).toHaveBeenCalledWith(
-      'Continue without that context.',
-      {
-        includeFullOutline: false,
-        sceneIds: [],
-        codexEntryIds: [],
-      },
-    );
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Continue without that context.');
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+    }));
     expect(component.automaticallyIncludedCodexEntryIds()).toEqual(new Set());
   });
 
@@ -1281,11 +1270,7 @@ describe('Chat', () => {
 
     expect(editor.editorView()?.state.doc.toString()).toBe('');
     expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
-    expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**', {
-      includeFullOutline: false,
-      sceneIds: [],
-      codexEntryIds: [],
-    });
+    expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**');
   });
 
   it('keeps the Markdown draft when the user message is not saved', async () => {
@@ -1375,6 +1360,19 @@ describe('Chat', () => {
   });
 
   it('retries an assistant response as a selected sibling branch', async () => {
+    contextEntries.set([{
+      id: 'codex-current',
+      bookId: 'book-1',
+      type: 'lore',
+      name: 'Current lore',
+      alias: null,
+      description: null,
+      image: null,
+      status: 'active',
+      trackingSetting: 'manual',
+      createdAt: '',
+      lastEditedAt: '',
+    }]);
     await createComponent({
       snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
       paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
@@ -1391,6 +1389,7 @@ describe('Chat', () => {
       position: 1,
     });
     selectedThread = makeThreadDetail({ messages: [user, assistant] });
+    component.onContextChange(['codex:codex-current']);
 
     await component.retryMessage('assistant-1');
 
@@ -1404,6 +1403,11 @@ describe('Chat', () => {
         prompt: 'Prompt',
         messages: [{ role: 'user', content: 'Prompt' }],
       },
+    }));
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: ['codex-current'],
     }));
   });
 

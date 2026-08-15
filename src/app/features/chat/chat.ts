@@ -48,7 +48,10 @@ import {
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
 import { WorkspaceStore } from '../workspace/workspace.store';
 import { ChatThreads } from './components/chat-threads/chat-threads';
-import { ChatResponseService } from './services/chat-response.service';
+import {
+  ChatResponseService,
+  type ChatResponseSettings,
+} from './services/chat-response.service';
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
 
@@ -577,33 +580,10 @@ export class Chat implements OnInit, OnDestroy {
     const content = this.composerValue().trim();
     if (!content || this.isSendButtonDisabled()) return;
 
-    this.refreshContextAvailability();
-    if (
-      this.contextCodexLoading()
-      || this.contextCodexError()
-      || this.contextCodexTrie() === null
-    ) {
-      this.toastService.error('Codex context is not available yet.', 'AI Context');
-      return;
-    }
-    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
-      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
-      return;
-    }
+    const responseSettings = this.getResponseSettings();
+    if (!responseSettings) return;
 
-    const sceneIds = [...expandManuscriptRefs(
-      this.contextHierarchy(),
-      this.contextManuscriptRefs(),
-    )];
-    const codexEntryIds = [...new Set([
-      ...this.contextCodexEntryIds(),
-      ...this.automaticallyIncludedCodexEntryIds(),
-    ])];
-    const userMessage = await this.chatStore.sendMessage(content, {
-      includeFullOutline: this.includeFullOutline(),
-      sceneIds,
-      codexEntryIds,
-    });
+    const userMessage = await this.chatStore.sendMessage(content);
     if (!userMessage || this.chatStore.error()) return;
 
     this.composerValue.set('');
@@ -616,7 +596,7 @@ export class Chat implements OnInit, OnDestroy {
     }
 
     this.prepareForResponse();
-    await this.response.generateResponse(userMessage, content, this.getResponseSettings());
+    await this.response.generateResponse(userMessage, content, responseSettings);
   }
 
   async handleSendOrStop(): Promise<void> {
@@ -666,6 +646,8 @@ export class Chat implements OnInit, OnDestroy {
     if (!message || message.role !== 'user' || !trimmedContent) return;
 
     const responseSettings = this.getResponseSettings();
+    if (!responseSettings) return;
+
     this.editingMessageId = null;
 
     if (trimmedContent === message.content.trim()) {
@@ -712,8 +694,11 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   async retryMessage(messageId: string): Promise<void> {
+    const responseSettings = this.getResponseSettings();
+    if (!responseSettings) return;
+
     this.prepareForResponse();
-    await this.response.retryMessage(messageId, this.getResponseSettings());
+    await this.response.retryMessage(messageId, responseSettings);
   }
 
   async previousMessageBranch(messageId: string): Promise<void> {
@@ -926,10 +911,35 @@ export class Chat implements OnInit, OnDestroy {
     this.isChatAtBottom.set(true);
   }
 
-  private getResponseSettings() {
+  private getResponseSettings(): ChatResponseSettings | null {
+    this.refreshContextAvailability();
+    if (
+      this.contextCodexLoading()
+      || this.contextCodexError()
+      || this.contextCodexTrie() === null
+    ) {
+      this.toastService.error('Codex context is not available yet.', 'AI Context');
+      return null;
+    }
+    if (this.contextHierarchyLoading() || this.contextHierarchyError()) {
+      this.toastService.error('Manuscript context is not available yet.', 'AI Context');
+      return null;
+    }
+
     return {
       selectedModelId: this.selectedModelId(),
       reasoningMode: this.reasoningMode(),
+      context: {
+        includeFullOutline: this.includeFullOutline(),
+        sceneIds: [...expandManuscriptRefs(
+          this.contextHierarchy(),
+          this.contextManuscriptRefs(),
+        )],
+        codexEntryIds: [...new Set([
+          ...this.contextCodexEntryIds(),
+          ...this.automaticallyIncludedCodexEntryIds(),
+        ])],
+      },
     };
   }
 

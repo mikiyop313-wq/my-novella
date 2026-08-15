@@ -8,8 +8,6 @@ import type {
   ChatThreadStatus,
 } from '../../shared/models/chat.model';
 import { books } from './book';
-import { codexEntries } from './codex';
-import { scene } from './narrative';
 
 // ---------------------------------------------------------------------------
 // Chat tables
@@ -57,9 +55,6 @@ export const chatMessages = sqliteTable(
     outputTokens: integer('output_tokens'),
     reasoningSummary: text('reasoning_summary'),
     error: text('error'),
-    includeFullOutline: integer('include_full_outline', { mode: 'boolean' })
-      .notNull()
-      .default(false),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
     lastEditedAt: integer('last_edited_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   },
@@ -85,38 +80,6 @@ export const chatBranchSelections = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.threadId, t.branchGroupId] }),
     index('chat_branch_selections_selected_idx').on(t.selectedMessageId),
-  ],
-);
-
-export const chatMessageSceneRefs = sqliteTable(
-  'chat_message_scene_refs',
-  {
-    messageId: text('message_id')
-      .notNull()
-      .references(() => chatMessages.id, { onDelete: 'cascade' }),
-    sceneId: text('scene_id')
-      .notNull()
-      .references(() => scene.id, { onDelete: 'cascade' }),
-  },
-  (t) => [
-    primaryKey({ columns: [t.messageId, t.sceneId] }),
-    index('chat_message_scene_refs_scene_idx').on(t.sceneId),
-  ],
-);
-
-export const chatMessageCodexRefs = sqliteTable(
-  'chat_message_codex_refs',
-  {
-    messageId: text('message_id')
-      .notNull()
-      .references(() => chatMessages.id, { onDelete: 'cascade' }),
-    codexEntryId: text('codex_entry_id')
-      .notNull()
-      .references(() => codexEntries.id, { onDelete: 'cascade' }),
-  },
-  (t) => [
-    primaryKey({ columns: [t.messageId, t.codexEntryId] }),
-    index('chat_message_codex_refs_entry_idx').on(t.codexEntryId),
   ],
 );
 
@@ -150,8 +113,6 @@ export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => 
   children: many(chatMessages, {
     relationName: 'messageParent',
   }),
-  sceneRefs: many(chatMessageSceneRefs),
-  codexRefs: many(chatMessageCodexRefs),
 }));
 
 export const chatBranchSelectionsRelations = relations(chatBranchSelections, ({ one }) => ({
@@ -162,27 +123,5 @@ export const chatBranchSelectionsRelations = relations(chatBranchSelections, ({ 
   selectedMessage: one(chatMessages, {
     fields: [chatBranchSelections.selectedMessageId],
     references: [chatMessages.id],
-  }),
-}));
-
-export const chatMessageSceneRefsRelations = relations(chatMessageSceneRefs, ({ one }) => ({
-  message: one(chatMessages, {
-    fields: [chatMessageSceneRefs.messageId],
-    references: [chatMessages.id],
-  }),
-  scene: one(scene, {
-    fields: [chatMessageSceneRefs.sceneId],
-    references: [scene.id],
-  }),
-}));
-
-export const chatMessageCodexRefsRelations = relations(chatMessageCodexRefs, ({ one }) => ({
-  message: one(chatMessages, {
-    fields: [chatMessageCodexRefs.messageId],
-    references: [chatMessages.id],
-  }),
-  codexEntry: one(codexEntries, {
-    fields: [chatMessageCodexRefs.codexEntryId],
-    references: [codexEntries.id],
   }),
 }));

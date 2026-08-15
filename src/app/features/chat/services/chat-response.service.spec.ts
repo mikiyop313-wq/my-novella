@@ -28,11 +28,8 @@ function makeMessage(overrides: Partial<ChatMessageDetailDto> = {}): ChatMessage
     outputTokens: null,
     reasoningSummary: null,
     error: null,
-    includeFullOutline: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
-    sceneRefs: [],
-    codexRefs: [],
     ...overrides,
   };
 }
@@ -86,6 +83,11 @@ describe('ChatResponseService', () => {
   const settings = {
     selectedModelId: 'openrouter/test-model',
     reasoningMode: true,
+    context: {
+      includeFullOutline: false,
+      sceneIds: [],
+      codexEntryIds: [],
+    },
   };
 
   beforeEach(() => {
@@ -223,6 +225,7 @@ describe('ChatResponseService', () => {
     await service.generateResponse(messages[0], 'Write a scene', {
       selectedModelId,
       reasoningMode: false,
+      context: settings.context,
     });
 
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
@@ -239,7 +242,14 @@ describe('ChatResponseService', () => {
     ];
     chatAiContext.buildContext.mockResolvedValueOnce('Codex context');
 
-    await service.generateResponse(messages[0], 'Write a scene', settings);
+    await service.generateResponse(messages[0], 'Write a scene', {
+      ...settings,
+      context: {
+        includeFullOutline: true,
+        sceneIds: ['scene-current'],
+        codexEntryIds: ['codex-current'],
+      },
+    });
 
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
       aiPrompt: {
@@ -256,10 +266,17 @@ describe('ChatResponseService', () => {
         ],
       },
     }));
-    expect(chatAiContext.buildContext).toHaveBeenCalledTimes(1);
+    expect(chatAiContext.buildContext).toHaveBeenCalledWith({
+      includeFullOutline: true,
+      sceneIds: ['scene-current'],
+      codexEntryIds: ['codex-current'],
+      bookId: 'book-1',
+      bookTitle: 'Draft Book',
+      hierarchy: [],
+    });
   });
 
-  it('does not start a stream when the saved message context cannot be prepared', async () => {
+  it('does not start a stream when the composer context cannot be prepared', async () => {
     chatAiContext.buildContext.mockRejectedValueOnce(new Error('Context read failed'));
 
     await service.generateResponse(messages[0], 'Write a scene', settings);
