@@ -16,7 +16,7 @@ export interface BookDto {
   author: string;
   status: 'archived' | 'draft';
   synopsis: string | null;
-  coverImage: any;
+  coverImage: Uint8Array | string | null;
   wordCount: number;
   language: string;
   createdAt: string;

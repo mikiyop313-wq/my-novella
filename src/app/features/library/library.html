@@ -1,5 +1,5 @@
 <div class="library-container">
-    @if (bookStore.books().length > 0) {
+    @if (libraryStore.books().length > 0) {
     <h1 class="title">The library</h1>
     <app-search-bar></app-search-bar>
 
@@ -14,8 +14,8 @@
     </div>
 
     <div class="books-grid">
-        @for (book of bookStore.books(); track $index) {
-        <app-book-card class="book-card" [book]="book"></app-book-card>
+        @for (book of libraryStore.books(); track $index) {
+        <app-book-card class="book-card" [book]="book" (bookDeleted)="onBookDeleted($event)"></app-book-card>
         }
     </div>
     } @else {

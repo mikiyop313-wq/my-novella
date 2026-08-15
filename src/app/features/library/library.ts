@@ -4,7 +4,7 @@ import { BookCardComponent } from './components/book-card/book-card.component';
 import { SearchBarComponent } from "./components/search-bar/search-bar.component";
 import { EmptyStateComponent } from './components/empty-state/empty-state.component';
 import { LibraryService, Book } from './services/library.service';
-import { BookStore } from './store/book.store';
+import { LibraryStore } from './store/book.store';
 
 @Component({
   selector: 'app-library',
@@ -13,13 +13,15 @@ import { BookStore } from './store/book.store';
   styleUrl: './library.scss',
 })
 export class Library implements OnInit {
-  private libraryService = inject(LibraryService);
-
   private router = inject(Router);
-  bookStore = inject(BookStore);
+  libraryStore = inject(LibraryStore);
 
   async ngOnInit() {
-    await this.bookStore.loadBooks();
+    await this.libraryStore.loadBooks();
+  }
+
+  onBookDeleted(bookId: string) {
+    this.libraryStore.deleteBook(bookId);
   }
 
 

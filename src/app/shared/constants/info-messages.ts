@@ -1,0 +1,11 @@
+export const INFO_MESSAGES = {
+  LIBRARY: {
+    AI_CONTEXT: `<span class="info-header">AI Creative Context</span><p>When enabled, the AI will use your <b>book synopsis</b> as part of the creative context for generating text.</p><p>This ensures that the generated prose remains consistent with your established <b>characters, setting, and plot points</b>.</p>`,
+    GENRES: `<span class="info-header">Genre Selection</span><p>Select the primary and secondary genres for your book.</p><p>This helps the AI understand the <b>tone</b> and <b>typical tropes</b> associated with your story.</p>`,
+    TROPES: `<span class="info-header">Story Tropes</span><p>Tropes are common storytelling patterns.</p><p>Defining them helps the AI hit the right <b>emotional beats</b> and <b>reader expectations</b> for your specific sub-genre.</p>`,
+  },
+  SETTINGS: {
+    PROSE_TENSE: `<span class="info-header">Narrative Tense</span><p>Choose between <b>past</b> and <b>present</b> tense.</p><p>This setting is crucial for the AI to maintain a <b>consistent narrative voice</b> throughout your manuscript.</p>`,
+    POINT_OF_VIEW: `<span class="info-header">Point of View</span><p>The narrative perspective (e.g., First Person, Third Person Limited).</p><p>This defines <b>who</b> is telling the story and how much <b>information</b> the reader has access to.</p>`,
+  }
+} as const;

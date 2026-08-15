@@ -37,4 +37,13 @@ export function setupLibraryHandlers() {
             throw error;
         }
     });
+
+    ipcMain.handle('library:get-languages', async () => {
+        try {
+            return await bookRepository.getLanguages();
+        } catch (error) {
+            console.error('Error fetching languages:', error);
+            throw error;
+        }
+    });
 }

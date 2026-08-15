@@ -1,20 +1,41 @@
-import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, Input, computed } from '@angular/core';
+import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, Input, computed, inject } from '@angular/core';
+import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
 import { CdkMenuModule } from '@angular/cdk/menu';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { BookDto } from '../../../../../../shared/models/book.model';
 import { CommonModule } from '@angular/common';
 import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
+import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
+import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
+import { LibraryService } from '../../services/library.service';
+import { LibraryStore } from '../../store/book.store';
+import { ConfigStore } from '../../../../core/store/config.store';
+import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { ElectronService } from '../../../../core/services/electron.service';
+
+
 
 @Component({
   selector: 'app-book-modal',
   standalone: true,
-  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe],
+  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe, InfoIconComponent, ReactiveFormsModule, AutocompleteDropdownComponent],
   templateUrl: './book-modal.component.html',
   styleUrl: './book-modal.component.scss'
 })
 export class BookModalComponent {
   @Input({ required: true }) book!: BookDto;
   @Output() close = new EventEmitter<void>();
+  @Output() bookDeleted = new EventEmitter<string>();
+
+  private libraryService = inject(LibraryService);
+  readonly store = inject(LibraryStore);
+  readonly config = inject(ConfigStore);
+  readonly electronApi = inject(ElectronService);
+  private sanitizer = inject(DomSanitizer);
+
+  readonly INFO = INFO_MESSAGES;
+
 
   @ViewChild('genresContent') genresContent!: ElementRef;
   @ViewChild('tropesContent') tropesContent!: ElementRef;
@@ -27,21 +48,14 @@ export class BookModalComponent {
   selectedLanguage = signal<string>('english');
   selectedPOV = signal<'first' | 'third-limited' | 'third-omni' | 'second'>('third-limited');
   povCharacter = signal<string>('');
+  useSynopsisInAiContext = signal<boolean>(true);
 
-  // Options
-  tenses: { value: 'past' | 'present', label: string }[] = [
+  tenses: DropdownOption[] = [
     { value: 'past', label: 'Past Tense' },
     { value: 'present', label: 'Present Tense' }
   ];
 
-  languages = [
-    { value: 'english', label: 'English' },
-    { value: 'italian', label: 'Italian' },
-    { value: 'french', label: 'French' },
-    { value: 'spanish', label: 'Spanish' }
-  ];
-
-  povs: { value: 'first' | 'second' | 'third-limited' | 'third-omni', label: string }[] = [
+  povs: DropdownOption[] = [
     { value: 'first', label: 'First Person' },
     { value: 'second', label: 'Second Person' },
     { value: 'third-limited', label: 'Third Person Limited' },
@@ -53,6 +67,20 @@ export class BookModalComponent {
 
   genres = computed(() => this.book.categories?.filter(c => c.type === 'genre') || []);
   tropes = computed(() => this.book.categories?.filter(c => c.type === 'trope') || []);
+
+  displayCoverImage = computed<SafeUrl | string>(() => {
+    if (!this.book.coverImage) {
+      return 'https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&q=80&w=800';
+    }
+
+    if (this.book.coverImage instanceof Uint8Array) {
+      // Convert Uint8Array to a blob URL for efficiency
+      const blob = new Blob([this.book.coverImage]);
+      return this.sanitizer.bypassSecurityTrustUrl(URL.createObjectURL(blob));
+    }
+
+    return this.book.coverImage;
+  });
 
   currentWords = signal(0);
   currentCount = signal(0); // This could be chapters if we add them to schema
@@ -79,9 +107,11 @@ export class BookModalComponent {
 
   ngOnInit() {
     this.animateCount(1000);
-    // Initialize settings from book data if available (placeholder logic)
-    if (this.book.language) this.selectedLanguage.set(this.book.language.toLowerCase());
+    this.config.loadLanguages();
+    // Initialize settings from book data if available
+    if (this.book.language) this.selectedLanguage.set(this.book.language);
   }
+
 
   ngOnDestroy() {
     this.observer?.disconnect();
@@ -163,16 +193,10 @@ export class BookModalComponent {
     }
   }
 
-  selectTense(tense: 'past' | 'present') {
-    this.selectedTense.set(tense);
-  }
-
-  selectLanguage(lang: string) {
-    this.selectedLanguage.set(lang);
-  }
-
-  selectPOV(pov: 'first' | 'third-limited' | 'third-omni' | 'second') {
-    this.selectedPOV.set(pov);
+  onSelectionChange(type: 'tense' | 'language' | 'pov', value: any) {
+    if (type === 'tense') this.selectedTense.set(value);
+    else if (type === 'language') this.selectedLanguage.set(value);
+    else if (type === 'pov') this.selectedPOV.set(value);
   }
 
   onCharacterChange(event: Event) {
@@ -180,16 +204,8 @@ export class BookModalComponent {
     this.povCharacter.set(value);
   }
 
-  getSelectedTenseLabel(): string {
-    return this.tenses.find(t => t.value === this.selectedTense())?.label || '';
-  }
-
-  getSelectedLanguageLabel(): string {
-    return this.languages.find(l => l.value === this.selectedLanguage())?.label || '';
-  }
-
-  getSelectedPOVLabel(): string {
-    return this.povs.find(p => p.value === this.selectedPOV())?.label || '';
+  toggleAiContext() {
+    this.useSynopsisInAiContext.set(!this.useSynopsisInAiContext());
   }
 
   onArchive() {
@@ -197,7 +213,7 @@ export class BookModalComponent {
   }
 
   onDelete() {
-    console.log('Delete book:', this.book.id);
+    this.bookDeleted.emit(this.book.id);
   }
 
   onClose() {

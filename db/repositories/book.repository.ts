@@ -1,5 +1,5 @@
 import { db } from '../index';
-import { books, categories, bookTags } from '../schema';
+import { books, categories, bookTags, language } from '../schema';
 import { eq } from 'drizzle-orm';
 import { BookDto, CreateBookDto, UpdateBookDto } from '../../shared/models/book.model';
 
@@ -10,14 +10,29 @@ export class BookRepository {
         const { bookTags, createdAt, lastEditedAt, ...rest } = book;
         const categories = bookTags?.map((bt: any) => bt.category) || [];
 
+        // If coverImage is a Buffer, convert it to a Uint8Array for IPC
+        let coverImage = rest.coverImage;
+        if (coverImage && Buffer.isBuffer(coverImage)) {
+            coverImage = new Uint8Array(coverImage);
+        }
+
         const dto: BookDto = {
             ...rest,
+            coverImage,
             createdAt: createdAt.toISOString(),
             lastEditedAt: lastEditedAt.toISOString(),
             categories
         };
 
         return dto;
+    }
+
+    private dataUrlToBuffer(dataUrl: string | Uint8Array | null): Buffer | null {
+        if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+            return dataUrl as any;
+        }
+        const base64 = dataUrl.split(',')[1];
+        return Buffer.from(base64, 'base64');
     }
 
     async getAll(): Promise<BookDto[]> {
@@ -50,6 +65,11 @@ export class BookRepository {
     async add(data: CreateBookDto): Promise<BookDto> {
         const { categories: categoriesToSave, ...bookData } = data;
 
+        // Convert coverImage to Buffer if it's a Data URL
+        if (bookData.coverImage) {
+            bookData.coverImage = this.dataUrlToBuffer(bookData.coverImage as any) as any;
+        }
+
         const [newBook] = await db.insert(books).values(bookData as any).returning();
 
         if (categoriesToSave && categoriesToSave.length > 0) {
@@ -76,6 +96,11 @@ export class BookRepository {
 
     async update(id: string, data: UpdateBookDto): Promise<BookDto | undefined> {
         const { categories: categoriesToSave, ...updateData } = data;
+
+        // Convert coverImage to Buffer if it's a Data URL
+        if (updateData.coverImage) {
+            updateData.coverImage = this.dataUrlToBuffer(updateData.coverImage as any) as any;
+        }
 
         await db.update(books)
             .set({ ...updateData as any, lastEditedAt: new Date() })
@@ -108,6 +133,10 @@ export class BookRepository {
     async delete(id: string): Promise<{ success: boolean }> {
         await db.delete(books).where(eq(books.id, id));
         return { success: true };
+    }
+
+    async getLanguages(): Promise<{ languageName: string }[]> {
+        return await db.select().from(language);
     }
 }
 
