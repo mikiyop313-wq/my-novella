@@ -60,6 +60,7 @@ export class ManuscriptExportService {
         id: book.id,
         title: book.title,
         author: book.author,
+        language: book.language,
       },
       nodes: this.buildExportNodes(mode, manuscript),
     };

@@ -101,7 +101,7 @@ describe('ManuscriptExportService', () => {
 
     expect(result).toEqual({
       target: { mode: 'book', id: 'book-1' },
-      book: { id: 'book-1', title: 'The Book', author: 'A. Writer' },
+      book: { id: 'book-1', title: 'The Book', author: 'A. Writer', language: 'english' },
       nodes: [
         {
           type: 'act',
@@ -157,7 +157,12 @@ describe('ManuscriptExportService', () => {
       const result = await service.prepareExport({ mode, id });
 
       expect(result.target).toEqual({ mode, id });
-      expect(result.book).toEqual({ id: 'book-1', title: 'The Book', author: 'A. Writer' });
+      expect(result.book).toEqual({
+        id: 'book-1',
+        title: 'The Book',
+        author: 'A. Writer',
+        language: 'english',
+      });
       expect(result.nodes).toHaveLength(1);
       expect(result.nodes[0]?.type).toBe(expectedType);
     },

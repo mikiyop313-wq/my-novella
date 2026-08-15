@@ -14,6 +14,7 @@ export interface ManuscriptExportBook {
   id: string;
   title: string;
   author: string;
+  language: string;
 }
 
 interface ManuscriptExportStructureNode {

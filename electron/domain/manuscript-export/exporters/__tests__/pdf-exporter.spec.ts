@@ -35,6 +35,7 @@ const book: ManuscriptExportBook = {
   id: 'book-1',
   title: 'A Tale & More',
   author: 'A. Writer',
+  language: 'english',
 };
 
 describe('exportManuscriptToPdf', () => {
