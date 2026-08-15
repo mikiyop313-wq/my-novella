@@ -137,6 +137,7 @@ export class ManuscriptRepository {
         return inserted as unknown as SceneDto;
     }
 
+
     // -----------------------------------------------------------------------
     // Update methods
     // -----------------------------------------------------------------------

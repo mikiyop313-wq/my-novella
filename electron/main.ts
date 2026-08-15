@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { initializeIpc } from './ipc';
 import '../db/index';
@@ -8,6 +8,7 @@ if (!app.isPackaged) {
 }
 
 let win: BrowserWindow | null;
+let isReadyToClose = false;
 
 function createWindow() {
     win = new BrowserWindow({
@@ -31,11 +32,30 @@ function createWindow() {
         win.loadFile(path.join(__dirname, '../dist/my-novella/browser/index.html'));
     }
 
+    // ── Graceful close: let the renderer flush unsaved data ──────────────
+    win.on('close', (e) => {
+        if (!isReadyToClose && win) {
+            e.preventDefault();
+            win.webContents.send('app:before-close');
+
+            // Safety timeout — if the renderer doesn't respond in 3 s, close anyway.
+            setTimeout(() => {
+                isReadyToClose = true;
+                win?.close();
+            }, 3000);
+        }
+    });
+
     win.on('closed', () => {
         win = null;
     });
 }
 
+// Renderer signals that flushing is done; allow the window to close.
+ipcMain.on('app:close-ready', () => {
+    isReadyToClose = true;
+    win?.close();
+});
 
 app.on('ready', () => {
     initializeIpc();

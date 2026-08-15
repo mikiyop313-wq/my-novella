@@ -27,4 +27,16 @@ export class ElectronService {
         }
         return Promise.reject('Electron API not available');
     }
+
+    onBeforeClose(callback: () => void): void {
+        if (window.electronAPI?.onBeforeClose) {
+            window.electronAPI.onBeforeClose(callback);
+        }
+    }
+
+    sendCloseReady(): void {
+        if (window.electronAPI?.sendCloseReady) {
+            window.electronAPI.sendCloseReady();
+        }
+    }
 }

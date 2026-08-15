@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
 
+    // Graceful close: listen for the close signal from main process
+    onBeforeClose: (callback: () => void) => {
+        ipcRenderer.on('app:before-close', () => callback());
+    },
+
+    // Signal to main process that flushing is complete and it's safe to close
+    sendCloseReady: () => ipcRenderer.send('app:close-ready'),
+
     // Example: Get app version
     getAppVersion: () => process.versions.chrome
 });
