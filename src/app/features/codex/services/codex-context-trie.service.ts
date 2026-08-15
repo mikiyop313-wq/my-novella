@@ -1,11 +1,16 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 
 import {
   buildCodexContextTrie,
   type CodexContextTrieEntry,
   type CodexContextTrieValue,
 } from '../../../../../shared/utils/codex-context-trie';
-import type { ContextTrie } from '../../../../../shared/utils/context-matcher';
+import {
+  createContextMatcher,
+  type CompiledContextMatcher,
+  type ContextMatch,
+  type ContextTrie,
+} from '../../../../../shared/utils/context-matcher';
 import { CodexService } from './codex.service';
 
 @Injectable({
@@ -17,6 +22,12 @@ export class CodexContextTrieService {
   private readonly contextIdState = signal<string | null>(null);
   private readonly entriesState = signal<CodexContextTrieEntry[]>([]);
   private readonly trieState = signal<ContextTrie<CodexContextTrieValue> | null>(null);
+  private readonly matcherState = computed<CompiledContextMatcher<CodexContextTrieValue> | null>(
+    () => {
+      const trie = this.trieState();
+      return trie ? createContextMatcher(trie) : null;
+    },
+  );
   private readonly isLoadingState = signal(false);
   private readonly errorState = signal<string | null>(null);
   private loadRequestId = 0;
@@ -26,6 +37,10 @@ export class CodexContextTrieService {
   readonly trie = this.trieState.asReadonly();
   readonly isLoading = this.isLoadingState.asReadonly();
   readonly error = this.errorState.asReadonly();
+
+  findMatches(text: string): ContextMatch<CodexContextTrieValue>[] {
+    return this.matcherState()?.findMatches(text) ?? [];
+  }
 
   async loadForContext(contextId: string | null): Promise<void> {
     const requestId = ++this.loadRequestId;

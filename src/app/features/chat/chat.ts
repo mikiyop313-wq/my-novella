@@ -25,6 +25,7 @@ import {
   type DropdownOption,
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { ToastService } from '../../shared/services/toast.service';
+import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { ChatThreads } from './components/chat-threads/chat-threads';
 import { ChatResponseService } from './services/chat-response.service';
 import { ChatWindowService } from './services/chat-window.service';
@@ -37,7 +38,13 @@ const STREAMING_AUTO_SCROLL_FRAMES = 3;
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [ChatThreads, AutocompleteDropdownComponent, CdkMenuModule, MarkdownComponent],
+  imports: [
+    ChatThreads,
+    AutocompleteDropdownComponent,
+    CdkMenuModule,
+    MarkdownComponent,
+    CodexContextHighlightDirective,
+  ],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })

@@ -369,7 +369,7 @@
       @if (store.mode() === 'scene') {
       <app-scene-header></app-scene-header>
       }
-      <tiptap-editor [editor]="editor"></tiptap-editor>
+      <tiptap-editor [editor]="editor" codexContextHighlight=".tiptap"></tiptap-editor>
 
       @if (store.mode() !== 'scene') {
       <div class="add-new-section">

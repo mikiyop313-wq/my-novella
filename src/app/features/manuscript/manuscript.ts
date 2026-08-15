@@ -30,6 +30,7 @@ import {
 } from './helpers/content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
 import { AiStore } from '../../core/store/ai.store';
+import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { ManuscriptStore } from './store/manuscript.store';
 
 @Component({
@@ -43,6 +44,7 @@ import { ManuscriptStore } from './store/manuscript.store';
     CdkMenuModule,
     ManuscriptIndexScrollComponent,
     SceneHeaderComponent,
+    CodexContextHighlightDirective,
   ],
   templateUrl: './manuscript.html',
   styleUrl: './manuscript.scss',

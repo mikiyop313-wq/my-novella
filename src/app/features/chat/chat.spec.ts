@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
@@ -13,6 +14,10 @@ import {
 import { AiStreamService } from '../../core/services/ai-stream.service';
 import { AiStore } from '../../core/store/ai.store';
 import { ToastService } from '../../shared/services/toast.service';
+import { CodexContextHighlightRegistryService } from '../codex/highlighting/codex-context-highlight-registry.service';
+import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
+import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
+import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.service';
 import { Chat } from './chat';
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
@@ -118,6 +123,17 @@ describe('Chat', () => {
   let toastService: Pick<ToastService, 'error'>;
   let detachedWindowClosedCallback: ((event: { bookId: string; sessionId: string }) => void) | null;
   let detachedBookIds: Set<string>;
+  const trieState = signal<object | null>({});
+  const contextTrie = {
+    trie: trieState.asReadonly(),
+    findMatches: vi.fn((text: string) => findCodexMatches(text)),
+    loadForContext: vi.fn(),
+  };
+  const highlightRegistry = {
+    setRanges: vi.fn(),
+    clearRanges: vi.fn(),
+    getEntryIdsAtPoint: vi.fn(() => []),
+  };
 
   async function createComponent(routeValue: unknown): Promise<void> {
     await TestBed.configureTestingModule({
@@ -130,6 +146,10 @@ describe('Chat', () => {
         { provide: AiStore, useValue: aiStore },
         { provide: AiStreamService, useValue: aiStreamService },
         { provide: ToastService, useValue: toastService },
+        { provide: CodexContextTrieService, useValue: contextTrie },
+        { provide: CodexContextHighlightRegistryService, useValue: highlightRegistry },
+        { provide: CodexMatchChooserService, useValue: { open: vi.fn() } },
+        { provide: CodexEntryOpenerService, useValue: { open: vi.fn() } },
         ...provideMarkdown(),
       ],
     }).compileComponents();
@@ -161,6 +181,11 @@ describe('Chat', () => {
     threads = [];
     detachedWindowClosedCallback = null;
     detachedBookIds = new Set();
+    trieState.set({});
+    contextTrie.findMatches.mockReset().mockImplementation((text: string) => findCodexMatches(text));
+    contextTrie.loadForContext.mockClear();
+    highlightRegistry.setRanges.mockClear();
+    highlightRegistry.clearRanges.mockClear();
     chatStore = {
       threads: vi.fn(() => threads),
       messages: vi.fn(() => selectedThread?.messages ?? []),
@@ -682,6 +707,110 @@ describe('Chat', () => {
     expect(assistantMessage.querySelector('script')).toBeNull();
   });
 
+  it('highlights only workspace user and assistant Markdown without changing rendered DOM', async () => {
+    selectedThread = makeThreadDetail({
+      title: 'Title Codex',
+      messages: [
+        makeMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'Mara **Vale**',
+        }),
+        makeMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          branchGroupId: 'branch-2',
+          content: 'Silver Key <script>alert(1)</script>',
+          reasoningSummary: 'Hidden Reasoning',
+          position: 1,
+        }),
+        makeMessage({
+          id: 'system-1',
+          role: 'system',
+          branchGroupId: 'branch-3',
+          content: 'System Codex',
+          position: 2,
+        }),
+      ],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent(workspaceThreadRoute());
+    await waitForHighlightScan();
+
+    const messageList = fixture.nativeElement.querySelector('.message-list') as HTMLElement;
+    const htmlBeforeRefresh = messageList.innerHTML;
+    const ranges = highlightRegistry.setRanges.mock.calls.at(-1)?.[1] ?? [];
+    expect(ranges.map((item: { range: Range }) => item.range.toString())).toEqual([
+      'Mara Vale',
+      'Silver Key',
+    ]);
+    expect(contextTrie.findMatches).not.toHaveBeenCalledWith('Hidden Reasoning');
+    expect(contextTrie.findMatches).not.toHaveBeenCalledWith('System Codex');
+    expect(contextTrie.findMatches).not.toHaveBeenCalledWith('Title Codex');
+    expect(fixture.nativeElement.querySelector('.message-row.from-assistant script')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chat-input')).not.toBeNull();
+
+    trieState.set({ refreshed: true });
+    fixture.detectChanges();
+    await waitForHighlightScan();
+
+    expect(messageList.innerHTML).toBe(htmlBeforeRefresh);
+    expect(contextTrie.loadForContext).not.toHaveBeenCalled();
+  });
+
+  it('coalesces streaming Markdown DOM updates into one highlight rescan', async () => {
+    selectedThread = makeThreadDetail({
+      messages: [
+        makeMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'Mara',
+          status: 'streaming',
+        }),
+      ],
+    });
+    chatStore.openThread.mockResolvedValueOnce(undefined);
+    await createComponent(workspaceThreadRoute());
+    await waitForHighlightScan();
+    highlightRegistry.setRanges.mockClear();
+
+    const renderedParagraph = fixture.nativeElement.querySelector(
+      '.message-row.from-assistant markdown.message-text p',
+    ) as HTMLParagraphElement;
+    renderedParagraph.textContent = 'Mara V';
+    renderedParagraph.textContent = 'Mara Vale';
+    await waitForHighlightScan();
+
+    expect(highlightRegistry.setRanges).toHaveBeenCalledTimes(1);
+    expect(highlightRegistry.setRanges.mock.calls[0][1]
+      .map((item: { range: Range }) => item.range.toString())).toEqual(['Mara Vale']);
+  });
+
+  it('keeps detached chat highlighting disabled', async () => {
+    chatWindowService.getDetachedSession.mockResolvedValueOnce({
+      sessionId: 'session-1',
+      bookId: 'book-1',
+      selectedThreadId: null,
+    });
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ sessionId: 'session-1' }) },
+      parent: null,
+    });
+    selectedThread = makeThreadDetail({
+      messages: [makeMessage({ content: 'Mara Vale' })],
+    });
+    component.hasActiveConversation = true;
+    fixture.changeDetectorRef.markForCheck();
+    fixture.detectChanges(false);
+    await waitForHighlightScan();
+
+    expect(component.isDetachedMode).toBe(true);
+    expect(fixture.nativeElement.querySelector('.message-row.from-user')).not.toBeNull();
+    expect(highlightRegistry.setRanges.mock.calls.every((call) => call[1].length === 0)).toBe(true);
+    expect(contextTrie.findMatches).not.toHaveBeenCalled();
+    expect(contextTrie.loadForContext).not.toHaveBeenCalled();
+  });
+
   it('renders assistant single newlines as paragraph breaks without changing user newlines', async () => {
     selectedThread = makeThreadDetail({
       messages: [
@@ -718,6 +847,19 @@ describe('Chat', () => {
     expect(assistantParagraphs[0]?.textContent).toBe('First paragraph');
     expect(assistantParagraphs[1]?.textContent).toBe('Second paragraph');
   });
+
+  function workspaceThreadRoute() {
+    return {
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    };
+  }
+
+  async function waitForHighlightScan(): Promise<void> {
+    await Promise.resolve();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  }
 
   it('preserves assistant markdown block structure while preparing paragraph breaks', async () => {
     selectedThread = makeThreadDetail({
@@ -1454,3 +1596,24 @@ describe('Chat', () => {
     expect(chatStore.selectAdjacentMessageBranch).toHaveBeenCalledWith('message-1', 1);
   });
 });
+
+function findCodexMatches(text: string) {
+  const terms = [
+    { term: 'mara vale', entryId: 'codex-1', pattern: /Mara\s+Vale/gi },
+    { term: 'silver key', entryId: 'codex-2', pattern: /Silver\s+Key/gi },
+  ];
+
+  return terms.flatMap(({ term, entryId, pattern }) =>
+    [...text.matchAll(pattern)].map((match) => ({
+      term,
+      value: {
+        entryId,
+        trackingSetting: 'include_when_detected' as const,
+        status: 'active' as const,
+      },
+      startIndex: match.index,
+      endIndex: match.index + match[0].length,
+      text: match[0],
+    })),
+  );
+}

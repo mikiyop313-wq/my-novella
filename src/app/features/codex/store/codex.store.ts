@@ -172,6 +172,45 @@ export const CodexStore = signalStore(
       });
     }
 
+    async function openEntryById(entryId: string): Promise<void> {
+      if (store.isLoadingSelectedEntry()) return;
+
+      const requestId = ++detailRequestId;
+
+      try {
+        patchState(store, {
+          isLoadingSelectedEntry: true,
+          error: null,
+        });
+
+        const detail = await codexService.getEntry(entryId);
+
+        if (requestId !== detailRequestId) return;
+
+        if (!detail) {
+          throw new Error('Codex entry not found.');
+        }
+
+        const typeChanged = store.activeType() !== detail.type;
+        patchState(store, {
+          activeType: detail.type,
+          selectedEntry: detail,
+          isCreatingEntry: true,
+          ...(typeChanged ? { entries: [], isLoadingEntries: true } : {})
+        });
+      } catch (error) {
+        if (requestId !== detailRequestId) return;
+
+        const message = error instanceof Error ? error.message : 'Failed to load codex entry.';
+        patchState(store, { error: message });
+        toastService.error(message, 'Codex');
+      } finally {
+        if (requestId === detailRequestId) {
+          patchState(store, { isLoadingSelectedEntry: false });
+        }
+      }
+    }
+
     return {
       setActiveType(type: CodexEntryType): void {
         if (store.activeType() !== type) {
@@ -202,43 +241,10 @@ export const CodexStore = signalStore(
 
       closeCreateMenu,
 
-      async openEntry(entry: CodexEntryDto): Promise<void> {
-        if (store.isLoadingSelectedEntry()) return;
+      openEntryById,
 
-        const requestId = ++detailRequestId;
-
-        try {
-          patchState(store, {
-            isLoadingSelectedEntry: true,
-            error: null,
-          });
-
-          const detail = await codexService.getEntry(entry.id);
-
-          if (requestId !== detailRequestId) return;
-
-          if (!detail) {
-            throw new Error('Codex entry not found.');
-          }
-
-          const typeChanged = store.activeType() !== detail.type;
-          patchState(store, {
-            activeType: detail.type,
-            selectedEntry: detail,
-            isCreatingEntry: true,
-            ...(typeChanged ? { entries: [], isLoadingEntries: true } : {})
-          });
-        } catch (error) {
-          if (requestId !== detailRequestId) return;
-
-          const message = error instanceof Error ? error.message : 'Failed to load codex entry.';
-          patchState(store, { error: message });
-          toastService.error(message, 'Codex');
-        } finally {
-          if (requestId === detailRequestId) {
-            patchState(store, { isLoadingSelectedEntry: false });
-          }
-        }
+      openEntry(entry: CodexEntryDto): Promise<void> {
+        return openEntryById(entry.id);
       },
 
       async saveEntry(bookId: string | null, entryData: CodexEntryMenuPayload): Promise<void> {

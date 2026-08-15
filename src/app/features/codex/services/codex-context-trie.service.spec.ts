@@ -34,6 +34,67 @@ describe('CodexContextTrieService', () => {
     expect(service.error()).toBeNull();
   });
 
+  it('finds Codex matches with source offsets and entry values', async () => {
+    const service = createService(
+      createCodexService([createEntry({ id: 'codex-1', name: 'Mara Vale', alias: 'The Blade' })]),
+    );
+
+    expect(service.findMatches('Mara Vale')).toEqual([]);
+    await service.loadForContext('book-1');
+
+    expect(service.findMatches('Meet Mara Vale, the Blade.')).toEqual([
+      {
+        term: 'mara vale',
+        value: {
+          entryId: 'codex-1',
+          trackingSetting: 'include_when_detected',
+          status: 'active',
+        },
+        startIndex: 5,
+        endIndex: 14,
+        text: 'Mara Vale',
+      },
+      {
+        term: 'the blade',
+        value: {
+          entryId: 'codex-1',
+          trackingSetting: 'include_when_detected',
+          status: 'active',
+        },
+        startIndex: 16,
+        endIndex: 25,
+        text: 'the Blade',
+      },
+    ]);
+  });
+
+  it('caches one compiled matcher per trie and recompiles after refresh', async () => {
+    const codexService = {
+      getEntries: vi
+        .fn()
+        .mockResolvedValueOnce([createEntry({ id: 'codex-1', name: 'Mara Vale' })])
+        .mockResolvedValueOnce([createEntry({ id: 'codex-2', name: 'Silver Key' })]),
+    };
+    const service = createService(codexService);
+
+    await service.loadForContext('book-1');
+    const firstMatcher = getCompiledMatcher(service);
+    service.findMatches('Mara Vale');
+    service.findMatches('Mara Vale returns.');
+
+    expect(firstMatcher).not.toBeNull();
+    expect(getCompiledMatcher(service)).toBe(firstMatcher);
+
+    await service.refreshCurrentContext();
+    const secondMatcher = getCompiledMatcher(service);
+    service.findMatches('Silver Key');
+    service.findMatches('Silver Key turns.');
+
+    expect(secondMatcher).not.toBeNull();
+    expect(secondMatcher).not.toBe(firstMatcher);
+    expect(getCompiledMatcher(service)).toBe(secondMatcher);
+  });
+
   it('resets trie state when no context is active', async () => {
     const service = createService(createCodexService([]));
 
@@ -44,6 +105,7 @@ describe('CodexContextTrieService', () => {
     expect(service.trie()).toBeNull();
     expect(service.isLoading()).toBe(false);
     expect(service.error()).toBeNull();
+    expect(service.findMatches('Mara Vale')).toEqual([]);
   });
 
   it('refreshes the currently loaded context', async () => {
@@ -60,10 +122,7 @@ describe('CodexContextTrieService', () => {
       }),
     ];
     const codexService = {
-      getEntries: vi
-        .fn()
-        .mockResolvedValueOnce(firstEntries)
-        .mockResolvedValueOnce(secondEntries),
+      getEntries: vi.fn().mockResolvedValueOnce(firstEntries).mockResolvedValueOnce(secondEntries),
     };
     const service = createService(codexService);
 
@@ -75,6 +134,8 @@ describe('CodexContextTrieService', () => {
     expect(service.contextId()).toBe('book-1');
     expect(getTrieEntryValue(service.trie(), 'mara vale')).toBeUndefined();
     expect(getTrieEntryValue(service.trie(), 'silver key')?.entryId).toBe('codex-2');
+    expect(service.findMatches('Mara Vale')).toEqual([]);
+    expect(service.findMatches('Silver Key')[0]?.value.entryId).toBe('codex-2');
   });
 
   it('clears trie state when refreshing without an active context', async () => {
@@ -103,15 +164,41 @@ describe('CodexContextTrieService', () => {
     expect(service.trie()).toBeNull();
     expect(service.isLoading()).toBe(false);
     expect(service.error()).toBe('Codex unavailable');
+    expect(service.findMatches('Mara Vale')).toEqual([]);
+  });
+
+  it('ignores a stale load that resolves after a newer context', async () => {
+    const first = deferred<CodexEntryDto[]>();
+    const second = deferred<CodexEntryDto[]>();
+    const codexService = {
+      getEntries: vi.fn((contextId: string) =>
+        contextId === 'book-1' ? first.promise : second.promise,
+      ),
+    };
+    const service = createService(codexService);
+
+    const firstLoad = service.loadForContext('book-1');
+    const secondLoad = service.loadForContext('book-2');
+
+    second.resolve([createEntry({ id: 'codex-2', bookId: 'book-2', name: 'Silver Key' })]);
+    await secondLoad;
+    first.resolve([createEntry({ id: 'codex-1', name: 'Mara Vale' })]);
+    await firstLoad;
+
+    expect(service.contextId()).toBe('book-2');
+    expect(service.entries().map((entry) => entry.id)).toEqual(['codex-2']);
+    expect(service.findMatches('Silver Key')[0]?.value.entryId).toBe('codex-2');
+    expect(service.findMatches('Mara Vale')).toEqual([]);
+    expect(service.isLoading()).toBe(false);
+    expect(service.error()).toBeNull();
   });
 });
 
-function createService(codexService: { getEntries: ReturnType<typeof vi.fn> }): CodexContextTrieService {
+function createService(codexService: {
+  getEntries: ReturnType<typeof vi.fn>;
+}): CodexContextTrieService {
   TestBed.configureTestingModule({
-    providers: [
-      CodexContextTrieService,
-      { provide: CodexService, useValue: codexService },
-    ],
+    providers: [CodexContextTrieService, { provide: CodexService, useValue: codexService }],
   });
 
   return TestBed.inject(CodexContextTrieService);
@@ -140,10 +227,7 @@ function createEntry(overrides: Partial<CodexEntryDto>): CodexEntryDto {
   };
 }
 
-function getTrieEntryValue(
-  trie: ReturnType<CodexContextTrieService['trie']>,
-  term: string,
-) {
+function getTrieEntryValue(trie: ReturnType<CodexContextTrieService['trie']>, term: string) {
   if (!trie) return undefined;
 
   let node = trie.root;
@@ -159,4 +243,22 @@ function getTrieEntryValue(
   }
 
   return node.entries[0]?.value;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function getCompiledMatcher(service: CodexContextTrieService): object | null {
+  return (
+    service as unknown as {
+      matcherState: () => object | null;
+    }
+  ).matcherState();
 }

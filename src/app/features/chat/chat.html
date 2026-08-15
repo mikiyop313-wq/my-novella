@@ -115,7 +115,10 @@
             </div>
           </header>
 
-          <div class="message-list">
+          <div class="message-list"
+            [codexContextHighlight]="isDetachedMode
+              ? '[data-codex-highlight-disabled]'
+              : 'article.from-user markdown.message-text, article.from-assistant markdown.message-text'">
             @for (message of chatStore.visibleMessages(); track message.id) {
             <article class="message-row" [class.from-user]="message.role === 'user'"
               [class.from-assistant]="message.role === 'assistant'" [class.from-system]="message.role === 'system'"

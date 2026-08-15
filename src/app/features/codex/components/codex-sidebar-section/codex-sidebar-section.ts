@@ -17,6 +17,7 @@ import { CodexEntryMenuComponent } from '../codex-entry-menu/codex-entry-menu.co
 import { CodexStore } from '../../store/codex.store';
 import { createCodexImageUrl, revokeCodexImageUrl } from '../../utils/codex-image-url';
 import { CodexContextTrieService } from '../../services/codex-context-trie.service';
+import { CodexEntryOpenerService } from '../../services/codex-entry-opener.service';
 import { CodexWindowService } from '../../services/codex-window.service';
 import {
   type CodexDetachRequest,
@@ -44,6 +45,7 @@ export class CodexSidebarSection {
   readonly workspaceBookStore = inject(WorkspaceBookStore);
   readonly codexStore = inject(CodexStore);
   readonly codexContextTrie = inject(CodexContextTrieService);
+  readonly codexEntryOpener = inject(CodexEntryOpenerService);
   readonly codexWindowService = inject(CodexWindowService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -201,12 +203,7 @@ export class CodexSidebarSection {
   }
 
   async openEntry(entry: CodexEntryDto): Promise<void> {
-    if (await this.codexWindowService.focusDetachedEntry(entry.id)) {
-      this.closeCreateMenu();
-      return;
-    }
-
-    await this.codexStore.openEntry(entry);
+    await this.codexEntryOpener.open(entry.id);
   }
 
   getEntryImageUrl(entry: CodexEntryDto): string | null {
