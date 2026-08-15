@@ -3,27 +3,43 @@
   width: 100%;
 }
 
+:host(.autocomplete-trigger-icon) {
+  display: flex;
+  width: auto;
+  height: 100%;
+}
+
+.autocomplete-layout,
 .autocomplete-wrapper {
-  position: relative;
   width: 100%;
 }
 
-.dropdown-trigger {
-  background: color-mix(in srgb, var(--color-text-primary) 3%, transparent);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
+.autocomplete-layout.add-layout {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  width: 100%;
-  font-family: inherit;
-  text-align: left;
+  gap: 6px;
 
+  .autocomplete-wrapper {
+    width: auto;
+  }
+}
+
+.dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-text-primary) 3%, transparent);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 
   &:hover {
     border-color: color-mix(in srgb, var(--color-text-secondary) 50%, transparent);
@@ -36,218 +52,410 @@
     transform: translateY(0);
   }
 
-  span.placeholder {
-    color: var(--color-text-secondary);
-    opacity: 0.6;
+  .trigger-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.placeholder {
+      color: var(--color-text-secondary);
+      opacity: 0.65;
+    }
   }
 
-  svg {
-    width: 20px;
-    height: 20px;
-    opacity: 0.5;
-    color: var(--color-text-secondary);
-    transition: transform 0.2s ease;
+  .trigger-chevron {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.55;
+    transition: transform 0.2s ease, opacity 0.2s ease;
   }
 
-  &.active svg {
+  &.active:not(.icon-trigger) .trigger-chevron {
     transform: rotate(180deg);
     opacity: 1;
+  }
+
+  &.add-trigger {
+    width: auto;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-style: dashed;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    transform: none;
+    box-shadow: none;
+
+    .trigger-label.placeholder {
+      color: inherit;
+      opacity: 1;
+    }
+
+    &:hover,
+    &.active {
+      border-color: var(--color-border-secondary);
+      background: var(--color-hover-bg);
+      color: var(--color-text-primary);
+    }
+  }
+
+  &.icon-trigger {
+    width: auto;
+    height: 100%;
+    min-height: 28px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    transform: none;
+    box-shadow: none;
+
+    &:hover,
+    &.active {
+      background: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+    }
   }
 }
 
 .autocomplete-dropdown {
+  z-index: 1000;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, var(--color-surface) 0%, color-mix(in srgb, var(--color-surface), var(--color-text-primary) 2%) 100%);
-  border: 1px solid color-mix(in srgb, var(--color-text-secondary) 20%, transparent);
-  border-radius: 12px;
-  box-shadow:
-    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-    0 8px 10px -6px rgba(0, 0, 0, 0.1),
-    0 0 0 1px color-mix(in srgb, var(--color-text-primary) 5%, transparent);
-  z-index: 100;
+  width: max-content;
+  min-width: min(340px, calc(100vw - 16px));
+  max-width: min(450px, calc(100vw - 16px));
+  max-height: min(560px, calc(100vh - 48px));
   overflow: hidden;
-  min-width: 340px;
-  max-width: 450px;
-  max-height: 400px;
-  margin-top: 8px;
-  margin-bottom: 8px;
-  backdrop-filter: blur(12px);
-  animation: dropdownFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-block: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  animation: dropdown-fade-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 
+  &.compact-panel {
+    min-width: min(220px, calc(100vw - 16px));
+    max-width: min(360px, calc(100vw - 16px));
+  }
 
-  .dropdown-search {
-    padding: 12px;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
+  &.submenu-panel {
+    min-width: min(180px, calc(100vw - 28px));
+    max-width: min(360px, calc(100vw - 28px));
+    max-height: min(460px, calc(100vh - 48px));
+    margin-block: 0;
+  }
+}
+
+.menu-main-title {
+  padding: 10px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
+  background: color-mix(in srgb, var(--color-text-primary) 1.5%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+
+  >svg {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: var(--color-text-secondary);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+  }
+
+  input {
+    width: 100%;
+    padding: 3px 0;
+    border: 0;
+    outline: 0;
     background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 0.8rem;
 
-    input {
-      width: 100%;
-      box-sizing: border-box;
-      background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
-      border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-      color: var(--color-text-primary);
-      padding: 12px 16px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      transition: all 0.2s ease;
+    &::-webkit-search-cancel-button {
+      appearance: none;
+    }
 
-      &:focus {
-        outline: none;
-        border-color: var(--color-btn-primary-bg, #9333ea);
-        background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-btn-primary-bg, #9333ea) 10%, transparent);
-      }
-
-      &::placeholder {
-        color: var(--color-text-secondary);
-        opacity: 0.5;
-      }
+    &::placeholder {
+      color: var(--color-text-secondary);
     }
   }
 
-  .options-list {
-    list-style: none;
-    padding: 6px 0;
-    margin: 0;
-    overflow-y: auto;
+  .search-clear {
+    position: relative;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-btn-primary-bg);
+    cursor: pointer;
+    opacity: 0.7;
 
-    .option-container {
-      display: flex;
-      flex-direction: column;
-
-      .option-item {
-        padding: 12px 20px;
-        font-size: 0.9rem;
-        color: var(--color-text-primary);
-        cursor: pointer;
-        transition: all 0.2s ease;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin: 2px 8px;
-        border-radius: 8px;
-
-        &:hover {
-          background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
-        }
-
-        .option-label {
-          flex: 1;
-          font-weight: 400;
-
-          &.selected {
-            color: var(--color-btn-primary-bg, #9333ea);
-            font-weight: 600;
-          }
-        }
-
-        .check-icon {
-          color: var(--color-btn-primary-bg, #9333ea);
-          margin-right: 8px;
-        }
-
-        .expand-btn {
-          background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
-          border: none;
-          color: var(--color-text-secondary);
-          cursor: pointer;
-          padding: 6px;
-          border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-          &:hover {
-            background: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
-            color: var(--color-text-primary);
-            transform: scale(1.05);
-          }
-
-          &.expanded {
-            background: color-mix(in srgb, var(--color-btn-primary-bg, #9333ea) 10%, transparent);
-            color: var(--color-btn-primary-bg, #9333ea);
-
-            svg {
-              transform: rotate(180deg);
-            }
-          }
-
-          svg {
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-        }
-      }
-
-      .sub-options-container {
-        padding: 12px 20px 16px;
-        background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
-        margin: 0 8px 4px;
-        border-radius: 0 0 12px 12px;
-        animation: subOptionsFadeIn 0.3s ease-out;
-
-        .sub-options-chips {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-
-          .sub-chip {
-            background: var(--color-surface);
-            border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            color: var(--color-text-secondary);
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            user-select: none;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-
-            &:hover {
-              background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
-              color: var(--color-text-primary);
-              border-color: var(--color-text-secondary);
-              transform: translateY(-1px) scale(1.02);
-              box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            }
-
-            &:active {
-              transform: scale(0.98);
-            }
-
-            &.selected {
-              background: var(--color-btn-primary-bg, #9333ea);
-              border-color: var(--color-btn-primary-bg, #9333ea);
-              color: var(--color-btn-primary-text, #ffffff);
-              font-weight: 500;
-              box-shadow: 0 4px 12px color-mix(in srgb, var(--color-btn-primary-bg, #9333ea) 30%, transparent);
-            }
-          }
-        }
-      }
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 1px;
+      border-radius: 999px;
+      background: currentColor;
     }
 
-    .no-options {
-      padding: 24px;
-      font-size: 0.9rem;
-      color: var(--color-text-secondary);
-      font-style: italic;
-      text-align: center;
-      opacity: 0.7;
+    &::before {
+      transform: translate(-50%, -50%) rotate(45deg);
     }
 
-    .group-separator {
-      padding: 12px 20px 8px;
-      font-size: 0.7rem;
-      font-weight: 800;
-      color: var(--color-text-secondary);
-      background: transparent;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      pointer-events: none;
-      opacity: 0.6;
+    &::after {
+      transform: translate(-50%, -50%) rotate(-45deg);
     }
+
+    &:hover {
+      opacity: 1;
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }
+  }
+}
+
+.menu-scroll {
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.dropdown-section h3 {
+  margin: 0;
+  padding: 8px 10px 5px;
+  color: var(--color-text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section-divider {
+  height: 1px;
+  margin: 7px 6px;
+  background: var(--color-border);
+}
+
+.option-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-row {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: var(--color-hover-bg);
+    outline: none;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+.selection-mark {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--color-btn-primary-bg);
+
+  &::before {
+    content: '';
+    display: block;
+    background: currentColor;
+  }
+
+  &.checked::before {
+    width: 5px;
+    height: 9px;
+    border: solid currentColor;
+    border-width: 0 2px 2px 0;
+    background: transparent;
+    transform: translateY(-1px) rotate(45deg);
+  }
+
+  &.partial::before {
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+  }
+}
+
+.row-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.row-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+
+  &.selected {
+    color: var(--color-btn-primary-bg);
+    font-weight: 600;
+  }
+}
+
+.row-hint,
+.row-count {
+  color: var(--color-text-secondary);
+  font-size: 0.67rem;
+}
+
+.row-count {
+  min-width: 22px;
+  text-align: right;
+}
+
+.check-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--color-btn-primary-bg);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.submenu-chevron,
+.expand-button svg {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.expand-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  transition: background 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
+  }
+
+  svg {
+    transition: transform 0.2s ease;
+  }
+
+  &.expanded svg {
+    transform: rotate(180deg);
+  }
+}
+
+.state-message,
+.no-options {
+  padding: 10px 12px;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.state-message.error {
+  color: var(--color-danger);
+}
+
+.no-options {
+  padding-block: 20px;
+  text-align: center;
+  font-style: italic;
+}
+
+.sub-options-container {
+  padding: 10px 12px 12px;
+  margin: 0 4px 4px;
+  border-radius: 0 0 8px 8px;
+  background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
+  animation: sub-options-fade-in 0.2s ease-out;
+}
+
+.sub-options-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.sub-chip {
+  padding: 5px 11px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+  border-radius: 20px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-secondary);
+  }
+
+  &.selected {
+    border-color: var(--color-btn-primary-bg);
+    background: var(--color-btn-primary-bg);
+    color: var(--color-btn-primary-text, #fff);
+  }
+
+  &:disabled {
+    opacity: 0.5;
   }
 }
 
@@ -255,62 +463,77 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 24px;
+  margin-top: 16px;
 
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--color-text-primary) 6%, transparent) 0%, color-mix(in srgb, var(--color-text-primary) 2%, transparent) 100%);
+    gap: 8px;
+    padding: 7px 12px;
     border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-    padding: 8px 16px;
-    border-radius: 24px;
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+    color: var(--color-text-primary);
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--color-text-primary);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    backdrop-filter: blur(8px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-    &:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-      background: linear-gradient(135deg, color-mix(in srgb, var(--color-text-primary) 10%, transparent) 0%, color-mix(in srgb, var(--color-text-primary) 4%, transparent) 100%);
-      border-color: color-mix(in srgb, var(--color-border) 90%, transparent);
-    }
 
     button {
-      background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
-      border: none;
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
       padding: 0;
-      width: 20px;
-      height: 20px;
+      border: 0;
       border-radius: 50%;
-      color: inherit;
+      background: transparent;
+      color: currentColor;
       cursor: pointer;
-      font-size: 16px;
-      line-height: 1;
-      opacity: 0.6;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-right: -4px;
+      opacity: 0.7;
+
+      svg {
+        width: 12px;
+        height: 12px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
 
       &:hover {
         opacity: 1;
-        background: var(--color-btn-primary-bg, #9333ea);
-        color: var(--color-btn-primary-text, #ffffff);
-        transform: rotate(90deg) scale(1.1);
+        background: color-mix(in srgb, currentColor 12%, transparent);
       }
     }
   }
 }
 
-@keyframes dropdownFadeIn {
+.compact-chips .selected-chips {
+  gap: 6px;
+  margin-top: 0;
+
+  .chip {
+    min-height: 28px;
+    box-sizing: border-box;
+    padding: 4px 8px 4px 10px;
+    border-color: color-mix(in srgb, var(--color-btn-primary-bg) 30%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-btn-primary-bg) 10%, transparent);
+    color: var(--color-btn-primary-bg);
+    font-size: 0.75rem;
+    font-weight: 500;
+
+    button {
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+@keyframes dropdown-fade-in {
   from {
     opacity: 0;
-    transform: translateY(-10px) scale(0.98);
+    transform: translateY(-6px) scale(0.98);
   }
 
   to {
@@ -319,7 +542,7 @@
   }
 }
 
-@keyframes subOptionsFadeIn {
+@keyframes sub-options-fade-in {
   from {
     opacity: 0;
     transform: translateY(-4px);

@@ -203,7 +203,7 @@
     display: flex;
     align-items: center;
 
-    app-ai-context-dropdown {
+    app-autocomplete-dropdown.context-dropdown {
       display: block;
       width: 100%;
     }
@@ -273,7 +273,7 @@
         box-shadow: 0 4px 12px var(--color-shadow);
 
         .submit-btn,
-        .dropdown-btn {
+        app-autocomplete-dropdown.model-dropdown {
           color: var(--color-btn-primary-text);
         }
 
@@ -297,7 +297,7 @@
         box-shadow: 0 4px 12px color-mix(in srgb, #ef4444 15%, transparent);
 
         .submit-btn,
-        .dropdown-btn {
+        app-autocomplete-dropdown.model-dropdown {
           color: #ef4444;
         }
 
@@ -309,10 +309,6 @@
           background: color-mix(in srgb, #ef4444 25%, transparent);
         }
 
-        .dropdown-btn[disabled] {
-          cursor: not-allowed;
-          opacity: 0.5;
-        }
       }
 
 
@@ -362,206 +358,12 @@
         transition: background 0.3s ease;
       }
 
-      .dropdown-btn {
-        background: transparent;
-        border: none;
+      app-autocomplete-dropdown.model-dropdown {
+        align-self: stretch;
+        width: auto;
         color: var(--color-text-secondary);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 6px 8px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.1);
-        }
-
-        .chevron-icon {
-          flex-shrink: 0;
-        }
       }
     }
-  }
-}
-
-// Dropdown menu styling
-::ng-deep .models-menu {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-  min-width: 240px;
-  max-width: 320px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  margin-top: 8px;
-  backdrop-filter: blur(12px);
-  padding: 0;
-
-  .menu-search-wrapper {
-    position: relative;
-    padding: 10px 12px;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-    background: transparent;
-
-    .menu-search-input {
-      width: 100%;
-      box-sizing: border-box;
-      background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
-      border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-      color: var(--color-text-primary);
-      padding: 8px 32px 8px 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      transition: all 0.2s ease;
-      font-family: inherit;
-
-      &:focus {
-        outline: none;
-        border-color: var(--color-btn-primary-bg, #9333ea);
-        background: color-mix(in srgb, var(--color-text-primary) 2%, transparent);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-btn-primary-bg, #9333ea) 15%, transparent);
-      }
-
-      &::placeholder {
-        color: var(--color-text-secondary);
-        opacity: 0.5;
-      }
-    }
-
-    .clear-search-btn {
-      position: absolute;
-      right: 20px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: transparent;
-      border: none;
-      color: var(--color-text-secondary);
-      font-size: 1.1rem;
-      cursor: pointer;
-      opacity: 0.6;
-      padding: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      &:hover {
-        opacity: 1;
-        color: var(--color-text-primary);
-      }
-    }
-  }
-
-  .models-list-scrollable {
-    overflow-y: auto;
-    max-height: 280px;
-    padding: 6px 0;
-
-    .group-header {
-      padding: 10px 16px 6px;
-      font-size: 0.65rem;
-      font-weight: 800;
-      color: var(--color-text-secondary);
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      opacity: 0.7;
-      pointer-events: none;
-    }
-
-    .menu-item {
-      width: calc(100% - 16px);
-      margin: 2px 8px;
-      padding: 8px 12px;
-      font-size: 0.85rem;
-      color: var(--color-text-primary);
-      background: transparent;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      text-align: left;
-      font-family: inherit;
-      transition: all 0.15s ease;
-
-      &:hover {
-        background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
-      }
-
-      &.selected {
-        background: color-mix(in srgb, var(--color-btn-primary-bg, #9333ea) 8%, transparent);
-        color: var(--color-btn-primary-bg, #9333ea);
-        font-weight: 600;
-
-        .item-label {
-          color: var(--color-btn-primary-bg, #9333ea);
-        }
-      }
-
-      &.trigger-item {
-        .chevron-right-icon {
-          color: var(--color-text-secondary);
-          opacity: 0.6;
-          transition: transform 0.2s ease, opacity 0.2s ease;
-          margin-left: 8px;
-          flex-shrink: 0;
-        }
-
-        &:hover {
-          .chevron-right-icon {
-            opacity: 1;
-            transform: translateX(2px);
-            color: var(--color-btn-primary-bg, #9333ea);
-          }
-        }
-      }
-
-      .item-label {
-        flex: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .check-icon {
-        color: var(--color-btn-primary-bg, #9333ea);
-        margin-left: 8px;
-        flex-shrink: 0;
-      }
-    }
-
-    .menu-empty-state {
-      padding: 24px 16px;
-      font-size: 0.85rem;
-      color: var(--color-text-secondary);
-      text-align: center;
-      font-style: italic;
-    }
-  }
-}
-
-// Submenu specific styles
-::ng-deep .models-submenu {
-  @extend .models-menu;
-  margin-top: 0 !important;
-  margin-left: 4px;
-  min-width: 280px;
-  max-width: 360px;
-  max-height: 400px;
-  box-shadow: 2px 10px 30px rgba(0, 0, 0, 0.2);
-
-  .submenu-header {
-    padding: 10px 16px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--color-text-secondary);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
-    background: color-mix(in srgb, var(--color-text-primary) 1.5%, transparent);
   }
 }
 

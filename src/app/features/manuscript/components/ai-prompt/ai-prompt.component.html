@@ -74,117 +74,12 @@
 
           <div class="btn-divider"></div>
 
-          <button class="dropdown-btn" [cdkMenuTriggerFor]="modelsMenu" title="Select Model" (cdkMenuOpened)="onMenuOpened()" (cdkMenuClosed)="onMenuClosed()">
-            <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </button>
+          <app-autocomplete-dropdown class="model-dropdown" [sections]="modelDropdownSections()"
+            [selectedValue]="selectedModel()" [showChips]="false" triggerVariant="icon"
+            triggerAriaLabel="Select model" searchPlaceholder="Search models..." [closeOnOutsideScroll]="true"
+            (selectionChange)="onModelChange($any($event))" />
           }
         </div>
-
-        <ng-template #modelsMenu>
-          <div class="dropdown-menu models-menu" cdkMenu>
-            <!-- Search Input -->
-            <div class="menu-search-wrapper" (click)="$event.stopPropagation()">
-              <input #modelSearchInput type="text" placeholder="Search models..." [value]="searchTerm()"
-                (input)="searchTerm.set($any($event.target).value)" (keydown)="$event.stopPropagation()"
-                class="menu-search-input" />
-              @if (searchTerm()) {
-              <button type="button" class="clear-search-btn" (mousedown)="$event.preventDefault()"
-                (click)="searchTerm.set(''); modelSearchInput.focus()">&times;</button>
-              }
-            </div>
-
-            <!-- Grouped Options List or Nested main menu -->
-            <div class="models-list-scrollable">
-              @if (searchTerm()) {
-              <!-- Search view: flat/grouped matched models list -->
-              @for (group of groupedModels(); track group.providerName) {
-              <div class="group-header">{{ group.providerName }}</div>
-              @for (model of group.models; track model.id) {
-              <button class="menu-item" [class.selected]="selectedModel() === model.id"
-                (click)="onModelChange(model.id)" cdkMenuItem>
-                <span class="item-label">{{ model.name }}</span>
-                @if (selectedModel() === model.id) {
-                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16"
-                  fill="currentColor" class="check-icon">
-                  <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
-                </svg>
-                }
-              </button>
-              }
-              }
-              @if (groupedModels().length === 0) {
-              <div class="menu-empty-state">
-                No matching models
-              </div>
-              }
-              } @else {
-              <!-- Main nested menu view: list main providers -->
-              @for (provider of mainProviders(); track provider.id) {
-              <button class="menu-item trigger-item"
-                [cdkMenuTriggerFor]="provider.type === 'openrouter' ? openRouterSubMenu : directSubMenu"
-                (mouseenter)="activeSubmenuProvider.set(provider)" (focus)="activeSubmenuProvider.set(provider)"
-                cdkMenuItem>
-                <span class="item-label">{{ provider.name }}</span>
-                <svg class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
-              }
-              }
-            </div>
-          </div>
-        </ng-template>
-
-        <!-- Submenu for direct providers (e.g. OpenAI, Google) -->
-        <ng-template #directSubMenu>
-          <div class="dropdown-menu models-submenu" cdkMenu>
-            @if (activeSubmenuProvider(); as active) {
-            <div class="submenu-header">{{ active.name }}</div>
-            <div class="models-list-scrollable">
-              @for (model of active.models; track model.id) {
-              <button class="menu-item" [class.selected]="selectedModel() === model.id"
-                (click)="onModelChange(model.id)" cdkMenuItem>
-                <span class="item-label">{{ model.name }}</span>
-                @if (selectedModel() === model.id) {
-                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16"
-                  fill="currentColor" class="check-icon">
-                  <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
-                </svg>
-                }
-              </button>
-              }
-            </div>
-            }
-          </div>
-        </ng-template>
-
-        <!-- Submenu for OpenRouter provider (grouped list of models) -->
-        <ng-template #openRouterSubMenu>
-          <div class="dropdown-menu models-submenu" cdkMenu>
-            <div class="submenu-header">OpenRouter Models</div>
-            <div class="models-list-scrollable">
-              @for (group of openRouterGroups(); track group.providerName) {
-              <div class="group-header">{{ group.providerName }}</div>
-              @for (model of group.models; track model.id) {
-              <button class="menu-item" [class.selected]="selectedModel() === model.id"
-                (click)="onModelChange(model.id)" cdkMenuItem>
-                <span class="item-label">{{ model.name }}</span>
-                @if (selectedModel() === model.id) {
-                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16"
-                  fill="currentColor" class="check-icon">
-                  <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
-                </svg>
-                }
-              </button>
-              }
-              }
-            </div>
-          </div>
-        </ng-template>
 
         @if (isLoading()) {
         <div class="loader">
@@ -215,17 +110,11 @@
 
     <!-- Context Footer -->
     <div class="context-footer">
-      <app-ai-context-dropdown
-        [hierarchy]="contextHierarchy()"
-        [codexEntries]="contextCodexEntries()"
-        [includeFullOutline]="includeFullOutline()"
-        [sceneIds]="contextSceneIds()"
-        [codexEntryIds]="contextCodexEntryIds()"
-        [hierarchyLoading]="contextHierarchyLoading()"
-        [codexLoading]="contextCodexLoading()"
-        [hierarchyError]="contextHierarchyError()"
-        [codexError]="contextCodexError()"
-        (selectionChange)="onContextChange($event)" />
+      <app-autocomplete-dropdown class="context-dropdown" [sections]="contextDropdownSections()"
+        [selectedValue]="selectedContextValues()" [multi]="true" placeholder="+ Add Context"
+        triggerVariant="add" triggerAriaLabel="Add context" chipsPosition="before"
+        [compactSelectionChips]="true" [clearSearchOnSelect]="false" searchPlaceholder="Search context..."
+        emptyText="No context found." (selectionChange)="onContextChange($any($event))" />
     </div>
   </div>
 </div>

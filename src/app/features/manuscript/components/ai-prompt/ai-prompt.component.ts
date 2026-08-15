@@ -1,5 +1,4 @@
-import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
-import { CommonModule, DOCUMENT } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, WritableSignal, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
@@ -11,33 +10,19 @@ import { WorkspaceBookStore } from '../../../workspace/workspace-book.store';
 import { CodexContextTrieService } from '../../../codex/services/codex-context-trie.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { AiStore } from '../../../../core/store/ai.store';
-import { AiContextDropdownComponent, type AiContextSelection } from './ai-context-dropdown.component';
+import { AutocompleteDropdownComponent } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import {
+  type AiContextSelection,
+  type AiPromptModel,
+  buildContextDropdownSections,
+  buildModelDropdownSections,
+  contextSelectionToValues,
+  dropdownValuesToContextSelection,
+} from './ai-prompt-dropdown-options';
 
 // ---------------------------------------------------------------------------
 //  Local Types
 // ---------------------------------------------------------------------------
-
-type ModelSource = 'direct' | 'openrouter' | string;
-
-interface AiModel {
-  id: string;
-  name: string;
-  provider: string;
-  providerName: string;
-  source: ModelSource;
-}
-
-interface ModelGroup {
-  providerName: string;
-  models: AiModel[];
-}
-
-interface MenuProvider {
-  id: string;
-  name: string;
-  type: 'direct' | 'openrouter';
-  models: AiModel[];
-}
 
 interface PromptSettings {
   wordCount: number;
@@ -59,15 +44,10 @@ const DEFAULT_PROMPT_SETTINGS: PromptSettings = {
   reasoningMode: false
 };
 
-const DIRECT_PROVIDER_NAMES: Record<string, string> = {
-  openai: 'OpenAI (Direct)',
-  google: 'Google Gemini (Direct)'
-};
-
 @Component({
   selector: 'app-ai-prompt',
   standalone: true,
-  imports: [CommonModule, FormsModule, CdkMenuModule, AiPromptSettingsComponent, AiContextDropdownComponent],
+  imports: [CommonModule, FormsModule, AiPromptSettingsComponent, AutocompleteDropdownComponent],
   templateUrl: './ai-prompt.component.html',
   styleUrl: './ai-prompt.component.scss'
 })
@@ -79,7 +59,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   private readonly aiStore = inject(AiStore);
   private readonly aiStreamEditor = inject(AiStreamEditorService);
-  private readonly document = inject(DOCUMENT);
   private readonly manuscriptStore = inject(ManuscriptStore);
   private readonly workspaceBookStore = inject(WorkspaceBookStore);
   private readonly codexContext = inject(CodexContextTrieService);
@@ -98,8 +77,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   @ViewChild('promptInput') promptInput!: ElementRef<HTMLDivElement>;
 
-  @ViewChild(CdkMenuTrigger) menuTrigger?: CdkMenuTrigger;
-
 
   // ---------------------------------------------------------------------------
   //  Component State
@@ -109,8 +86,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   promptText = signal('');
   isFocused = signal(false);
   selectedModel = signal<string | null>(null);
-  searchTerm = signal('');
-  activeSubmenuProvider = signal<MenuProvider | null>(null);
 
   // Per-prompt generation settings persisted on the Tiptap node.
   wordCount = signal(DEFAULT_PROMPT_SETTINGS.wordCount);
@@ -132,7 +107,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   //  Computed Properties
   // ---------------------------------------------------------------------------
 
-  allModels = computed<AiModel[]>(() => this.aiStore.models() as AiModel[]);
+  allModels = computed<AiPromptModel[]>(() => this.aiStore.models() as AiPromptModel[]);
 
   isEmpty = computed(() => {
     const text = this.promptText();
@@ -158,58 +133,22 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     return id.split('/').pop() || id;
   });
 
-  /**
-   * Flat grouped models used as a fallback search results display.
-   * Groups all models by provider, with "Direct" providers sorted first.
-   */
-  groupedModels = computed(() => {
-    const term = this.searchTerm().trim().toLowerCase();
-    const models = this.allModels();
-    const filteredModels = term ? models.filter(model => this.modelMatchesSearch(model, term)) : models;
+  modelDropdownSections = computed(() => buildModelDropdownSections(this.allModels()));
 
-    return this.groupModelsByProviderName(filteredModels, this.sortDirectProvidersFirst);
-  });
+  contextDropdownSections = computed(() => buildContextDropdownSections({
+    hierarchy: this.contextHierarchy(),
+    codexEntries: this.contextCodexEntries(),
+    hierarchyLoading: this.contextHierarchyLoading(),
+    codexLoading: this.contextCodexLoading(),
+    hierarchyError: this.contextHierarchyError(),
+    codexError: this.contextCodexError(),
+  }));
 
-  /**
-   * Top-level providers for the model selector menu.
-   * Direct API providers appear first, followed by OpenRouter.
-   */
-  mainProviders = computed(() => {
-    const models = this.allModels();
-    const directProviders = this.buildDirectProviders(models.filter(model => model.source === 'direct'));
-    const openRouterProvider = this.buildOpenRouterProvider(models.filter(model => model.source === 'openrouter'));
-
-    return [...directProviders, ...openRouterProvider].sort(this.sortMenuProviders);
-  });
-
-  /**
-   * Sub-grouped OpenRouter models by their upstream provider name.
-   */
-  openRouterGroups = computed(() => {
-    const models = this.allModels().filter(model => model.source === 'openrouter');
-
-    return this.groupModelsByProviderName(
-      models,
-      (a, b) => a.localeCompare(b),
-      providerName => providerName.replace(/^OpenRouter:\s*/, '')
-    );
-  });
-
-
-  // ---------------------------------------------------------------------------
-  //  Scroll-close listener for dropdown menu
-  // ---------------------------------------------------------------------------
-
-  private scrollListener = (event: Event) => {
-    const target = event.target as HTMLElement;
-
-    // Ignore scroll events originating inside the menu overlay
-    if (target?.closest?.('.cdk-menu')) return;
-
-    if (this.menuTrigger?.isOpen()) {
-      this.menuTrigger.close();
-    }
-  };
+  selectedContextValues = computed(() => contextSelectionToValues({
+    includeFullOutline: this.includeFullOutline(),
+    sceneIds: this.contextSceneIds(),
+    codexEntryIds: this.contextCodexEntryIds(),
+  }));
 
 
   // ---------------------------------------------------------------------------
@@ -257,20 +196,6 @@ export class AiPromptComponent extends AngularNodeViewComponent {
 
   ngOnDestroy(): void {
     this.aiStreamEditor.loadingState.delete(this.blockId());
-    this.document.removeEventListener('scroll', this.scrollListener, true);
-  }
-
-
-  // ---------------------------------------------------------------------------
-  //  Menu Event Handlers
-  // ---------------------------------------------------------------------------
-
-  onMenuOpened(): void {
-    this.document.addEventListener('scroll', this.scrollListener, true);
-  }
-
-  onMenuClosed(): void {
-    this.document.removeEventListener('scroll', this.scrollListener, true);
   }
 
 
@@ -328,7 +253,8 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.updateAttributes()(DEFAULT_PROMPT_SETTINGS);
   }
 
-  onContextChange(selection: AiContextSelection): void {
+  onContextChange(values: readonly string[]): void {
+    const selection: AiContextSelection = dropdownValuesToContextSelection(values);
     const sceneIds = [...new Set(selection.sceneIds)];
     const codexEntryIds = [...new Set(selection.codexEntryIds)];
 
@@ -519,91 +445,4 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     };
   }
 
-  /** Check whether a model should appear for the current search term. */
-  private modelMatchesSearch(model: AiModel, term: string): boolean {
-    return model.name.toLowerCase().includes(term) || model.providerName.toLowerCase().includes(term);
-  }
-
-  /** Build grouped model lists for search results and OpenRouter submenus. */
-  private groupModelsByProviderName(
-    models: AiModel[],
-    sortProviders: (a: string, b: string) => number,
-    normalizeProviderName: (providerName: string) => string = providerName => providerName
-  ): ModelGroup[] {
-    const groupMap = new Map<string, AiModel[]>();
-
-    models.forEach(model => {
-      const providerName = normalizeProviderName(model.providerName);
-      const group = groupMap.get(providerName) ?? [];
-
-      group.push(model);
-      groupMap.set(providerName, group);
-    });
-
-    return Array.from(groupMap.keys())
-      .sort(sortProviders)
-      .map(providerName => ({
-        providerName,
-        models: groupMap.get(providerName)!
-      }));
-  }
-
-  /** Build top-level menu entries for direct API providers. */
-  private buildDirectProviders(models: AiModel[]): MenuProvider[] {
-    const groupedModels = new Map<string, AiModel[]>();
-
-    models.forEach(model => {
-      const group = groupedModels.get(model.provider) ?? [];
-
-      group.push(model);
-      groupedModels.set(model.provider, group);
-    });
-
-    return Array.from(groupedModels.entries()).map(([providerId, providerModels]) => ({
-      id: providerId,
-      name: this.directProviderDisplayName(providerId),
-      type: 'direct',
-      models: providerModels
-    }));
-  }
-
-  /** Build the aggregated OpenRouter top-level menu entry. */
-  private buildOpenRouterProvider(models: AiModel[]): MenuProvider[] {
-    return models.length
-      ? [{
-          id: 'openrouter',
-          name: 'OpenRouter',
-          type: 'openrouter',
-          models
-        }]
-      : [];
-  }
-
-  /** Prefer friendly display names for known direct providers. */
-  private directProviderDisplayName(providerId: string): string {
-    return DIRECT_PROVIDER_NAMES[providerId] ?? this.capitalize(providerId);
-  }
-
-  private capitalize(value: string): string {
-    return value.charAt(0).toUpperCase() + value.slice(1);
-  }
-
-  /** Sort direct providers above aggregated OpenRouter providers. */
-  private sortMenuProviders(a: MenuProvider, b: MenuProvider): number {
-    if (a.type === 'direct' && b.type !== 'direct') return -1;
-    if (a.type !== 'direct' && b.type === 'direct') return 1;
-
-    return a.name.localeCompare(b.name);
-  }
-
-  /** Sort search result groups with Direct providers first. */
-  private sortDirectProvidersFirst(a: string, b: string): number {
-    const aIsDirect = a.includes('(Direct)');
-    const bIsDirect = b.includes('(Direct)');
-
-    if (aIsDirect && !bIsDirect) return -1;
-    if (!aIsDirect && bIsDirect) return 1;
-
-    return a.localeCompare(b);
-  }
 }
