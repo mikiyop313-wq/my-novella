@@ -53,7 +53,7 @@ export const bookSettings = sqliteTable('book_settings', {
     proseTense: text('prose_tense').$type<'past' | 'present'>().notNull().default('past'),
     pointOfView: text('point_of_view').$type<'first' | 'second' | 'third_limited' | 'third_omniscient'>().notNull().default('third_limited'),
     synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
-
+    povCharacterId: text('pov_character_id'),
 });
 
 

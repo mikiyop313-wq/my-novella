@@ -8,6 +8,12 @@
             </svg>
         </button>
         <img [src]="book().displayCoverImage" alt="Book Cover Art" />
+        <label class="edit-cover-btn" title="Change Cover">
+            <input type="file" (change)="onCoverImageChange($event)" accept="image/*" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+            </svg>
+        </label>
     </div>
 
     <!-- Right Content Section -->
@@ -25,46 +31,62 @@
                 <span class="last-edited">
                     <i class="icon-calendar"></i> Last edited {{ book().lastEditedAt | timeAgo }}
                 </span>
-                
+
                 <div class="field-container title-field" [class.is-editing]="editingField() === 'title'">
                     @if (editingField() === 'title') {
-                        <div class="edit-wrapper">
-                            <input type="text" [value]="editValue()" (input)="updateEditValue($event)" (keyup.enter)="saveEditing('title')" (keyup.escape)="cancelEditing()" autofocus />
-                            <div class="edit-actions">
-                                <button class="action-btn save" (click)="saveEditing('title')" aria-label="Save title">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                </button>
-                                <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                </button>
-                            </div>
+                    <div class="edit-wrapper">
+                        <input type="text" [value]="editValue()" (input)="updateEditValue($event)"
+                            (keyup.enter)="saveEditing('title')" (keyup.escape)="cancelEditing()" autofocus />
+                        <div class="edit-actions">
+                            <button class="action-btn save" (click)="saveEditing('title')" aria-label="Save title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                            </button>
+                            <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
                         </div>
+                    </div>
                     } @else {
-                        <h1 class="title">{{ book().title }}</h1>
-                        <button class="edit-btn" (click)="startEditing('title', book().title)" aria-label="Edit title">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                        </button>
+                    <h1 class="title">{{ book().title }}</h1>
+                    <button class="edit-btn" (click)="startEditing('title', book().title)" aria-label="Edit title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                        </svg>
+                    </button>
                     }
                 </div>
 
                 <div class="field-container author-field" [class.is-editing]="editingField() === 'author'">
                     @if (editingField() === 'author') {
-                        <div class="edit-wrapper">
-                            <input type="text" [value]="editValue()" (input)="updateEditValue($event)" (keyup.enter)="saveEditing('author')" (keyup.escape)="cancelEditing()" autofocus />
-                            <div class="edit-actions">
-                                <button class="action-btn save" (click)="saveEditing('author')" aria-label="Save author">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                </button>
-                                <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                </button>
-                            </div>
+                    <div class="edit-wrapper">
+                        <input type="text" [value]="editValue()" (input)="updateEditValue($event)"
+                            (keyup.enter)="saveEditing('author')" (keyup.escape)="cancelEditing()" autofocus />
+                        <div class="edit-actions">
+                            <button class="action-btn save" (click)="saveEditing('author')" aria-label="Save author">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                            </button>
+                            <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
                         </div>
+                    </div>
                     } @else {
-                        <p class="author">By {{ book().author }}</p>
-                        <button class="edit-btn" (click)="startEditing('author', book().author)" aria-label="Edit author">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                        </button>
+                    <p class="author">By {{ book().author }}</p>
+                    <button class="edit-btn" (click)="startEditing('author', book().author)" aria-label="Edit author">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                        </svg>
+                    </button>
                     }
                 </div>
             </header>
@@ -92,9 +114,12 @@
                     <div class="label-with-edit">
                         <span class="section-label">SYNOPSIS</span>
                         @if (editingField() !== 'synopsis') {
-                            <button class="edit-btn" (click)="startEditing('synopsis', book().synopsis || '')" aria-label="Edit synopsis">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                            </button>
+                        <button class="edit-btn" (click)="startEditing('synopsis', book().synopsis || '')"
+                            aria-label="Edit synopsis">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                            </svg>
+                        </button>
                         }
                     </div>
                     @if (formattedSynopsis().length > 0 && editingField() !== 'synopsis') {
@@ -109,27 +134,33 @@
                 </div>
 
                 @if (editingField() === 'synopsis') {
-                    <div class="edit-wrapper synopsis-edit">
-                        <textarea [value]="editValue()" (input)="updateEditValue($event)" (keyup.escape)="cancelEditing()" autofocus placeholder="Enter book synopsis..."></textarea>
-                        <div class="edit-actions">
-                            <button class="action-btn save" (click)="saveEditing('synopsis')" aria-label="Save synopsis">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Save Changes
-                            </button>
-                            <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                Cancel
-                            </button>
-                        </div>
+                <div class="edit-wrapper synopsis-edit">
+                    <textarea [value]="editValue()" (input)="updateEditValue($event)" (keyup.escape)="cancelEditing()"
+                        autofocus placeholder="Enter book synopsis..."></textarea>
+                    <div class="edit-actions">
+                        <button class="action-btn save" (click)="saveEditing('synopsis')" aria-label="Save synopsis">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Save Changes
+                        </button>
+                        <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            Cancel
+                        </button>
                     </div>
+                </div>
                 } @else {
-                    @if (formattedSynopsis().length > 0) {
-                        @for (paragraph of formattedSynopsis(); track $index) {
-                            <p>{{ paragraph }}</p>
-                        }
-                    } @else {
-                        <p class="no-synopsis">No synopsis available for this book.</p>
-                    }
+                @if (formattedSynopsis().length > 0) {
+                @for (paragraph of formattedSynopsis(); track $index) {
+                <p>{{ paragraph }}</p>
+                }
+                } @else {
+                <p class="no-synopsis">No synopsis available for this book.</p>
+                }
                 }
             </div>
 
@@ -137,30 +168,37 @@
                 <div class="label-with-edit">
                     <span class="section-label">GENRES</span>
                     @if (editingField() !== 'genres') {
-                        <button class="edit-btn" (click)="startEditing('genres', genres())" aria-label="Edit genres">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                        </button>
+                    <button class="edit-btn" (click)="startEditing('genres', genres())" aria-label="Edit genres">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                        </svg>
+                    </button>
                     }
                 </div>
                 @if (editingField() === 'genres') {
-                    <div class="edit-wrapper tags-edit">
-                        <app-autocomplete-dropdown [options]="config.genres()" [selectedValue]="editArrayValue()" [multi]="true"
-                            [allowCustom]="false" [grouped]="true" placeholder="Select genres..."
-                            (selectionChange)="updateEditArrayValue($event)">
-                        </app-autocomplete-dropdown>
-                        <div class="edit-actions" style="margin-top: 1rem;">
-                            <button class="action-btn save" (click)="saveEditing('genres')" aria-label="Save genres">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Save Changes
-                            </button>
-                            <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                Cancel
-                            </button>
-                        </div>
+                <div class="edit-wrapper tags-edit">
+                    <app-autocomplete-dropdown [options]="config.genres()" [selectedValue]="editArrayValue()"
+                        [multi]="true" [allowCustom]="false" [grouped]="true" placeholder="Select genres..."
+                        (selectionChange)="updateEditArrayValue($event)">
+                    </app-autocomplete-dropdown>
+                    <div class="edit-actions" style="margin-top: 1rem;">
+                        <button class="action-btn save" (click)="saveEditing('genres')" aria-label="Save genres">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Save Changes
+                        </button>
+                        <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            Cancel
+                        </button>
                     </div>
+                </div>
                 } @else {
-                    @if (genres().length > 0) {
+                @if (genres().length > 0) {
                 <cdk-accordion>
                     <cdk-accordion-item #genreAccordion="cdkAccordionItem">
                         <div class="chips" [class.expanded]="genreAccordion.expanded" #genresContent>
@@ -184,7 +222,7 @@
                 </cdk-accordion>
                 } @else {
                 <p class="no-tags">This book don't have any genres.</p>
-                    }
+                }
                 }
             </div>
 
@@ -192,31 +230,38 @@
                 <div class="label-with-edit">
                     <span class="section-label">TROPES</span>
                     @if (editingField() !== 'tropes') {
-                        <button class="edit-btn" (click)="startEditing('tropes', tropes())" aria-label="Edit tropes">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                        </button>
+                    <button class="edit-btn" (click)="startEditing('tropes', tropes())" aria-label="Edit tropes">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                        </svg>
+                    </button>
                     }
                 </div>
                 @if (editingField() === 'tropes') {
-                    <div class="edit-wrapper tags-edit">
-                        <app-autocomplete-dropdown [options]="tropeOptions" [selectedValue]="editArrayValue()" [multi]="true"
-                            [allowCustom]="true" placeholder="Select or add tropes..."
-                            customAddPlaceholder="Write custom trope and press Enter..."
-                            (selectionChange)="updateEditArrayValue($event)">
-                        </app-autocomplete-dropdown>
-                        <div class="edit-actions" style="margin-top: 1rem;">
-                            <button class="action-btn save" (click)="saveEditing('tropes')" aria-label="Save tropes">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Save Changes
-                            </button>
-                            <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                Cancel
-                            </button>
-                        </div>
+                <div class="edit-wrapper tags-edit">
+                    <app-autocomplete-dropdown [options]="tropeOptions" [selectedValue]="editArrayValue()"
+                        [multi]="true" [allowCustom]="true" placeholder="Select or add tropes..."
+                        customAddPlaceholder="Write custom trope and press Enter..."
+                        (selectionChange)="updateEditArrayValue($event)">
+                    </app-autocomplete-dropdown>
+                    <div class="edit-actions" style="margin-top: 1rem;">
+                        <button class="action-btn save" (click)="saveEditing('tropes')" aria-label="Save tropes">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Save Changes
+                        </button>
+                        <button class="action-btn cancel" (click)="cancelEditing()" aria-label="Cancel editing">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            Cancel
+                        </button>
                     </div>
+                </div>
                 } @else {
-                    @if (tropes().length > 0) {
+                @if (tropes().length > 0) {
                 <cdk-accordion>
                     <cdk-accordion-item #tropeAccordion="cdkAccordionItem">
                         <div class="chips" [class.expanded]="tropeAccordion.expanded" #tropesContent>
@@ -240,7 +285,7 @@
                 </cdk-accordion>
                 } @else {
                 <p class="no-tags">This book don't have any tropes.</p>
-                    }
+                }
                 }
             </div>
             <footer class="modal-footer">
@@ -268,8 +313,8 @@
                 <div class="form-group">
                     <label class="section-label">PROSE TENSE <app-info-icon
                             [infoText]="INFO.SETTINGS.PROSE_TENSE"></app-info-icon></label>
-                    <app-autocomplete-dropdown [options]="tenses" [selectedValue]="selectedTense()"
-                        (selectionChange)="onSelectionChange('tense', $event)">
+                    <app-autocomplete-dropdown [showSearchBar]="false" [options]="tenses"
+                        [selectedValue]="selectedTense()" (selectionChange)="onSelectionChange('tense', $event)">
                     </app-autocomplete-dropdown>
                 </div>
 
@@ -284,15 +329,20 @@
                     <div class="form-group">
                         <label class="section-label">POINT OF VIEW <app-info-icon
                                 [infoText]="INFO.SETTINGS.POINT_OF_VIEW"></app-info-icon></label>
-                        <app-autocomplete-dropdown [options]="povs" [selectedValue]="selectedPOV()"
-                            (selectionChange)="onSelectionChange('pov', $event)">
+                        <app-autocomplete-dropdown [showSearchBar]="false" [options]="povs"
+                            [selectedValue]="selectedPOV()" (selectionChange)="onSelectionChange('pov', $event)">
                         </app-autocomplete-dropdown>
                     </div>
 
                     <div class="form-group">
                         <label class="section-label">POV CHARACTER</label>
-                        <input type="text" class="settings-input" placeholder="Select or type character name..."
-                            [value]="povCharacter()" (input)="onCharacterChange($event)" />
+                        @if (characters().length > 0) {
+                        <app-autocomplete-dropdown [options]="characters()" [selectedValue]="selectedPovCharacter()"
+                            (selectionChange)="onSelectionChange('povCharacter', $event)">
+                        </app-autocomplete-dropdown>
+                        } @else {
+                        <span class="no-options-text">No characters available.</span>
+                        }
                     </div>
                 </div>
 
@@ -305,10 +355,17 @@
                     <p class="danger-description">These actions are destructive and cannot be undone.</p>
                 </div>
                 <div class="danger-actions">
+                    @if (book().status === 'archived') {
+                    <button class="btn-neutral-outline" (click)="onRestore()">
+                        <i class="icon-archive"></i>
+                        Restore Book
+                    </button>
+                    } @else {
                     <button class="btn-neutral-outline" (click)="onArchive()">
                         <i class="icon-archive"></i>
                         Archive Book
                     </button>
+                    }
                     <button class="btn-danger" (click)="onDelete()">
                         <i class="icon-trash"></i>
                         Delete Permanently

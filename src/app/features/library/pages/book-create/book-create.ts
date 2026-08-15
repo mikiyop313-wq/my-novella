@@ -31,7 +31,10 @@ export class BookCreate implements OnInit {
     language: ['english', [Validators.required]],
     coverImage: [null],
     status: ['draft'],
-    wordCount: [0]
+    wordCount: [0],
+    proseTense: ['past'],
+    pointOfView: ['third_limited'],
+    povCharacterId: [null]
   });
 
   genres = this.fb.array([]);
@@ -43,10 +46,29 @@ export class BookCreate implements OnInit {
 
   isSubmitting = false;
   isDragging = false;
+  isAdvancedSettingsOpen = signal(false);
 
   coverPreview = signal<string | null>(null);
 
   languages: { value: string, label: string }[] = [];
+
+  tenses: DropdownOption[] = [
+    { value: 'past', label: 'Past Tense' },
+    { value: 'present', label: 'Present Tense' }
+  ];
+
+  povs: DropdownOption[] = [
+    { value: 'first', label: 'First Person' },
+    { value: 'second', label: 'Second Person' },
+    { value: 'third_limited', label: 'Third Person Limited' },
+    { value: 'third_omniscient', label: 'Third Person Omniscient' }
+  ];
+
+  characters: DropdownOption[] = [];
+
+  toggleAdvancedSettings() {
+    this.isAdvancedSettingsOpen.update(v => !v);
+  }
 
   ngOnInit() {
     this.config.loadLanguages();
@@ -110,9 +132,15 @@ export class BookCreate implements OnInit {
     this.bookForm.patchValue({ coverImage: null });
   }
 
-  onSelectionChange(type: 'genre' | 'trope' | 'language', value: any) {
+  onSelectionChange(type: 'genre' | 'trope' | 'language' | 'tense' | 'pov' | 'povCharacter', value: any) {
     if (type === 'language') {
       this.bookForm.patchValue({ language: value });
+    } else if (type === 'tense') {
+      this.bookForm.patchValue({ proseTense: value });
+    } else if (type === 'pov') {
+      this.bookForm.patchValue({ pointOfView: value });
+    } else if (type === 'povCharacter') {
+      this.bookForm.patchValue({ povCharacterId: value });
     } else {
       const arrayControl = type === 'genre' ? this.genres : this.tropes;
 
@@ -153,9 +181,23 @@ export class BookCreate implements OnInit {
           })
         ];
 
+        const formValue = this.bookForm.value;
         const bookData: CreateBookDto = {
-          ...this.bookForm.value,
-          categories
+          title: formValue.title,
+          author: formValue.author,
+          synopsis: formValue.synopsis,
+          language: formValue.language,
+          coverImage: formValue.coverImage,
+          status: formValue.status,
+          wordCount: formValue.wordCount,
+          categories,
+          settings: {
+            language: formValue.language,
+            proseTense: formValue.proseTense,
+            pointOfView: formValue.pointOfView,
+            povCharacterId: formValue.povCharacterId,
+            synopsisAiContext: true
+          }
         };
 
         await this.libraryService.addNewBook(bookData);

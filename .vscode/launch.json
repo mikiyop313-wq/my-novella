@@ -3,18 +3,52 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "ng serve",
-      "type": "chrome",
+      "name": "Electron: All",
+      "type": "node",
       "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "windows": {
+        "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
+      },
+      "args": [
+        ".",
+        "--remote-debugging-port=9222"
+      ],
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "outFiles": [
+        "${workspaceFolder}/dist-electron/**/*.js"
+      ],
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
       "preLaunchTask": "npm: start",
-      "url": "http://localhost:4200/"
+      "serverReadyAction": {
+        "action": "debugWithChrome",
+        "pattern": "Local:.*(http://localhost:4200/)",
+        "uriFormat": "%s",
+        "webRoot": "${workspaceFolder}",
+        "sourceMapPathOverrides": {
+          "/src/*": "${workspaceFolder}/src/*",
+          "/@fs/*": "*",
+          "vite://devices/browser/*": "${workspaceFolder}/*"
+        }
+      }
     },
     {
-      "name": "ng test",
+      "name": "Electron: Renderer (Attach)",
       "type": "chrome",
-      "request": "launch",
-      "preLaunchTask": "npm: test",
-      "url": "http://localhost:9876/debug.html"
+      "request": "attach",
+      "port": 9222,
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        "/src/*": "${workspaceFolder}/src/*",
+        "/@fs/*": "*",
+        "vite://devices/browser/*": "${workspaceFolder}/*"
+      }
     }
   ]
 }

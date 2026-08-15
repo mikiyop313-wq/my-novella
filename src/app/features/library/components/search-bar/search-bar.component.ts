@@ -19,4 +19,8 @@ export class SearchBarComponent {
     const query = (event.target as HTMLInputElement).value;
     this.libraryStore.setSearchQuery(query);
   }
+
+  toggleArchived() {
+    this.libraryStore.setShowArchived(!this.libraryStore.showArchived());
+  }
 }
