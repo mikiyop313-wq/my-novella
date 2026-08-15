@@ -1,5 +1,5 @@
 import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, input, computed, inject, linkedSignal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { RouterLink, Router } from '@angular/router';
 import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -36,6 +36,7 @@ export class BookModalComponent {
   readonly store = inject(LibraryStore);
   readonly config = inject(ConfigStore);
   readonly electronApi = inject(ElectronService);
+  private router = inject(Router);
 
   readonly INFO = INFO_MESSAGES;
 
@@ -265,6 +266,12 @@ export class BookModalComponent {
 
   onClose() {
     this.close.emit();
+  }
+
+  openManuscript() {
+    this.close.emit();
+    console.log("GO TO MANUSCRIPT: ", this.book().id);
+    this.router.navigate(['/manuscript', 'book', this.book().id]);
   }
 
   // Edit Methods

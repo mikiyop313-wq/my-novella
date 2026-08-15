@@ -1,5 +1,8 @@
 import { signalStore, withState, withMethods, patchState } from '@ngrx/signals';
 import { Editor } from '@tiptap/core';
+import { ElectronService } from '../../../core/services/electron.service';
+import { ManuscriptMode, ManuscriptModeDto } from '../../../../../shared/models/manuscript.model';
+import { inject } from '@angular/core';
 
 export interface FormattingSettings {
   fontFamily: string;
@@ -11,8 +14,14 @@ export interface FormattingSettings {
   pageWidth: 'narrow' | 'medium' | 'wide';
 }
 
+
+
 export interface ManuscriptState {
   bookId: string | null;
+  actId: string | null;
+  chapterId: string | null;
+  sceneId: string | null;
+  mode: ManuscriptMode | null;
   settings: FormattingSettings;
   showFormatMenu: boolean;
   editor: Editor | null;
@@ -30,6 +39,10 @@ const defaultSettings: FormattingSettings = {
 
 const initialState: ManuscriptState = {
   bookId: null,
+  actId: null,
+  chapterId: null,
+  sceneId: null,
+  mode: null,
   settings: defaultSettings,
   showFormatMenu: true,
   editor: null,
@@ -38,17 +51,31 @@ const initialState: ManuscriptState = {
 export const ManuscriptStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
-  withMethods((store) => ({
+  withMethods((store, electronService = inject(ElectronService)) => ({
+    setRouteParams(mode: ManuscriptMode | null, id: string | null) {
+      patchState(store, {
+        mode,
+        bookId: mode === 'book' ? id : null,
+        actId: mode === 'act' ? id : null,
+        chapterId: mode === 'chapter' ? id : null,
+        sceneId: mode === 'scene' ? id : null,
+      });
+
+      // Load settings (maybe later data fetching will happen here too)
+      this.loadSettings();
+    },
+
     setBookId(id: string | null) {
+      // Deprecated in favor of setRouteParams, kept for compatibility if needed elsewhere
       patchState(store, { bookId: id });
-      this.loadSettings(id);
+      this.loadSettings();
     },
 
     setEditor(editor: Editor | null) {
       patchState(store, { editor });
     },
 
-    loadSettings(id: string | null) {
+    loadSettings() {
       const saved = localStorage.getItem("manuscript_format_global");
       if (saved) {
         try {
@@ -76,6 +103,11 @@ export const ManuscriptStore = signalStore(
 
     toggleFormatMenu() {
       patchState(store, { showFormatMenu: !store.showFormatMenu() });
+    },
+
+    async loadManuscriptData<T extends ManuscriptMode>(mode: T, id: string): Promise<ManuscriptModeDto<T>> {
+      const result = await electronService.invoke('manuscript:get', { mode, id });
+      return result as ManuscriptModeDto<T>;
     },
   }))
 );

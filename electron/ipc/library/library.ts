@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { bookRepository } from '../../db/repositories/book.repository';
+import { bookRepository } from '../../../db/repositories/book.repository';
 
 export function setupLibraryHandlers() {
     ipcMain.handle('library:get-all-books', async () => {

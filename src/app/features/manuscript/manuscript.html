@@ -231,9 +231,42 @@
     </div>
   </ng-template>
 
+  <!-- Add Menu Template -->
+  <ng-template #addMenu>
+    <div class="dropdown-menu toolbar-dropdown-menu" cdkMenu>
+      @if (store.mode() === 'book') {
+        <button class="menu-item" (click)="insertAct()" cdkMenuItem>
+          <span class="item-label">Act</span>
+        </button>
+      }
+      @if (store.mode() === 'book' || store.mode() === 'act') {
+        <button class="menu-item" (click)="insertChapter()" cdkMenuItem>
+          <span class="item-label">Chapter</span>
+        </button>
+      }
+      @if (store.mode() === 'book' || store.mode() === 'act' || store.mode() === 'chapter') {
+        <button class="menu-item" (click)="insertScene()" cdkMenuItem>
+          <span class="item-label">Scene</span>
+        </button>
+      }
+    </div>
+  </ng-template>
+
   <div class="editor-main-layout">
     <div class="editor-content-wrapper">
       <tiptap-editor [editor]="editor"></tiptap-editor>
+      
+      @if (store.mode() !== 'scene') {
+        <div class="add-new-section">
+          <button [cdkMenuTriggerFor]="addMenu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Add New</span>
+          </button>
+        </div>
+      }
     </div>
 
     <aside class="format-sidebar" [class.is-open]="store.showFormatMenu()">

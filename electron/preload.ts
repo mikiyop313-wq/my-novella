@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
     // Send data to Main process
-    sendMessage: (channel: string, data: any) => ipcRenderer.send(channel, data),
+    sendMessage: (channel: string, data?: any) => ipcRenderer.send(channel, data),
 
     // Invoke a method in Main process and wait for result
     invoke: (channel: string, data?: any) => ipcRenderer.invoke(channel, data),
