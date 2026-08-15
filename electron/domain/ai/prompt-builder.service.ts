@@ -4,6 +4,7 @@ import {
     AiChatMessageRole,
     AiPromptRequest,
 } from './models';
+import { AI_SYSTEM_PROMPTS } from '../../../shared/constants/ai-system-prompts';
 
 const CHAT_MESSAGE_ROLES = new Set<AiChatMessageRole>(['system', 'user', 'assistant']);
 
@@ -12,6 +13,11 @@ export class PromptBuilderService {
         request: AiPromptRequest,
         defaultModelId: string,
     ): AiChatCompletionPayload {
+
+        if (!request.systemMessage) {
+            request.systemMessage = AI_SYSTEM_PROMPTS.chat.gemma_test;
+        }
+
         const messages = this.resolveMessages(request);
 
         if (messages.length === 0) {
@@ -31,12 +37,16 @@ export class PromptBuilderService {
     }
 
     private resolveMessages(request: AiPromptRequest): AiChatMessage[] {
+        const systemMessage: AiChatMessage[] = request.systemMessage
+            ? [{ role: 'system' as const, content: request.systemMessage }]
+            : [];
+
         if (request.messages !== undefined) {
-            return this.sanitizeMessages(request.messages);
+            return this.sanitizeMessages([...systemMessage, ...request.messages]);
         }
 
         return this.sanitizeMessages([
-            ...(request.systemMessage ? [{ role: 'system' as const, content: request.systemMessage }] : []),
+            ...systemMessage,
             { role: 'user', content: request.prompt },
         ]);
     }

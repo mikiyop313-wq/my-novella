@@ -16,6 +16,7 @@ import {
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { AiStore } from '../../core/store/ai.store';
@@ -23,7 +24,6 @@ import {
   AutocompleteDropdownComponent,
   type DropdownOption,
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
-import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
 import { ToastService } from '../../shared/services/toast.service';
 import { ChatThreads } from './components/chat-threads/chat-threads';
 import { ChatResponseService } from './services/chat-response.service';
@@ -31,12 +31,13 @@ import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
 
 const NEW_CHAT_ROUTE_ID = 'new-chat';
+const CHAT_BOTTOM_THRESHOLD_PX = 32;
+const STREAMING_AUTO_SCROLL_FRAMES = 3;
 
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [ChatThreads, AutocompleteDropdownComponent, CdkMenuModule, ElementAnimationDirective],
-  providers: [ChatResponseService],
+  imports: [ChatThreads, AutocompleteDropdownComponent, CdkMenuModule, MarkdownComponent],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
@@ -62,11 +63,11 @@ export class Chat implements OnInit, OnDestroy {
   // View Queries
   // ---------------------------------------------------------------------------
 
-  @ViewChild('chatAnimation') private chatAnimation?: ElementAnimationDirective;
   @ViewChild('chatBody') private chatBody?: ElementRef<HTMLElement>;
   @ViewChild(ChatThreads) private chatThreads?: ChatThreads;
   @ViewChild('activeRenameInput') private activeRenameInput?: ElementRef<HTMLInputElement>;
   @ViewChild('messageEditInput') private messageEditInput?: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>;
 
 
   // ---------------------------------------------------------------------------
@@ -89,6 +90,11 @@ export class Chat implements OnInit, OnDestroy {
 
   private cleanupDetachedWindowClosedListener: (() => void) | null = null;
   private copyConfirmationTimeout: ReturnType<typeof setTimeout> | null = null;
+  private scrollAnimationFrame: number | null = null;
+  private streamingScrollAnimationFrame: number | null = null;
+  private pendingStreamingScrollFrames = 0;
+  private hasUserScrollIntent = false;
+  private lastChatScrollTop = 0;
 
 
   // ---------------------------------------------------------------------------
@@ -106,7 +112,7 @@ export class Chat implements OnInit, OnDestroy {
   readonly isStoppingResponse = this.response.isStoppingResponse;
 
   readonly showScrollToBottom = computed(() => (
-    this.isAiResponseActive() && !this.isChatAtBottom()
+    this.hasActiveConversation && !this.isAutoScrollEnabled() && !this.isChatAtBottom()
   ));
 
   readonly modelOptions = computed<DropdownOption[]>(() => (
@@ -147,7 +153,7 @@ export class Chat implements OnInit, OnDestroy {
       this.response.renderVersion();
 
       if (untracked(() => this.isAiResponseActive() && this.isAutoScrollEnabled())) {
-        this.scrollChatToBottom('auto');
+        this.followStreamingResponseToBottom();
       }
     });
   }
@@ -187,6 +193,8 @@ export class Chat implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.cleanupDetachedWindowClosedListener?.();
+    this.cancelFluidScroll();
+    this.cancelStreamingAutoScroll();
 
     if (this.copyConfirmationTimeout) {
       clearTimeout(this.copyConfirmationTimeout);
@@ -288,6 +296,12 @@ export class Chat implements OnInit, OnDestroy {
     return message.content.trim().length > 0;
   }
 
+  getMessageMarkdownData(message: ChatMessageDetailDto): string {
+    if (message.role !== 'assistant') return message.content;
+
+    return this.renderAssistantParagraphs(message.content);
+  }
+
   hasMessageReasoning(message: ChatMessageDetailDto): boolean {
     return message.role === 'assistant' && (message.reasoningSummary?.trim().length ?? 0) > 0;
   }
@@ -328,6 +342,58 @@ export class Chat implements OnInit, OnDestroy {
     }).format(date);
   }
 
+  private renderAssistantParagraphs(content: string): string {
+    const lines = content.replace(/\r\n?/g, '\n').split('\n');
+    const renderedLines: string[] = [];
+    let isInsideFence = false;
+
+    for (const line of lines) {
+      const currentLineIsFence = this.isMarkdownFenceLine(line);
+      const previousLine = renderedLines.at(-1);
+
+      if (
+        previousLine !== undefined
+        && !isInsideFence
+        && !currentLineIsFence
+        && this.shouldSeparateAssistantParagraphs(previousLine, line)
+      ) {
+        renderedLines.push('');
+      }
+
+      renderedLines.push(line);
+
+      if (currentLineIsFence) {
+        isInsideFence = !isInsideFence;
+      }
+    }
+
+    return renderedLines.join('\n');
+  }
+
+  private shouldSeparateAssistantParagraphs(previousLine: string, nextLine: string): boolean {
+    return previousLine.trim().length > 0
+      && nextLine.trim().length > 0
+      && !this.isMarkdownBlockLine(previousLine)
+      && !this.isMarkdownBlockLine(nextLine);
+  }
+
+  private isMarkdownFenceLine(line: string): boolean {
+    return /^\s*(```|~~~)/.test(line);
+  }
+
+  private isMarkdownBlockLine(line: string): boolean {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine) return true;
+    if (this.isMarkdownFenceLine(line)) return true;
+
+    return /^(#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)/.test(trimmedLine)
+      || /^([-*_]\s*){3,}$/.test(trimmedLine)
+      || /^\|?[\s:-]+\|[\s|:-]*$/.test(trimmedLine)
+      || /\S\s*\|\s*\S/.test(trimmedLine)
+      || /^\s{4,}\S/.test(line);
+  }
+
 
   // ---------------------------------------------------------------------------
   // Composer Actions
@@ -353,8 +419,11 @@ export class Chat implements OnInit, OnDestroy {
     }
   }
 
-  handlePromptKeydown(event: KeyboardEvent, input: HTMLTextAreaElement): void {
+  handlePromptKeydown(event: KeyboardEvent): void {
     if (event.key !== 'Enter') return;
+
+    const input = this.composerInput?.nativeElement;
+    if (!input) return;
 
     if (event.shiftKey) {
       queueMicrotask(() => this.resizePromptInput(input));
@@ -362,18 +431,21 @@ export class Chat implements OnInit, OnDestroy {
     }
 
     event.preventDefault();
-    void this.sendPrompt(input);
+    void this.sendPrompt();
   }
 
-  async sendPrompt(input: HTMLTextAreaElement): Promise<void> {
-    const content = input.value.trim();
+  async sendPrompt(): Promise<void> {
+    const input = this.composerInput?.nativeElement;
+    const content = (input?.value ?? '').trim();
     if (!content || this.isSendButtonDisabled()) return;
 
     const userMessage = await this.chatStore.sendMessage(content);
     if (!userMessage || this.chatStore.error()) return;
 
-    input.value = '';
-    this.resizePromptInput(input);
+    if (input) {
+      input.value = '';
+      this.resizePromptInput(input);
+    }
 
     const thread = this.chatStore.selectedThread();
     if (!this.isDetachedMode && thread && (this.isNewChatRoute() || this.selectedThreadId !== thread.id)) {
@@ -386,14 +458,14 @@ export class Chat implements OnInit, OnDestroy {
     await this.response.generateResponse(userMessage, content, this.getResponseSettings());
   }
 
-  async handleSendOrStop(input: HTMLTextAreaElement): Promise<void> {
+  async handleSendOrStop(): Promise<void> {
     if (this.response.isGeneratingResponse()) {
       const error = await this.response.stopResponse();
       if (error) this.reportError(error);
       return;
     }
 
-    await this.sendPrompt(input);
+    await this.sendPrompt();
   }
 
   resizePromptInput(input: HTMLTextAreaElement): void {
@@ -513,12 +585,33 @@ export class Chat implements OnInit, OnDestroy {
   handleChatBodyScroll(event: Event): void {
     const element = event.target as HTMLElement;
     const isAtBottom = this.isScrollAtBottom(element);
+    const isScrollingUp = element.scrollTop < this.lastChatScrollTop - 1;
 
+    if (
+      this.isAiResponseActive()
+      && this.isAutoScrollEnabled()
+      && !isAtBottom
+      && !this.hasUserScrollIntent
+      && !isScrollingUp
+    ) {
+      this.isChatAtBottom.set(true);
+      this.followStreamingResponseToBottom();
+      this.lastChatScrollTop = element.scrollTop;
+      return;
+    }
+
+    this.hasUserScrollIntent = false;
     this.isChatAtBottom.set(isAtBottom);
     this.isAutoScrollEnabled.set(isAtBottom);
+    this.lastChatScrollTop = element.scrollTop;
+  }
+
+  handleChatBodyUserScrollIntent(): void {
+    this.hasUserScrollIntent = true;
   }
 
   scrollToLatestResponse(): void {
+    this.hasUserScrollIntent = false;
     this.isAutoScrollEnabled.set(true);
     this.isChatAtBottom.set(true);
     this.scrollChatToBottom('smooth');
@@ -542,6 +635,8 @@ export class Chat implements OnInit, OnDestroy {
     }
   }
 
+
+
   private async removeThreadWithAnimation(id: string, removeThread: () => Promise<void>): Promise<void> {
     const wasSelectedThread = this.selectedThreadId === id;
     const removeAndNavigate = async () => {
@@ -557,9 +652,8 @@ export class Chat implements OnInit, OnDestroy {
       }
     };
 
-    const threadElement = this.chatThreads?.getThreadElement(id);
-    if (this.chatAnimation && threadElement) {
-      await this.chatAnimation.animateBeforeDelete(threadElement, removeAndNavigate);
+    if (this.chatThreads) {
+      await this.chatThreads.animateThreadRemoval(id, removeAndNavigate);
       return;
     }
 
@@ -661,6 +755,8 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   private prepareForResponse(): void {
+    this.hasUserScrollIntent = false;
+    this.lastChatScrollTop = this.chatBody?.nativeElement.scrollTop ?? 0;
     this.isAutoScrollEnabled.set(true);
     this.isChatAtBottom.set(true);
   }
@@ -674,19 +770,116 @@ export class Chat implements OnInit, OnDestroy {
 
   private isScrollAtBottom(element: HTMLElement): boolean {
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
-    return distanceFromBottom <= 32;
+    return distanceFromBottom <= CHAT_BOTTOM_THRESHOLD_PX;
+  }
+
+  private followStreamingResponseToBottom(): void {
+    this.scrollChatToBottom('auto');
+    this.isChatAtBottom.set(true);
+    this.pendingStreamingScrollFrames = STREAMING_AUTO_SCROLL_FRAMES;
+
+    if (this.streamingScrollAnimationFrame !== null || typeof requestAnimationFrame !== 'function') {
+      return;
+    }
+
+    this.streamingScrollAnimationFrame = requestAnimationFrame(() => this.continueStreamingAutoScroll());
+  }
+
+  private continueStreamingAutoScroll(): void {
+    this.streamingScrollAnimationFrame = null;
+
+    if (!this.isAiResponseActive() || !this.isAutoScrollEnabled()) {
+      this.pendingStreamingScrollFrames = 0;
+      return;
+    }
+
+    this.scrollChatToBottom('auto');
+    this.isChatAtBottom.set(true);
+    this.pendingStreamingScrollFrames -= 1;
+
+    if (this.pendingStreamingScrollFrames <= 0 || typeof requestAnimationFrame !== 'function') return;
+
+    this.streamingScrollAnimationFrame = requestAnimationFrame(() => this.continueStreamingAutoScroll());
   }
 
   private scrollChatToBottom(behavior: ScrollBehavior): void {
     const element = this.chatBody?.nativeElement;
     if (!element) return;
 
+    if (behavior === 'smooth') {
+      this.fluidScrollToBottom(element);
+      return;
+    }
+
+    this.cancelFluidScroll();
+
     if (typeof element.scrollTo === 'function') {
       element.scrollTo({ top: element.scrollHeight, behavior });
+      this.lastChatScrollTop = element.scrollTop;
       return;
     }
 
     element.scrollTop = element.scrollHeight;
+    this.lastChatScrollTop = element.scrollTop;
+  }
+
+  private fluidScrollToBottom(element: HTMLElement): void {
+    this.cancelFluidScroll();
+
+    const startTop = element.scrollTop;
+    const targetTop = element.scrollHeight;
+    const distance = targetTop - startTop;
+
+    if (
+      Math.abs(distance) <= 1
+      || this.prefersReducedMotion()
+      || typeof requestAnimationFrame !== 'function'
+    ) {
+      element.scrollTop = targetTop;
+      return;
+    }
+
+    const duration = Math.min(720, Math.max(260, Math.abs(distance) * 0.35));
+    const startTime = performance.now();
+
+    const step = (time: number) => {
+      const progress = Math.min(1, (time - startTime) / duration);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+
+      element.scrollTop = startTop + distance * easedProgress;
+
+      if (progress < 1) {
+        this.scrollAnimationFrame = requestAnimationFrame(step);
+        return;
+      }
+
+      element.scrollTop = targetTop;
+      this.isAutoScrollEnabled.set(true);
+      this.isChatAtBottom.set(true);
+      this.scrollAnimationFrame = null;
+    };
+
+    this.scrollAnimationFrame = requestAnimationFrame(step);
+  }
+
+  private cancelFluidScroll(): void {
+    if (this.scrollAnimationFrame === null) return;
+
+    cancelAnimationFrame(this.scrollAnimationFrame);
+    this.scrollAnimationFrame = null;
+  }
+
+  private cancelStreamingAutoScroll(): void {
+    if (this.streamingScrollAnimationFrame === null) return;
+
+    cancelAnimationFrame(this.streamingScrollAnimationFrame);
+    this.streamingScrollAnimationFrame = null;
+    this.pendingStreamingScrollFrames = 0;
+  }
+
+  private prefersReducedMotion(): boolean {
+    return typeof window !== 'undefined'
+      && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   }
 
   private getWorkspaceBookId(): string | null {

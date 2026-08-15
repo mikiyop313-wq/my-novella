@@ -1,4 +1,7 @@
-<div class="chat-threads-container" 
+<div class="chat-threads-container"
+     appElementAnimation
+     #threadsAnimation="appElementAnimation"
+     appElementAnimationLeaveClass="thread-item-leaving"
      [class.is-sidebar]="isDetachedMode()" 
      [class.is-page]="!isDetachedMode()"
      [class.collapsed]="isDetachedMode() && !isSidebarOpen">

@@ -1,3 +1,5 @@
+@use 'markdown' as markdown;
+
 @mixin compact-action-control {
   display: inline-flex;
   align-items: center;
@@ -124,6 +126,38 @@
         right: auto;
       }
     }
+
+    .message-text {
+      text-align: justify;
+      text-justify: inter-word;
+
+      :host ::ng-deep & {
+        p {
+          margin-bottom: 1em;
+          text-align: justify;
+          text-justify: inter-word;
+          white-space: pre-line;
+        }
+
+        p+p {
+          margin-top: 0.2em;
+        }
+
+        p:last-child {
+          margin-bottom: 0;
+        }
+
+        br {
+          display: block;
+          margin-bottom: 0.45em;
+        }
+
+        pre,
+        table {
+          text-align: left;
+        }
+      }
+    }
   }
 
   &.from-system {
@@ -186,12 +220,9 @@
     z-index: 5;
   }
 
-  p {
+  .message-text {
     margin: 8px 0 0;
-    color: color-mix(in srgb, var(--color-text-primary) 92%, var(--color-text-secondary));
-    font-size: 0.94rem;
-    line-height: 1.62;
-    white-space: pre-wrap;
+    @include markdown.markdown-content;
   }
 }
 
@@ -382,7 +413,7 @@
 .message-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   line-height: 1.2;
 

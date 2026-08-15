@@ -471,14 +471,21 @@ export const ChatStore = signalStore(
       },
 
       async createAssistantMessage(
-        data: Pick<
+        data: Partial<Pick<
           CreateChatMessageDto,
-          'modelId' | 'provider' | 'reasoningSummary' | 'parentMessageId' | 'branchGroupId' | 'branchOrder'
-        > = {},
+          | 'threadId'
+          | 'modelId'
+          | 'provider'
+          | 'reasoningSummary'
+          | 'parentMessageId'
+          | 'branchGroupId'
+          | 'branchOrder'
+        >> = {},
       ): Promise<ChatMessageDetailDto | null> {
         const selectedThread = store.selectedThread();
+        const threadId = data.threadId ?? selectedThread?.id;
 
-        if (!selectedThread) {
+        if (!threadId) {
           setError('Open a chat thread before generating a response.');
           return null;
         }
@@ -490,7 +497,7 @@ export const ChatStore = signalStore(
 
         try {
           const message = await chatService.createMessage({
-            threadId: selectedThread.id,
+            threadId,
             parentMessageId: data.parentMessageId ?? null,
             branchGroupId: data.branchGroupId ?? crypto.randomUUID(),
             ...(data.branchOrder !== undefined ? { branchOrder: data.branchOrder } : {}),

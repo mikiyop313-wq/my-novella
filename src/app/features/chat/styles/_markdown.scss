@@ -1,0 +1,78 @@
+@mixin markdown-content {
+  display: block;
+  color: color-mix(in srgb, var(--color-text-primary) 92%, var(--color-text-secondary));
+  font-size: 0.94rem;
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+
+  :host ::ng-deep & {
+
+    p,
+    ul,
+    ol,
+    blockquote,
+    pre {
+      margin: 0 0 0.75em;
+    }
+
+    p:last-child,
+    ul:last-child,
+    ol:last-child,
+    blockquote:last-child,
+    pre:last-child {
+      margin-bottom: 0;
+    }
+
+    strong {
+      font-weight: 750;
+    }
+
+    em {
+      font-style: italic;
+    }
+
+    ul,
+    ol {
+      padding-left: 1.35em;
+    }
+
+    li+li {
+      margin-top: 0.25em;
+    }
+
+    a {
+      color: var(--color-primary);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 0.18em;
+    }
+
+    blockquote {
+      padding-left: 0.9em;
+      border-left: 3px solid color-mix(in srgb, var(--color-primary) 36%, var(--color-border));
+      color: var(--color-text-secondary);
+    }
+
+    code {
+      padding: 0.08em 0.32em;
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9em;
+    }
+
+    pre {
+      max-width: 100%;
+      overflow-x: auto;
+      padding: 10px 12px;
+      border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+      border-radius: 7px;
+      background: color-mix(in srgb, var(--color-background) 72%, var(--color-surface));
+
+      code {
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+      }
+    }
+  }
+}

@@ -25,6 +25,8 @@ export class OpenRouterProvider implements AiProvider {
                 DEFAULT_OPENROUTER_MODEL_ID,
             );
 
+            console.log('[OpenRouter] Sending payload:', JSON.stringify(payload, null, 2));
+
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 signal: request.abortSignal,
