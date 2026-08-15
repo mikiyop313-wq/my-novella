@@ -311,16 +311,31 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
   /** Delegates cascaded DB writes and Tiptap insertion to the store. */
-  insertAct(): void {
-    this.store.insertAct();
+  async insertAct(): Promise<void> {
+    try {
+      await this.store.insertAct();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create act.';
+      this.toastService.error(message, 'Manuscript');
+    }
   }
 
-  insertChapter(): void {
-    this.store.insertChapter();
+  async insertChapter(): Promise<void> {
+    try {
+      await this.store.insertChapter();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create chapter.';
+      this.toastService.error(message, 'Manuscript');
+    }
   }
 
-  insertScene(): void {
-    this.store.insertScene();
+  async insertScene(): Promise<void> {
+    try {
+      await this.store.insertScene();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create scene.';
+      this.toastService.error(message, 'Manuscript');
+    }
   }
 
 

@@ -514,9 +514,7 @@ export const ManuscriptStore = signalStore(
         return;
       }
 
-      const act = await manuscriptStructureService.createAct(bookId);
-      const chapter = await manuscriptStructureService.createChapter(act.id);
-      const scene = await manuscriptStructureService.createScene(chapter.id);
+      const { act, chapter, scene } = await manuscriptStructureService.createActStructure(bookId);
 
       if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
 
@@ -550,8 +548,7 @@ export const ManuscriptStore = signalStore(
         return;
       }
 
-      const chapter = await manuscriptStructureService.createChapter(actId);
-      const scene = await manuscriptStructureService.createScene(chapter.id);
+      const { chapter, scene } = await manuscriptStructureService.createChapterStructure(actId);
 
       if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) return;
 

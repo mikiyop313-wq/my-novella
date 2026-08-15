@@ -128,6 +128,17 @@ export interface CreateActPayload     { bookId: string; }
 export interface CreateChapterPayload { actId: string; }
 export interface CreateScenePayload   { chapterId: string; }
 
+export interface CreatedActStructureDto {
+  act: ActDto;
+  chapter: ChapterDto;
+  scene: SceneDto;
+}
+
+export interface CreatedChapterStructureDto {
+  chapter: ChapterDto;
+  scene: SceneDto;
+}
+
 // Payloads for the manuscript:delete* IPC channels
 export interface DeleteActPayload     { id: string; }
 export interface DeleteChapterPayload { id: string; }

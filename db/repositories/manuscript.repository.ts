@@ -6,6 +6,8 @@ import { act, chapter, scene } from '../schema/narrative';
 import {
   ActDto,
   ChapterDto,
+  CreatedActStructureDto,
+  CreatedChapterStructureDto,
   ManuscriptDataDto,
   ManuscriptMode,
   SceneDto,
@@ -288,6 +290,79 @@ export class ManuscriptRepository {
 
     await this.touchBookLastEdited('chapter', chapterId);
     return inserted as unknown as SceneDto;
+  }
+
+  async createActStructure(bookId: string): Promise<CreatedActStructureDto> {
+    return db.transaction((tx) => {
+      const maxActRow = tx
+        .select({ maxPos: max(act.position) })
+        .from(act)
+        .where(and(eq(act.bookId, bookId), eq(act.status, 'active')))
+        .get();
+      const [insertedAct] = tx
+        .insert(act)
+        .values({ title: '', bookId, position: (maxActRow?.maxPos ?? -1) + 1 })
+        .returning()
+        .all();
+      const [insertedChapter] = tx
+        .insert(chapter)
+        .values({ title: '', bookId, actId: insertedAct.id, position: 0 })
+        .returning()
+        .all();
+      const [insertedScene] = tx
+        .insert(scene)
+        .values({ title: '', bookId, chapterId: insertedChapter.id, position: 0 })
+        .returning()
+        .all();
+
+      tx.update(books).set({ lastEditedAt: new Date() }).where(eq(books.id, bookId)).run();
+
+      return {
+        act: insertedAct as unknown as ActDto,
+        chapter: insertedChapter as unknown as ChapterDto,
+        scene: insertedScene as unknown as SceneDto,
+      };
+    });
+  }
+
+  async createChapterStructure(actId: string): Promise<CreatedChapterStructureDto> {
+    return db.transaction((tx) => {
+      const parentAct = tx.select().from(act).where(eq(act.id, actId)).get();
+      if (!parentAct) {
+        throw new Error('The parent act for this chapter could not be found.');
+      }
+
+      const maxChapterRow = tx
+        .select({ maxPos: max(chapter.position) })
+        .from(chapter)
+        .where(and(eq(chapter.actId, actId), eq(chapter.status, 'active')))
+        .get();
+      const [insertedChapter] = tx
+        .insert(chapter)
+        .values({
+          title: '',
+          bookId: parentAct.bookId,
+          actId,
+          position: (maxChapterRow?.maxPos ?? -1) + 1,
+        })
+        .returning()
+        .all();
+      const [insertedScene] = tx
+        .insert(scene)
+        .values({ title: '', bookId: parentAct.bookId, chapterId: insertedChapter.id, position: 0 })
+        .returning()
+        .all();
+
+      tx.update(books)
+        .set({ lastEditedAt: new Date() })
+        .where(eq(books.id, parentAct.bookId))
+        .run();
+
+      return {
+        chapter: insertedChapter as unknown as ChapterDto,
+        scene: insertedScene as unknown as SceneDto,
+      };
+    });
   }
 
   // -----------------------------------------------------------------------

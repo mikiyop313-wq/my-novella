@@ -13,6 +13,7 @@ import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.se
 import { Manuscript } from './manuscript';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
 import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
+import { ToastService } from '../../shared/services/toast.service';
 
 const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
@@ -193,6 +194,28 @@ describe('Manuscript', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.manuscript-empty-hint')).toBeNull();
+  });
+
+  it.each([
+    ['insertAct', 'Act creation failed'],
+    ['insertChapter', 'Chapter creation failed'],
+    ['insertScene', 'Scene creation failed'],
+  ] as const)('shows a toast when %s fails', async (method, message) => {
+    const toastError = vi.spyOn(TestBed.inject(ToastService), 'error');
+    vi.spyOn(component.store, method).mockRejectedValueOnce(new Error(message));
+
+    await component[method]();
+
+    expect(toastError).toHaveBeenCalledWith(message, 'Manuscript');
+  });
+
+  it('uses a fallback toast message for a non-Error creation failure', async () => {
+    const toastError = vi.spyOn(TestBed.inject(ToastService), 'error');
+    vi.spyOn(component.store, 'insertAct').mockRejectedValueOnce('failed');
+
+    await component.insertAct();
+
+    expect(toastError).toHaveBeenCalledWith('Failed to create act.', 'Manuscript');
   });
 
   it('enables hierarchy creation only when the required parent exists', () => {
