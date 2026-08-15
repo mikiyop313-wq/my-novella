@@ -101,6 +101,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   private readonly toastService = inject(ToastService);
   private readonly confirmedPresets = new Map<string, SystemPromptPreset>();
   private readonly saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly presetRevisions = new Map<string, number>();
 
   readonly categories = SYSTEM_PROMPT_CATEGORIES;
   readonly categoryOptions: readonly DropdownOption<SystemPromptCategory>[] =
@@ -111,6 +112,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly presets = signal<SystemPromptPreset[]>(createBuiltInPresets());
   readonly selectedCategory = signal<SystemPromptCategory>('chat');
   readonly selectedPresetId = signal(defaultPresetIdFor('chat'));
+  readonly activePresetIds = signal<Readonly<Record<SystemPromptCategory, string>>>(
+    createDefaultActivePresetIds(),
+  );
   readonly advancedOpen = signal(false);
   readonly isLoading = signal(true);
   readonly loadError = signal<string | null>(null);
@@ -167,6 +171,20 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     if (this.filteredPresets().some((preset) => preset.id === id)) {
       this.selectedPresetId.set(id);
     }
+  }
+
+  useSelectedPreset(): void {
+    const selected = this.selectedPreset();
+    if (!selected || this.isPresetInUse(selected.id, selected.category)) return;
+
+    this.activePresetIds.update((activePresetIds) => ({
+      ...activePresetIds,
+      [selected.category]: selected.id,
+    }));
+  }
+
+  isPresetInUse(id: string, category: SystemPromptCategory): boolean {
+    return this.activePresetIds()[category] === id;
   }
 
   changeCategory(value: unknown): void {
@@ -259,6 +277,12 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       this.confirmedPresets.delete(selected.id);
       this.presets.set(remainingPresets);
       this.selectedPresetId.set(nextSelection.id);
+      if (this.isPresetInUse(selected.id, selected.category)) {
+        this.activePresetIds.update((activePresetIds) => ({
+          ...activePresetIds,
+          [selected.category]: defaultPresetIdFor(selected.category),
+        }));
+      }
     } catch (error) {
       this.showError(error, 'Unable to delete this preset.', 'Preset deletion failed');
     } finally {
@@ -308,11 +332,12 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
 
   private updateSelectedPreset(update: Partial<SystemPromptPreset>): void {
     const selected = this.selectedPreset();
-    if (!selected || selected.isBuiltIn || this.savingPresetIds().has(selected.id)) return;
+    if (!selected || selected.isBuiltIn) return;
 
     this.presets.update((presets) =>
       presets.map((preset) => (preset.id === selected.id ? { ...preset, ...update } : preset)),
     );
+    this.presetRevisions.set(selected.id, (this.presetRevisions.get(selected.id) ?? 0) + 1);
     this.scheduleSave(selected.id);
   }
 
@@ -331,8 +356,13 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
 
   private async savePreset(presetId: string): Promise<void> {
     const preset = this.presets().find((candidate) => candidate.id === presetId);
-    if (!preset || preset.isBuiltIn || this.savingPresetIds().has(presetId)) return;
+    if (!preset || preset.isBuiltIn) return;
+    if (this.savingPresetIds().has(presetId)) {
+      this.scheduleSave(presetId);
+      return;
+    }
 
+    const revision = this.presetRevisions.get(presetId) ?? 0;
     this.updateIdSet(this.pendingSaveIds, presetId, false);
     this.updateIdSet(this.savingPresetIds, presetId, true);
     try {
@@ -341,10 +371,14 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
 
       const confirmed = mapDtoToPreset(updated);
       this.confirmedPresets.set(presetId, confirmed);
-      this.replacePreset(confirmed);
+      if ((this.presetRevisions.get(presetId) ?? 0) === revision) {
+        this.replacePreset(confirmed);
+      }
     } catch (error) {
       const confirmed = this.confirmedPresets.get(presetId);
-      if (confirmed) this.replacePreset(confirmed);
+      if (confirmed && (this.presetRevisions.get(presetId) ?? 0) === revision) {
+        this.replacePreset(confirmed);
+      }
       this.showError(error, 'Your latest changes were reverted.', 'Preset autosave failed');
     } finally {
       this.updateIdSet(this.savingPresetIds, presetId, false);
@@ -410,6 +444,12 @@ function createBuiltInPresets(): SystemPromptPreset[] {
     ...DEFAULT_GENERATION_SETTINGS,
     isBuiltIn: true,
   }));
+}
+
+function createDefaultActivePresetIds(): Record<SystemPromptCategory, string> {
+  return Object.fromEntries(
+    SYSTEM_PROMPT_CATEGORIES.map((category) => [category.id, category.defaultPresetId]),
+  ) as Record<SystemPromptCategory, string>;
 }
 
 function mapDtoToPreset(preset: SystemPromptPresetDto): SystemPromptPreset {

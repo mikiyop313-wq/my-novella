@@ -76,6 +76,60 @@ describe('SystemPromptSettingsComponent', () => {
     expect(component.selectedPresetId()).toBe('default-scene-beat');
   });
 
+  it('starts every category with its built-in default in use', () => {
+    expect(component.activePresetIds()).toEqual({
+      chat: 'default-assistant',
+      sceneBeat: 'default-scene-beat',
+      rephrase: 'default-rephrase',
+      summary: 'default-summary',
+      expand: 'default-expand',
+      shorten: 'default-shorten',
+    });
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.preset-option.is-in-use .preset-name')?.textContent).toContain(
+      'Default Assistant',
+    );
+    expect(element.querySelector<HTMLButtonElement>('.use-preset-button')?.disabled).toBe(true);
+    expect(element.querySelector('.use-preset-button')?.textContent).toContain('In use');
+  });
+
+  it('keeps editor selection separate from the visual preset in use', () => {
+    selectSavedScenePreset();
+
+    expect(component.selectedPresetId()).toBe('scene-custom');
+    expect(component.activePresetIds().sceneBeat).toBe('default-scene-beat');
+
+    const element = fixture.nativeElement as HTMLElement;
+    const useButton = element.querySelector<HTMLButtonElement>('.use-preset-button');
+    expect(useButton?.disabled).toBe(false);
+    expect(useButton?.textContent).toContain('Use preset');
+
+    useButton?.click();
+    fixture.detectChanges();
+
+    expect(component.activePresetIds().sceneBeat).toBe('scene-custom');
+    expect(element.querySelector('.preset-option.is-in-use .preset-name')?.textContent).toContain(
+      'Scene Architect',
+    );
+    expect(element.querySelector<HTMLButtonElement>('.use-preset-button')?.disabled).toBe(true);
+    expect(element.querySelector('.use-preset-button')?.textContent).toContain('In use');
+    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(deletePreset).not.toHaveBeenCalled();
+  });
+
+  it('keeps a separate visual preset in use for each category', () => {
+    selectSavedScenePreset();
+    component.useSelectedPreset();
+
+    changeCategory('chat');
+    expect(component.activePresetIds().chat).toBe('default-assistant');
+
+    changeCategory('sceneBeat');
+    expect(component.activePresetIds().sceneBeat).toBe('scene-custom');
+  });
+
   it('protects every editable built-in field and requires cloning', () => {
     const element = fixture.nativeElement as HTMLElement;
 
@@ -120,6 +174,7 @@ describe('SystemPromptSettingsComponent', () => {
       }),
     );
     expect(component.selectedPresetId()).toBe('created-preset');
+    expect(component.activePresetIds().chat).toBe('default-assistant');
 
     changeCategory('rephrase');
     const clone = presetDto({
@@ -143,6 +198,7 @@ describe('SystemPromptSettingsComponent', () => {
       }),
     );
     expect(component.selectedPresetId()).toBe('rephrase-copy');
+    expect(component.activePresetIds().rephrase).toBe('default-rephrase');
   });
 
   it('combines edits into one autosave after 500 ms', async () => {
@@ -185,6 +241,53 @@ describe('SystemPromptSettingsComponent', () => {
     );
   });
 
+  it('keeps the active editor focused and queues edits made while autosave is running', async () => {
+    vi.useFakeTimers();
+    selectSavedScenePreset();
+
+    let finishFirstSave!: (preset: SystemPromptPresetDto) => void;
+    update
+      .mockImplementationOnce(
+        () =>
+          new Promise<SystemPromptPresetDto>((resolve) => {
+            finishFirstSave = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        ...savedScenePreset,
+        systemPrompt: 'Second edit',
+      });
+
+    const textarea = (fixture.nativeElement as HTMLElement).querySelector<HTMLTextAreaElement>(
+      '#system-prompt',
+    )!;
+    textarea.focus();
+    updateInput('#system-prompt', 'First edit');
+
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(textarea.disabled).toBe(false);
+    expect(document.activeElement).toBe(textarea);
+
+    updateInput('#system-prompt', 'Second edit');
+    finishFirstSave({ ...savedScenePreset, systemPrompt: 'First edit' });
+    await settle();
+    fixture.detectChanges();
+
+    expect(component.selectedPreset()?.systemPrompt).toBe('Second edit');
+    expect(document.activeElement).toBe(textarea);
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith(
+      'scene-custom',
+      expect.objectContaining({ systemPrompt: 'Second edit' }),
+    );
+  });
+
   it('reverts to the last confirmed preset when autosave fails', async () => {
     vi.useFakeTimers();
     selectSavedScenePreset();
@@ -214,11 +317,15 @@ describe('SystemPromptSettingsComponent', () => {
     expect(component.presets().map((preset) => preset.id)).toContain('scene-custom');
     expect(toastError).toHaveBeenCalledWith('Delete failed', 'Preset deletion failed');
 
+    component.useSelectedPreset();
+    expect(component.activePresetIds().sceneBeat).toBe('scene-custom');
+
     deletePreset.mockResolvedValueOnce({ success: true });
     await component.deleteSelectedPreset();
 
     expect(component.presets().map((preset) => preset.id)).not.toContain('scene-custom');
     expect(component.selectedPresetId()).toBe('default-scene-beat');
+    expect(component.activePresetIds().sceneBeat).toBe('default-scene-beat');
   });
 
   it('shows a retryable error instead of temporary presets when loading fails', async () => {

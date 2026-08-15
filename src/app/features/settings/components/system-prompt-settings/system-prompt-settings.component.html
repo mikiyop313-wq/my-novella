@@ -74,6 +74,7 @@
               type="button"
               role="option"
               [class.is-selected]="preset.id === selectedPresetId()"
+              [class.is-in-use]="isPresetInUse(preset.id, preset.category)"
               [attr.aria-selected]="preset.id === selectedPresetId()"
               (click)="selectPreset(preset.id)"
             >
@@ -97,7 +98,22 @@
                   {{ preset.isBuiltIn ? 'Built-in default' : 'Custom preset' }}
                 </span>
               </span>
-              @if (preset.isBuiltIn) {
+              @if (isPresetInUse(preset.id, preset.category)) {
+                <span class="in-use-badge">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                  In use
+                </span>
+              } @else if (preset.isBuiltIn) {
                 <span class="built-in-badge">Default</span>
               }
             </button>
@@ -123,6 +139,31 @@
               <h2 id="preset-editor-heading">{{ preset.name || 'Untitled Preset' }}</h2>
             </div>
             <div class="preset-actions">
+              <button
+                class="use-preset-button"
+                type="button"
+                [class.is-active]="isPresetInUse(preset.id, preset.category)"
+                [disabled]="isPresetInUse(preset.id, preset.category)"
+                [attr.aria-pressed]="isPresetInUse(preset.id, preset.category)"
+                (click)="useSelectedPreset()"
+              >
+                @if (isPresetInUse(preset.id, preset.category)) {
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                  In use
+                } @else {
+                  Use preset
+                }
+              </button>
               <button
                 class="icon-action"
                 type="button"
@@ -196,7 +237,7 @@
                 class="text-input"
                 type="text"
                 [value]="preset.name"
-                [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                [disabled]="preset.isBuiltIn"
                 placeholder="Name this preset"
                 (input)="updateName($event)"
               />
@@ -218,7 +259,7 @@
                 class="prompt-textarea"
                 rows="11"
                 [value]="preset.systemPrompt"
-                [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                [disabled]="preset.isBuiltIn"
                 placeholder="Describe how the AI should behave..."
                 (input)="updateSystemPrompt($event)"
               ></textarea>
@@ -234,7 +275,7 @@
                   class="reset-generation-button"
                   type="button"
                   aria-label="Reset generation settings"
-                  [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                  [disabled]="preset.isBuiltIn"
                   (click)="resetGenerationSettings()"
                 >
                   Reset
@@ -254,7 +295,7 @@
                     max="2"
                     step="0.1"
                     [value]="preset.temperature"
-                    [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                    [disabled]="preset.isBuiltIn"
                     (input)="updateNumericField('temperature', $event)"
                   />
                   <div class="range-scale" aria-hidden="true">
@@ -275,7 +316,7 @@
                     max="1"
                     step="0.05"
                     [value]="preset.topP"
-                    [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                    [disabled]="preset.isBuiltIn"
                     (input)="updateNumericField('topP', $event)"
                   />
                   <div class="range-scale" aria-hidden="true">
@@ -339,7 +380,7 @@
                           max="2"
                           step="0.1"
                           [value]="preset.presencePenalty"
-                          [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                          [disabled]="preset.isBuiltIn"
                           (input)="updateNumericField('presencePenalty', $event)"
                         />
                       </div>
@@ -356,7 +397,7 @@
                           max="2"
                           step="0.1"
                           [value]="preset.frequencyPenalty"
-                          [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                          [disabled]="preset.isBuiltIn"
                           (input)="updateNumericField('frequencyPenalty', $event)"
                         />
                       </div>
@@ -374,7 +415,7 @@
                         min="1"
                         step="1"
                         [value]="preset.maxOutputTokens"
-                        [disabled]="preset.isBuiltIn || savingPresetIds().has(preset.id)"
+                        [disabled]="preset.isBuiltIn"
                         placeholder="Automatic"
                         (input)="updateMaxOutputTokens($event)"
                       />
