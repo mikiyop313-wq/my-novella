@@ -4,7 +4,7 @@ import * as schema from './schema';
 import * as path from 'path';
 import { app } from 'electron';
 import { seedLanguages, seedGenres, seedTropes } from './seed';
-import { vectorDb } from './vectors';
+import { vectorDb } from '../vectors/lancedb.connection';
 
 import * as fs from 'fs';
 

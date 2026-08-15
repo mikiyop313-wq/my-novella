@@ -235,6 +235,7 @@ export const ManuscriptStore = signalStore(
 
     async loadManuscriptData<T extends ManuscriptMode>(mode: T, id: string): Promise<ManuscriptModeDto<T>> {
       const result = await electronService.invoke('manuscript:get', { mode, id });
+
       return result as ManuscriptModeDto<T>;
     },
 
@@ -353,19 +354,22 @@ export const ManuscriptStore = signalStore(
     },
 
     // -----------------------------------------------------------------------
-    // Delete methods
-    // Each method: (1) persists the deletion to the DB via IPC,
-    // (2) removes the corresponding node(s) from the Tiptap document.
-    // DB cascade (onDelete: 'cascade') handles child rows automatically.
+    // Logical delete methods (editor only, undo/redo safe)
+    //
+    // These methods only remove node(s) from the Tiptap document.
+    // They do NOT touch the database. The actual IPC deletion is deferred:
+    // `ManuscriptProseSaverService.cacheDeletedSections` detects the missing
+    // nodes via `onDocumentChanged` and queues them in `pendingDeletes`.
+    // `flushStructuralChanges` (called on navigation / app close) then calls
+    // the physical delete methods below to commit the changes to the DB.
+    //
+    // This design makes undo/redo safe:
+    //   Undo  → nodes reappear → `cancelRestoredSections` removes from queue
+    //   Redo  → nodes vanish  → `cacheDeletedSections` re-queues them
+    //   Never → DB is touched before the user commits to the change.
     // -----------------------------------------------------------------------
 
-    async deleteAct(id: string): Promise<void> {
-      try {
-        await electronService.invoke('manuscript:deleteAct', { id });
-      } catch (error) {
-        console.error('deleteAct: IPC call failed', error);
-        return;
-      }
+    deleteAct(id: string): void {
       const editor = store.editor();
       if (editor) {
         // Remove from this actHeader to the next actHeader (or end of doc).
@@ -373,13 +377,7 @@ export const ManuscriptStore = signalStore(
       }
     },
 
-    async deleteChapter(id: string): Promise<void> {
-      try {
-        await electronService.invoke('manuscript:deleteChapter', { id });
-      } catch (error) {
-        console.error('deleteChapter: IPC call failed', error);
-        return;
-      }
+    deleteChapter(id: string): void {
       const editor = store.editor();
       if (editor) {
         // Remove from this chapterHeader to the next chapter or act boundary.
@@ -387,13 +385,7 @@ export const ManuscriptStore = signalStore(
       }
     },
 
-    async deleteScene(id: string): Promise<void> {
-      try {
-        await electronService.invoke('manuscript:deleteScene', { id });
-      } catch (error) {
-        console.error('deleteScene: IPC call failed', error);
-        return;
-      }
+    deleteScene(id: string): void {
       const editor = store.editor();
       if (editor) {
         // Remove from this sceneSummary to the next scene/chapter/act boundary.
