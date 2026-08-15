@@ -17,6 +17,7 @@
     "electron": "npm run build:electron && electron .",
     "db:generate": "drizzle-kit generate",
     "db:push": "node db/scripts/push.cjs",
+    "db:push:test": "node db/scripts/tests/push-regression.cjs",
     "db:studio": "electron ./node_modules/drizzle-kit/bin.cjs studio",
     "db:vectors:reset": "node vectors/reset-vectors.mjs"
   },
@@ -60,7 +61,7 @@
     "@electron/rebuild": "^4.0.3",
     "@types/better-sqlite3": "^7.6.13",
     "concurrently": "^9.2.1",
-    "drizzle-kit": "^0.31.10",
+    "drizzle-kit": "0.31.10",
     "electron": "^41.2.0",
     "jsdom": "^28.0.0",
     "patch-package": "^8.0.1",
