@@ -29,7 +29,7 @@ export class AiConfigurationService {
             Promise.all(
                 AI_LOCAL_PROVIDER_IDS.map(async (providerId) => [
                     providerId,
-                    await this.settingsStore.get(this.serverUrlSettingKey(providerId)),
+                    await this.getServerUrl(providerId),
                 ] as const),
             ),
         ]);
@@ -46,6 +46,11 @@ export class AiConfigurationService {
 
     async loadApiKey(providerId: AiCloudProviderId): Promise<string | null> {
         return this.keys.getApiKey(providerId);
+    }
+
+    async getServerUrl(providerId: AiLocalProviderId): Promise<string | null> {
+        this.assertLocalProviderId(providerId);
+        return this.settingsStore.get(this.serverUrlSettingKey(providerId));
     }
 
     async saveServerUrl(providerId: AiLocalProviderId, rawServerUrl: string): Promise<string> {

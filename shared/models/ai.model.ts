@@ -4,7 +4,7 @@ export interface AiModel {
   name?: string;
   provider?: string;
   providerName?: string;
-  source?: 'direct' | 'openrouter';
+  source?: 'direct' | 'openrouter' | 'local';
   supportsReasoning?: boolean;
 }
 

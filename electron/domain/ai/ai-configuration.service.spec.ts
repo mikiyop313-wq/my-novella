@@ -73,6 +73,8 @@ describe('AiConfigurationService', () => {
 
         expect(store.values.size).toBe(1);
         expect(store.values.get('ai.serverUrl.ollama')).toBe('https://local.example/v1');
+        await expect(service.getServerUrl('ollama')).resolves.toBe('https://local.example/v1');
+        await expect(service.getServerUrl('lm-studio')).resolves.toBeNull();
     });
 
     it('rejects empty, relative, and non-HTTP server URLs', async () => {

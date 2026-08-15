@@ -4,6 +4,8 @@ import type { AiProvider } from './providers/ai-provider.interface';
 import { AnthropicProvider } from './providers/anthropic.provider';
 import { OpenAiProvider } from './providers/openai.provider';
 import { GeminiProvider } from './providers/gemini.provider';
+import { LmStudioProvider } from './providers/lm-studio.provider';
+import { OllamaProvider } from './providers/ollama.provider';
 import { OpenRouterProvider } from './providers/openrouter.provider';
 
 export class AiService {
@@ -14,6 +16,8 @@ export class AiService {
         new GeminiProvider(),
         new AnthropicProvider(),
         new OpenRouterProvider(),
+        new OllamaProvider(),
+        new LmStudioProvider(),
     ]) {
         this.providers = new Map();
 

@@ -6,6 +6,9 @@ vi.mock('./api-key.service', () => ({
 vi.mock('./prompt-builder.service', () => ({
     promptBuilderService: { buildChatCompletionPayload: vi.fn() },
 }));
+vi.mock('./ai-configuration.service', () => ({
+    aiConfigurationService: { getServerUrl: vi.fn() },
+}));
 
 import type { AiModel } from '../../../shared/models/ai.model';
 import type { AiProvider } from './providers/ai-provider.interface';
@@ -41,6 +44,33 @@ describe('AiService', () => {
         await expect(service.generatePrompt({
             model: 'anthropic', modelId: 'claude-a', prompt: 'Write.',
         })).resolves.toMatchObject({ text: 'ok' });
+    });
+
+    it('routes local generation through its registered provider ID', async () => {
+        const provider = fakeProvider('ollama', []);
+        vi.mocked(provider.generate).mockResolvedValue({ text: 'local', modelUsed: 'llama3.2' });
+        const service = new AiService([provider]);
+
+        await expect(service.generatePrompt({
+            model: 'ollama', modelId: 'llama3.2', prompt: 'Write.',
+        })).resolves.toEqual({ text: 'local', modelUsed: 'llama3.2' });
+    });
+
+    it('retains local models when another local server is offline', async () => {
+        const ollamaModel = { id: 'ollama/llama3.2' } as AiModel;
+        const providers = [
+            fakeProvider('ollama', [ollamaModel]),
+            fakeProvider('lm-studio', new Error('offline')),
+        ];
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const service = new AiService(providers);
+
+        await expect(service.listModels()).resolves.toEqual([ollamaModel]);
+        expect(errorSpy).toHaveBeenCalledWith(
+            expect.stringContaining('lm-studio'),
+            expect.any(Error),
+        );
+        errorSpy.mockRestore();
     });
 });
 
