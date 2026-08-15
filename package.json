@@ -15,7 +15,7 @@
     "test": "ng test",
     "electron": "npm run build:electron && electron .",
     "db:generate": "drizzle-kit generate",
-    "db:push": "npm rebuild better-sqlite3 && drizzle-kit push && npm run rebuild",
+    "db:push": "npm rebuild better-sqlite3 && node db/scripts/migrate-narrative-archive.cjs && drizzle-kit push && npm run rebuild",
     "db:studio": "electron ./node_modules/drizzle-kit/bin.cjs studio",
     "db:vectors:reset": "node vectors/reset-vectors.mjs"
   },

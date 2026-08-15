@@ -1,4 +1,4 @@
-import { and, eq, gt, max, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, max, sql } from 'drizzle-orm';
 
 import { db } from '../index';
 import { books } from '../schema/book';
@@ -204,6 +204,12 @@ export class ManuscriptRepository {
   }
 
   async createChapter(actId: string): Promise<ChapterDto> {
+    this.assertActiveParentId('chapter', actId);
+    const parentAct = await db.query.act.findFirst({ where: eq(act.id, actId) });
+    if (!parentAct) {
+      throw new Error('The parent act for this chapter could not be found.');
+    }
+
     const [maxRow] = await db
       .select({ maxPos: max(chapter.position) })
       .from(chapter)
@@ -213,7 +219,7 @@ export class ManuscriptRepository {
 
     const [inserted] = await db
       .insert(chapter)
-      .values({ title: 'New Chapter', actId, position: nextPosition })
+      .values({ title: 'New Chapter', bookId: parentAct.bookId, actId, position: nextPosition })
       .returning();
 
     await this.touchBookLastEdited('act', actId);
@@ -221,6 +227,12 @@ export class ManuscriptRepository {
   }
 
   async createScene(chapterId: string): Promise<SceneDto> {
+    this.assertActiveParentId('scene', chapterId);
+    const parentChapter = await db.query.chapter.findFirst({ where: eq(chapter.id, chapterId) });
+    if (!parentChapter) {
+      throw new Error('The parent chapter for this scene could not be found.');
+    }
+
     const [maxRow] = await db
       .select({ maxPos: max(scene.position) })
       .from(scene)
@@ -230,7 +242,7 @@ export class ManuscriptRepository {
 
     const [inserted] = await db
       .insert(scene)
-      .values({ title: '', chapterId, position: nextPosition })
+      .values({ title: '', bookId: parentChapter.bookId, chapterId, position: nextPosition })
       .returning();
 
     await this.touchBookLastEdited('chapter', chapterId);
@@ -257,7 +269,7 @@ export class ManuscriptRepository {
     const [updated] = await db.update(chapter).set(data).where(eq(chapter.id, id)).returning();
 
     if (updated) {
-      await this.touchBookLastEdited('act', updated.actId);
+      await this.touchBookLastEdited('book', updated.bookId);
     }
 
     return updated as unknown as ChapterDto;
@@ -268,7 +280,7 @@ export class ManuscriptRepository {
     const [updated] = await db.update(scene).set(data).where(eq(scene.id, id)).returning();
 
     if (updated) {
-      await this.touchBookLastEdited('chapter', updated.chapterId);
+      await this.touchBookLastEdited('book', updated.bookId);
     }
 
     return updated as unknown as SceneDto;
@@ -279,6 +291,13 @@ export class ManuscriptRepository {
   // -----------------------------------------------------------------------
 
   async updateStructurePositions(payload: UpdateStructurePositionsPayload): Promise<void> {
+    for (const item of payload.chapters ?? []) {
+      this.assertActiveParentId('chapter', item.actId);
+    }
+    for (const item of payload.scenes ?? []) {
+      this.assertActiveParentId('scene', item.chapterId);
+    }
+
     db.transaction(tx => {
       for (const item of payload.acts ?? []) {
         tx
@@ -310,7 +329,8 @@ export class ManuscriptRepository {
 
   // -----------------------------------------------------------------------
   // Delete methods
-  // Cascade rules are defined in the schema with onDelete: 'cascade'.
+  // Active-parent deletion preserves archived descendants. Archived-parent
+  // deletion remains a permanent subtree deletion.
   // -----------------------------------------------------------------------
 
   async deleteAct(id: string): Promise<void> {
@@ -320,21 +340,54 @@ export class ManuscriptRepository {
       return;
     }
 
-    await this.touchBookLastEdited('act', id);
-    await db.delete(act).where(eq(act.id, id));
+    const chapterRows = await db
+      .select({ id: chapter.id })
+      .from(chapter)
+      .where(eq(chapter.actId, id));
+    const chapterIds = chapterRows.map(({ id: chapterId }) => chapterId);
 
-    if (actToDelete.status === 'active') {
-      await db
-        .update(act)
-        .set({ position: sql`${act.position} - 1` })
+    db.transaction((tx) => {
+      if (chapterIds.length > 0) {
+        tx
+          .delete(scene)
+          .where(
+            actToDelete.status === 'archived'
+              ? inArray(scene.chapterId, chapterIds)
+              : and(inArray(scene.chapterId, chapterIds), eq(scene.status, 'active')),
+          )
+          .run();
+      }
+
+      tx
+        .delete(chapter)
         .where(
-          and(
-            eq(act.bookId, actToDelete.bookId),
-            eq(act.status, 'active'),
-            gt(act.position, actToDelete.position),
-          ),
-        );
-    }
+          actToDelete.status === 'archived'
+            ? eq(chapter.actId, id)
+            : and(eq(chapter.actId, id), eq(chapter.status, 'active')),
+        )
+        .run();
+      tx.delete(act).where(eq(act.id, id)).run();
+
+      if (actToDelete.status === 'active') {
+        tx
+          .update(act)
+          .set({ position: sql`${act.position} - 1` })
+          .where(
+            and(
+              eq(act.bookId, actToDelete.bookId),
+              eq(act.status, 'active'),
+              gt(act.position, actToDelete.position),
+            ),
+          )
+          .run();
+      }
+
+      tx
+        .update(books)
+        .set({ lastEditedAt: new Date() })
+        .where(eq(books.id, actToDelete.bookId))
+        .run();
+    });
   }
 
   async deleteChapter(id: string): Promise<void> {
@@ -344,21 +397,37 @@ export class ManuscriptRepository {
       return;
     }
 
-    await this.touchBookLastEdited('chapter', id);
-    await db.delete(chapter).where(eq(chapter.id, id));
-
-    if (chapterToDelete.status === 'active') {
-      await db
-        .update(chapter)
-        .set({ position: sql`${chapter.position} - 1` })
+    db.transaction((tx) => {
+      tx
+        .delete(scene)
         .where(
-          and(
-            eq(chapter.actId, chapterToDelete.actId),
-            eq(chapter.status, 'active'),
-            gt(chapter.position, chapterToDelete.position),
-          ),
-        );
-    }
+          chapterToDelete.status === 'archived'
+            ? eq(scene.chapterId, id)
+            : and(eq(scene.chapterId, id), eq(scene.status, 'active')),
+        )
+        .run();
+      tx.delete(chapter).where(eq(chapter.id, id)).run();
+
+      if (chapterToDelete.status === 'active' && chapterToDelete.actId) {
+        tx
+          .update(chapter)
+          .set({ position: sql`${chapter.position} - 1` })
+          .where(
+            and(
+              eq(chapter.actId, chapterToDelete.actId),
+              eq(chapter.status, 'active'),
+              gt(chapter.position, chapterToDelete.position),
+            ),
+          )
+          .run();
+      }
+
+      tx
+        .update(books)
+        .set({ lastEditedAt: new Date() })
+        .where(eq(books.id, chapterToDelete.bookId))
+        .run();
+    });
   }
 
   async deleteScene(id: string): Promise<void> {
@@ -368,93 +437,29 @@ export class ManuscriptRepository {
       return;
     }
 
-    await this.touchBookLastEdited('scene', id);
-    await db.delete(scene).where(eq(scene.id, id));
+    db.transaction((tx) => {
+      tx.delete(scene).where(eq(scene.id, id)).run();
 
-    if (sceneToDelete.status === 'active') {
-      await db
-        .update(scene)
-        .set({ position: sql`${scene.position} - 1` })
-        .where(
-          and(
-            eq(scene.chapterId, sceneToDelete.chapterId),
-            eq(scene.status, 'active'),
-            gt(scene.position, sceneToDelete.position),
-          ),
-        );
-    }
-  }
+      if (sceneToDelete.status === 'active' && sceneToDelete.chapterId) {
+        tx
+          .update(scene)
+          .set({ position: sql`${scene.position} - 1` })
+          .where(
+            and(
+              eq(scene.chapterId, sceneToDelete.chapterId),
+              eq(scene.status, 'active'),
+              gt(scene.position, sceneToDelete.position),
+            ),
+          )
+          .run();
+      }
 
-  // -----------------------------------------------------------------------
-  // Archive methods
-  // Archived rows are hidden from normal hierarchy/manuscript reads but kept
-  // in place so their nested data can be restored by a future UI.
-  // -----------------------------------------------------------------------
-
-  async archiveAct(id: string): Promise<void> {
-    const actToArchive = await db.query.act.findFirst({ where: eq(act.id, id) });
-
-    if (!actToArchive || actToArchive.status === 'archived') {
-      return;
-    }
-
-    await this.touchBookLastEdited('act', id);
-    await db.update(act).set({ status: 'archived' }).where(eq(act.id, id));
-
-    await db
-      .update(act)
-      .set({ position: sql`${act.position} - 1` })
-      .where(
-        and(
-          eq(act.bookId, actToArchive.bookId),
-          eq(act.status, 'active'),
-          gt(act.position, actToArchive.position),
-        ),
-      );
-  }
-
-  async archiveChapter(id: string): Promise<void> {
-    const chapterToArchive = await db.query.chapter.findFirst({ where: eq(chapter.id, id) });
-
-    if (!chapterToArchive || chapterToArchive.status === 'archived') {
-      return;
-    }
-
-    await this.touchBookLastEdited('chapter', id);
-    await db.update(chapter).set({ status: 'archived' }).where(eq(chapter.id, id));
-
-    await db
-      .update(chapter)
-      .set({ position: sql`${chapter.position} - 1` })
-      .where(
-        and(
-          eq(chapter.actId, chapterToArchive.actId),
-          eq(chapter.status, 'active'),
-          gt(chapter.position, chapterToArchive.position),
-        ),
-      );
-  }
-
-  async archiveScene(id: string): Promise<void> {
-    const sceneToArchive = await db.query.scene.findFirst({ where: eq(scene.id, id) });
-
-    if (!sceneToArchive || sceneToArchive.status === 'archived') {
-      return;
-    }
-
-    await this.touchBookLastEdited('scene', id);
-    await db.update(scene).set({ status: 'archived' }).where(eq(scene.id, id));
-
-    await db
-      .update(scene)
-      .set({ position: sql`${scene.position} - 1` })
-      .where(
-        and(
-          eq(scene.chapterId, sceneToArchive.chapterId),
-          eq(scene.status, 'active'),
-          gt(scene.position, sceneToArchive.position),
-        ),
-      );
+      tx
+        .update(books)
+        .set({ lastEditedAt: new Date() })
+        .where(eq(books.id, sceneToDelete.bookId))
+        .run();
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -566,6 +571,16 @@ export class ManuscriptRepository {
   // Internal helpers
   // -----------------------------------------------------------------------
 
+  private assertActiveParentId(
+    entity: 'chapter' | 'scene',
+    parentId: string | null | undefined,
+  ): void {
+    if (!parentId) {
+      const parent = entity === 'chapter' ? 'act' : 'chapter';
+      throw new Error(`An active ${entity} must have a parent ${parent}.`);
+    }
+  }
+
   private async resolveBookId(mode: ManuscriptMode, id: string): Promise<string | undefined> {
     switch (mode) {
       case 'book':
@@ -577,21 +592,13 @@ export class ManuscriptRepository {
       }
 
       case 'chapter': {
-        const chapterData = await db.query.chapter.findFirst({
-          where: eq(chapter.id, id),
-          with: { act: true },
-        });
-
-        return chapterData?.act?.bookId;
+        const chapterData = await db.query.chapter.findFirst({ where: eq(chapter.id, id) });
+        return chapterData?.bookId;
       }
 
       case 'scene': {
-        const sceneData = await db.query.scene.findFirst({
-          where: eq(scene.id, id),
-          with: { chapter: { with: { act: true } } },
-        });
-
-        return sceneData?.chapter?.act?.bookId;
+        const sceneData = await db.query.scene.findFirst({ where: eq(scene.id, id) });
+        return sceneData?.bookId;
       }
 
       default:

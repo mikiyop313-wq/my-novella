@@ -27,25 +27,35 @@ export const act = sqliteTable('acts', {
   summary: text('summary'),
 });
 
+// Parent IDs are nullable so archived children can survive parent deletion.
+// Active-parent invariants are enforced by repository write methods.
 export const chapter = sqliteTable('chapters', {
   id: text('id').primaryKey().$defaultFn(randomUUID),
   title: text('title').notNull(),
-  actId: text('act_id')
+  bookId: text('book_id')
     .notNull()
-    .references(() => act.id, { onDelete: 'cascade' }),
+    .references(() => books.id, { onDelete: 'cascade' }),
+  actId: text('act_id')
+    .references(() => act.id, { onDelete: 'set null' }),
   position: integer('position').notNull(),
   status: text('status').$type<NarrativeStatus>().notNull().default('active'),
+  archiveParentTitle: text('archive_parent_title'),
   summary: text('summary'),
 });
 
+// Parent IDs are nullable so archived children can survive parent deletion.
+// Active-parent invariants are enforced by repository write methods.
 export const scene = sqliteTable('scenes', {
   id: text('id').primaryKey().$defaultFn(randomUUID),
   title: text('title').notNull(),
-  chapterId: text('chapter_id')
+  bookId: text('book_id')
     .notNull()
-    .references(() => chapter.id, { onDelete: 'cascade' }),
+    .references(() => books.id, { onDelete: 'cascade' }),
+  chapterId: text('chapter_id')
+    .references(() => chapter.id, { onDelete: 'set null' }),
   position: integer('position').notNull(),
   status: text('status').$type<NarrativeStatus>().notNull().default('active'),
+  archiveParentTitle: text('archive_parent_title'),
   prose: text('prose', { mode: 'json' }).$type<TiptapJsonDoc | null>(),
   summary: text('summary'),
   wordCount: integer('word_count').default(0),
@@ -61,6 +71,8 @@ export const scene = sqliteTable('scenes', {
 
 export const booksNarrativeRelations = relations(books, ({ many }) => ({
   acts: many(act),
+  chapters: many(chapter),
+  scenes: many(scene),
 }));
 
 export const actRelations = relations(act, ({ one, many }) => ({
@@ -72,6 +84,10 @@ export const actRelations = relations(act, ({ one, many }) => ({
 }));
 
 export const chapterRelations = relations(chapter, ({ one, many }) => ({
+  book: one(books, {
+    fields: [chapter.bookId],
+    references: [books.id],
+  }),
   act: one(act, {
     fields: [chapter.actId],
     references: [act.id],
@@ -80,6 +96,10 @@ export const chapterRelations = relations(chapter, ({ one, many }) => ({
 }));
 
 export const sceneRelations = relations(scene, ({ one }) => ({
+  book: one(books, {
+    fields: [scene.bookId],
+    references: [books.id],
+  }),
   chapter: one(chapter, {
     fields: [scene.chapterId],
     references: [chapter.id],
