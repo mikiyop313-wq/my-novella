@@ -1,5 +1,5 @@
 import { redo, undo } from '@codemirror/commands';
-import { EditorSelection } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -188,6 +188,48 @@ describe('MarkdownEditorComponent', () => {
     expect(destroy).toHaveBeenCalledOnce();
   });
 
+  it('keeps the default Enter behavior when submit-on-enter is disabled', async () => {
+    await createEditor('Draft');
+
+    pressKey('Enter');
+
+    expect(editorView().state.doc.toString()).toBe('Draft\n');
+  });
+
+  it('submits on Enter and inserts a line break on Shift+Enter when enabled', async () => {
+    await createEditor('Draft');
+    fixture.componentRef.setInput('submitOnEnter', true);
+    fixture.detectChanges();
+    const submitted = vi.fn();
+    component.submitRequested.subscribe(submitted);
+
+    pressKey('Enter');
+    expect(submitted).toHaveBeenCalledOnce();
+    expect(editorView().state.doc.toString()).toBe('Draft');
+
+    pressKey('Enter', { shiftKey: true });
+    expect(submitted).toHaveBeenCalledOnce();
+    expect(editorView().state.doc.toString()).toBe('Draft\n');
+  });
+
+  it('reactively applies read-only editing and accessibility state', async () => {
+    await createEditor('Draft');
+    const view = editorView();
+
+    expect(view.state.facet(EditorState.readOnly)).toBe(false);
+    expect(view.contentDOM.getAttribute('contenteditable')).toBe('true');
+    expect(view.contentDOM.getAttribute('aria-readonly')).toBe('false');
+
+    fixture.componentRef.setInput('readOnly', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(view.state.facet(EditorState.readOnly)).toBe(true);
+    expect(view.contentDOM.getAttribute('contenteditable')).toBe('false');
+    expect(view.contentDOM.getAttribute('aria-readonly')).toBe('true');
+    expect(view.state.doc.toString()).toBe('Draft');
+  });
+
   it('highlights visible prose while excluding code and link destinations', async () => {
     const source = 'Mara [Mara](https://mara.test) `Mara`\n\n```txt\nMara\n```';
     await createEditor(source);
@@ -273,5 +315,16 @@ describe('MarkdownEditorComponent', () => {
     const binding = markdownFormattingKeymap.find(candidate => candidate.key === key);
     if (!binding) throw new Error(`Missing shortcut ${key}`);
     expect(binding.run(editorView())).toBe(true);
+  }
+
+  function pressKey(key: string, init: KeyboardEventInit = {}): void {
+    const view = editorView();
+    view.focus();
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', {
+      key,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    }));
   }
 });

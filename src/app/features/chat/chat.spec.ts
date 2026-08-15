@@ -13,6 +13,7 @@ import {
 } from '../../../../shared/models/chat.model';
 import { AiStreamService } from '../../core/services/ai-stream.service';
 import { AiStore } from '../../core/store/ai.store';
+import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { CodexContextHighlightRegistryService } from '../codex/highlighting/codex-context-highlight-registry.service';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
@@ -161,10 +162,22 @@ describe('Chat', () => {
     fixture.detectChanges();
   }
 
-  function setComposerValue(value: string): HTMLTextAreaElement {
-    const input = fixture.nativeElement.querySelector('.chat-input') as HTMLTextAreaElement;
-    input.value = value;
-    return input;
+  function composerEditor(): MarkdownEditorComponent {
+    const debugElement = fixture.debugElement.query(By.directive(MarkdownEditorComponent));
+    if (!debugElement) throw new Error('Expected chat Markdown composer');
+    return debugElement.componentInstance as MarkdownEditorComponent;
+  }
+
+  function setComposerValue(value: string): MarkdownEditorComponent {
+    const editor = composerEditor();
+    const view = editor.editorView();
+    if (!view) throw new Error('Expected chat Markdown editor view');
+
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+    });
+    fixture.detectChanges();
+    return editor;
   }
 
   async function remountComponent(): Promise<void> {
@@ -897,7 +910,7 @@ describe('Chat', () => {
     expect(codeBlock?.textContent).toContain('const one = 1;\nconst two = 2;');
   });
 
-  it('keeps markdown syntax inside the composer input without rendering a preview', async () => {
+  it('renders Markdown formatting in the composer while preserving its source', async () => {
     await createComponent({
       snapshot: {
         paramMap: convertToParamMap({ threadId: 'new-chat' }),
@@ -908,14 +921,14 @@ describe('Chat', () => {
       parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
     });
 
-    const input = setComposerValue('Use **bold** and *italic*');
+    const editor = setComposerValue('Use **bold** and *italic*');
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(input.value).toBe('Use **bold** and *italic*');
-    expect(fixture.nativeElement.querySelector('.chat-input strong')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.chat-input em')).toBeNull();
+    expect(editor.editorView()?.state.doc.toString()).toBe('Use **bold** and *italic*');
+    expect(fixture.nativeElement.querySelector('.chat-input .cm-md-strong')?.textContent).toBe('bold');
+    expect(fixture.nativeElement.querySelector('.chat-input .cm-md-emphasis')?.textContent).toBe('italic');
     expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
   });
 
@@ -931,16 +944,37 @@ describe('Chat', () => {
     });
     component.selectedModelId.set('openrouter/test-model');
 
-    const input = setComposerValue('Send **this**');
+    const editor = setComposerValue('Send **this**');
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
 
     await component.sendPrompt();
     fixture.detectChanges();
 
-    expect(input.value).toBe('');
+    expect(editor.editorView()?.state.doc.toString()).toBe('');
     expect(fixture.nativeElement.querySelector('.chat-input-preview')).toBeNull();
     expect(chatStore.sendMessage).toHaveBeenCalledWith('Send **this**');
+  });
+
+  it('keeps the Markdown draft when the user message is not saved', async () => {
+    await createComponent({
+      snapshot: {
+        paramMap: convertToParamMap({ threadId: 'new-chat' }),
+        routeConfig: { path: 'thread/:threadId' },
+      },
+      routeConfig: { path: 'thread/:threadId' },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    chatStore.sendMessage.mockResolvedValueOnce(null);
+    const editor = setComposerValue('Keep **this** draft');
+
+    await component.sendPrompt();
+    fixture.detectChanges();
+
+    expect(editor.editorView()?.state.doc.toString()).toBe('Keep **this** draft');
+    expect(aiStreamService.streamText).not.toHaveBeenCalled();
   });
 
   it('creates and selects an edited user-message branch before generating a response', async () => {
@@ -1249,10 +1283,12 @@ describe('Chat', () => {
     await remountComponent();
 
     const sendButton = fixture.nativeElement.querySelector('.send-btn') as HTMLButtonElement;
-    const composer = fixture.nativeElement.querySelector('.chat-input') as HTMLTextAreaElement;
+    const composer = composerEditor();
     expect(sendButton.getAttribute('aria-label')).toBe('Stop generating');
     expect(sendButton.disabled).toBe(false);
-    expect(composer.readOnly).toBe(true);
+    expect(composer.readOnly()).toBe(true);
+    expect(composer.editorView()?.contentDOM.getAttribute('aria-readonly')).toBe('true');
+    expect(composer.editorView()?.contentDOM.getAttribute('contenteditable')).toBe('false');
 
     await component.handleSendOrStop();
 

@@ -24,6 +24,7 @@ import {
   AutocompleteDropdownComponent,
   type DropdownOption,
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { ChatThreads } from './components/chat-threads/chat-threads';
@@ -43,6 +44,7 @@ const STREAMING_AUTO_SCROLL_FRAMES = 3;
     AutocompleteDropdownComponent,
     CdkMenuModule,
     MarkdownComponent,
+    MarkdownEditorComponent,
     CodexContextHighlightDirective,
   ],
   templateUrl: './chat.html',
@@ -74,7 +76,6 @@ export class Chat implements OnInit, OnDestroy {
   @ViewChild(ChatThreads) private chatThreads?: ChatThreads;
   @ViewChild('activeRenameInput') private activeRenameInput?: ElementRef<HTMLInputElement>;
   @ViewChild('messageEditInput') private messageEditInput?: ElementRef<HTMLTextAreaElement>;
-  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>;
 
 
   // ---------------------------------------------------------------------------
@@ -90,6 +91,7 @@ export class Chat implements OnInit, OnDestroy {
   readonly isChatOpenInDetachedWindow = signal(false);
   readonly selectedModelId = signal<string | null>(null);
   readonly reasoningMode = signal(false);
+  readonly composerValue = signal('');
   readonly copiedMessageId = signal<string | null>(null);
   readonly expandedReasoningMessageIds = signal<ReadonlySet<string>>(new Set());
   readonly isAutoScrollEnabled = signal(true);
@@ -426,33 +428,14 @@ export class Chat implements OnInit, OnDestroy {
     }
   }
 
-  handlePromptKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Enter') return;
-
-    const input = this.composerInput?.nativeElement;
-    if (!input) return;
-
-    if (event.shiftKey) {
-      queueMicrotask(() => this.resizePromptInput(input));
-      return;
-    }
-
-    event.preventDefault();
-    void this.sendPrompt();
-  }
-
   async sendPrompt(): Promise<void> {
-    const input = this.composerInput?.nativeElement;
-    const content = (input?.value ?? '').trim();
+    const content = this.composerValue().trim();
     if (!content || this.isSendButtonDisabled()) return;
 
     const userMessage = await this.chatStore.sendMessage(content);
     if (!userMessage || this.chatStore.error()) return;
 
-    if (input) {
-      input.value = '';
-      this.resizePromptInput(input);
-    }
+    this.composerValue.set('');
 
     const thread = this.chatStore.selectedThread();
     if (!this.isDetachedMode && thread && (this.isNewChatRoute() || this.selectedThreadId !== thread.id)) {

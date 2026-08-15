@@ -297,9 +297,10 @@
 
       <div class="chat-footer" [hidden]="!hasActiveConversation || showMainDetachedState">
         <div class="chat-input-wrapper">
-          <textarea #composerInput class="chat-input" rows="1" placeholder="Type a message..." spellcheck="true"
-            aria-label="Type a message" [readOnly]="isAiResponseActive()" (keydown)="handlePromptKeydown($event)"
-            (input)="resizePromptInput(composerInput)"></textarea>
+          <app-markdown-editor class="chat-input" [value]="composerValue()" placeholder="Type a message..."
+            ariaLabel="Type a message" [readOnly]="isAiResponseActive()" [submitOnEnter]="true"
+            (valueChange)="composerValue.set($event)" (submitRequested)="sendPrompt()">
+          </app-markdown-editor>
 
           <div class="chat-input-footer">
             <app-autocomplete-dropdown [options]="modelOptions()" [selectedValue]="selectedModelId()"

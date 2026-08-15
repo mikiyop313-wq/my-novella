@@ -10,8 +10,9 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { insertNewlineAndIndent } from '@codemirror/commands';
+import { Compartment, EditorState, Prec } from '@codemirror/state';
+import { EditorView, keymap } from '@codemirror/view';
 
 import {
   createMarkdownExtensions,
@@ -30,12 +31,16 @@ export class MarkdownEditorComponent implements AfterViewInit, OnDestroy {
   readonly value = input('');
   readonly placeholder = input('Write Markdown...');
   readonly ariaLabel = input('Markdown editor');
+  readonly readOnly = input(false);
+  readonly submitOnEnter = input(false);
   readonly keywordHighlights = input<readonly MarkdownKeywordHighlight[]>([]);
   readonly valueChange = output<string>();
+  readonly submitRequested = output<void>();
   readonly keywordClick = output<MarkdownKeywordClick>();
 
   readonly editorView = signal<EditorView | null>(null);
   private readonly editorHost = viewChild.required<ElementRef<HTMLDivElement>>('editorHost');
+  private readonly readOnlyCompartment = new Compartment();
 
   constructor() {
     effect(() => {
@@ -51,6 +56,16 @@ export class MarkdownEditorComponent implements AfterViewInit, OnDestroy {
       const view = this.editorView();
       const highlights = this.keywordHighlights();
       if (view) updateMarkdownKeywordHighlights(view, highlights);
+    });
+
+    effect(() => {
+      const view = this.editorView();
+      const readOnly = this.readOnly();
+      if (!view) return;
+
+      view.dispatch({
+        effects: this.readOnlyCompartment.reconfigure(this.createReadOnlyExtensions(readOnly)),
+      });
     });
   }
 
@@ -73,10 +88,27 @@ export class MarkdownEditorComponent implements AfterViewInit, OnDestroy {
       doc: value,
       selection: { anchor: value.length },
       extensions: [
+        Prec.highest(keymap.of([
+          {
+            key: 'Enter',
+            run: () => {
+              if (!this.submitOnEnter()) return false;
+              if (this.readOnly()) return true;
+
+              this.submitRequested.emit();
+              return true;
+            },
+          },
+          {
+            key: 'Shift-Enter',
+            run: view => this.submitOnEnter() ? insertNewlineAndIndent(view) : false,
+          },
+        ])),
         ...createMarkdownExtensions(
           this.placeholder(),
           event => this.keywordClick.emit(event),
         ),
+        this.readOnlyCompartment.of(this.createReadOnlyExtensions(this.readOnly())),
         EditorView.contentAttributes.of({
           'aria-label': this.ariaLabel(),
           spellcheck: 'true',
@@ -86,5 +118,15 @@ export class MarkdownEditorComponent implements AfterViewInit, OnDestroy {
         }),
       ],
     });
+  }
+
+  private createReadOnlyExtensions(readOnly: boolean) {
+    return [
+      EditorState.readOnly.of(readOnly),
+      EditorView.editable.of(!readOnly),
+      EditorView.contentAttributes.of({
+        'aria-readonly': readOnly ? 'true' : 'false',
+      }),
+    ];
   }
 }

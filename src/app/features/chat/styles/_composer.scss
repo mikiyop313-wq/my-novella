@@ -28,29 +28,51 @@
   .chat-input {
     display: block;
     width: 100%;
-    min-height: 34px;
-    max-height: 160px;
     min-width: 0;
-    overflow-y: auto;
-    scrollbar-width: none;
-    padding: 2px 0 6px;
-    outline: none;
-    border: none;
-    background: transparent;
-    color: var(--color-text-primary);
-    font-family: inherit;
-    font-size: 0.95rem;
-    line-height: 1.45;
-    white-space: pre-wrap;
-    resize: none;
 
-    &::-webkit-scrollbar {
-      display: none;
-    }
+    ::ng-deep {
+      .cm-editor {
+        width: 100%;
+        height: auto;
+        min-height: 34px;
+        max-height: 160px;
+        overflow: hidden;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        color: var(--color-text-primary);
+        font-family: inherit;
+        font-size: 0.95rem;
+        line-height: 1.45;
 
-    &::placeholder {
-      color: var(--color-text-secondary);
-      opacity: 1;
+        &.cm-focused {
+          border-color: transparent;
+          box-shadow: none;
+        }
+      }
+
+      .cm-scroller {
+        min-height: 34px;
+        max-height: 160px;
+        overflow-y: auto;
+        scrollbar-width: none;
+        font-family: inherit;
+
+        &::-webkit-scrollbar {
+          display: none;
+        }
+      }
+
+      .cm-content {
+        min-height: 34px;
+        padding: 2px 0 6px;
+      }
+
+      .cm-placeholder {
+        color: var(--color-text-secondary);
+        opacity: 1;
+      }
     }
   }
 
