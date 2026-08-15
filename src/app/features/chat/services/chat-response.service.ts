@@ -1,7 +1,10 @@
 import { Injectable, inject, signal } from '@angular/core';
 
 import { type AiModel } from '../../../../../shared/models/ai.model';
-import { type ChatMessageDetailDto, type ChatThreadDetailDto } from '../../../../../shared/models/chat.model';
+import {
+  type ChatMessageDetailDto,
+  type ChatThreadDetailDto,
+} from '../../../../../shared/models/chat.model';
 import { AiStore } from '../../../core/store/ai.store';
 import { type AiChatMessage } from '../../../core/services/ai-state.service';
 import { AiStreamService } from '../../../core/services/ai-stream.service';
@@ -33,7 +36,6 @@ interface ResolvedModel {
  */
 @Injectable({ providedIn: 'root' })
 export class ChatResponseService {
-
   // ---------------------------------------------------------------------------
   // Dependencies
   // ---------------------------------------------------------------------------
@@ -41,7 +43,6 @@ export class ChatResponseService {
   private readonly aiStore = inject(AiStore);
   private readonly aiStreamService = inject(AiStreamService);
   private readonly chatStore = inject(ChatStore);
-
 
   // ---------------------------------------------------------------------------
   // Response State
@@ -55,7 +56,6 @@ export class ChatResponseService {
   readonly isGeneratingResponse = this.generatingResponse.asReadonly();
   readonly isStoppingResponse = this.stoppingResponse.asReadonly();
   readonly renderVersion = this.responseRenderVersion.asReadonly();
-
 
   // ---------------------------------------------------------------------------
   // Public Generation API
@@ -73,7 +73,10 @@ export class ChatResponseService {
     const messages = this.buildAiMessages(userMessage);
     const streamId = `pending-${userMessage.id}`;
     const threadId = userMessage.threadId;
-    const shouldGenerateTitle = this.shouldGenerateThreadTitle(this.chatStore.selectedThread(), userMessage);
+    const shouldGenerateTitle = this.shouldGenerateThreadTitle(
+      this.chatStore.selectedThread(),
+      userMessage,
+    );
 
     let assistantMessage: ChatMessageDetailDto | null = null;
     let assistantMessagePromise: Promise<ChatMessageDetailDto | null> | null = null;
@@ -85,30 +88,42 @@ export class ChatResponseService {
     this.generatingResponse.set(true);
     this.requestRender();
 
+    // Do not create an empty assistant message until the stream has useful
+    // output, but keep one shared promise once creation starts.
     const ensureAssistantMessage = (): Promise<ChatMessageDetailDto | null> => {
       if (assistantMessage) return Promise.resolve(assistantMessage);
 
       if (!assistantMessagePromise) {
-        assistantMessagePromise = this.chatStore.createAssistantMessage({
-          threadId,
-          parentMessageId: userMessage.id,
-          provider,
-          modelId,
-          ...(settings.branchGroupId ? { branchGroupId: settings.branchGroupId } : {}),
-        }).then(async (message) => {
-          if (message && settings.selectCreatedBranch && this.chatStore.selectedThread()?.id === threadId) {
-            await this.chatStore.selectMessageBranch(message.id);
-          }
+        assistantMessagePromise = this.chatStore
+          .createAssistantMessage({
+            threadId,
+            parentMessageId: userMessage.id,
+            provider,
+            modelId,
+            ...(settings.branchGroupId ? { branchGroupId: settings.branchGroupId } : {}),
+          })
+          .then(async (message) => {
+            if (
+              message &&
+              settings.selectCreatedBranch &&
+              this.chatStore.selectedThread()?.id === threadId
+            ) {
+              await this.chatStore.selectMessageBranch(message.id);
+            }
 
-          assistantMessage = message;
-          return message;
-        });
+            assistantMessage = message;
+            return message;
+          });
       }
 
       return assistantMessagePromise;
     };
 
-    const queueStreamingPatch = (data: Partial<Pick<ChatMessageDetailDto, 'content' | 'reasoningSummary'>>): void => {
+    // Stream callbacks can arrive faster than state writes complete. Chain each
+    // patch so content and reasoning updates stay in order.
+    const queueStreamingPatch = (
+      data: Partial<Pick<ChatMessageDetailDto, 'content' | 'reasoningSummary'>>,
+    ): void => {
       lastStreamingPatch = lastStreamingPatch
         .catch(() => undefined)
         .then(async () => {
@@ -149,11 +164,13 @@ export class ChatResponseService {
 
       const finalContent = streamedContent || generatedText;
 
+      // Some providers can finish without returning visible content. In that
+      // case there is no assistant message worth showing or persisting.
       if (!finalContent.trim()) {
         return;
       }
 
-      assistantMessage = assistantMessage ?? await ensureAssistantMessage();
+      assistantMessage = assistantMessage ?? (await ensureAssistantMessage());
       await lastStreamingPatch;
       if (!assistantMessage) return;
 
@@ -169,6 +186,9 @@ export class ChatResponseService {
 
       this.chatStore.patchStreamingMessage(assistantMessage.id, data);
       this.requestRender();
+
+      // The local patch keeps the UI responsive; the update persists the final
+      // status and metadata once streaming has settled.
       await this.chatStore.updateMessage(assistantMessage.id, data);
       if (shouldGenerateTitle) {
         await this.generateThreadTitle(userMessage, provider, modelId);
@@ -224,12 +244,16 @@ export class ChatResponseService {
   async retryMessage(messageId: string, settings: ChatResponseSettings): Promise<void> {
     if (this.chatStore.isSaving() || this.generatingResponse()) return;
 
-    const assistantMessage = this.chatStore.visibleMessages().find((message) => message.id === messageId);
+    const assistantMessage = this.chatStore
+      .visibleMessages()
+      .find((message) => message.id === messageId);
     if (!assistantMessage || assistantMessage.role !== 'assistant') return;
 
-    const userMessage = this.chatStore.messages().find((message) => (
-      message.id === assistantMessage.parentMessageId && message.role === 'user'
-    ));
+    const userMessage = this.chatStore
+      .messages()
+      .find(
+        (message) => message.id === assistantMessage.parentMessageId && message.role === 'user',
+      );
     if (!userMessage) return;
 
     await this.retryResponseForUser(userMessage, settings);
@@ -245,9 +269,9 @@ export class ChatResponseService {
       ...settings,
       ...(previousResponse
         ? {
-          branchGroupId: previousResponse.branchGroupId ?? previousResponse.id,
-          selectCreatedBranch: true,
-        }
+            branchGroupId: previousResponse.branchGroupId ?? previousResponse.id,
+            selectCreatedBranch: true,
+          }
         : {}),
     });
   }
@@ -267,13 +291,18 @@ export class ChatResponseService {
         return savedProvider === 'openrouter' && model.id === savedModelId;
       }
 
-      return this.resolveDirectProvider(model) === savedProvider
-        && (model.id.split('/')[1] || model.id) === savedModelId;
+      return (
+        this.resolveDirectProvider(model) === savedProvider &&
+        (model.id.split('/')[1] || model.id) === savedModelId
+      );
     });
 
-    return matchingModel?.id ?? this.getDirectModelSelectorId(savedProvider, savedModelId) ?? savedModelId;
+    return (
+      matchingModel?.id ??
+      this.getDirectModelSelectorId(savedProvider, savedModelId) ??
+      savedModelId
+    );
   }
-
 
   // ---------------------------------------------------------------------------
   // Private Helpers
@@ -282,15 +311,19 @@ export class ChatResponseService {
   private buildAiMessages(userMessage: ChatMessageDetailDto): AiChatMessage[] {
     const threadMessages = this.chatStore.visibleMessages();
     const userMessageIndex = threadMessages.findIndex((message) => message.id === userMessage.id);
-    const messages = userMessageIndex === -1
-      ? [...threadMessages, userMessage]
-      : threadMessages.slice(0, userMessageIndex + 1);
+    const messages =
+      userMessageIndex === -1
+        ? [...threadMessages, userMessage]
+        : threadMessages.slice(0, userMessageIndex + 1);
 
+    // Send only the active branch up to the requested user message. Draft,
+    // failed, and empty messages are excluded from provider context.
     return messages
-      .filter((message) => (
-        (message.status === 'complete' || message.id === userMessage.id) &&
-        message.content.trim().length > 0
-      ))
+      .filter(
+        (message) =>
+          (message.status === 'complete' || message.id === userMessage.id) &&
+          message.content.trim().length > 0,
+      )
       .map((message) => ({ role: message.role, content: message.content }));
   }
 
@@ -317,6 +350,7 @@ export class ChatResponseService {
         await this.chatStore.updateThread(userMessage.threadId, { title });
       }
     } catch (error) {
+      // Title generation is opportunistic and should not fail the response.
       console.warn('[ChatResponseService] Failed to generate chat thread title:', error);
     }
   }
@@ -325,22 +359,31 @@ export class ChatResponseService {
     thread: ChatThreadDetailDto | null,
     userMessage: ChatMessageDetailDto,
   ): thread is ChatThreadDetailDto {
-    if (!thread || thread.id !== userMessage.threadId || thread.title.trim() !== DEFAULT_CHAT_THREAD_TITLE) return false;
+    if (
+      !thread ||
+      thread.id !== userMessage.threadId ||
+      thread.title.trim() !== DEFAULT_CHAT_THREAD_TITLE
+    )
+      return false;
 
-    const userMessages = this.chatStore.visibleMessages().filter((message) => (
-      message.role === 'user' &&
-      message.content.trim().length > 0 &&
-      (message.status === 'complete' || message.id === userMessage.id)
-    ));
+    const userMessages = this.chatStore
+      .visibleMessages()
+      .filter(
+        (message) =>
+          message.role === 'user' &&
+          message.content.trim().length > 0 &&
+          (message.status === 'complete' || message.id === userMessage.id),
+      );
 
     return userMessages.length === 1 && userMessages[0].id === userMessage.id;
   }
 
   private normalizeThreadTitle(rawTitle: string): string | null {
-    const firstLine = rawTitle
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? '';
+    const firstLine =
+      rawTitle
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0) ?? '';
     let title = firstLine
       .replace(/^title\s*:\s*/i, '')
       .replace(/^[\s"'`]+|[\s"'`]+$/g, '')
@@ -351,7 +394,11 @@ export class ChatResponseService {
     if (!title || title === DEFAULT_CHAT_THREAD_TITLE) return null;
 
     if (title.length > 80) {
-      title = title.slice(0, 80).trim().replace(/[,;:-]+$/g, '').trim();
+      title = title
+        .slice(0, 80)
+        .trim()
+        .replace(/[,;:-]+$/g, '')
+        .trim();
     }
 
     return title || null;
@@ -362,7 +409,8 @@ export class ChatResponseService {
     const userMessageIndex = messages.findIndex((message) => message.id === userMessageId);
     const assistantMessage = userMessageIndex === -1 ? null : messages[userMessageIndex + 1];
 
-    return assistantMessage?.role === 'assistant' && assistantMessage.parentMessageId === userMessageId
+    return assistantMessage?.role === 'assistant' &&
+      assistantMessage.parentMessageId === userMessageId
       ? assistantMessage
       : null;
   }

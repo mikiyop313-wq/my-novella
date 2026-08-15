@@ -13,17 +13,23 @@ import {
 import { ToastService } from '../../../shared/services/toast.service';
 import { ChatService } from '../services/chat.service';
 
-type LocalChatMessagePatch = Partial<Pick<
-  ChatMessageDetailDto,
-  | 'content'
-  | 'status'
-  | 'modelId'
-  | 'provider'
-  | 'inputTokens'
-  | 'outputTokens'
-  | 'reasoningSummary'
-  | 'error'
->>;
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
+type LocalChatMessagePatch = Partial<
+  Pick<
+    ChatMessageDetailDto,
+    | 'content'
+    | 'status'
+    | 'modelId'
+    | 'provider'
+    | 'inputTokens'
+    | 'outputTokens'
+    | 'reasoningSummary'
+    | 'error'
+  >
+>;
 
 export interface ChatState {
   bookId: string | null;
@@ -45,35 +51,42 @@ const initialState: ChatState = {
   error: null,
 };
 
+// -----------------------------------------------------------------------------
+// Local Helpers
+// -----------------------------------------------------------------------------
+
 const getErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
 
 const sortMessages = (messages: ChatMessageDetailDto[]): ChatMessageDetailDto[] =>
-  [...messages].sort((first, second) => (
-    first.position - second.position ||
-    (first.branchOrder ?? 0) - (second.branchOrder ?? 0) ||
-    first.createdAt.localeCompare(second.createdAt)
-  ));
+  [...messages].sort(
+    (first, second) =>
+      first.position - second.position ||
+      (first.branchOrder ?? 0) - (second.branchOrder ?? 0) ||
+      first.createdAt.localeCompare(second.createdAt),
+  );
 
 const getBranchGroupId = (message: ChatMessageDetailDto): string =>
   message.branchGroupId ?? message.id;
 
 const sortBranchMessages = (messages: ChatMessageDetailDto[]): ChatMessageDetailDto[] =>
-  [...messages].sort((first, second) => (
-    (first.branchOrder ?? 0) - (second.branchOrder ?? 0) ||
-    first.createdAt.localeCompare(second.createdAt) ||
-    first.id.localeCompare(second.id)
-  ));
+  [...messages].sort(
+    (first, second) =>
+      (first.branchOrder ?? 0) - (second.branchOrder ?? 0) ||
+      first.createdAt.localeCompare(second.createdAt) ||
+      first.id.localeCompare(second.id),
+  );
 
 const upsertBranchSelection = (
   selections: ChatBranchSelectionDto[],
   selection: ChatBranchSelectionDto,
 ): ChatBranchSelectionDto[] => [
-    ...selections.filter((item) => (
-      item.threadId !== selection.threadId || item.branchGroupId !== selection.branchGroupId
-    )),
-    selection,
-  ];
+  ...selections.filter(
+    (item) =>
+      item.threadId !== selection.threadId || item.branchGroupId !== selection.branchGroupId,
+  ),
+  selection,
+];
 
 const ensureLocalBranchSelection = (
   selections: ChatBranchSelectionDto[],
@@ -82,9 +95,12 @@ const ensureLocalBranchSelection = (
   const branchGroupId = message.branchGroupId;
   if (!branchGroupId) return selections;
 
-  const hasSelection = selections.some((selection) => (
-    selection.threadId === message.threadId && selection.branchGroupId === branchGroupId
-  ));
+  // Locally appended branch messages should become visible immediately, even
+  // before the persisted branch selection has been refreshed from storage.
+  const hasSelection = selections.some(
+    (selection) =>
+      selection.threadId === message.threadId && selection.branchGroupId === branchGroupId,
+  );
 
   if (hasSelection) return selections;
 
@@ -102,7 +118,10 @@ const computeVisibleMessages = (
   messages: ChatMessageDetailDto[],
   selections: ChatBranchSelectionDto[],
 ): ChatMessageDetailDto[] => {
+  // Rebuild the active conversation path by following the selected branch at
+  // each parent message.
   const sortedMessages = sortMessages(messages);
+
   const messagesByParent = new Map<string | null, ChatMessageDetailDto[]>();
   const selectedByGroup = new Map<string, string>();
 
@@ -121,15 +140,20 @@ const computeVisibleMessages = (
 
   while (!visitedParentIds.has(parentId)) {
     visitedParentIds.add(parentId);
+
     const children = messagesByParent.get(parentId) ?? [];
     if (children.length === 0) break;
 
+    // A branch group represents alternate messages at the same conversation step.
+    // Pick the selected branch, then continue walking from that message.
     const firstGroupId = getBranchGroupId(children[0]);
     const siblings = sortBranchMessages(
       children.filter((message) => getBranchGroupId(message) === firstGroupId),
     );
+
     const selectedMessageId = selectedByGroup.get(firstGroupId);
-    const selectedMessage = siblings.find((message) => message.id === selectedMessageId) ?? siblings[0];
+    const selectedMessage =
+      siblings.find((message) => message.id === selectedMessageId) ?? siblings[0];
     if (!selectedMessage) break;
 
     visible.push(selectedMessage);
@@ -138,6 +162,10 @@ const computeVisibleMessages = (
 
   return visible;
 };
+
+// -----------------------------------------------------------------------------
+// Store
+// -----------------------------------------------------------------------------
 
 export const ChatStore = signalStore(
   { providedIn: 'root' },
@@ -152,21 +180,17 @@ export const ChatStore = signalStore(
     }),
   })),
 
-  withMethods((
-    store,
-    chatService = inject(ChatService),
-    toastService = inject(ToastService),
-  ) => {
+  withMethods((store, chatService = inject(ChatService), toastService = inject(ToastService)) => {
+    // -------------------------------------------------------------------------
+    // State Mutation Helpers
+    // -------------------------------------------------------------------------
+
     function setError(message: string, state: Partial<ChatState> = {}): void {
       patchState(store, { ...state, error: message });
       toastService.error(message, 'Chat');
     }
 
-    function reportError(
-      error: unknown,
-      fallback: string,
-      state: Partial<ChatState> = {},
-    ): void {
+    function reportError(error: unknown, fallback: string, state: Partial<ChatState> = {}): void {
       setError(getErrorMessage(error, fallback), state);
     }
 
@@ -187,8 +211,7 @@ export const ChatStore = signalStore(
     function removeThread(threadId: string): void {
       patchState(store, {
         threads: store.threads().filter((thread) => thread.id !== threadId),
-        selectedThread:
-          store.selectedThread()?.id === threadId ? null : store.selectedThread(),
+        selectedThread: store.selectedThread()?.id === threadId ? null : store.selectedThread(),
       });
     }
 
@@ -227,9 +250,9 @@ export const ChatStore = signalStore(
         selectedThread: {
           ...selectedThread,
           messages: sortMessages(
-            selectedThread.messages.map((item) => (
-              item.id === messageId ? { ...item, ...data } : item
-            )),
+            selectedThread.messages.map((item) =>
+              item.id === messageId ? { ...item, ...data } : item,
+            ),
           ),
         },
       });
@@ -243,9 +266,9 @@ export const ChatStore = signalStore(
         selectedThread: {
           ...selectedThread,
           messages: selectedThread.messages.filter((message) => message.id !== messageId),
-          branchSelections: selectedThread.branchSelections.filter((selection) => (
-            selection.selectedMessageId !== messageId
-          )),
+          branchSelections: selectedThread.branchSelections.filter(
+            (selection) => selection.selectedMessageId !== messageId,
+          ),
         },
       });
     }
@@ -268,6 +291,10 @@ export const ChatStore = signalStore(
         store.messages().filter((item) => getBranchGroupId(item) === branchGroupId),
       );
     }
+
+    // -------------------------------------------------------------------------
+    // Thread Request Helpers
+    // -------------------------------------------------------------------------
 
     async function loadThreads(bookId: string, includeArchived = false): Promise<void> {
       patchState(store, {
@@ -343,6 +370,10 @@ export const ChatStore = signalStore(
     }
 
     return {
+      // -----------------------------------------------------------------------
+      // Book and Thread Actions
+      // -----------------------------------------------------------------------
+
       clear(): void {
         patchState(store, initialState);
       },
@@ -421,6 +452,10 @@ export const ChatStore = signalStore(
         }
       },
 
+      // -----------------------------------------------------------------------
+      // Message Actions
+      // -----------------------------------------------------------------------
+
       async sendMessage(
         content: string,
         refs: Pick<CreateChatMessageDto, 'sceneIds' | 'codexEntryIds'> = {},
@@ -471,16 +506,18 @@ export const ChatStore = signalStore(
       },
 
       async createAssistantMessage(
-        data: Partial<Pick<
-          CreateChatMessageDto,
-          | 'threadId'
-          | 'modelId'
-          | 'provider'
-          | 'reasoningSummary'
-          | 'parentMessageId'
-          | 'branchGroupId'
-          | 'branchOrder'
-        >> = {},
+        data: Partial<
+          Pick<
+            CreateChatMessageDto,
+            | 'threadId'
+            | 'modelId'
+            | 'provider'
+            | 'reasoningSummary'
+            | 'parentMessageId'
+            | 'branchGroupId'
+            | 'branchOrder'
+          >
+        > = {},
       ): Promise<ChatMessageDetailDto | null> {
         const selectedThread = store.selectedThread();
         const threadId = data.threadId ?? selectedThread?.id;
@@ -528,7 +565,9 @@ export const ChatStore = signalStore(
         const trimmedContent = content.trim();
         if (!selectedThread || !trimmedContent || store.isSaving()) return null;
 
-        const sourceMessage = selectedThread.messages.find((message) => message.id === sourceMessageId);
+        const sourceMessage = selectedThread.messages.find(
+          (message) => message.id === sourceMessageId,
+        );
         if (!sourceMessage) return null;
 
         patchState(store, {
@@ -559,11 +598,18 @@ export const ChatStore = signalStore(
         }
       },
 
+      // -----------------------------------------------------------------------
+      // Message Updates
+      // -----------------------------------------------------------------------
+
       patchStreamingMessage(id: string, data: LocalChatMessagePatch): void {
         patchMessageFields(id, data);
       },
 
-      async updateMessage(id: string, data: UpdateChatMessageDto): Promise<ChatMessageDetailDto | null> {
+      async updateMessage(
+        id: string,
+        data: UpdateChatMessageDto,
+      ): Promise<ChatMessageDetailDto | null> {
         patchState(store, {
           isSaving: true,
           error: null,
@@ -601,6 +647,10 @@ export const ChatStore = signalStore(
         }
       },
 
+      // -----------------------------------------------------------------------
+      // Branch Navigation
+      // -----------------------------------------------------------------------
+
       getMessageBranches,
 
       getMessageBranchCount(message: ChatMessageDetailDto): number {
@@ -608,8 +658,9 @@ export const ChatStore = signalStore(
       },
 
       getMessageBranchIndex(message: ChatMessageDetailDto): number {
-        const branchIndex = getMessageBranches(message)
-          .findIndex((branch) => branch.id === message.id);
+        const branchIndex = getMessageBranches(message).findIndex(
+          (branch) => branch.id === message.id,
+        );
 
         return branchIndex === -1 ? 1 : branchIndex + 1;
       },
@@ -657,7 +708,10 @@ export const ChatStore = signalStore(
         const branches = getMessageBranches(message);
         if (branches.length <= 1) return;
 
-        const currentIndex = Math.max(0, branches.findIndex((branch) => branch.id === message.id));
+        const currentIndex = Math.max(
+          0,
+          branches.findIndex((branch) => branch.id === message.id),
+        );
         const nextIndex = (currentIndex + direction + branches.length) % branches.length;
         const nextMessage = branches[nextIndex];
         if (!nextMessage || nextMessage.id === message.id) return;
