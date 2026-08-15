@@ -1,0 +1,519 @@
+<div class="settings-section-panel archive-panel">
+  <header class="content-header">
+    <h1 class="content-title">Archive</h1>
+    <p class="content-subtitle">
+      Restore acts, chapters, and scenes without losing their manuscript content.
+    </p>
+  </header>
+
+  @if (store.isLoading()) {
+    <div class="archive-state" role="status" aria-live="polite">
+      <span class="archive-spinner" aria-hidden="true"></span>
+      <div>
+        <strong>Loading archived content</strong>
+        <p>Preparing the archived manuscript hierarchy.</p>
+      </div>
+    </div>
+  } @else if (store.loadError()) {
+    <div class="archive-state is-error" role="alert">
+      <div>
+        <strong>Archive unavailable</strong>
+        <p>{{ store.loadError() }}</p>
+      </div>
+      <button class="archive-button is-secondary" type="button" (click)="store.load(bookId())">
+        Retry
+      </button>
+    </div>
+  } @else {
+    <div class="archive-tabs" role="tablist" aria-label="Archived manuscript content">
+      <button
+        id="archive-acts-tab"
+        class="archive-tab"
+        type="button"
+        role="tab"
+        [class.is-active]="activeTab() === 'acts'"
+        [attr.aria-selected]="activeTab() === 'acts'"
+        aria-controls="archive-acts-panel"
+        (click)="selectTab('acts')"
+      >
+        Acts <span>{{ store.archivedActs().length }}</span>
+      </button>
+      <button
+        id="archive-chapters-tab"
+        class="archive-tab"
+        type="button"
+        role="tab"
+        [class.is-active]="activeTab() === 'chapters'"
+        [attr.aria-selected]="activeTab() === 'chapters'"
+        aria-controls="archive-chapters-panel"
+        (click)="selectTab('chapters')"
+      >
+        Chapters <span>{{ store.archivedChapters().length }}</span>
+      </button>
+      <button
+        id="archive-scenes-tab"
+        class="archive-tab"
+        type="button"
+        role="tab"
+        [class.is-active]="activeTab() === 'scenes'"
+        [attr.aria-selected]="activeTab() === 'scenes'"
+        aria-controls="archive-scenes-panel"
+        (click)="selectTab('scenes')"
+      >
+        Scenes <span>{{ store.archivedScenes().length }}</span>
+      </button>
+    </div>
+
+    @if (activeTab() === 'acts') {
+      <section
+        id="archive-acts-panel"
+        class="archive-list"
+        role="tabpanel"
+        aria-labelledby="archive-acts-tab"
+      >
+        @for (act of store.archivedActs(); track act.id) {
+          <article class="archive-card">
+            <header class="archive-card-header">
+              <div>
+                <span class="archive-type">Act</span>
+                <h2>{{ act.title }}</h2>
+              </div>
+              <button
+                class="archive-menu-trigger"
+                type="button"
+                data-archive-menu-trigger
+                data-archive-type="act"
+                [appOverlayMenu]="archiveItemMenu"
+                [appOverlayMenuData]="{ type: 'act', id: act.id, title: act.title }"
+                [appOverlayMenuCloseOnSelect]="true"
+                [appOverlayMenuFocusOnOpen]="true"
+                [attr.aria-label]="itemActionLabel('act', act.id, act.title)"
+                [attr.data-busy]="isItemBusy('act', act.id) ? 'true' : null"
+                [disabled]="store.isBusy()"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="5" r="1"></circle>
+                  <circle cx="12" cy="12" r="1"></circle>
+                  <circle cx="12" cy="19" r="1"></circle>
+                </svg>
+              </button>
+            </header>
+
+            @if (act.chapters.length > 0) {
+              <div class="archive-tree">
+                @for (chapter of act.chapters; track chapter.id) {
+                  <div class="archive-branch">
+                    <div class="archive-tree-row">
+                      <div>
+                        <span class="archive-type">Chapter</span>
+                        <strong>{{ chapter.title }}</strong>
+                      </div>
+                      <button
+                        class="archive-menu-trigger"
+                        type="button"
+                        data-archive-menu-trigger
+                        data-archive-type="chapter"
+                        [appOverlayMenu]="archiveItemMenu"
+                        [appOverlayMenuData]="{
+                          type: 'chapter',
+                          id: chapter.id,
+                          title: chapter.title,
+                        }"
+                        [appOverlayMenuCloseOnSelect]="true"
+                        [appOverlayMenuFocusOnOpen]="true"
+                        [attr.aria-label]="itemActionLabel('chapter', chapter.id, chapter.title)"
+                        [attr.data-busy]="isItemBusy('chapter', chapter.id) ? 'true' : null"
+                        [disabled]="store.isBusy()"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="5" r="1"></circle>
+                          <circle cx="12" cy="12" r="1"></circle>
+                          <circle cx="12" cy="19" r="1"></circle>
+                        </svg>
+                      </button>
+                    </div>
+                    <ng-container
+                      [ngTemplateOutlet]="chapterRestore"
+                      [ngTemplateOutletContext]="{ itemId: chapter.id }"
+                    ></ng-container>
+
+                    @for (scene of chapter.scenes; track scene.id) {
+                      <div class="archive-tree-row is-scene">
+                        <div>
+                          <span class="archive-type">Scene</span>
+                          <strong>{{ sceneTitle(scene.title) }}</strong>
+                        </div>
+                        <button
+                          class="archive-menu-trigger"
+                          type="button"
+                          data-archive-menu-trigger
+                          data-archive-type="scene"
+                          [appOverlayMenu]="archiveItemMenu"
+                          [appOverlayMenuData]="{
+                            type: 'scene',
+                            id: scene.id,
+                            title: sceneTitle(scene.title),
+                          }"
+                          [appOverlayMenuCloseOnSelect]="true"
+                          [appOverlayMenuFocusOnOpen]="true"
+                          [attr.aria-label]="
+                            itemActionLabel('scene', scene.id, sceneTitle(scene.title))
+                          "
+                          [attr.data-busy]="isItemBusy('scene', scene.id) ? 'true' : null"
+                          [disabled]="store.isBusy()"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                          </svg>
+                        </button>
+                      </div>
+                      <ng-container
+                        [ngTemplateOutlet]="sceneRestore"
+                        [ngTemplateOutletContext]="{ itemId: scene.id }"
+                      ></ng-container>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </article>
+        } @empty {
+          <div class="archive-empty">
+            <strong>No archived acts</strong>
+            <p>Acts you archive from the outline will appear here.</p>
+          </div>
+        }
+      </section>
+    } @else if (activeTab() === 'chapters') {
+      <section
+        id="archive-chapters-panel"
+        class="archive-list"
+        role="tabpanel"
+        aria-labelledby="archive-chapters-tab"
+      >
+        @for (chapter of store.archivedChapters(); track chapter.id) {
+          <article class="archive-card">
+            <header class="archive-card-header">
+              <div>
+                <span class="archive-type">{{ parentActLabel(chapter) }}</span>
+                <h2>{{ chapter.title }}</h2>
+              </div>
+              <button
+                class="archive-menu-trigger"
+                type="button"
+                data-archive-menu-trigger
+                data-archive-type="chapter"
+                [appOverlayMenu]="archiveItemMenu"
+                [appOverlayMenuData]="{
+                  type: 'chapter',
+                  id: chapter.id,
+                  title: chapter.title,
+                }"
+                [appOverlayMenuCloseOnSelect]="true"
+                [appOverlayMenuFocusOnOpen]="true"
+                [attr.aria-label]="itemActionLabel('chapter', chapter.id, chapter.title)"
+                [attr.data-busy]="isItemBusy('chapter', chapter.id) ? 'true' : null"
+                [disabled]="store.isBusy()"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="5" r="1"></circle>
+                  <circle cx="12" cy="12" r="1"></circle>
+                  <circle cx="12" cy="19" r="1"></circle>
+                </svg>
+              </button>
+            </header>
+            <ng-container
+              [ngTemplateOutlet]="chapterRestore"
+              [ngTemplateOutletContext]="{ itemId: chapter.id }"
+            ></ng-container>
+
+            @if (chapter.scenes.length > 0) {
+              <div class="archive-tree">
+                @for (scene of chapter.scenes; track scene.id) {
+                  <div class="archive-tree-row is-scene">
+                    <div>
+                      <span class="archive-type">Scene</span>
+                      <strong>{{ sceneTitle(scene.title) }}</strong>
+                    </div>
+                    <button
+                      class="archive-menu-trigger"
+                      type="button"
+                      data-archive-menu-trigger
+                      data-archive-type="scene"
+                      [appOverlayMenu]="archiveItemMenu"
+                      [appOverlayMenuData]="{
+                        type: 'scene',
+                        id: scene.id,
+                        title: sceneTitle(scene.title),
+                      }"
+                      [appOverlayMenuCloseOnSelect]="true"
+                      [appOverlayMenuFocusOnOpen]="true"
+                      [attr.aria-label]="
+                        itemActionLabel('scene', scene.id, sceneTitle(scene.title))
+                      "
+                      [attr.data-busy]="isItemBusy('scene', scene.id) ? 'true' : null"
+                      [disabled]="store.isBusy()"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <circle cx="12" cy="5" r="1"></circle>
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="12" cy="19" r="1"></circle>
+                      </svg>
+                    </button>
+                  </div>
+                  <ng-container
+                    [ngTemplateOutlet]="sceneRestore"
+                    [ngTemplateOutletContext]="{ itemId: scene.id }"
+                  ></ng-container>
+                }
+              </div>
+            }
+          </article>
+        } @empty {
+          <div class="archive-empty">
+            <strong>No archived chapters</strong>
+            <p>Archived chapters will appear here.</p>
+          </div>
+        }
+      </section>
+    } @else {
+      <section
+        id="archive-scenes-panel"
+        class="archive-list"
+        role="tabpanel"
+        aria-labelledby="archive-scenes-tab"
+      >
+        @for (scene of store.archivedScenes(); track scene.id) {
+          <article class="archive-card is-compact">
+            <header class="archive-card-header">
+              <div>
+                <span class="archive-type">{{ parentChapterLabel(scene) }}</span>
+                <h2>{{ sceneTitle(scene.title) }}</h2>
+              </div>
+              <button
+                class="archive-menu-trigger"
+                type="button"
+                data-archive-menu-trigger
+                data-archive-type="scene"
+                [appOverlayMenu]="archiveItemMenu"
+                [appOverlayMenuData]="{
+                  type: 'scene',
+                  id: scene.id,
+                  title: sceneTitle(scene.title),
+                }"
+                [appOverlayMenuCloseOnSelect]="true"
+                [appOverlayMenuFocusOnOpen]="true"
+                [attr.aria-label]="itemActionLabel('scene', scene.id, sceneTitle(scene.title))"
+                [attr.data-busy]="isItemBusy('scene', scene.id) ? 'true' : null"
+                [disabled]="store.isBusy()"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="5" r="1"></circle>
+                  <circle cx="12" cy="12" r="1"></circle>
+                  <circle cx="12" cy="19" r="1"></circle>
+                </svg>
+              </button>
+            </header>
+            <ng-container
+              [ngTemplateOutlet]="sceneRestore"
+              [ngTemplateOutletContext]="{ itemId: scene.id }"
+            ></ng-container>
+          </article>
+        } @empty {
+          <div class="archive-empty">
+            <strong>No archived scenes</strong>
+            <p>Archived scenes will appear here.</p>
+          </div>
+        }
+      </section>
+    }
+  }
+</div>
+
+<ng-template #archiveItemMenu let-type="type" let-id="id" let-title="title">
+  <div class="overlay-menu">
+    <button
+      class="menu-item"
+      type="button"
+      data-archive-action="restore"
+      [attr.aria-label]="'Restore ' + type + ' ' + title"
+      (click)="restoreItem(type, id)"
+    >
+      <svg
+        class="menu-item-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+        <path d="M3 4v6h6"></path>
+      </svg>
+      Restore
+    </button>
+    <button
+      class="menu-item delete"
+      type="button"
+      data-archive-action="delete"
+      [attr.aria-label]="'Permanently delete ' + type + ' ' + title"
+      (click)="requestDelete(type, id, title)"
+    >
+      <svg
+        class="menu-item-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3 6h18"></path>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+      Delete
+    </button>
+  </div>
+</ng-template>
+
+<ng-template #chapterRestore let-itemId="itemId">
+  @if (isSelecting('chapter', itemId)) {
+    <div class="restore-panel">
+      @if (store.activeActOptions().length > 0) {
+        <span class="restore-label">Append to which act?</span>
+        <app-autocomplete-dropdown
+          [options]="store.activeActOptions()"
+          [selectedValue]="selectedTargetId()"
+          [showSearchBar]="false"
+          [triggerAriaLabel]="'Choose an act for the restored chapter'"
+          placeholder="Select an act"
+          (selectionChange)="updateTarget($event)"
+        ></app-autocomplete-dropdown>
+        <div class="restore-actions">
+          <button
+            class="archive-button is-secondary"
+            type="button"
+            [disabled]="store.isBusy()"
+            (click)="cancelTargetSelection()"
+          >
+            Cancel
+          </button>
+          <button
+            class="archive-button"
+            type="button"
+            [disabled]="!selectedTargetId() || store.isBusy()"
+            (click)="confirmTargetRestore()"
+          >
+            {{ store.restoringKey() === 'chapter:' + itemId ? 'Restoring…' : 'Restore' }}
+          </button>
+        </div>
+      } @else {
+        <p class="restore-warning" role="status">
+          No active acts exist. Restore or create an act first.
+        </p>
+        <button class="archive-button is-secondary" type="button" (click)="cancelTargetSelection()">
+          Close
+        </button>
+      }
+    </div>
+  }
+</ng-template>
+
+<ng-template #sceneRestore let-itemId="itemId">
+  @if (isSelecting('scene', itemId)) {
+    <div class="restore-panel">
+      @if (store.activeChapterSections().length > 0) {
+        <span class="restore-label">Append to which chapter?</span>
+        <app-autocomplete-dropdown
+          [sections]="store.activeChapterSections()"
+          [selectedValue]="selectedTargetId()"
+          [triggerAriaLabel]="'Choose a chapter for the restored scene'"
+          placeholder="Select a chapter"
+          searchPlaceholder="Search chapters"
+          (selectionChange)="updateTarget($event)"
+        ></app-autocomplete-dropdown>
+        <div class="restore-actions">
+          <button
+            class="archive-button is-secondary"
+            type="button"
+            [disabled]="store.isBusy()"
+            (click)="cancelTargetSelection()"
+          >
+            Cancel
+          </button>
+          <button
+            class="archive-button"
+            type="button"
+            [disabled]="!selectedTargetId() || store.isBusy()"
+            (click)="confirmTargetRestore()"
+          >
+            {{ store.restoringKey() === 'scene:' + itemId ? 'Restoring…' : 'Restore' }}
+          </button>
+        </div>
+      } @else {
+        <p class="restore-warning" role="status">
+          No active chapters exist. Restore or create a chapter first.
+        </p>
+        <button class="archive-button is-secondary" type="button" (click)="cancelTargetSelection()">
+          Close
+        </button>
+      }
+    </div>
+  }
+</ng-template>

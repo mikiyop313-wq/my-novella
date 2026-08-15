@@ -1,5 +1,6 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,7 +10,9 @@ import { ConfigStore } from '../../../../core/store/config.store';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
+import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 import { BookSettingsComponent } from './book-settings.component';
 
 describe('BookSettingsComponent', () => {
@@ -27,6 +30,8 @@ describe('BookSettingsComponent', () => {
   let getBooks: ReturnType<typeof vi.fn>;
   let updateBook: ReturnType<typeof vi.fn>;
   let getCodexEntries: ReturnType<typeof vi.fn>;
+  let getArchiveOverview: ReturnType<typeof vi.fn>;
+  let getBookHierarchy: ReturnType<typeof vi.fn>;
   let setBookTitle: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
   let loadLanguages: ReturnType<typeof vi.fn>;
@@ -113,6 +118,12 @@ describe('BookSettingsComponent', () => {
         lastEditedAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    getArchiveOverview = vi.fn().mockResolvedValue({
+      archivedActs: [],
+      archivedChapters: [],
+      archivedScenes: [],
+    });
+    getBookHierarchy = vi.fn().mockResolvedValue([]);
     setBookTitle = vi.fn((title: string) => bookTitle.set(title));
     toastError = vi.fn();
     loadLanguages = vi.fn().mockResolvedValue(undefined);
@@ -147,6 +158,16 @@ describe('BookSettingsComponent', () => {
         {
           provide: CodexService,
           useValue: { getEntries: getCodexEntries },
+        },
+        {
+          provide: ManuscriptStructureService,
+          useValue: {
+            getArchiveOverview,
+            getBookHierarchy,
+            restoreAct: vi.fn(),
+            restoreChapter: vi.fn(),
+            restoreScene: vi.fn(),
+          },
         },
         {
           provide: ConfigStore,
@@ -259,15 +280,36 @@ describe('BookSettingsComponent', () => {
     expect(genresDropdown.componentInstance.grouped()).toBe(false);
   });
 
-  it('renders only the first two navigation sections and keeps General active', () => {
+  it('renders the navigation sections and keeps General active', () => {
     const element = fixture.nativeElement as HTMLElement;
     const activeSections = element.querySelectorAll('.section-item.is-active');
     const sections = element.querySelectorAll('.section-item');
 
-    expect(sections).toHaveLength(2);
+    expect(sections).toHaveLength(3);
     expect(activeSections).toHaveLength(1);
     expect(activeSections[0]?.getAttribute('aria-current')).toBe('page');
     expect(element.querySelector('.settings-divider')).not.toBeNull();
+  });
+
+  it('loads the archive manager when Archive is selected', async () => {
+    const element = fixture.nativeElement as HTMLElement;
+    const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
+
+    sections[2].click();
+    fixture.detectChanges();
+    const archiveComponent = fixture.debugElement.query(
+      By.directive(ArchiveSettingsComponent),
+    ).componentInstance as ArchiveSettingsComponent;
+    await archiveComponent.store.load('book-1');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeSection()).toBe('archive');
+    expect(getArchiveOverview).toHaveBeenCalledWith('book-1');
+    expect(getBookHierarchy).toHaveBeenCalledWith('book', 'book-1');
+    expect(element.querySelector('app-archive-settings')).not.toBeNull();
+    expect(element.querySelector('.content-title')?.textContent).toContain('Archive');
+    expect(element.querySelectorAll('[role="tab"]')).toHaveLength(3);
+    expect(sections[2].getAttribute('aria-current')).toBe('page');
   });
 
   it('switches themes from the Editor & Display section', () => {

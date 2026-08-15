@@ -27,6 +27,7 @@ import { ToastService } from '../../../../shared/services/toast.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
 
 type EditableField =
   | 'title'
@@ -39,11 +40,11 @@ type EditableField =
   | 'genres'
   | 'tropes';
 
-type SettingsSection = 'general' | 'editor-display';
+type SettingsSection = 'general' | 'editor-display' | 'archive';
 
 @Component({
   selector: 'app-book-settings',
-  imports: [AutocompleteDropdownComponent],
+  imports: [ArchiveSettingsComponent, AutocompleteDropdownComponent],
   templateUrl: './book-settings.component.html',
   styleUrl: '../../styles/settings.shared.scss',
   host: { class: 'book-settings-panel' },
@@ -58,6 +59,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   readonly config = inject(ConfigStore);
 
   readonly activeSection = signal<SettingsSection>('general');
+  readonly activeBookId = computed(() => this.workspaceStore.bookId());
   readonly book = signal<BookDto | null>(null);
   readonly isLoading = signal(true);
   readonly loadError = signal<string | null>(null);

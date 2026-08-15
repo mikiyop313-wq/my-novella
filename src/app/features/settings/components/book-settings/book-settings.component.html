@@ -84,6 +84,33 @@
           <span class="nav-sub">Typography, layout &amp; theme</span>
         </span>
       </button>
+
+      <button
+        class="nav-item section-item"
+        type="button"
+        [class.is-active]="activeSection() === 'archive'"
+        [attr.aria-current]="activeSection() === 'archive' ? 'page' : null"
+        (click)="selectSection('archive')"
+      >
+        <span class="nav-icon-wrapper" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M21 8v13H3V8"></path>
+            <path d="M1 3h22v5H1z"></path>
+            <path d="M10 12h4"></path>
+          </svg>
+        </span>
+        <span class="nav-text">
+          <span class="nav-label">Archive</span>
+          <span class="nav-sub">Archived content</span>
+        </span>
+      </button>
     </nav>
   </aside>
 
@@ -792,7 +819,7 @@
           </div>
         }
       </div>
-    } @else {
+    } @else if (activeSection() === 'editor-display') {
       <div class="settings-section-panel">
         <header class="content-header">
           <h1 class="content-title">Editor &amp; Display</h1>
@@ -902,6 +929,23 @@
           </section>
         </div>
       </div>
+    } @else {
+      @if (activeBookId(); as archiveBookId) {
+        <app-archive-settings [bookId]="archiveBookId"></app-archive-settings>
+      } @else {
+        <div class="settings-section-panel">
+          <header class="content-header">
+            <h1 class="content-title">Archive</h1>
+            <p class="content-subtitle">Restore archived manuscript content.</p>
+          </header>
+          <div class="settings-state is-error" role="alert">
+            <div>
+              <strong>Archive unavailable</strong>
+              <p>No active book is available for this archive.</p>
+            </div>
+          </div>
+        </div>
+      }
     }
   </main>
 </div>
