@@ -13,6 +13,7 @@ import { LibraryService } from '../../../library/services/library.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
+import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
 import { BookSettingsComponent } from './book-settings.component';
 
 describe('BookSettingsComponent', () => {
@@ -285,21 +286,35 @@ describe('BookSettingsComponent', () => {
     const activeSections = element.querySelectorAll('.section-item.is-active');
     const sections = element.querySelectorAll('.section-item');
 
-    expect(sections).toHaveLength(3);
+    expect(sections).toHaveLength(4);
+    expect(element.querySelectorAll('.section-item > .active-indicator')).toHaveLength(4);
     expect(activeSections).toHaveLength(1);
     expect(activeSections[0]?.getAttribute('aria-current')).toBe('page');
     expect(element.querySelector('.settings-divider')).not.toBeNull();
+  });
+
+  it('loads the in-memory preset editor when System Prompts is selected', () => {
+    const element = fixture.nativeElement as HTMLElement;
+    const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
+
+    sections[1].click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeSection()).toBe('system-prompts');
+    expect(fixture.debugElement.query(By.directive(SystemPromptSettingsComponent))).not.toBeNull();
+    expect(element.querySelector('.content-title')?.textContent).toContain('System Prompts');
+    expect(element.querySelectorAll('[role="option"]')).toHaveLength(1);
+    expect(sections[1].getAttribute('aria-current')).toBe('page');
   });
 
   it('loads the archive manager when Archive is selected', async () => {
     const element = fixture.nativeElement as HTMLElement;
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
 
-    sections[2].click();
+    sections[3].click();
     fixture.detectChanges();
-    const archiveComponent = fixture.debugElement.query(
-      By.directive(ArchiveSettingsComponent),
-    ).componentInstance as ArchiveSettingsComponent;
+    const archiveComponent = fixture.debugElement.query(By.directive(ArchiveSettingsComponent))
+      .componentInstance as ArchiveSettingsComponent;
     await archiveComponent.store.load('book-1');
     fixture.detectChanges();
 
@@ -309,14 +324,14 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('app-archive-settings')).not.toBeNull();
     expect(element.querySelector('.content-title')?.textContent).toContain('Archive');
     expect(element.querySelectorAll('[role="tab"]')).toHaveLength(3);
-    expect(sections[2].getAttribute('aria-current')).toBe('page');
+    expect(sections[3].getAttribute('aria-current')).toBe('page');
   });
 
   it('switches themes from the Editor & Display section', () => {
     const element = fixture.nativeElement as HTMLElement;
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
 
-    sections[1].click();
+    sections[2].click();
     fixture.detectChanges();
 
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
@@ -326,7 +341,7 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('.theme-option.is-light')?.getAttribute('aria-checked')).toBe(
       'true',
     );
-    expect(sections[1].getAttribute('aria-current')).toBe('page');
+    expect(sections[2].getAttribute('aria-current')).toBe('page');
 
     element.querySelector<HTMLButtonElement>('.theme-option.is-dark')?.click();
     fixture.detectChanges();

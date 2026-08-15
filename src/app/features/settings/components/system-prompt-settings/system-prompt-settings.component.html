@@ -1,0 +1,341 @@
+<div class="settings-section-panel system-prompts-panel">
+  <header class="content-header">
+    <h1 class="content-title">System Prompts</h1>
+    <p class="content-subtitle">
+      Explore categorized prompt presets and tune how the AI responds for this book.
+    </p>
+  </header>
+
+  <div class="prompt-workspace">
+    <aside class="preset-panel" aria-label="System prompt presets">
+      <div class="category-picker">
+        <div class="field-heading">
+          <label for="prompt-category">Prompt category</label>
+          <span>Choose an AI task</span>
+        </div>
+        <app-autocomplete-dropdown
+          id="prompt-category"
+          [options]="categoryOptions"
+          [selectedValue]="selectedCategory()"
+          [showSearchBar]="false"
+          triggerAriaLabel="Prompt category"
+          placeholder="Select a prompt category..."
+          (selectionChange)="changeCategory($event)"
+        ></app-autocomplete-dropdown>
+      </div>
+
+      <div class="preset-panel-header">
+        <div>
+          <span class="eyebrow">{{ selectedCategoryLabel() }} presets</span>
+          <strong>{{ filteredPresets().length }}</strong>
+        </div>
+        <button class="add-preset-button" type="button" (click)="addPreset()">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+          Add preset
+        </button>
+      </div>
+
+      <div class="preset-list" role="listbox" aria-label="Available system prompt presets">
+        @for (preset of filteredPresets(); track preset.id) {
+          <button
+            class="preset-option"
+            type="button"
+            role="option"
+            [class.is-selected]="preset.id === selectedPresetId()"
+            [attr.aria-selected]="preset.id === selectedPresetId()"
+            (click)="selectPreset(preset.id)"
+          >
+            <span class="preset-icon" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M4 4h16v16H4z"></path>
+                <path d="M8 9h8"></path>
+                <path d="M8 13h6"></path>
+              </svg>
+            </span>
+            <span class="preset-copy">
+              <span class="preset-name">{{ preset.name || 'Untitled Preset' }}</span>
+              <span class="preset-meta">
+                {{ preset.isBuiltIn ? 'Built-in default' : 'Custom preset' }}
+              </span>
+            </span>
+            @if (preset.isBuiltIn) {
+              <span class="built-in-badge">Default</span>
+            }
+          </button>
+        }
+      </div>
+
+      <p class="session-note">
+        Category presets are temporary in this UI preview and reset when settings is closed.
+      </p>
+    </aside>
+
+    @if (selectedPreset(); as preset) {
+      <section class="preset-editor" aria-labelledby="preset-editor-heading">
+        <header class="editor-header">
+          <div>
+            <span class="eyebrow">{{ selectedCategoryLabel() }} preset</span>
+            <h2 id="preset-editor-heading">{{ preset.name || 'Untitled Preset' }}</h2>
+          </div>
+          <div class="preset-actions">
+            <button
+              class="icon-action"
+              type="button"
+              aria-label="Clone selected preset"
+              title="Clone preset"
+              (click)="cloneSelectedPreset()"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+                <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+              </svg>
+            </button>
+            <button
+              class="icon-action is-danger"
+              type="button"
+              aria-label="Delete selected preset"
+              [disabled]="preset.isBuiltIn"
+              [title]="preset.isBuiltIn ? 'Built-in presets cannot be deleted' : 'Delete preset'"
+              (click)="deleteSelectedPreset()"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 6h18"></path>
+                <path d="M8 6V4h8v2"></path>
+                <path d="M19 6l-1 14H6L5 6"></path>
+                <path d="M10 11v5"></path>
+                <path d="M14 11v5"></path>
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="editor-body">
+          <div class="form-field">
+            <div class="field-heading">
+              <label for="preset-name">Preset name</label>
+              @if (preset.isBuiltIn) {
+                <span>Built-in name</span>
+              }
+            </div>
+            <input
+              id="preset-name"
+              class="text-input"
+              type="text"
+              [value]="preset.name"
+              [disabled]="preset.isBuiltIn"
+              placeholder="Name this preset"
+              (input)="updateName($event)"
+            />
+          </div>
+
+          <div class="form-field">
+            <div class="field-heading">
+              <label for="system-prompt">System prompt</label>
+              <span>
+                {{
+                  preset.isBuiltIn ? 'Built-in prompt' : 'Instructions sent before the conversation'
+                }}
+              </span>
+            </div>
+            <textarea
+              id="system-prompt"
+              class="prompt-textarea"
+              rows="11"
+              [value]="preset.systemPrompt"
+              [disabled]="preset.isBuiltIn"
+              placeholder="Describe how the AI should behave..."
+              (input)="updateSystemPrompt($event)"
+            ></textarea>
+          </div>
+
+          <section class="generation-card" aria-labelledby="generation-settings-heading">
+            <header class="generation-header">
+              <div>
+                <h3 id="generation-settings-heading">Generation settings</h3>
+                <p>Balance creativity and response diversity for this preset.</p>
+              </div>
+              <button
+                class="reset-generation-button"
+                type="button"
+                aria-label="Reset generation settings"
+                (click)="resetGenerationSettings()"
+              >
+                Reset
+              </button>
+            </header>
+
+            <div class="control-grid">
+              <div class="range-control">
+                <div class="range-heading">
+                  <label for="temperature">Temperature</label>
+                  <output for="temperature">{{ preset.temperature }}</output>
+                </div>
+                <input
+                  id="temperature"
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  [value]="preset.temperature"
+                  (input)="updateNumericField('temperature', $event)"
+                />
+                <div class="range-scale" aria-hidden="true">
+                  <span>Precise</span>
+                  <span>Creative</span>
+                </div>
+              </div>
+
+              <div class="range-control">
+                <div class="range-heading">
+                  <label for="top-p">Top P</label>
+                  <output for="top-p">{{ preset.topP }}</output>
+                </div>
+                <input
+                  id="top-p"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  [value]="preset.topP"
+                  (input)="updateNumericField('topP', $event)"
+                />
+                <div class="range-scale" aria-hidden="true">
+                  <span>Focused</span>
+                  <span>Diverse</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="advanced-section">
+              <button
+                class="advanced-toggle"
+                type="button"
+                [attr.aria-expanded]="advancedOpen()"
+                aria-controls="advanced-generation-settings"
+                (click)="toggleAdvancedSettings()"
+              >
+                <span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"></path>
+                    <path
+                      d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.57V21h-4v-.08A1.7 1.7 0 0 0 8.96 19.35a1.7 1.7 0 0 0-1.87.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.57-1.04H3v-4h.08A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.55a1.7 1.7 0 0 0 1.04-1.57V3h4v.08A1.7 1.7 0 0 0 15.1 4.65a1.7 1.7 0 0 0 1.87-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.45 9a1.7 1.7 0 0 0 1.57 1.04H21v4h-.08A1.7 1.7 0 0 0 19.4 15z"
+                    ></path>
+                  </svg>
+                  Advanced settings
+                </span>
+                <svg
+                  class="chevron"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </button>
+
+              @if (advancedOpen()) {
+                <div id="advanced-generation-settings" class="advanced-controls">
+                  <div class="control-grid">
+                    <div class="range-control">
+                      <div class="range-heading">
+                        <label for="presence-penalty">Presence penalty</label>
+                        <output for="presence-penalty">{{ preset.presencePenalty }}</output>
+                      </div>
+                      <input
+                        id="presence-penalty"
+                        type="range"
+                        min="-2"
+                        max="2"
+                        step="0.1"
+                        [value]="preset.presencePenalty"
+                        (input)="updateNumericField('presencePenalty', $event)"
+                      />
+                    </div>
+
+                    <div class="range-control">
+                      <div class="range-heading">
+                        <label for="frequency-penalty">Frequency penalty</label>
+                        <output for="frequency-penalty">{{ preset.frequencyPenalty }}</output>
+                      </div>
+                      <input
+                        id="frequency-penalty"
+                        type="range"
+                        min="-2"
+                        max="2"
+                        step="0.1"
+                        [value]="preset.frequencyPenalty"
+                        (input)="updateNumericField('frequencyPenalty', $event)"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="form-field token-field">
+                    <div class="field-heading">
+                      <label for="max-output-tokens">Maximum output tokens</label>
+                      <span>Leave blank to use the provider default</span>
+                    </div>
+                    <input
+                      id="max-output-tokens"
+                      class="text-input"
+                      type="number"
+                      min="1"
+                      step="1"
+                      [value]="preset.maxOutputTokens"
+                      placeholder="Automatic"
+                      (input)="updateMaxOutputTokens($event)"
+                    />
+                  </div>
+                </div>
+              }
+            </div>
+          </section>
+        </div>
+      </section>
+    }
+  </div>
+</div>

@@ -62,6 +62,35 @@
       <button
         class="nav-item section-item"
         type="button"
+        [class.is-active]="activeSection() === 'system-prompts'"
+        [attr.aria-current]="activeSection() === 'system-prompts' ? 'page' : null"
+        (click)="selectSection('system-prompts')"
+      >
+        <span class="nav-icon-wrapper" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="m16 3 1.2 2.8L20 7l-2.8 1.2L16 11l-1.2-2.8L12 7l2.8-1.2L16 3z"></path>
+            <path d="M7 12h6"></path>
+            <path d="M7 16h10"></path>
+          </svg>
+        </span>
+        <span class="nav-text">
+          <span class="nav-label">System Prompts</span>
+          <span class="nav-sub">Presets &amp; generation</span>
+        </span>
+        <span class="active-indicator" aria-hidden="true"></span>
+      </button>
+
+      <button
+        class="nav-item section-item"
+        type="button"
         [class.is-active]="activeSection() === 'editor-display'"
         [attr.aria-current]="activeSection() === 'editor-display' ? 'page' : null"
         (click)="selectSection('editor-display')"
@@ -83,6 +112,7 @@
           <span class="nav-label">Editor &amp; Display</span>
           <span class="nav-sub">Typography, layout &amp; theme</span>
         </span>
+        <span class="active-indicator" aria-hidden="true"></span>
       </button>
 
       <button
@@ -110,6 +140,7 @@
           <span class="nav-label">Archive</span>
           <span class="nav-sub">Archived content</span>
         </span>
+        <span class="active-indicator" aria-hidden="true"></span>
       </button>
     </nav>
   </aside>
@@ -819,6 +850,8 @@
           </div>
         }
       </div>
+    } @else if (activeSection() === 'system-prompts') {
+      <app-system-prompt-settings></app-system-prompt-settings>
     } @else if (activeSection() === 'editor-display') {
       <div class="settings-section-panel">
         <header class="content-header">

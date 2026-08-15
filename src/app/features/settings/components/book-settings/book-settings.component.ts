@@ -28,6 +28,7 @@ import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
+import { SystemPromptSettingsComponent } from '../system-prompt-settings/system-prompt-settings.component';
 
 type EditableField =
   | 'title'
@@ -40,11 +41,11 @@ type EditableField =
   | 'genres'
   | 'tropes';
 
-type SettingsSection = 'general' | 'editor-display' | 'archive';
+type SettingsSection = 'general' | 'system-prompts' | 'editor-display' | 'archive';
 
 @Component({
   selector: 'app-book-settings',
-  imports: [ArchiveSettingsComponent, AutocompleteDropdownComponent],
+  imports: [ArchiveSettingsComponent, AutocompleteDropdownComponent, SystemPromptSettingsComponent],
   templateUrl: './book-settings.component.html',
   styleUrl: '../../styles/settings.shared.scss',
   host: { class: 'book-settings-panel' },
