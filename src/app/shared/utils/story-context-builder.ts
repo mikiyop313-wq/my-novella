@@ -356,14 +356,7 @@ export function serializeCodexContext(
     entry.id,
     applicableProgression(entry.entryProgression, sceneRanks, currentRank, includedSceneIds),
   ]));
-  const progressionSceneIds = new Set(
-    [...progressionByEntryId.values()]
-      .flatMap((progression) => progression.map((item) => item.sceneId))
-      .filter((sceneId): sceneId is string => sceneId !== null),
-  );
-  const sceneLocations = progressionLocations(
-    filterHierarchyBySceneIds(contextHierarchy, progressionSceneIds),
-  );
+  const sceneLocations = progressionLocations(contextHierarchy);
   const entriesByType = new Map<CodexEntryDetailDto['type'], CodexEntryDetailDto[]>();
   for (const entry of eligibleEntries) {
     const groupedEntries = entriesByType.get(entry.type) ?? [];
@@ -389,8 +382,12 @@ export function serializeCodexContext(
       if (progression.length > 0) {
         fields.push(
           `${CODEX_PROGRESSION_LABEL}:\n${progression
-            .map((item) => progressionLine(item, sceneLocations.get(item.sceneId ?? '')))
-            .join('\n')}`,
+            .map((item, index) => progressionBlock({
+              item,
+              location: sceneLocations.get(item.sceneId ?? ''),
+              index,
+            }))
+            .join('\n\n')}`,
         );
       }
       return fields.join('\n\n');
@@ -823,33 +820,30 @@ function progressionLocations(hierarchy: readonly ActDto[]): ReadonlyMap<string,
   return locations;
 }
 
-function filterHierarchyBySceneIds(
-  hierarchy: readonly ActDto[],
-  sceneIds: ReadonlySet<string>,
-): ActDto[] {
-  return hierarchy.flatMap((act) => {
-    const chapters = (act.chapters ?? []).flatMap((chapter) => {
-      const scenes = (chapter.scenes ?? []).filter((scene) => sceneIds.has(scene.id));
-      return scenes.length > 0 ? [{ ...chapter, scenes }] : [];
-    });
-    return chapters.length > 0 ? [{ ...act, chapters }] : [];
-  });
-}
-
 function progressionLocationPart(
   type: 'Act' | 'Chapter' | 'Scene',
   position: number,
   title: string,
 ): string {
   const cleanTitle = title.trim();
-  return `${type} ${position + 1}${cleanTitle ? ` — ${cleanTitle}` : ''}`;
+  return `${type} ${position + 1}${cleanTitle ? `: ${cleanTitle}` : ''}`;
 }
 
-function progressionLine(item: CodexEntryProgressionDto, location: string | undefined): string {
+function progressionBlock({
+  item,
+  location,
+  index,
+}: {
+  item: CodexEntryProgressionDto;
+  location: string | undefined;
+  index: number;
+}): string {
   const title = item.title.trim();
   const description = item.description.trim();
-  const content = title && description ? `${title}: ${description}` : title || description;
-  return `- ${location ? `[${location}] ` : ''}${content}`;
+  const lines = [`${index + 1})${location ? ` [${location}]` : ''}`];
+  if (title) lines.push(`Title: ${title}`);
+  if (description) lines.push(`Description: ${description}`);
+  return lines.join('\n');
 }
 
 function displayCodexType(type: string): string {

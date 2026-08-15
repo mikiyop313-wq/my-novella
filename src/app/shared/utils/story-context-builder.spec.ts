@@ -616,12 +616,12 @@ The others waited outside.`,
     expect(result).toContain('--- END CODEX CONTEXT ---');
     expect(result).toContain('Aliases: Mara, The Courier');
     expect(result).toContain(
-      '- [Act 1 — Act One > Chapter 1 — Chapter One > Scene 1 — Opening] Introduced: She finds the key.',
+      '1) [Act 1: Act One > Chapter 1: Chapter One > Scene 1: Opening]\nTitle: Introduced\nDescription: She finds the key.',
     );
     expect(result).toContain(
-      '- [Act 1 — Act One > Chapter 1 — Chapter One > Scene 2] Known: She has the key.',
+      '2) [Act 1: Act One > Chapter 1: Chapter One > Scene 2]\nTitle: Known\nDescription: She has the key.',
     );
-    expect(result.indexOf('Introduced:')).toBeLessThan(result.indexOf('Known:'));
+    expect(result.indexOf('Title: Introduced')).toBeLessThan(result.indexOf('Title: Known'));
     expect(result).not.toContain('Future');
     expect(result).not.toContain('Unlinked');
     expect(result).not.toContain('Private note');
@@ -633,11 +633,37 @@ The others waited outside.`,
 
     const result = serializeCodexContext([createCodexEntry()], hierarchy, 'scene-2');
 
-    expect(result).not.toContain('Introduced:');
+    expect(result).not.toContain('Title: Introduced');
     expect(result).toContain(
-      '- [Act 1 — Act One > Chapter 1 — Chapter One > Scene 1] Known: She has the key.',
+      '1) [Act 1: Act One > Chapter 1: Chapter One > Scene 1]\nTitle: Known\nDescription: She has the key.',
     );
-    expect(result).not.toContain('Scene 2] Known:');
+    expect(result).not.toContain('Scene 2]\nTitle: Known');
+  });
+
+  it('counts included scenes without progression when numbering Codex locations', () => {
+    const hierarchy = [
+      createAct('act-1', 'Act One', 0, 'Act summary.', [
+        createChapter('chapter-1', 'Chapter One', 0, 'Chapter summary.', [
+          createScene('scene-1', 'Arrival', 0, 'Arrival summary.'),
+          { ...createScene('scene-2', 'Dream', 1, 'Dream summary.'), includeInContext: false },
+          createScene('scene-3', 'Fight', 2, 'Fight summary.'),
+          createScene('scene-4', 'Revelation', 3, 'Revelation summary.'),
+        ]),
+      ]),
+    ];
+    const entry = {
+      ...createCodexEntry(),
+      entryProgression: [
+        progression('Revealed', 'Mara discovers the truth.', 'scene-4'),
+      ],
+    };
+
+    const result = serializeCodexContext([entry], hierarchy, 'scene-4');
+
+    expect(result).toContain(
+      '1) [Act 1: Act One > Chapter 1: Chapter One > Scene 3: Revelation]\nTitle: Revealed\nDescription: Mara discovers the truth.',
+    );
+    expect(result).not.toContain('Scene 1: Revelation');
   });
 
   it('groups Codex entries by type inside one context wrapper', () => {

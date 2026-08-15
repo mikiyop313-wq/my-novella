@@ -54,7 +54,13 @@ describe('Workspace', () => {
             getLastManuscriptRoute: vi.fn((bookId: string) => lastManuscriptRoutes[bookId] ?? null),
           },
         },
-        { provide: WorkspaceBookStore, useValue: { clearBookHierarchy: vi.fn() } },
+        {
+          provide: WorkspaceBookStore,
+          useValue: {
+            clearBookHierarchy: vi.fn(),
+            loadBookHierarchy: vi.fn().mockResolvedValue([]),
+          },
+        },
         {
           provide: ChatStore,
           useValue: {
@@ -91,6 +97,15 @@ describe('Workspace', () => {
     fixture.detectChanges();
 
     expect(codexContextTrie.loadForContext).toHaveBeenCalledWith('book-1');
+  });
+
+  it('loads the shared hierarchy when entering the workspace book', () => {
+    const bookStore = TestBed.inject(WorkspaceBookStore);
+
+    fixture.detectChanges();
+
+    expect(bookStore.clearBookHierarchy).toHaveBeenCalledOnce();
+    expect(bookStore.loadBookHierarchy).toHaveBeenCalledWith('book', 'book-1');
   });
 
   it('sets settings as the active view for the settings route', () => {

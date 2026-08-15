@@ -47,6 +47,9 @@ export class Workspace implements OnInit {
 
         this.store.enterBook(bookId);
         this.bookStore.clearBookHierarchy();
+        void this.bookStore.loadBookHierarchy('book', bookId).catch(error => {
+          console.error('Failed to load shared book hierarchy', error);
+        });
         void this.codexContextTrie.loadForContext(bookId);
         this.navigateToDefaultOutline(bookId);
       });
