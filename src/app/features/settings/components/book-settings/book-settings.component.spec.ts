@@ -358,8 +358,8 @@ describe('BookSettingsComponent', () => {
     expect(viewPills[0]?.textContent).toContain('Book settings');
     expect(viewPills[0]?.getAttribute('aria-selected')).toBe('true');
     expect(viewPills[1]?.getAttribute('aria-selected')).toBe('false');
-    expect(sections).toHaveLength(4);
-    expect(element.querySelectorAll('.section-item > .active-indicator')).toHaveLength(4);
+    expect(sections).toHaveLength(5);
+    expect(element.querySelectorAll('.section-item > .active-indicator')).toHaveLength(5);
     expect(activeSections).toHaveLength(1);
     expect(activeSections[0]?.getAttribute('aria-current')).toBe('page');
     expect(element.querySelector('.settings-divider')).not.toBeNull();
@@ -407,7 +407,7 @@ describe('BookSettingsComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
 
-    sections[3].click();
+    sections[4].click();
     fixture.detectChanges();
     const archiveComponent = fixture.debugElement.query(By.directive(ArchiveSettingsComponent))
       .componentInstance as ArchiveSettingsComponent;
@@ -420,7 +420,104 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('app-archive-settings')).not.toBeNull();
     expect(element.querySelector('.content-title')?.textContent).toContain('Archive');
     expect(element.querySelectorAll('.archive-panel [role="tab"]')).toHaveLength(3);
+    expect(sections[4].getAttribute('aria-current')).toBe('page');
+  });
+
+  it('opens the Export section from book settings', async () => {
+    const element = fixture.nativeElement as HTMLElement;
+    const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
+
+    expect(sections[3].textContent).toContain('Export');
+    sections[3].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeSection()).toBe('export');
+    expect(element.querySelector('.content-title')?.textContent).toContain('Export');
+    expect(element.querySelectorAll('.export-button')).toHaveLength(5);
     expect(sections[3].getAttribute('aria-current')).toBe('page');
+  });
+
+  it.each(['docx', 'epub', 'pdf', 'png'] as const)(
+    'exports the complete book as %s',
+    async (format) => {
+      electronInvoke.mockResolvedValueOnce({ status: 'saved', filePath: `book.${format}` });
+
+      await fixture.componentInstance.exportManuscript(format);
+
+      expect(electronInvoke).toHaveBeenCalledWith('manuscript-export:save', {
+        mode: 'book',
+        id: 'book-1',
+        format,
+      });
+      expect(toastSuccess).toHaveBeenCalledWith(
+        `The ${format.toUpperCase()} manuscript was exported.`,
+      );
+    },
+  );
+
+  it('exports the complete book as a portable archive', async () => {
+    electronInvoke.mockResolvedValueOnce({ status: 'saved', filePath: 'book.novella' });
+
+    await fixture.componentInstance.exportBookArchive();
+
+    expect(electronInvoke).toHaveBeenCalledWith('data-transfer:export', {
+      type: 'book',
+      bookId: 'book-1',
+    });
+    expect(toastSuccess).toHaveBeenCalledWith('The book archive was exported.');
+  });
+
+  it('exports the complete library as a portable archive', async () => {
+    electronInvoke.mockResolvedValueOnce({ status: 'saved', filePath: 'library.novella' });
+
+    await fixture.componentInstance.exportLibraryArchive();
+
+    expect(electronInvoke).toHaveBeenCalledWith('data-transfer:export', {
+      type: 'library',
+    });
+    expect(toastSuccess).toHaveBeenCalledWith('The library archive was exported.');
+  });
+
+  it('leaves cancelled exports silent', async () => {
+    electronInvoke.mockResolvedValueOnce({ status: 'cancelled' });
+
+    await fixture.componentInstance.exportManuscript('pdf');
+
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('disables all export actions while an export is pending', async () => {
+    let finishExport: ((result: { status: 'cancelled' }) => void) | undefined;
+    electronInvoke.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishExport = resolve;
+      }),
+    );
+    fixture.componentInstance.selectSection('export');
+    fixture.detectChanges();
+
+    const exportPromise = fixture.componentInstance.exportManuscript('docx');
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const exportButtons = element.querySelectorAll<HTMLButtonElement>('.export-button');
+    expect(exportButtons).toHaveLength(5);
+    expect([...exportButtons].every((button) => button.disabled)).toBe(true);
+
+    finishExport?.({ status: 'cancelled' });
+    await exportPromise;
+  });
+
+  it('shows an error when an export fails', async () => {
+    electronInvoke.mockRejectedValueOnce(new Error('The disk is full.'));
+
+    await fixture.componentInstance.exportBookArchive();
+
+    expect(toastError).toHaveBeenCalledWith('The disk is full.', 'Export failed');
+    expect(fixture.componentInstance.isExportPending()).toBe(false);
   });
 
   it('switches to general settings and changes themes from Editor & Display', () => {
@@ -435,7 +532,7 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(element.querySelector('.settings-view-switcher')?.classList).toContain('is-general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
-    expect(sections).toHaveLength(3);
+    expect(sections).toHaveLength(4);
     expect(element.querySelectorAll('.settings-section-panel')).toHaveLength(1);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(element.querySelectorAll('.theme-option')).toHaveLength(2);
@@ -462,13 +559,15 @@ describe('BookSettingsComponent', () => {
     generalSettingsPill.click();
     fixture.detectChanges();
 
-    const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
-    sections[1].click();
+    const aiConfigurationSection = Array.from(
+      element.querySelectorAll<HTMLButtonElement>('.section-item'),
+    ).find((section) => section.textContent?.includes('AI Configuration'));
+    aiConfigurationSection?.click();
     fixture.detectChanges();
 
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(fixture.componentInstance.activeSection()).toBe('ai-configuration');
-    expect(sections[1].getAttribute('aria-current')).toBe('page');
+    expect(aiConfigurationSection?.getAttribute('aria-current')).toBe('page');
     expect(
       fixture.debugElement.query(By.directive(AiConfigurationSettingsComponent)),
     ).not.toBeNull();
@@ -600,13 +699,20 @@ describe('BookSettingsComponent', () => {
     expect(fixture.componentInstance.activeView()).toBe('general');
     expect(fixture.componentInstance.activeSection()).toBe('editor-display');
     expect(element.querySelector('.settings-view-switcher')).toBeNull();
-    expect(element.querySelectorAll('.section-item')).toHaveLength(4);
+    expect(element.querySelectorAll('.section-item')).toHaveLength(5);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
     expect(getBooks).not.toHaveBeenCalled();
 
     const sections = element.querySelectorAll<HTMLButtonElement>('.section-item');
-    expect(sections[1].textContent).toContain('Global Prompts');
+    expect(sections[1].textContent).toContain('Library Export');
     sections[1].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeSection()).toBe('library-export');
+    expect(element.querySelector('.content-title')?.textContent).toContain('Library Export');
+    expect(element.querySelectorAll('.export-button')).toHaveLength(1);
+
+    expect(sections[2].textContent).toContain('Global Prompts');
+    sections[2].click();
     fixture.detectChanges();
     expect(fixture.componentInstance.activeSection()).toBe('global-prompts');
     expect(element.querySelector('.content-title')?.textContent).toContain('Global Prompts');

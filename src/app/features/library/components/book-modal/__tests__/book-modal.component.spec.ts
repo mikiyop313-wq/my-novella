@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BookDto } from '../../../../../../../shared/models/book.model';
+import { ElectronService } from '../../../../../core/services/electron.service';
 import { ConfigStore } from '../../../../../core/store/config.store';
 import { ConfirmModalService } from '../../../../../shared/components/confirm-modal/confirm-modal.service';
 import { ToastService } from '../../../../../shared/services/toast.service';
@@ -14,6 +15,8 @@ import { BookModalComponent } from '../book-modal.component';
 describe('BookModalComponent lifecycle actions', () => {
   let fixture: ComponentFixture<BookModalComponent>;
   let updateBook: ReturnType<typeof vi.fn>;
+  let electronInvoke: ReturnType<typeof vi.fn>;
+  let toastSuccess: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
   let getEntries: ReturnType<typeof vi.fn>;
   let imageWidth: number;
@@ -71,6 +74,8 @@ describe('BookModalComponent lifecycle actions', () => {
         ...update,
       }),
     );
+    electronInvoke = vi.fn().mockResolvedValue({ status: 'saved', filePath: 'exported-file' });
+    toastSuccess = vi.fn();
     toastError = vi.fn();
     getEntries = vi.fn().mockResolvedValue([{ id: 'character-1', name: 'Mara' }]);
 
@@ -99,8 +104,12 @@ describe('BookModalComponent lifecycle actions', () => {
           useValue: { navigate: vi.fn() },
         },
         {
+          provide: ElectronService,
+          useValue: { invoke: electronInvoke },
+        },
+        {
           provide: ToastService,
-          useValue: { success: vi.fn(), error: toastError },
+          useValue: { success: toastSuccess, error: toastError },
         },
         {
           provide: CodexService,
@@ -179,6 +188,52 @@ describe('BookModalComponent lifecycle actions', () => {
     expect(updateBook).toHaveBeenCalledWith('book-1', {
       settings: { povCharacterId: null },
     });
+  });
+
+  it('opens the export view from the details footer and returns to details', () => {
+    const element = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('.modal-footer .btn-outline')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.currentView()).toBe('export');
+    expect(element.querySelector('.export-view')).not.toBeNull();
+    expect(element.querySelectorAll('.export-option')).toHaveLength(5);
+
+    element.querySelector<HTMLButtonElement>('.export-view .back-link')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.currentView()).toBe('details');
+    expect(element.querySelector('.details-view')?.classList).toContain(
+      'slide-to-details-vertical-animation',
+    );
+  });
+
+  it.each(['docx', 'epub', 'pdf', 'png'] as const)(
+    'exports the book manuscript as %s',
+    async (format) => {
+      await fixture.componentInstance.exportManuscript(format);
+
+      expect(electronInvoke).toHaveBeenCalledWith('manuscript-export:save', {
+        mode: 'book',
+        id: 'book-1',
+        format,
+      });
+      expect(toastSuccess).toHaveBeenCalledWith(
+        `The ${format.toUpperCase()} manuscript was exported.`,
+      );
+      expect(fixture.componentInstance.isExportPending()).toBe(false);
+    },
+  );
+
+  it('exports a portable archive for the current book', async () => {
+    await fixture.componentInstance.exportBookArchive();
+
+    expect(electronInvoke).toHaveBeenCalledWith('data-transfer:export', {
+      type: 'book',
+      bookId: 'book-1',
+    });
+    expect(toastSuccess).toHaveBeenCalledWith('The book archive was exported.');
+    expect(fixture.componentInstance.isExportPending()).toBe(false);
   });
 
   it('updates immediately with the original file when its ratio is within tolerance', async () => {

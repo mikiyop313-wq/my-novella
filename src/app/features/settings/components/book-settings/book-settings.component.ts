@@ -17,6 +17,12 @@ import {
   CategoryDto,
   UpdateBookDto,
 } from '../../../../../../shared/models/book.model';
+import type { SaveDataExportResult } from '../../../../../../shared/models/data-transfer.model';
+import type {
+  ManuscriptExportFormat,
+  SaveManuscriptExportResult,
+} from '../../../../../../shared/models/manuscript-export.model';
+import { ElectronService } from '../../../../core/services/electron.service';
 import { ThemeService, type Theme } from '../../../../core/services/theme.service';
 import { ConfigStore } from '../../../../core/store/config.store';
 import {
@@ -49,8 +55,10 @@ type SettingsSection =
   | 'general'
   | 'book-vector-search'
   | 'system-prompts'
+  | 'export'
   | 'global-prompts'
   | 'editor-display'
+  | 'library-export'
   | 'ai-configuration'
   | 'vector-search'
   | 'archive';
@@ -75,6 +83,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   private readonly workspaceStore = inject(WorkspaceStore);
   private readonly libraryService = inject(LibraryService);
   private readonly codexService = inject(CodexService);
+  private readonly electronService = inject(ElectronService);
   private readonly toastService = inject(ToastService);
   private readonly confirmService = inject(ConfirmModalService);
   readonly themeService = inject(ThemeService);
@@ -103,6 +112,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   readonly editArrayValue = signal<string[]>([]);
   readonly isSaving = signal(false);
   readonly isLifecycleActionPending = signal(false);
+  readonly isExportPending = signal(false);
   readonly validationError = signal<string | null>(null);
   readonly characters = signal<DropdownOption[]>([]);
 
@@ -293,6 +303,77 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     }
   }
 
+  async exportManuscript(format: ManuscriptExportFormat): Promise<void> {
+    const bookId = this.activeBookId();
+    if (!bookId || this.isExportPending()) return;
+
+    this.isExportPending.set(true);
+    try {
+      const result = (await this.electronService.invoke('manuscript-export:save', {
+        mode: 'book',
+        id: bookId,
+        format,
+      })) as SaveManuscriptExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success(`The ${format.toUpperCase()} manuscript was exported.`);
+      }
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : 'Unable to export the manuscript.',
+        'Export failed',
+      );
+    } finally {
+      this.isExportPending.set(false);
+    }
+  }
+
+  async exportBookArchive(): Promise<void> {
+    const bookId = this.activeBookId();
+    if (!bookId || this.isExportPending()) return;
+
+    this.isExportPending.set(true);
+    try {
+      const result = (await this.electronService.invoke('data-transfer:export', {
+        type: 'book',
+        bookId,
+      })) as SaveDataExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success('The book archive was exported.');
+      }
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : 'Unable to export the book archive.',
+        'Export failed',
+      );
+    } finally {
+      this.isExportPending.set(false);
+    }
+  }
+
+  async exportLibraryArchive(): Promise<void> {
+    if (this.isExportPending()) return;
+
+    this.isExportPending.set(true);
+    try {
+      const result = (await this.electronService.invoke('data-transfer:export', {
+        type: 'library',
+      })) as SaveDataExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success('The library archive was exported.');
+      }
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : 'Unable to export the library archive.',
+        'Export failed',
+      );
+    } finally {
+      this.isExportPending.set(false);
+    }
+  }
+
   confirmArchiveOrRestore(): void {
     const book = this.book();
     if (!book || this.isLifecycleActionPending()) return;
@@ -360,10 +441,11 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     this.runAfterConfigurationFlush(() => {
       this.cancelEditing();
       this.activeView.set(
-        section === 'editor-display'
-          || section === 'ai-configuration'
-          || section === 'vector-search'
-          || section === 'global-prompts'
+        section === 'editor-display' ||
+          section === 'library-export' ||
+          section === 'ai-configuration' ||
+          section === 'vector-search' ||
+          section === 'global-prompts'
           ? 'general'
           : 'book',
       );

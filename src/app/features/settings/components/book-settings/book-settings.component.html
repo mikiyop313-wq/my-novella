@@ -158,6 +158,34 @@
         <button
           class="nav-item section-item"
           type="button"
+          [class.is-active]="activeSection() === 'export'"
+          [attr.aria-current]="activeSection() === 'export' ? 'page' : null"
+          (click)="selectSection('export')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 3v12"></path>
+              <path d="m7 10 5 5 5-5"></path>
+              <path d="M5 21h14"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">Export</span>
+            <span class="nav-sub">Manuscript &amp; backup</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
+
+        <button
+          class="nav-item section-item"
+          type="button"
           [class.is-active]="activeSection() === 'archive'"
           [attr.aria-current]="activeSection() === 'archive' ? 'page' : null"
           (click)="selectSection('archive')"
@@ -206,6 +234,34 @@
           <span class="nav-text">
             <span class="nav-label">Editor &amp; Display</span>
             <span class="nav-sub">Typography, layout &amp; theme</span>
+          </span>
+          <span class="active-indicator" aria-hidden="true"></span>
+        </button>
+
+        <button
+          class="nav-item section-item"
+          type="button"
+          [class.is-active]="activeSection() === 'library-export'"
+          [attr.aria-current]="activeSection() === 'library-export' ? 'page' : null"
+          (click)="selectSection('library-export')"
+        >
+          <span class="nav-icon-wrapper" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 3v12"></path>
+              <path d="m7 10 5 5 5-5"></path>
+              <path d="M5 21h14"></path>
+            </svg>
+          </span>
+          <span class="nav-text">
+            <span class="nav-label">Library Export</span>
+            <span class="nav-sub">Portable library backup</span>
           </span>
           <span class="active-indicator" aria-hidden="true"></span>
         </button>
@@ -1117,6 +1173,207 @@
       }
     } @else if (activeSection() === 'system-prompts') {
       <app-system-prompt-settings [bookId]="activeBookId()!"></app-system-prompt-settings>
+    } @else if (activeSection() === 'export') {
+      <div class="settings-section-panel">
+        <header class="content-header">
+          <h1 class="content-title">Export</h1>
+          <p class="content-subtitle">
+            Save a readable copy of your manuscript or create a portable project backup.
+          </p>
+        </header>
+
+        <div class="settings-sections">
+          <section class="setting-card" aria-labelledby="manuscript-export-heading">
+            <header class="card-header">
+              <div class="card-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <path d="M14 2v6h6"></path>
+                  <path d="M8 13h8M8 17h8"></path>
+                </svg>
+              </div>
+              <div>
+                <h2 id="manuscript-export-heading">Manuscript formats</h2>
+                <p>
+                  Export the complete book in a format suited to editing, publishing, or sharing.
+                </p>
+              </div>
+            </header>
+
+            <div class="setting-row export-setting-row">
+              <div class="setting-copy">
+                <h3>Word document</h3>
+                <p>Create an editable manuscript for Microsoft Word and compatible editors.</p>
+              </div>
+              <div class="setting-control">
+                <button
+                  class="export-button"
+                  type="button"
+                  [disabled]="isExportPending()"
+                  (click)="exportManuscript('docx')"
+                >
+                  Export DOCX
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-row export-setting-row">
+              <div class="setting-copy">
+                <h3>EPUB book</h3>
+                <p>Create a reflowable ebook for readers and publishing platforms.</p>
+              </div>
+              <div class="setting-control">
+                <button
+                  class="export-button"
+                  type="button"
+                  [disabled]="isExportPending()"
+                  (click)="exportManuscript('epub')"
+                >
+                  Export EPUB
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-row export-setting-row">
+              <div class="setting-copy">
+                <h3>PDF document</h3>
+                <p>Create a fixed-layout document for printing and sharing.</p>
+              </div>
+              <div class="setting-control">
+                <button
+                  class="export-button"
+                  type="button"
+                  [disabled]="isExportPending()"
+                  (click)="exportManuscript('pdf')"
+                >
+                  Export PDF
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-row export-setting-row">
+              <div class="setting-copy">
+                <h3>PNG image</h3>
+                <p>Create an image rendering of the complete manuscript.</p>
+              </div>
+              <div class="setting-control">
+                <button
+                  class="export-button"
+                  type="button"
+                  [disabled]="isExportPending()"
+                  (click)="exportManuscript('png')"
+                >
+                  Export PNG
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="setting-card" aria-labelledby="project-backup-heading">
+            <header class="card-header">
+              <div class="card-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+                  ></path>
+                  <path d="m3.27 6.96 8.73 5.05 8.73-5.05M12 22.08V12"></path>
+                </svg>
+              </div>
+              <div>
+                <h2 id="project-backup-heading">Project backup</h2>
+                <p>Preserve the book and its associated My Novella data in one portable archive.</p>
+              </div>
+            </header>
+
+            <div class="setting-row export-setting-row">
+              <div class="setting-copy">
+                <h3>My Novella archive</h3>
+                <p>
+                  Export a <strong>.novella</strong> file for transferring or restoring this
+                  project.
+                </p>
+              </div>
+              <div class="setting-control">
+                <button
+                  class="export-button"
+                  type="button"
+                  [disabled]="isExportPending()"
+                  (click)="exportBookArchive()"
+                >
+                  Export backup
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    } @else if (activeSection() === 'library-export') {
+      <div class="settings-section-panel">
+        <header class="content-header">
+          <h1 class="content-title">Library Export</h1>
+          <p class="content-subtitle">
+            Create a portable backup of every book and its associated My Novella data.
+          </p>
+        </header>
+
+        <div class="settings-sections">
+          <section class="setting-card" aria-labelledby="library-export-heading">
+            <header class="card-header">
+              <div class="card-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path>
+                </svg>
+              </div>
+              <div>
+                <h2 id="library-export-heading">Library archive</h2>
+                <p>Preserve all books, manuscripts, codex entries, and chats in one archive.</p>
+              </div>
+            </header>
+
+            <div class="setting-row export-setting-row">
+              <div class="setting-copy">
+                <h3>My Novella library</h3>
+                <p>
+                  Export a <strong>.novella</strong> file for transferring or restoring your
+                  complete library.
+                </p>
+              </div>
+              <div class="setting-control">
+                <button
+                  class="export-button"
+                  type="button"
+                  [disabled]="isExportPending()"
+                  (click)="exportLibraryArchive()"
+                >
+                  {{ isExportPending() ? 'Exporting…' : 'Export library' }}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
     } @else if (activeSection() === 'global-prompts') {
       <app-system-prompt-settings [globalOnly]="true"></app-system-prompt-settings>
     } @else if (activeSection() === 'ai-configuration') {
