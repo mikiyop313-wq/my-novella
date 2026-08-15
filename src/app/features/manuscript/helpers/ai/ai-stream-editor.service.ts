@@ -217,6 +217,7 @@ export class AiStreamEditorService {
     let hasError = false;
     let hasWrittenContent = false;
     let reasoningBuffer = '';
+    let markdownSource = '';
 
     const queue: string[] = [];
     let isAnimating = false;
@@ -263,6 +264,8 @@ export class AiStreamEditorService {
         onToken: token => {
           if (!token) return;
 
+          markdownSource += token;
+
           if (token === '\n') {
             enqueue('\n');
           } else {
@@ -292,6 +295,7 @@ export class AiStreamEditorService {
       if (hasError && !hasWrittenContent) {
         this.removeGeneratingBlock(editor);
       } else {
+        this.renderGeneratedMarkdown(editor, markdownSource);
         this.finalizeGeneratingBlock(editor, reasoningBuffer);
         this.stoppedBlocks.delete(blockAttrs['id']);
       }
@@ -342,6 +346,40 @@ export class AiStreamEditorService {
   // ---------------------------------------------------------------------------
   // Block Finalization
   // ---------------------------------------------------------------------------
+
+  /** Converts completed AI Markdown into regular Tiptap content inside its review block. */
+  private renderGeneratedMarkdown(editor: Editor, markdown: string): void {
+    if (!markdown) return;
+
+    const blockPos = this.findGeneratingBlockPos(editor);
+    if (blockPos === null || !editor.markdown) return;
+
+    const blockNode = editor.state.doc.nodeAt(blockPos);
+    if (!blockNode) return;
+
+    try {
+      const parsedDocument = editor.markdown.parse(markdown);
+      const content = parsedDocument.content;
+
+      if (!content || content.length === 0) return;
+
+      const renderedBlock = editor.schema.nodeFromJSON({
+        type: AI_GENERATED_BLOCK_NODE,
+        attrs: blockNode.attrs,
+        content,
+      });
+      const tr = editor.state.tr.replaceWith(
+        blockPos,
+        blockPos + blockNode.nodeSize,
+        renderedBlock,
+      );
+
+      tr.setMeta('addToHistory', false);
+      editor.view.dispatch(tr);
+    } catch (error) {
+      console.warn('Failed to render generated Markdown:', error);
+    }
+  }
 
   private updateReasoningText(
     editor: Editor,

@@ -3,6 +3,7 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { Component, Injector, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
+import { Markdown } from '@tiptap/markdown';
 import Placeholder from '@tiptap/extension-placeholder';
 import StarterKit from '@tiptap/starter-kit';
 import { TiptapEditorDirective } from 'ngx-tiptap';
@@ -186,6 +187,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
       extensions: [
         StarterKit,
+        Markdown,
         Placeholder.configure({
           placeholder: 'Start writing or type /ai for AI assistant...',
           emptyEditorClass: 'is-editor-empty',
