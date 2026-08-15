@@ -161,6 +161,8 @@ export class EditorBubbleMenuComponent {
     console.log('AI Action - Expand triggered for: ', text);
   }
 
+  other(_prompt: string): void {}
+
   private getSelectedText(): string {
     const currentEditor = this.store.editor();
     if (!currentEditor) return '';
