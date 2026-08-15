@@ -9,6 +9,7 @@ import { WorkspaceStore } from './workspace.store';
 import { ChatStore } from '../chat/store/chat.store';
 import { routeAnimations } from '../../shared/animations/route-animations';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
+import { ManuscriptMode } from '../../../../shared/models/manuscript.model';
 
 @Component({
   selector: 'app-workspace',
@@ -65,6 +66,12 @@ export class Workspace implements OnInit {
     return ['/workspace', bookId, 'threads'];
   }
 
+  getManuscriptRoute(bookId: string): string[] {
+    const route = this.store.getLastManuscriptRoute(bookId);
+
+    return ['/workspace', bookId, 'manuscript', route?.mode ?? 'book', route?.id ?? bookId];
+  }
+
   private navigateToDefaultOutline(bookId: string): void {
     const workspaceUrl = `/workspace/${bookId}`;
     const currentUrl = this.router.url.replace(/\/$/, '');
@@ -78,6 +85,8 @@ export class Workspace implements OnInit {
   }
 
   private syncActiveViewFromUrl(): void {
+    this.rememberManuscriptRouteFromUrl();
+
     if (this.router.url.includes('/outline')) {
       this.store.setActiveView('outline');
     } else if (
@@ -89,5 +98,13 @@ export class Workspace implements OnInit {
     } else {
       this.store.setActiveView('manuscript');
     }
+  }
+
+  private rememberManuscriptRouteFromUrl(): void {
+    const match = this.router.url.match(/^\/workspace\/([^/?#]+)\/manuscript\/(book|act|chapter|scene)\/([^/?#]+)/);
+    if (!match) return;
+
+    const [, bookId, mode, id] = match;
+    this.store.rememberManuscriptRoute(bookId, { mode: mode as ManuscriptMode, id });
   }
 }
