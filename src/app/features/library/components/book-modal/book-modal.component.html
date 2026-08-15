@@ -1,6 +1,12 @@
-<div class="overlay-modal">
+<div class="overlay-modal" [class.settings-active]="currentView() === 'settings'">
     <!-- Left Visual Section -->
-    <div class="modal-visual">
+    <div class="modal-visual" [class.hidden]="currentView() === 'settings'">
+        <button class="settings-button" (click)="toggleView()" aria-label="Settings">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960">
+                <path
+                    d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z" />
+            </svg>
+        </button>
         <img [src]="book.coverImage || 'https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&q=80&w=800'"
             alt="Book Cover Art" />
     </div>
@@ -14,95 +20,220 @@
             </svg>
         </button>
 
-        <header class="modal-header">
-            <span class="last-edited">
-                <i class="icon-calendar"></i> Last edited {{ book.lastEditedAt | timeAgo }}
-            </span>
-            <h1 class="title">{{ book.title }}</h1>
-            <p class="author">By {{ book.author }}</p>
-        </header>
+        @if (currentView() === 'details') {
+        <div class="details-view" [ngClass]="activeSlideModalAnimation() ? 'slide-to-details-animation' : ''">
+            <header class="modal-header">
+                <span class="last-edited">
+                    <i class="icon-calendar"></i> Last edited {{ book.lastEditedAt | timeAgo }}
+                </span>
+                <h1 class="title">{{ book.title }}</h1>
+                <p class="author">By {{ book.author }}</p>
+            </header>
 
-        <div class="stats-grid">
-            <div class="stat-box">
-                <span class="label">WORDS</span>
-                <span class="value">{{formatNumber(currentWords())}}</span>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <span class="label">WORDS</span>
+                    <span class="value">{{formatNumber(currentWords())}}</span>
+                </div>
+                <div class="stat-box">
+                    <span class="label">CHAPTERS</span>
+                    <span class="value">{{formatNumber(currentCount())}}</span>
+                </div>
+                <div class="stat-box">
+                    <span class="label">EST. READ</span>
+                    <span class="value">{{ getReadingTime() }}</span>
+                </div>
             </div>
-            <div class="stat-box">
-                <span class="label">CHAPTERS</span>
-                <span class="value">{{formatNumber(currentCount())}}</span>
-            </div>
-            <div class="stat-box">
-                <span class="label">EST. READ</span>
-                <span class="value">{{ getReadingTime() }}</span>
-            </div>
-        </div>
 
-        @if (genres().length > 0) {
-        <div class="genres">
-            <span class="section-label">GENRES</span>
-            <cdk-accordion>
-                <cdk-accordion-item #genreAccordion="cdkAccordionItem">
-                    <div class="chips" [class.expanded]="genreAccordion.expanded" #genresContent>
-                        @for (genre of genres(); track genre.id) {
-                        <span class="chip">{{ genre.name | uppercase }}</span>
-                        }
-                    </div>
-                    @if(isGenresOverflow()){
-                    <button class="accordion-divider" (click)="onToggleGenres(genreAccordion)"
-                        [attr.aria-expanded]="genreAccordion.expanded" aria-label="Toggle genres">
-                        <span class="line"></span>
-                        <div class="dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
+            @if (genres().length > 0) {
+            <div class="genres">
+                <span class="section-label">GENRES</span>
+                <cdk-accordion>
+                    <cdk-accordion-item #genreAccordion="cdkAccordionItem">
+                        <div class="chips" [class.expanded]="genreAccordion.expanded" #genresContent>
+                            @for (genre of genres(); track genre.id) {
+                            <span class="chip">{{ genre.name | uppercase }}</span>
+                            }
                         </div>
-                        <span class="line"></span>
-                    </button>
-                    }
-                </cdk-accordion-item>
-            </cdk-accordion>
-        </div>
-        }
-
-        @if (tropes().length > 0) {
-        <div class="genres">
-            <span class="section-label">TROPES</span>
-            <cdk-accordion>
-                <cdk-accordion-item #tropeAccordion="cdkAccordionItem">
-                    <div class="chips" [class.expanded]="tropeAccordion.expanded" #tropesContent>
-                        @for (trope of tropes(); track trope.id) {
-                        <span class="chip">{{ trope.name | uppercase }}</span>
+                        @if(isGenresOverflow()){
+                        <button class="accordion-divider" (click)="onToggleGenres(genreAccordion)"
+                            [attr.aria-expanded]="genreAccordion.expanded" aria-label="Toggle genres">
+                            <span class="line"></span>
+                            <div class="dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <span class="line"></span>
+                        </button>
                         }
-                    </div>
-                    @if(isTropesOverflow()){
-                    <button class="accordion-divider" (click)="onToggleTropes(tropeAccordion)"
-                        [attr.aria-expanded]="tropeAccordion.expanded" aria-label="Toggle tropes">
-                        <span class="line"></span>
-                        <div class="dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </div>
-                        <span class="line"></span>
-                    </button>
-                    }
-                </cdk-accordion-item>
-            </cdk-accordion>
-        </div>
-        }
-
-
-        <div class="synopsis">
-            <span class="section-label">SYNOPSIS</span>
-            @if (book.synopsis) {
-            <p>{{ book.synopsis }}</p>
-            } @else {
-            <p class="no-synopsis">No synopsis available for this book.</p>
+                    </cdk-accordion-item>
+                </cdk-accordion>
+            </div>
             }
+
+            @if (tropes().length > 0) {
+            <div class="genres">
+                <span class="section-label">TROPES</span>
+                <cdk-accordion>
+                    <cdk-accordion-item #tropeAccordion="cdkAccordionItem">
+                        <div class="chips" [class.expanded]="tropeAccordion.expanded" #tropesContent>
+                            @for (trope of tropes(); track trope.id) {
+                            <span class="chip">{{ trope.name | uppercase }}</span>
+                            }
+                        </div>
+                        @if(isTropesOverflow()){
+                        <button class="accordion-divider" (click)="onToggleTropes(tropeAccordion)"
+                            [attr.aria-expanded]="tropeAccordion.expanded" aria-label="Toggle tropes">
+                            <span class="line"></span>
+                            <div class="dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <span class="line"></span>
+                        </button>
+                        }
+                    </cdk-accordion-item>
+                </cdk-accordion>
+            </div>
+            }
+
+
+            <div class="synopsis">
+                <span class="section-label">SYNOPSIS</span>
+                @if (book.synopsis) {
+                <p>{{ book.synopsis }}</p>
+                } @else {
+                <p class="no-synopsis">No synopsis available for this book.</p>
+                }
+            </div>
+            <footer class="modal-footer">
+                <button class="btn-primary">Continue Writing</button>
+                <button class="btn-outline">Export</button>
+            </footer>
         </div>
-        <footer class="modal-footer">
-            <button class="btn-primary">Continue Writing</button>
-            <button class="btn-outline">Export</button>
-        </footer>
+
+
+        } @else {
+        <div class="settings-view">
+            <header class="modal-header">
+                <button class="back-link" (click)="toggleView()">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                        fill="currentColor">
+                        <path d="m313-440 224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z" />
+                    </svg>
+                    Back to Details
+                </button>
+                <h1 class="title">Settings</h1>
+                <p class="author">{{ book.title }} configuration</p>
+            </header>
+
+            <div class="settings-form">
+                <div class="form-group">
+                    <label class="section-label">PROSE TENSE</label>
+                    <div class="settings-dropdown-trigger" [cdkMenuTriggerFor]="tenseMenu">
+                        <span>{{ getSelectedTenseLabel() }}</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                            fill="currentColor">
+                            <path d="M480-360 280-560h400L480-360Z" />
+                        </svg>
+                    </div>
+                    <ng-template #tenseMenu>
+                        <div class="settings-menu" cdkMenu>
+                            @for (tense of tenses; track tense.value) {
+                            <button class="menu-item" cdkMenuItem (click)="selectTense(tense.value)">
+                                <span>{{ tense.label }}</span>
+                                @if (selectedTense() === tense.value) {
+                                <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                                    fill="currentColor">
+                                    <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+                                </svg>
+                                }
+                            </button>
+                            }
+                        </div>
+                    </ng-template>
+                </div>
+
+                <div class="form-group">
+                    <label class="section-label">LANGUAGE</label>
+                    <div class="settings-dropdown-trigger" [cdkMenuTriggerFor]="langMenu">
+                        <span>{{ getSelectedLanguageLabel() }}</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                            fill="currentColor">
+                            <path d="M480-360 280-560h400L480-360Z" />
+                        </svg>
+                    </div>
+                    <ng-template #langMenu>
+                        <div class="settings-menu" cdkMenu>
+                            @for (lang of languages; track lang.value) {
+                            <button class="menu-item" cdkMenuItem (click)="selectLanguage(lang.value)">
+                                <span>{{ lang.label }}</span>
+                                @if (selectedLanguage() === lang.value) {
+                                <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                                    fill="currentColor">
+                                    <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+                                </svg>
+                                }
+                            </button>
+                            }
+                        </div>
+                    </ng-template>
+                </div>
+
+                <div class="settings-topic">
+                    <div class="form-group">
+                        <label class="section-label">POINT OF VIEW</label>
+                        <div class="settings-dropdown-trigger" [cdkMenuTriggerFor]="povMenu">
+                            <span>{{ getSelectedPOVLabel() }}</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+                                fill="currentColor">
+                                <path d="M480-360 280-560h400L480-360Z" />
+                            </svg>
+                        </div>
+                        <ng-template #povMenu>
+                            <div class="settings-menu" cdkMenu>
+                                @for (pov of povs; track pov.value) {
+                                <button class="menu-item" cdkMenuItem (click)="selectPOV(pov.value)">
+                                    <span>{{ pov.label }}</span>
+                                    @if (selectedPOV() === pov.value) {
+                                    <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960"
+                                        width="20" fill="currentColor">
+                                        <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+                                    </svg>
+                                    }
+                                </button>
+                                }
+                            </div>
+                        </ng-template>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="section-label">POV CHARACTER</label>
+                        <input type="text" class="settings-input" placeholder="Select or type character name..."
+                            [value]="povCharacter()" (input)="onCharacterChange($event)" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="danger-zone">
+                <div class="danger-header">
+                    <span class="section-label danger-label">DANGER ZONE</span>
+                    <p class="danger-description">These actions are destructive and cannot be undone.</p>
+                </div>
+                <div class="danger-actions">
+                    <button class="btn-neutral-outline" (click)="onArchive()">
+                        <i class="icon-archive"></i>
+                        Archive Book
+                    </button>
+                    <button class="btn-danger" (click)="onDelete()">
+                        <i class="icon-trash"></i>
+                        Delete Permanently
+                    </button>
+                </div>
+            </div>
+        </div>
+        }
     </div>
 </div>

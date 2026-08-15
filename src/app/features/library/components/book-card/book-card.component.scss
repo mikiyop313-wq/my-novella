@@ -51,19 +51,6 @@
             pointer-events: none;
         }
 
-        .card-header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0 0 8px;
-            box-sizing: border-box;
-            z-index: 10;
-        }
-
         .card-footer {
             position: absolute;
             bottom: 0;
@@ -75,13 +62,6 @@
             box-sizing: border-box;
             z-index: 10;
         }
-    }
-
-    .card-actions {
-
-        display: flex;
-        flex-direction: row;
-        gap: 16px;
     }
 
     .icon-btn {

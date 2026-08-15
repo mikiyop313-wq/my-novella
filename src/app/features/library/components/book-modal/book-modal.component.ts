@@ -1,5 +1,6 @@
 import { Component, Output, EventEmitter, signal, ViewChild, ElementRef, Input, computed } from '@angular/core';
 import { CdkAccordionItem, CdkAccordionModule } from '@angular/cdk/accordion';
+import { CdkMenuModule } from '@angular/cdk/menu';
 import { BookDto } from '../../../../../../shared/models/book.model';
 import { CommonModule } from '@angular/common';
 import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
@@ -7,7 +8,7 @@ import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
 @Component({
   selector: 'app-book-modal',
   standalone: true,
-  imports: [CdkAccordionModule, CommonModule, TimeAgoPipe],
+  imports: [CdkAccordionModule, CdkMenuModule, CommonModule, TimeAgoPipe],
   templateUrl: './book-modal.component.html',
   styleUrl: './book-modal.component.scss'
 })
@@ -17,6 +18,35 @@ export class BookModalComponent {
 
   @ViewChild('genresContent') genresContent!: ElementRef;
   @ViewChild('tropesContent') tropesContent!: ElementRef;
+
+  currentView = signal<'details' | 'settings'>('details');
+  activeSlideModalAnimation = signal<boolean>(false);
+
+  // Settings State
+  selectedTense = signal<'past' | 'present'>('past');
+  selectedLanguage = signal<string>('english');
+  selectedPOV = signal<'first' | 'third-limited' | 'third-omni' | 'second'>('third-limited');
+  povCharacter = signal<string>('');
+
+  // Options
+  tenses: { value: 'past' | 'present', label: string }[] = [
+    { value: 'past', label: 'Past Tense' },
+    { value: 'present', label: 'Present Tense' }
+  ];
+
+  languages = [
+    { value: 'english', label: 'English' },
+    { value: 'italian', label: 'Italian' },
+    { value: 'french', label: 'French' },
+    { value: 'spanish', label: 'Spanish' }
+  ];
+
+  povs: { value: 'first' | 'second' | 'third-limited' | 'third-omni', label: string }[] = [
+    { value: 'first', label: 'First Person' },
+    { value: 'second', label: 'Second Person' },
+    { value: 'third-limited', label: 'Third Person Limited' },
+    { value: 'third-omni', label: 'Third Person Omniscient' }
+  ];
 
   genresExpanded = signal(false);
   tropesExpanded = signal(false);
@@ -33,6 +63,11 @@ export class BookModalComponent {
 
 
   ngAfterViewInit() {
+    this.initObserver();
+  }
+
+  private initObserver() {
+    this.observer?.disconnect();
     this.observer = new ResizeObserver(() => {
       this.checkOverflow('genres');
       this.checkOverflow('tropes');
@@ -44,6 +79,8 @@ export class BookModalComponent {
 
   ngOnInit() {
     this.animateCount(1000);
+    // Initialize settings from book data if available (placeholder logic)
+    if (this.book.language) this.selectedLanguage.set(this.book.language.toLowerCase());
   }
 
   ngOnDestroy() {
@@ -112,7 +149,60 @@ export class BookModalComponent {
     accordionItem.toggle();
   }
 
+  toggleView() {
+    const isNowDetails = this.currentView() === 'settings';
+
+    if (isNowDetails) {
+      this.currentView.set('details');
+      // Re-initialize observer after the DOM updates
+      setTimeout(() => this.initObserver(), 0);
+      this.activeSlideModalAnimation.set(true);
+    } else {
+      this.activeSlideModalAnimation.set(false);
+      this.currentView.set('settings');
+    }
+  }
+
+  selectTense(tense: 'past' | 'present') {
+    this.selectedTense.set(tense);
+  }
+
+  selectLanguage(lang: string) {
+    this.selectedLanguage.set(lang);
+  }
+
+  selectPOV(pov: 'first' | 'third-limited' | 'third-omni' | 'second') {
+    this.selectedPOV.set(pov);
+  }
+
+  onCharacterChange(event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    this.povCharacter.set(value);
+  }
+
+  getSelectedTenseLabel(): string {
+    return this.tenses.find(t => t.value === this.selectedTense())?.label || '';
+  }
+
+  getSelectedLanguageLabel(): string {
+    return this.languages.find(l => l.value === this.selectedLanguage())?.label || '';
+  }
+
+  getSelectedPOVLabel(): string {
+    return this.povs.find(p => p.value === this.selectedPOV())?.label || '';
+  }
+
+  onArchive() {
+    console.log('Archive book:', this.book.id);
+  }
+
+  onDelete() {
+    console.log('Delete book:', this.book.id);
+  }
+
   onClose() {
     this.close.emit();
   }
+
+
 }

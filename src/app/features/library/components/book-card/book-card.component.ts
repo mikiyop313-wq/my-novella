@@ -7,7 +7,7 @@ import { TimeAgoPipe } from '../../../../shared/pipes/time-ago.pipe';
 
 @Component({
   selector: 'app-book-card',
-  imports: [OverlayMenuDirective, OverlayModalDirective, BookModalComponent, TimeAgoPipe],
+  imports: [OverlayModalDirective, BookModalComponent, TimeAgoPipe],
   templateUrl: './book-card.component.html',
   styleUrl: './book-card.component.scss',
 })
