@@ -49,6 +49,19 @@ describe('Story context builder', () => {
     expect(result.match(/Selected prose\./g)).toHaveLength(1);
   });
 
+  it('excludes disabled scenes from refs, outlines, and previous-scene lookup', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes![1].includeInContext = false;
+
+    expect([...expandManuscriptRefs(hierarchy, ['novel'])]).toEqual(['scene-1', 'scene-3']);
+    expect(findPreviousSceneId(hierarchy, 'scene-3')).toBe('scene-1');
+
+    const outline = serializeFullOutline(hierarchy, 'Novel', new Map());
+    expect(outline).toContain('SCENE 1 — Opening');
+    expect(outline).not.toContain('Second summary.');
+    expect(outline).toContain('SCENE 1 — Ending');
+  });
+
   it('renders an Outline with summaries only for scenes before the current scene', () => {
     const result = serializePartialOutline(
       createHierarchy(),
@@ -662,7 +675,7 @@ function createScene(
     chapterId: 'chapter-1',
     status: 'active',
     prose: null,
-    wordCount: 0,
+    wordCount: summary ? 0 : 1,
     pointOfViewOverride: null,
     povCharacterIdOverride: null,
   };

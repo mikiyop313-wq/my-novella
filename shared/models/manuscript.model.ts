@@ -38,6 +38,10 @@ export interface SceneDto {
   wordCount: number | null;
   pointOfViewOverride: 'first' | 'second' | 'third_limited' | 'third_omni' | null;
   povCharacterIdOverride: string | null;
+  /** Saved user preference. Empty scenes remain effectively excluded while this is true. */
+  includeInContext?: boolean;
+  /** Backend-derived state after applying content eligibility and ancestor rules. */
+  isIncludedInContext?: boolean;
 }
 
 export interface ChapterDto {
@@ -48,6 +52,8 @@ export interface ChapterDto {
   status: ManuscriptEntityStatus;
   summary: string | null;
   scenes?: SceneDto[];
+  /** True when at least one child scene is effectively included. */
+  isIncludedInContext?: boolean;
 }
 
 export interface ActDto {
@@ -58,6 +64,16 @@ export interface ActDto {
   status: ManuscriptEntityStatus;
   summary: string | null;
   chapters?: ChapterDto[];
+  /** True when at least one child chapter is effectively included. */
+  isIncludedInContext?: boolean;
+}
+
+export type ManuscriptContextEntityType = 'act' | 'chapter' | 'scene';
+
+export interface SetContextInclusionPayload {
+  entityType: ManuscriptContextEntityType;
+  id: string;
+  included: boolean;
 }
 
 /** Lightweight scene data used by the archive manager. */

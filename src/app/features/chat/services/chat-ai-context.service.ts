@@ -16,6 +16,7 @@ import {
 } from '../../../shared/utils/story-context-builder';
 import { CodexService } from '../../codex/services/codex.service';
 import { ManuscriptStructureService } from '../../workspace/services/manuscript-structure.service';
+import { filterHierarchyForContext } from '../../../../../shared/utils/manuscript-context-inclusion';
 
 export interface ChatAiContextRequest {
   includeFullOutline: boolean;
@@ -102,7 +103,7 @@ export class ChatAiContextService {
     selectedSceneIds: ReadonlySet<string>,
     includeFullOutline: boolean,
   ): string | null {
-    const orderedScenes = flattenScenes(hierarchy);
+    const orderedScenes = flattenScenes(filterHierarchyForContext(hierarchy));
     if (includeFullOutline) return orderedScenes.at(-1)?.id ?? null;
 
     return [...orderedScenes]

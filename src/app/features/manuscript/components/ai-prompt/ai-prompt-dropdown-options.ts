@@ -2,6 +2,7 @@ import type { CodexEntryDto, CodexEntryType } from '../../../../../../shared/mod
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
 import type { AiModel, AiModelProviderGroup } from '../../../../../../shared/models/ai.model';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
+import { filterHierarchyForContext } from '../../../../../../shared/utils/manuscript-context-inclusion';
 import type {
   DropdownMenu,
   DropdownOption,
@@ -49,11 +50,12 @@ const CODEX_CATEGORIES: readonly CodexCategory[] = [
 ];
 
 export function buildContextDropdownSections(source: AiContextDropdownSource): DropdownSection<string>[] {
+  const hierarchy = filterHierarchyForContext(source.hierarchy);
   const activeCodexEntries = [...source.codexEntries]
     .filter(entry => entry.status === 'active' && entry.trackingSetting !== 'never_include')
     .sort((a, b) => a.name.localeCompare(b.name));
-  const allScenes = scenesForActs(source.hierarchy);
-  const allManuscriptValues = manuscriptValuesForNovel(source.hierarchy);
+  const allScenes = scenesForActs(hierarchy);
+  const allManuscriptValues = manuscriptValuesForNovel(hierarchy);
 
   const outlineOptions: DropdownOption<string>[] = [{
     value: 'outline',
@@ -68,7 +70,7 @@ export function buildContextDropdownSections(source: AiContextDropdownSource): D
       count: allScenes.length,
       disabled: allScenes.length === 0,
       selectionValues: allManuscriptValues,
-      submenu: buildNovelMenu(source.hierarchy),
+      submenu: buildNovelMenu(hierarchy),
     });
   }
 
@@ -109,15 +111,16 @@ export function contextSelectionToValues(
   selection: AiContextSelection,
   hierarchy: readonly ActDto[],
 ): string[] {
+  const selectableHierarchy = filterHierarchyForContext(hierarchy);
   const values = new Set<string>();
 
   if (selection.includeFullOutline) values.add('outline');
 
   const refs = new Set<AiManuscriptContextRef>(selection.manuscriptRefs);
   if (refs.has('novel')) {
-    manuscriptValuesForNovel(hierarchy).forEach(value => values.add(value));
+    manuscriptValuesForNovel(selectableHierarchy).forEach(value => values.add(value));
   } else {
-    for (const act of hierarchy) {
+    for (const act of selectableHierarchy) {
       if (refs.has(actValue(act.id))) {
         manuscriptValuesForAct(act).forEach(value => values.add(value));
         continue;
@@ -144,14 +147,15 @@ export function dropdownValuesToContextSelection(
   values: readonly string[],
   hierarchy: readonly ActDto[],
 ): AiContextSelection {
+  const selectableHierarchy = filterHierarchyForContext(hierarchy);
   const selected = new Set(values);
   const manuscriptRefs: AiManuscriptContextRef[] = [];
 
-  const novelValues = manuscriptValuesForNovel(hierarchy);
+  const novelValues = manuscriptValuesForNovel(selectableHierarchy);
   if (novelValues.length > 0 && novelValues.every(value => selected.has(value))) {
     manuscriptRefs.push('novel');
   } else {
-    for (const act of hierarchy) {
+    for (const act of selectableHierarchy) {
       const actValues = manuscriptValuesForAct(act);
       if (actValues.length > 0 && actValues.every(value => selected.has(value))) {
         manuscriptRefs.push(actValue(act.id));
@@ -191,6 +195,25 @@ export function restoreManuscriptContextRefs(
   }
 
   return uniqueStrings(manuscriptRefs).filter(isManuscriptContextRef);
+}
+
+export function filterSelectableManuscriptRefs(
+  hierarchy: readonly ActDto[],
+  refs: readonly AiManuscriptContextRef[],
+): AiManuscriptContextRef[] {
+  const selectableHierarchy = filterHierarchyForContext(hierarchy);
+  const validRefs = new Set<AiManuscriptContextRef>();
+  if (scenesForActs(selectableHierarchy).length > 0) validRefs.add('novel');
+
+  for (const act of selectableHierarchy) {
+    validRefs.add(actValue(act.id));
+    for (const chapter of act.chapters ?? []) {
+      validRefs.add(chapterValue(chapter.id));
+      for (const scene of chapter.scenes ?? []) validRefs.add(sceneValue(scene.id));
+    }
+  }
+
+  return [...new Set(refs)].filter((ref) => validRefs.has(ref));
 }
 
 function buildNovelMenu(hierarchy: readonly ActDto[]): DropdownMenu<string> {

@@ -20,6 +20,7 @@ import { CodexService } from '../codex/services/codex.service';
 import { CodexStore } from '../codex/store/codex.store';
 import { Outline } from './outline';
 import { OutlineStore } from './store/outline.store';
+import { withEffectiveContextInclusion } from '../../../../shared/utils/manuscript-context-inclusion';
 
 describe('Outline', () => {
   const sceneCardModeStorageKey = 'outline-scene-card-mode';
@@ -75,6 +76,23 @@ describe('Outline', () => {
       updateChapter: vi.fn().mockResolvedValue(undefined),
       updateScene: vi.fn().mockResolvedValue(undefined),
       updateStructurePositions: vi.fn().mockResolvedValue(undefined),
+      setContextInclusion: vi.fn().mockImplementation(async (payload: any) => {
+        const hierarchy = store.bookHierarchy().map((act: any) => ({
+          ...act,
+          chapters: (act.chapters ?? []).map((chapter: any) => ({
+            ...chapter,
+            scenes: (chapter.scenes ?? []).map((scene: any) => ({
+              ...scene,
+              includeInContext: payload.entityType === 'act' && act.id === payload.id
+                || payload.entityType === 'chapter' && chapter.id === payload.id
+                || payload.entityType === 'scene' && scene.id === payload.id
+                ? payload.included
+                : scene.includeInContext,
+            })),
+          })),
+        }));
+        store.bookHierarchy.set(withEffectiveContextInclusion(hierarchy));
+      }),
     };
 
     systemPromptModelService = {
@@ -203,12 +221,13 @@ describe('Outline', () => {
     expect(inclusionSwitch.nextElementSibling?.getAttribute('role')).toBe('separator');
 
     inclusionSwitch.click();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(document.querySelector('.scene-options-menu')).not.toBeNull();
     expect(inclusionSwitch.getAttribute('aria-checked')).toBe('false');
     expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
-    expect(component.isOutlineItemIncluded('scene-2')).toBe(true);
+    expect(component.isOutlineItemIncluded('scene-2')).toBe(false);
 
     const sceneMenuTrigger = fixture.debugElement
       .query(By.css('.scene-more'))
@@ -221,7 +240,42 @@ describe('Outline', () => {
     expect(document.querySelector('.outline-inclusion-switch')?.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('renders independent inclusion switches for acts and chapters', async () => {
+  it('disables empty scene, chapter, and act inclusion switches with explanatory tooltips', async () => {
+    showScene('   ', 0);
+
+    const menuButtons = [
+      {
+        trigger: '.act-header-right .btn-more',
+        tooltip: 'Write prose or a summary in this act before including it.',
+      },
+      {
+        trigger: '.chapter-row-right .btn-more',
+        tooltip: 'Write prose or a summary in this chapter before including it.',
+      },
+      {
+        trigger: '.scene-more',
+        tooltip: 'Write prose or a summary in this scene before including it.',
+      },
+    ];
+
+    for (const menuButton of menuButtons) {
+      const trigger = fixture.debugElement.query(By.css(menuButton.trigger));
+      trigger.nativeElement.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const inclusionSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
+      expect(inclusionSwitch.disabled).toBe(true);
+      expect(inclusionSwitch.classList).toContain('is-disabled');
+      expect(inclusionSwitch.title).toBe(menuButton.tooltip);
+
+      trigger.injector.get(CdkMenuTrigger).close();
+    }
+
+    expect(store.setContextInclusion).not.toHaveBeenCalled();
+  });
+
+  it('cascades act and chapter inclusion through their scenes', async () => {
     showScene('', 12);
     const actMenuButton = fixture.debugElement.query(By.css('.act-header-right .btn-more'));
     actMenuButton.nativeElement.click();
@@ -232,6 +286,7 @@ describe('Outline', () => {
     expect(actSwitch.textContent).toContain('Include act');
     expect(actSwitch.getAttribute('aria-checked')).toBe('true');
     actSwitch.click();
+    await fixture.whenStable();
     fixture.detectChanges();
     expect(component.isOutlineItemIncluded('act-1')).toBe(false);
 
@@ -243,12 +298,13 @@ describe('Outline', () => {
 
     const chapterSwitch = document.querySelector<HTMLButtonElement>('.outline-inclusion-switch')!;
     expect(chapterSwitch.textContent).toContain('Include chapter');
-    expect(chapterSwitch.getAttribute('aria-checked')).toBe('true');
+    expect(chapterSwitch.getAttribute('aria-checked')).toBe('false');
     chapterSwitch.click();
+    await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(component.isOutlineItemIncluded('chapter-1')).toBe(false);
-    expect(component.isOutlineItemIncluded('act-1')).toBe(false);
+    expect(component.isOutlineItemIncluded('chapter-1')).toBe(true);
+    expect(component.isOutlineItemIncluded('act-1')).toBe(true);
   });
 
   it('toggles scene inclusion from the keyboard and resets it with the component', async () => {
@@ -270,6 +326,7 @@ describe('Outline', () => {
       bubbles: true,
     }));
     inclusionSwitch.click();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
@@ -281,7 +338,7 @@ describe('Outline', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(component.isOutlineItemIncluded('scene-1')).toBe(true);
+    expect(component.isOutlineItemIncluded('scene-1')).toBe(false);
   });
 
   it('resolves the active Summary and Codex Detection models when the scene AI menu opens', async () => {

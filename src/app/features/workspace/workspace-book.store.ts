@@ -8,6 +8,7 @@ import {
   UpdateChapterPayload,
   UpdateScenePayload,
 } from '../../../../shared/models/manuscript.model';
+import { withEffectiveContextInclusion } from '../../../../shared/utils/manuscript-context-inclusion';
 import { ManuscriptStructureService } from './services/manuscript-structure.service';
 
 export interface WorkspaceBookState {
@@ -38,7 +39,7 @@ export const WorkspaceBookStore = signalStore(
 
     setBookHierarchy(bookHierarchy: ActDto[]): void {
       patchState(store, {
-        bookHierarchy,
+        bookHierarchy: withEffectiveContextInclusion(bookHierarchy),
         isLoadingBookHierarchy: false,
         bookHierarchyError: null,
       });
@@ -53,7 +54,7 @@ export const WorkspaceBookStore = signalStore(
       try {
         const hierarchy = await manuscriptStructureService.getBookHierarchy(mode, id);
         patchState(store, {
-          bookHierarchy: hierarchy,
+          bookHierarchy: withEffectiveContextInclusion(hierarchy),
           isLoadingBookHierarchy: false,
         });
         return hierarchy;
@@ -69,7 +70,7 @@ export const WorkspaceBookStore = signalStore(
 
     updateActMetadata(payload: UpdateActPayload): void {
       patchState(store, {
-        bookHierarchy: store.bookHierarchy().map(act =>
+        bookHierarchy: withEffectiveContextInclusion(store.bookHierarchy().map(act =>
           act.id === payload.id
             ? {
                 ...act,
@@ -77,13 +78,13 @@ export const WorkspaceBookStore = signalStore(
                 ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
               }
             : act
-        ),
+        )),
       });
     },
 
     updateChapterMetadata(payload: UpdateChapterPayload): void {
       patchState(store, {
-        bookHierarchy: store.bookHierarchy().map(act => ({
+        bookHierarchy: withEffectiveContextInclusion(store.bookHierarchy().map(act => ({
           ...act,
           chapters: (act.chapters || []).map(chapter =>
             chapter.id === payload.id
@@ -94,13 +95,13 @@ export const WorkspaceBookStore = signalStore(
                 }
               : chapter
           ),
-        })),
+        }))),
       });
     },
 
     updateSceneMetadata(payload: UpdateScenePayload): void {
       patchState(store, {
-        bookHierarchy: store.bookHierarchy().map(act => ({
+        bookHierarchy: withEffectiveContextInclusion(store.bookHierarchy().map(act => ({
           ...act,
           chapters: (act.chapters || []).map(chapter => ({
             ...chapter,
@@ -114,7 +115,7 @@ export const WorkspaceBookStore = signalStore(
                 : scene
             ),
           })),
-        })),
+        }))),
       });
     },
   })),

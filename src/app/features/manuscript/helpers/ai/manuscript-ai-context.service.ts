@@ -32,6 +32,7 @@ import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.se
 import type { SimilarParagraphResult } from '../../../../../../shared/models/vector.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
+import { isSceneIncludedInContext } from '../../../../../../shared/utils/manuscript-context-inclusion';
 
 export type ManuscriptAiPointOfViewSetting = BookSettingsDto['pointOfView'] | 'global';
 
@@ -307,7 +308,13 @@ function serializeSimilarParagraphs(
   results: readonly SimilarParagraphResult[],
   hierarchy: readonly ActDto[],
 ): string {
-  if (results.length === 0) return '';
+  const includedSceneIds = new Set(
+    hierarchy.flatMap((act) => (act.chapters ?? []).flatMap((chapter) =>
+      (chapter.scenes ?? []).filter(isSceneIncludedInContext).map((scene) => scene.id),
+    )),
+  );
+  const includedResults = results.filter((result) => includedSceneIds.has(result.sceneId));
+  if (includedResults.length === 0) return '';
 
   const sceneLocations = new Map<string, string>();
   for (const act of hierarchy) {
@@ -329,7 +336,7 @@ function serializeSimilarParagraphs(
     - 4;
   const paragraphs: string[] = [];
 
-  for (const [index, result] of results.entries()) {
+  for (const [index, result] of includedResults.entries()) {
     if (remaining <= 0) break;
     const location = sceneLocations.get(result.sceneId) ?? `Scene: ${result.sceneId}`;
     const prefix = `${index + 1}. [${location}]\n`;

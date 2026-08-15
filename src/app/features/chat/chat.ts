@@ -31,6 +31,7 @@ import {
 } from '../../shared/components/markdown-editor/markdown-editor.extensions';
 import { ToastService } from '../../shared/services/toast.service';
 import { expandManuscriptRefs } from '../../shared/utils/story-context-builder';
+import { filterSelectableManuscriptRefs } from '../manuscript/components/ai-prompt/ai-prompt-dropdown-options';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { CodexMatchChooserService } from '../codex/highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../codex/services/codex-context-trie.service';
@@ -254,6 +255,15 @@ export class Chat implements OnInit, OnDestroy {
       this.contextCodexEntries();
       this.contextCodexTrie();
       this.scheduleContextAvailabilityRefresh();
+    });
+
+    effect(() => {
+      if (this.contextHierarchyLoading()) return;
+      const currentRefs = this.contextManuscriptRefs();
+      const selectableRefs = filterSelectableManuscriptRefs(this.contextHierarchy(), currentRefs);
+      if (selectableRefs.length === currentRefs.length
+        && selectableRefs.every((ref, index) => ref === currentRefs[index])) return;
+      this.contextManuscriptRefs.set(selectableRefs);
     });
 
     afterRenderEffect(() => {

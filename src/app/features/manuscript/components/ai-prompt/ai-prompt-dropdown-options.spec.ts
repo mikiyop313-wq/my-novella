@@ -8,6 +8,7 @@ import {
   buildModelDropdownSections,
   contextSelectionToValues,
   dropdownValuesToContextSelection,
+  filterSelectableManuscriptRefs,
   restoreManuscriptContextRefs,
 } from './ai-prompt-dropdown-options';
 
@@ -39,6 +40,36 @@ describe('AI prompt dropdown options', () => {
       'scene:scene-2',
     ]);
     expect(chapter.submenu!.sections[0].options.map(option => option.label)).toEqual(['Opening', 'Crossroads']);
+  });
+
+  it('removes excluded branches and prunes stale manuscript selections', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].chapters![0].scenes![1].includeInContext = false;
+    hierarchy[1].chapters![0].scenes![0].includeInContext = false;
+
+    const sections = buildContextDropdownSections({
+      hierarchy,
+      codexEntries: [],
+      automaticallyIncludedCodexEntryIds: new Set(),
+      hierarchyLoading: false,
+      codexLoading: false,
+      hierarchyError: null,
+      codexError: null,
+    });
+    const novel = sections[0].options[1];
+
+    expect(novel.count).toBe(1);
+    expect(novel.selectionValues).toEqual(['scene:scene-1']);
+    expect(novel.submenu?.sections[0].options.map((option) => option.label)).toEqual(['Act One']);
+    expect(contextSelectionToValues({
+      includeFullOutline: false,
+      manuscriptRefs: ['scene:scene-2', 'act:act-2'],
+      codexEntryIds: [],
+    }, hierarchy)).toEqual([]);
+    expect(filterSelectableManuscriptRefs(
+      hierarchy,
+      ['act:act-1', 'scene:scene-2', 'act:act-2'],
+    )).toEqual(['act:act-1']);
   });
 
   it('filters and sorts active Codex entries while retaining aliases for search', () => {
@@ -305,7 +336,7 @@ function createScene(id: string, title: string, position: number): SceneDto {
     status: 'active',
     prose: null,
     summary: null,
-    wordCount: 0,
+    wordCount: 1,
     pointOfViewOverride: null,
     povCharacterIdOverride: null,
   };

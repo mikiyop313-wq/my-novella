@@ -12,6 +12,7 @@ import {
   ChapterDto,
   ManuscriptMode,
   SceneDto,
+  ManuscriptContextEntityType,
   TiptapJsonDoc,
   UpdateStructurePositionsPayload,
 } from '../../../../shared/models/manuscript.model';
@@ -26,6 +27,12 @@ import { OverlayModalDirective } from '../../shared/directives/overlay-modal.dir
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
+import {
+  hasSceneContextContent,
+  isActIncludedInContext,
+  isChapterIncludedInContext,
+  isSceneIncludedInContext,
+} from '../../../../shared/utils/manuscript-context-inclusion';
 import { AutocompleteKeepOpenMenuItemDirective } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import {
   SystemPromptModelService,
@@ -145,7 +152,6 @@ export class Outline implements OnInit {
   collapsed = signal<Record<string, boolean>>({});
   editing = signal<Record<string, boolean>>({});
   sceneSummaryDrafts = signal<Record<string, string>>({});
-  outlineInclusion = signal<Record<string, boolean>>({});
   sceneCardMode = signal<SceneCardMode>(loadSceneCardMode());
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
@@ -165,14 +171,50 @@ export class Outline implements OnInit {
   // ---------------------------------------------------------------------------
 
   isOutlineItemIncluded(itemId: string): boolean {
-    return this.outlineInclusion()[itemId] ?? true;
+    const act = this.findAct(itemId);
+    if (act) return isActIncludedInContext(act);
+
+    const chapter = this.findChapter(itemId);
+    if (chapter) return isChapterIncludedInContext(chapter);
+
+    const scene = this.findScene(itemId);
+    return scene ? isSceneIncludedInContext(scene) : false;
   }
 
-  toggleOutlineItemInclusion(itemId: string): void {
-    this.outlineInclusion.update((inclusion) => ({
-      ...inclusion,
-      [itemId]: !this.isOutlineItemIncluded(itemId),
-    }));
+  hasOutlineItemContextContent(
+    entityType: ManuscriptContextEntityType,
+    itemId: string,
+  ): boolean {
+    if (entityType === 'act') {
+      return this.findAct(itemId)?.chapters?.some((chapter) =>
+        chapter.scenes?.some(hasSceneContextContent),
+      ) === true;
+    }
+
+    if (entityType === 'chapter') {
+      return this.findChapter(itemId)?.scenes?.some(hasSceneContextContent) === true;
+    }
+
+    const scene = this.findScene(itemId);
+    return scene ? hasSceneContextContent(scene) : false;
+  }
+
+  async toggleOutlineItemInclusion(
+    entityType: ManuscriptContextEntityType,
+    itemId: string,
+  ): Promise<void> {
+    if (!this.hasOutlineItemContextContent(entityType, itemId)) return;
+
+    try {
+      await this.store.setContextInclusion({
+        entityType,
+        id: itemId,
+        included: !this.isOutlineItemIncluded(itemId),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update context inclusion.';
+      this.toastService.error(message, 'Outline');
+    }
   }
 
   @HostListener('document:click', ['$event'])

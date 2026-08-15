@@ -33,6 +33,7 @@ import {
   buildModelDropdownSections,
   contextSelectionToValues,
   dropdownValuesToContextSelection,
+  filterSelectableManuscriptRefs,
   restoreManuscriptContextRefs,
 } from './ai-prompt-dropdown-options';
 
@@ -226,6 +227,21 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       this.contextCodexEntries();
       this.contextCodexTrie();
       if (this.contextTrackingInitialized) this.scheduleContextAvailabilityRefresh();
+    });
+
+    effect(() => {
+      if (!this.modelSelectionInitialized() || this.contextHierarchyLoading()) return;
+
+      const currentRefs = this.contextManuscriptRefs();
+      const selectableRefs = filterSelectableManuscriptRefs(this.contextHierarchy(), currentRefs);
+      if (selectableRefs.length === currentRefs.length
+        && selectableRefs.every((ref, index) => ref === currentRefs[index])) return;
+
+      this.contextManuscriptRefs.set(selectableRefs);
+      this.updateAttributes()({
+        contextManuscriptRefs: selectableRefs,
+        contextSceneIds: [],
+      });
     });
   }
 

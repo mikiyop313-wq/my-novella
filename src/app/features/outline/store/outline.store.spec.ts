@@ -79,6 +79,7 @@ describe('OutlineStore', () => {
     updateChapter: ReturnType<typeof vi.fn>;
     updateScene: ReturnType<typeof vi.fn>;
     updateStructurePositions: ReturnType<typeof vi.fn>;
+    setContextInclusion: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -97,6 +98,7 @@ describe('OutlineStore', () => {
       updateChapter: vi.fn(),
       updateScene: vi.fn(),
       updateStructurePositions: vi.fn(),
+      setContextInclusion: vi.fn(),
     };
 
     TestBed.configureTestingModule({
@@ -123,6 +125,29 @@ describe('OutlineStore', () => {
     expect(store.bookHierarchy()[0].summary).toBe('Act summary');
     expect(store.bookHierarchy()[0].chapters?.[0].summary).toBe('Chapter summary');
     expect(store.bookHierarchy()[0].chapters?.[0].scenes?.[0].summary).toBe('Scene summary');
+  });
+
+  it('replaces the outline with the authoritative inclusion response', async () => {
+    outlineService.getOutline.mockResolvedValueOnce([makeAct()]);
+    await store.enterBook('book-1');
+
+    const excluded = makeAct({
+      isIncludedInContext: false,
+      chapters: [makeChapter({
+        isIncludedInContext: false,
+        scenes: [makeScene({ includeInContext: false, isIncludedInContext: false })],
+      })],
+    });
+    outlineService.setContextInclusion.mockResolvedValueOnce([excluded]);
+
+    await store.setContextInclusion({ entityType: 'act', id: 'act-1', included: false });
+
+    expect(outlineService.setContextInclusion).toHaveBeenCalledWith({
+      entityType: 'act',
+      id: 'act-1',
+      included: false,
+    });
+    expect(store.bookHierarchy()[0].isIncludedInContext).toBe(false);
   });
 
   it('appends a created act only after IPC success', async () => {

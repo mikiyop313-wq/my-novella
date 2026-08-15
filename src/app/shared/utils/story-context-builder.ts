@@ -13,6 +13,10 @@ import type {
   TiptapNode,
 } from '../../../../shared/models/manuscript.model';
 import type { AiManuscriptContextRef } from '../models/ai-context.model';
+import {
+  filterHierarchyForContext,
+  isSceneIncludedInContext,
+} from '../../../../shared/utils/manuscript-context-inclusion';
 
 const EXCLUDED_PROSE_NODES = new Set([
   'aiPrompt',
@@ -105,15 +109,16 @@ export function expandManuscriptRefs(
   hierarchy: readonly ActDto[],
   refs: readonly AiManuscriptContextRef[],
 ): Set<string> {
+  const selectableHierarchy = filterHierarchyForContext(hierarchy);
   const selected = new Set(refs);
   const sceneIds = new Set<string>();
 
   if (selected.has('novel')) {
-    flattenScenes(hierarchy).forEach((scene) => sceneIds.add(scene.id));
+    flattenScenes(selectableHierarchy).forEach((scene) => sceneIds.add(scene.id));
     return sceneIds;
   }
 
-  for (const act of hierarchy) {
+  for (const act of selectableHierarchy) {
     if (selected.has(`act:${act.id}`)) {
       scenesForAct(act).forEach((scene) => sceneIds.add(scene.id));
       continue;
@@ -140,7 +145,8 @@ export function findPreviousSceneId(
 ): string | null {
   const scenes = flattenScenes(hierarchy);
   const currentIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
-  return currentIndex > 0 ? scenes[currentIndex - 1].id : null;
+  if (currentIndex <= 0) return null;
+  return scenes.slice(0, currentIndex).reverse().find(isSceneIncludedInContext)?.id ?? null;
 }
 
 export function findCurrentSceneIdBeforePosition(
@@ -216,8 +222,12 @@ export function serializeFullOutline(
   proseBySceneId: ReadonlyMap<string, string>,
   promptBoundary?: ManuscriptPromptBoundary,
 ): string {
-  const body = serializeHierarchy({
+  const contextHierarchy = filterHierarchyForContext(
     hierarchy,
+    new Set(promptBoundary ? [promptBoundary.sceneId] : []),
+  );
+  const body = serializeHierarchy({
+    hierarchy: contextHierarchy,
     bookTitle,
     includeAll: true,
     includeNovel: true,
@@ -239,7 +249,8 @@ export function serializePartialOutline(
   currentSceneId: string,
   content: PartialOutlineContent = {},
 ): string {
-  const scenes = flattenScenes(hierarchy);
+  const contextHierarchy = filterHierarchyForContext(hierarchy, new Set([currentSceneId]));
+  const scenes = flattenScenes(contextHierarchy);
   const currentSceneIndex = scenes.findIndex((scene) => scene.id === currentSceneId);
   const includeCurrentScene = content.currentSceneProse !== undefined
     || content.selectedSceneProse?.has(currentSceneId) === true;
@@ -265,7 +276,7 @@ export function serializePartialOutline(
     sceneContent.set(currentSceneId, { label: PROSE_LABEL, text: content.currentSceneProse });
   }
   const body = serializeHierarchy({
-    hierarchy,
+    hierarchy: contextHierarchy,
     bookTitle,
     includeAll: false,
     includeNovel: true,
@@ -287,14 +298,16 @@ export function serializeSelectedManuscript(
   proseBySceneId: ReadonlyMap<string, string>,
   promptBoundary?: ManuscriptPromptBoundary,
 ): string {
+  const contextHierarchy = filterHierarchyForContext(hierarchy);
+  const allowedSceneIds = new Set(flattenScenes(contextHierarchy).map((scene) => scene.id));
   const body = serializeHierarchy({
-    hierarchy,
+    hierarchy: contextHierarchy,
     bookTitle,
     includeAll: false,
     includeNovel: true,
     includeParentSummaries: false,
     includeSceneSummaries: false,
-    selectedSceneIds,
+    selectedSceneIds: new Set([...selectedSceneIds].filter((id) => allowedSceneIds.has(id))),
     sceneContent: new Map(
       [...proseBySceneId].map(([sceneId, text]) => [sceneId, { label: PROSE_LABEL, text }]),
     ),
@@ -325,7 +338,10 @@ export function serializeCodexContext(
   currentSceneId: string | null,
 ): string {
   const sceneRanks = new Map(flattenScenes(hierarchy).map((scene, index) => [scene.id, index]));
-  const sceneLocations = progressionLocations(hierarchy);
+  const includedSceneIds = new Set(
+    flattenScenes(filterHierarchyForContext(hierarchy)).map((scene) => scene.id),
+  );
+  const sceneLocations = progressionLocations(filterHierarchyForContext(hierarchy));
   const currentRank = currentSceneId ? sceneRanks.get(currentSceneId) : undefined;
   const entriesByType = new Map<CodexEntryDetailDto['type'], CodexEntryDetailDto[]>();
   for (const entry of entries) {
@@ -350,7 +366,12 @@ export function serializeCodexContext(
         fields.push(`${CODEX_DESCRIPTION_LABEL}:\n${entry.description.trim()}`);
       }
 
-      const progression = applicableProgression(entry.entryProgression, sceneRanks, currentRank);
+      const progression = applicableProgression(
+        entry.entryProgression,
+        sceneRanks,
+        currentRank,
+        includedSceneIds,
+      );
       if (progression.length > 0) {
         fields.push(
           `${CODEX_PROGRESSION_LABEL}:\n${progression
@@ -689,10 +710,11 @@ function applicableProgression(
   progression: readonly CodexEntryProgressionDto[],
   sceneRanks: ReadonlyMap<string, number>,
   currentRank: number | undefined,
+  includedSceneIds: ReadonlySet<string>,
 ): CodexEntryProgressionDto[] {
   if (currentRank === undefined) return [];
   return progression.filter((item) => {
-    if (!item.sceneId) return false;
+    if (!item.sceneId || !includedSceneIds.has(item.sceneId)) return false;
     const rank = sceneRanks.get(item.sceneId);
     return rank !== undefined && rank <= currentRank;
   });
