@@ -19,4 +19,12 @@ export class ElectronService {
             window.electronAPI.onMessage(channel, callback);
         }
     }
+
+    // Use this to invoke a method in the Main process and wait for a result
+    async invoke(channel: string, data?: any): Promise<any> {
+        if (window.electronAPI) {
+            return await window.electronAPI.invoke(channel, data);
+        }
+        return Promise.reject('Electron API not available');
+    }
 }
