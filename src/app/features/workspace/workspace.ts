@@ -63,6 +63,16 @@ export class Workspace implements OnInit {
   }
 
   private syncActiveViewFromUrl(): void {
-    this.store.setActiveView(this.router.url.includes('/outline') ? 'outline' : 'manuscript');
+    if (this.router.url.includes('/outline')) {
+      this.store.setActiveView('outline');
+    } else if (
+      this.router.url.includes('/threads') ||
+      this.router.url.includes('/thread/') ||
+      this.router.url.includes('/new-chat')
+    ) {
+      this.store.setActiveView('chat');
+    } else {
+      this.store.setActiveView('manuscript');
+    }
   }
 }

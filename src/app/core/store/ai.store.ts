@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
-import { signalStore, withState, withMethods, patchState } from '@ngrx/signals';
-import { ElectronService } from '../../../core/services/electron.service';
+import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
+
+import { ElectronService } from '../services/electron.service';
 
 export interface AiState {
   models: any[];
@@ -34,5 +35,5 @@ export const AiStore = signalStore(
         });
       }
     },
-  }))
+  })),
 );

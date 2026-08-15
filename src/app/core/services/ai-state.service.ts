@@ -14,24 +14,9 @@ export class AIStateService {
         return window.electronAPI.abortAiGeneration?.() ?? Promise.resolve();
     }
 
-    async generate(promptText: string, model?: string, modelId?: string, onToken?: (token: string) => void, reasoningMode?: boolean, onReasoningToken?: (token: string) => void) {
+    async generate(promptText: string, model?: string, modelId?: string, reasoningMode?: boolean) {
         // Default to openai if the user hasn't selected one yet
         const providerToUse = model || this.model || 'openrouter';
-
-        let cleanupToken: (() => void) | undefined;
-        let cleanupReasoning: (() => void) | undefined;
-        
-        if (onToken && window.electronAPI.onMessage) {
-            cleanupToken = window.electronAPI.onMessage('ai:generate-stream', (token: string) => {
-                onToken(token);
-            });
-        }
-
-        if (onReasoningToken && window.electronAPI.onMessage) {
-            cleanupReasoning = window.electronAPI.onMessage('ai:generate-reasoning-stream', (token: string) => {
-                onReasoningToken(token);
-            });
-        }
 
         try {
             const response = await window.electronAPI.invoke('ai:generate', {
@@ -41,12 +26,8 @@ export class AIStateService {
                 reasoningMode: reasoningMode ?? false
             });
 
-            if (cleanupToken) cleanupToken();
-            if (cleanupReasoning) cleanupReasoning();
             return response.text;
         } catch (e) {
-            if (cleanupToken) cleanupToken();
-            if (cleanupReasoning) cleanupReasoning();
             console.error("Failed to generate text:", e);
             if (e instanceof Error) {
                 if (e.message.includes('429')) {
@@ -66,4 +47,4 @@ export class AIStateService {
             throw e; // Rethrow so the caller can clean up the UI
         }
     }
-}
+}

@@ -56,7 +56,7 @@ export const routeAnimations =
         ])
       ]),
     ]),
-    transition('OutlinePage => ManuscriptPage', [
+    transition('OutlinePage => ManuscriptPage, OutlinePage => ChatPage, ManuscriptPage => ChatPage', [
       style({ position: 'relative' }),
       query(':enter, :leave', [
         style({
@@ -79,7 +79,7 @@ export const routeAnimations =
         ], { optional: true })
       ]),
     ]),
-    transition('ManuscriptPage => OutlinePage', [
+    transition('ManuscriptPage => OutlinePage, ChatPage => ManuscriptPage, ChatPage => OutlinePage', [
       style({ position: 'relative' }),
       query(':enter, :leave', [
         style({
@@ -170,6 +170,12 @@ export const routeAnimations =
       ], { optional: true })
     ]),
     transition('ManuscriptPage => *', [
+      query(':leave', [
+        style({ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }),
+        animate('600ms', style({ opacity: 1 }))
+      ], { optional: true })
+    ]),
+    transition('ChatPage => *', [
       query(':leave', [
         style({ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }),
         animate('600ms', style({ opacity: 1 }))

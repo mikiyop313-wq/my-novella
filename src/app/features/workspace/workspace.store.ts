@@ -3,7 +3,7 @@ import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 
 import { LibraryService } from '../library/services/library.service';
 
-export type WorkspaceView = 'manuscript' | 'outline';
+export type WorkspaceView = 'manuscript' | 'outline' | 'chat';
 
 export interface WorkspaceState {
   bookId: string | null;
