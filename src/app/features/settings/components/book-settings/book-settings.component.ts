@@ -243,6 +243,37 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     }
   }
 
+  async toggleSynopsisAiContext(): Promise<void> {
+    const book = this.book();
+    if (!book || this.isSaving() || !this.hasSynopsis(book)) return;
+
+    const synopsisAiContext = this.isSynopsisAiContextEnabled(book);
+    this.isSaving.set(true);
+    try {
+      const updatedBook = await this.libraryService.updateBook(book.id, {
+        settings: this.mergeSettings(book, {
+          synopsisAiContext: !synopsisAiContext,
+        }),
+      });
+      this.book.set(updatedBook);
+    } catch (error) {
+      this.toastService.error(
+        error instanceof Error ? error.message : 'Unable to save this setting.',
+        'Settings update failed',
+      );
+    } finally {
+      this.isSaving.set(false);
+    }
+  }
+
+  hasSynopsis(book: BookDto): boolean {
+    return Boolean(book.synopsis?.trim());
+  }
+
+  isSynopsisAiContextEnabled(book: BookDto): boolean {
+    return this.hasSynopsis(book) && book.settings?.synopsisAiContext === true;
+  }
+
   languageLabel(language: string): string {
     return this.config.languages().find((option) => option.value === language)?.label ?? language;
   }
@@ -354,7 +385,17 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     }
 
     if (field === 'synopsis') {
-      return { synopsis: this.editValue().trim() };
+      const synopsis = this.editValue().trim();
+      return {
+        synopsis,
+        ...(synopsis
+          ? {}
+          : {
+              settings: this.mergeSettings(book, {
+                synopsisAiContext: false,
+              }),
+            }),
+      };
     }
 
     if (field === 'language') {

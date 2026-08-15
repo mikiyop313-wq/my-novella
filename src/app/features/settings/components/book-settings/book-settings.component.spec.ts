@@ -526,9 +526,87 @@ describe('BookSettingsComponent', () => {
     component.editValue.set('   ');
 
     await component.saveEditing();
+    fixture.detectChanges();
 
-    expect(updateBook).toHaveBeenCalledWith('book-1', { synopsis: '' });
+    expect(updateBook).toHaveBeenCalledWith('book-1', {
+      synopsis: '',
+      settings: {
+        ...book.settings,
+        synopsisAiContext: false,
+      },
+    });
     expect(component.book()?.synopsis).toBe('');
+    expect(component.book()?.settings?.synopsisAiContext).toBe(false);
+
+    const toggle = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="Include synopsis in AI context"]',
+    );
+    expect(toggle?.disabled).toBe(true);
+    expect(toggle?.getAttribute('aria-checked')).toBe('false');
+    expect(toggle?.textContent).toContain('Off');
+  });
+
+  it('saves the synopsis AI context preference while preserving other settings', async () => {
+    const component = fixture.componentInstance;
+    const element = fixture.nativeElement as HTMLElement;
+    const toggle = element.querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="Include synopsis in AI context"]',
+    );
+
+    expect(toggle?.getAttribute('aria-checked')).toBe('true');
+
+    toggle?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(updateBook).toHaveBeenCalledWith('book-1', {
+      settings: {
+        ...book.settings,
+        synopsisAiContext: false,
+      },
+    });
+    expect(toggle?.getAttribute('aria-checked')).toBe('false');
+    expect(toggle?.textContent).toContain('Off');
+  });
+
+  it('disables the synopsis AI context switch and explains when the synopsis is empty', () => {
+    const component = fixture.componentInstance;
+    component.book.set({ ...book, synopsis: '   ' });
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const toggle = element.querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="Include synopsis in AI context"]',
+    );
+    const reason = element.querySelector('#synopsis-ai-context-disabled-reason');
+
+    expect(toggle?.disabled).toBe(true);
+    expect(toggle?.getAttribute('aria-checked')).toBe('false');
+    expect(toggle?.getAttribute('aria-describedby')).toBe(
+      'synopsis-ai-context-disabled-reason',
+    );
+    expect(reason?.textContent).toContain('Add a synopsis to enable this setting.');
+
+    component.book.set({ ...book, synopsis: 'A restored synopsis.' });
+    fixture.detectChanges();
+
+    expect(toggle?.disabled).toBe(false);
+    expect(toggle?.getAttribute('aria-checked')).toBe('true');
+    expect(element.querySelector('#synopsis-ai-context-disabled-reason')).toBeNull();
+  });
+
+  it('keeps the synopsis AI context preference when saving it fails', async () => {
+    updateBook.mockRejectedValueOnce(new Error('Database unavailable'));
+    const component = fixture.componentInstance;
+
+    await component.toggleSynopsisAiContext();
+    fixture.detectChanges();
+
+    expect(component.book()?.settings?.synopsisAiContext).toBe(true);
+    expect(toastError).toHaveBeenCalledWith(
+      'Database unavailable',
+      'Settings update failed',
+    );
   });
 
   it('saves a selected language', async () => {

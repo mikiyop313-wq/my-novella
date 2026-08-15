@@ -783,6 +783,45 @@
 
               <div class="setting-row">
                 <div class="setting-copy">
+                  <h3>Include synopsis in AI context</h3>
+                  <p>Make the synopsis available as creative context for AI features.</p>
+                  @if (!hasSynopsis(activeBook)) {
+                    <p
+                      id="synopsis-ai-context-disabled-reason"
+                      class="setting-disabled-reason"
+                    >
+                      Add a synopsis to enable this setting.
+                    </p>
+                  }
+                </div>
+                <div class="setting-control">
+                  <button
+                    class="settings-switch"
+                    type="button"
+                    role="switch"
+                    aria-label="Include synopsis in AI context"
+                    [class.is-active]="isSynopsisAiContextEnabled(activeBook)"
+                    [attr.aria-checked]="isSynopsisAiContextEnabled(activeBook)"
+                    [attr.aria-describedby]="
+                      !hasSynopsis(activeBook)
+                        ? 'synopsis-ai-context-disabled-reason'
+                        : null
+                    "
+                    [disabled]="isSaving() || !hasSynopsis(activeBook)"
+                    (click)="toggleSynopsisAiContext()"
+                  >
+                    <span class="settings-switch-track" aria-hidden="true">
+                      <span class="settings-switch-thumb"></span>
+                    </span>
+                    <span class="settings-switch-state">
+                      {{ isSynopsisAiContextEnabled(activeBook) ? 'On' : 'Off' }}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-copy">
                   <h3>Genres</h3>
                   <p>Select the genres and subgenres that best describe the book.</p>
                 </div>
