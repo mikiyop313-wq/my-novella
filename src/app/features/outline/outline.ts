@@ -20,6 +20,7 @@ import { ToastService } from '../../shared/services/toast.service';
 import { AiStreamService } from '../../core/services/ai-stream.service';
 import { ElectronService } from '../../core/services/electron.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
+import { OverlayModalDirective } from '../../shared/directives/overlay-modal.directive';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
 import { AutocompleteKeepOpenMenuItemDirective } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
@@ -27,6 +28,7 @@ import {
   SystemPromptModelService,
   type SystemPromptModelResolution,
 } from '../../shared/services/system-prompt-model.service';
+import { CodexDetectionModalComponent } from '../codex/components/codex-detection-modal/codex-detection-modal.component';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { OutlineStore } from './store/outline.store';
 
@@ -82,6 +84,8 @@ const transferBetween = <T>(
     MarkdownEditorComponent,
     AutocompleteKeepOpenMenuItemDirective,
     CodexContextHighlightDirective,
+    CodexDetectionModalComponent,
+    OverlayModalDirective,
   ],
   templateUrl: './outline.html',
   styleUrl: './outline.scss',

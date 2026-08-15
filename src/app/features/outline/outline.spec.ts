@@ -188,6 +188,35 @@ describe('Outline', () => {
     expect(document.querySelector('.scene-summary-model-picker')).toBeNull();
   });
 
+  it('opens detected Codex entries from the scene AI submenu', async () => {
+    showScene('', 12);
+
+    (fixture.nativeElement.querySelector('.scene-more') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const askAiItem = [...document.querySelectorAll<HTMLButtonElement>('.overlay-menu .menu-item')]
+      .find(button => button.textContent?.includes('Ask AI'))!;
+    askAiItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const detectEntriesItem = document.querySelector<HTMLButtonElement>('.detect-codex-entries')!;
+    detectEntriesItem.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.codex-detection-modal')).not.toBeNull();
+    expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('Elara Voss');
+
+    document.querySelector<HTMLButtonElement>(
+      '.codex-detection-modal [aria-label="Next detected entry"]',
+    )?.click();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.codex-detection-modal')?.textContent).toContain('The Glass Harbor');
+
+    document.querySelector<HTMLButtonElement>('.codex-detection-modal .close-button')?.click();
+  });
+
   it('keeps the scene AI submenu open with a loader while generation is active', async () => {
     showScene('', 12);
     const deferred = createDeferred<string>();
