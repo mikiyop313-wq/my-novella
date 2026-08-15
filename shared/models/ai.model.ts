@@ -8,6 +8,13 @@ export interface AiModel {
   supportsReasoning?: boolean;
 }
 
+export type AiChatMessageRole = 'system' | 'user' | 'assistant';
+
+export interface AiChatMessage {
+  role: AiChatMessageRole;
+  content: string;
+}
+
 export const AI_CLOUD_PROVIDER_IDS = [
   'openrouter',
   'google',

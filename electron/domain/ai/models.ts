@@ -1,11 +1,6 @@
 import type { AiSystemPromptPresetSelection } from '../../../shared/models/system-prompt.model';
-
-export type AiChatMessageRole = 'system' | 'user' | 'assistant';
-
-export interface AiChatMessage {
-    role: AiChatMessageRole;
-    content: string;
-}
+import type { AiChatMessage } from '../../../shared/models/ai.model';
+export type { AiChatMessage, AiChatMessageRole } from '../../../shared/models/ai.model';
 
 export interface AiChatCompletionPayload {
     model: string;
