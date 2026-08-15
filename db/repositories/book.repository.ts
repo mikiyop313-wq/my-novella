@@ -22,13 +22,15 @@ export class BookRepository {
             createdAt: createdAt.toISOString(),
             lastEditedAt: lastEditedAt.toISOString(),
             categories,
-            ...(bs ? { settings: {
-                language: bs.language,
-                proseTense: bs.proseTense,
-                pointOfView: bs.pointOfView,
-                synopsisAiContext: bs.synopsisAiContext,
-                povCharacterId: bs.povCharacterId
-            } } : {})
+            ...(bs ? {
+                settings: {
+                    language: bs.language,
+                    proseTense: bs.proseTense,
+                    pointOfView: bs.pointOfView,
+                    synopsisAiContext: bs.synopsisAiContext,
+                    povCharacterId: bs.povCharacterId
+                }
+            } : {})
         };
 
         return dto;

@@ -51,7 +51,7 @@ export const bookSettings = sqliteTable('book_settings', {
     bookSettingId: text('book_setting_id').notNull().references(() => books.id, { onDelete: 'cascade' }).primaryKey(),
     language: text('language').notNull().default('english').references(() => language.languageName),
     proseTense: text('prose_tense').$type<'past' | 'present'>().notNull().default('past'),
-    pointOfView: text('point_of_view').$type<'first' | 'second' | 'third_limited' | 'third_omniscient'>().notNull().default('third_limited'),
+    pointOfView: text('point_of_view').$type<'first' | 'second' | 'third_limited' | 'third_omni'>().notNull().default('third_limited'),
     synopsisAiContext: integer('synopsis_ai_context', { mode: 'boolean' }).notNull().default(true),
     povCharacterId: text('pov_character_id'),
 });
