@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import { MarkdownComponent } from 'ngx-markdown';
 
 import {
@@ -95,6 +96,12 @@ export class Outline implements OnInit {
   editing = signal<Record<string, boolean>>({});
   sceneSummaryDrafts = signal<Record<string, string>>({});
   sceneCardMode = signal<'compact' | 'fit' | 'list'>('compact');
+  readonly sceneAiMenuPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
+    { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
+    { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -4 },
+    { originX: 'start', originY: 'bottom', overlayX: 'end', overlayY: 'bottom', offsetX: -4 },
+  ];
 
   // ---------------------------------------------------------------------------
   // View State
@@ -544,6 +551,8 @@ export class Outline implements OnInit {
       [sceneId]: summary,
     }));
   }
+
+  generateSceneSummary(_sceneId: string): void {}
 
   private normalizeEditableValue(value: string): string {
     return value.trim().length === 0 ? '' : value;
