@@ -30,11 +30,15 @@ export type DataExportBookSettings = Omit<
   | 'synopsisAiContext'
   | 'openrouterEmbeddingModel'
   | 'vectorSearchEnabled'
+  | 'vectorSearchThresholdEnabled'
+  | 'vectorSearchManualSelectionEnabled'
   | 'automaticIndexingEnabled'
 > & {
   synopsisAiContext: boolean;
   openRouterEmbeddingModel: BookSettingsRow['openrouterEmbeddingModel'];
   vectorSearchEnabled: boolean;
+  vectorSearchThresholdEnabled: boolean;
+  vectorSearchManualSelectionEnabled: boolean;
   automaticIndexingEnabled: boolean;
 };
 export type DataExportCategory = Omit<CategoryRow, 'isCustom'> & { isCustom: boolean };

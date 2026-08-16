@@ -150,7 +150,7 @@ export class DataExportService {
 
   private serializeBookSettings(row: BookSettingsRow): DataExportBookSettings {
     const { openrouterEmbeddingModel, ...settings } = row;
-    return { ...settings, synopsisAiContext: fromSqliteBoolean(row.synopsisAiContext), openRouterEmbeddingModel: openrouterEmbeddingModel, vectorSearchEnabled: fromSqliteBoolean(row.vectorSearchEnabled), automaticIndexingEnabled: fromSqliteBoolean(row.automaticIndexingEnabled) };
+    return { ...settings, synopsisAiContext: fromSqliteBoolean(row.synopsisAiContext), openRouterEmbeddingModel: openrouterEmbeddingModel, vectorSearchEnabled: fromSqliteBoolean(row.vectorSearchEnabled), vectorSearchThresholdEnabled: fromSqliteBoolean(row.vectorSearchThresholdEnabled), vectorSearchManualSelectionEnabled: fromSqliteBoolean(row.vectorSearchManualSelectionEnabled), automaticIndexingEnabled: fromSqliteBoolean(row.automaticIndexingEnabled) };
   }
 
   private serializeCategory(row: CategoryRow): DataExportCategory {

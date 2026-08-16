@@ -79,6 +79,12 @@ function mapBookSettingsRow(settings: BookSettingsRow): BookSettingsDto {
     localEmbeddingModel: settings.localEmbeddingModel,
     openRouterEmbeddingModel: settings.openrouterEmbeddingModel,
     vectorSearchEnabled: fromSqliteBoolean(settings.vectorSearchEnabled),
+    vectorSearchThresholdEnabled: fromSqliteBoolean(settings.vectorSearchThresholdEnabled),
+    vectorSearchSimilarityThreshold: settings.vectorSearchSimilarityThreshold,
+    vectorSearchManualSelectionEnabled: fromSqliteBoolean(
+      settings.vectorSearchManualSelectionEnabled,
+    ),
+    vectorSearchResultLimit: settings.vectorSearchResultLimit,
     automaticIndexingEnabled: fromSqliteBoolean(settings.automaticIndexingEnabled),
   };
 }

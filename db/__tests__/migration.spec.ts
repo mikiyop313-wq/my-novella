@@ -30,6 +30,20 @@ describe('Kysely baseline migration', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
       .all() as Array<{ name: string }>;
     expect(indexes.map(({ name }) => name)).toContain('chat_messages_thread_position_idx');
+
+    const bookSettingsColumns = sqlite.prepare('PRAGMA table_info(book_settings)').all() as Array<{
+      name: string;
+      dflt_value: string | null;
+    }>;
+    expect(bookSettingsColumns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'vector_search_manual_selection_enabled',
+          dflt_value: '0',
+        }),
+        expect.objectContaining({ name: 'vector_search_result_limit', dflt_value: '3' }),
+      ]),
+    );
   });
 
   it('rolls the baseline back', async () => {

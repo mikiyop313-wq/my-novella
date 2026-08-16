@@ -27,6 +27,10 @@ describe('book aggregate mapper', () => {
         synopsisAiContext: false,
         openRouterEmbeddingModel: 'openai/text-embedding-3-small',
         vectorSearchEnabled: true,
+        vectorSearchThresholdEnabled: true,
+        vectorSearchSimilarityThreshold: 0.7,
+        vectorSearchManualSelectionEnabled: true,
+        vectorSearchResultLimit: 8,
         automaticIndexingEnabled: false,
       },
     });
@@ -78,6 +82,10 @@ function settingsRow(overrides: Partial<BookSettingsRow> = {}): BookSettingsRow 
     localEmbeddingModel: null,
     openrouterEmbeddingModel: 'openai/text-embedding-3-small',
     vectorSearchEnabled: 1,
+    vectorSearchThresholdEnabled: 1,
+    vectorSearchSimilarityThreshold: 0.7,
+    vectorSearchManualSelectionEnabled: 1,
+    vectorSearchResultLimit: 8,
     automaticIndexingEnabled: 0,
     ...overrides,
   };

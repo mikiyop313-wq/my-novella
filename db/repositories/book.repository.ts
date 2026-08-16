@@ -89,6 +89,17 @@ export class BookRepository {
       localEmbeddingModel: data.settings?.localEmbeddingModel ?? null,
       openrouterEmbeddingModel: data.settings?.openRouterEmbeddingModel ?? null,
       vectorSearchEnabled: toSqliteBoolean(data.settings?.vectorSearchEnabled ?? true),
+      vectorSearchThresholdEnabled: toSqliteBoolean(
+        data.settings?.vectorSearchThresholdEnabled ?? false,
+      ),
+      vectorSearchSimilarityThreshold:
+        data.settings?.vectorSearchSimilarityThreshold ?? 0.7,
+      vectorSearchManualSelectionEnabled: toSqliteBoolean(
+        data.settings?.vectorSearchManualSelectionEnabled ?? false,
+      ),
+      vectorSearchResultLimit: validateVectorSearchResultLimit(
+        data.settings?.vectorSearchResultLimit ?? 3,
+      ),
       automaticIndexingEnabled: toSqliteBoolean(
         data.settings?.automaticIndexingEnabled ?? false,
       ),
@@ -113,6 +124,24 @@ export class BookRepository {
     }
     if (settings.vectorSearchEnabled !== undefined) {
       update.vectorSearchEnabled = toSqliteBoolean(settings.vectorSearchEnabled);
+    }
+    if (settings.vectorSearchThresholdEnabled !== undefined) {
+      update.vectorSearchThresholdEnabled = toSqliteBoolean(
+        settings.vectorSearchThresholdEnabled,
+      );
+    }
+    if (settings.vectorSearchSimilarityThreshold !== undefined) {
+      update.vectorSearchSimilarityThreshold = settings.vectorSearchSimilarityThreshold;
+    }
+    if (settings.vectorSearchManualSelectionEnabled !== undefined) {
+      update.vectorSearchManualSelectionEnabled = toSqliteBoolean(
+        settings.vectorSearchManualSelectionEnabled,
+      );
+    }
+    if (settings.vectorSearchResultLimit !== undefined) {
+      update.vectorSearchResultLimit = validateVectorSearchResultLimit(
+        settings.vectorSearchResultLimit,
+      );
     }
     if (settings.automaticIndexingEnabled !== undefined) {
       update.automaticIndexingEnabled = toSqliteBoolean(settings.automaticIndexingEnabled);
@@ -337,6 +366,10 @@ export class BookRepository {
       synopsisAiContext: 1,
       povCharacterId: null,
       vectorSearchEnabled: 1,
+      vectorSearchThresholdEnabled: 0,
+      vectorSearchSimilarityThreshold: 0.7,
+      vectorSearchManualSelectionEnabled: 0,
+      vectorSearchResultLimit: 3,
       automaticIndexingEnabled: 0,
       ...update,
     }).execute();
@@ -351,6 +384,13 @@ export class BookRepository {
       .executeTakeFirstOrThrow();
     return Number(result.value);
   }
+}
+
+function validateVectorSearchResultLimit(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > 20) {
+    throw new Error('Vector search result limit must be an integer from 1 through 20.');
+  }
+  return value;
 }
 
 export const bookRepository = new BookRepository();

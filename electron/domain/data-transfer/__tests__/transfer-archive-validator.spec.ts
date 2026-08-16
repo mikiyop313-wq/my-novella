@@ -40,6 +40,16 @@ describe('transfer archive validator', () => {
       (snapshot: any) => (snapshot.data.scenes[0].position = 0.5),
       '$.data.scenes[0].position',
     ],
+    [
+      'similarity threshold',
+      (snapshot: any) => (snapshot.data.bookSettings[0].vectorSearchSimilarityThreshold = 1.1),
+      '$.data.bookSettings[0].vectorSearchSimilarityThreshold',
+    ],
+    [
+      'paragraph result limit',
+      (snapshot: any) => (snapshot.data.bookSettings[0].vectorSearchResultLimit = 21),
+      '$.data.bookSettings[0].vectorSearchResultLimit',
+    ],
   ])('rejects an invalid %s', (_, mutate, expectedPath) => {
     const snapshot = structuredClone(completeSnapshot());
     mutate(snapshot);
