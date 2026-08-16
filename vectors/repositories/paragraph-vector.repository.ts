@@ -22,6 +22,14 @@ export interface ParagraphVectorMetadata {
     position: number;
 }
 
+interface SearchSimilarParagraphsOptions {
+    space: EmbeddingSpaceDescriptor;
+    bookId: string;
+    queryVector: number[];
+    limit: number;
+    minimumSimilarity?: number;
+}
+
 export class ParagraphVectorRepository {
     async getExistingParagraphHashes(
         space: EmbeddingSpaceDescriptor,
@@ -129,18 +137,19 @@ export class ParagraphVectorRepository {
     }
 
     async searchSimilar(
-        space: EmbeddingSpaceDescriptor,
-        bookId: string,
-        queryVector: number[],
-        limit: number,
+        options: SearchSimilarParagraphsOptions,
     ): Promise<SimilarParagraphResult[]> {
-        const table = await vectorDb.getManuscriptTable(space);
-        const records = await table
-            .vectorSearch(queryVector)
+        const table = await vectorDb.getManuscriptTable(options.space);
+        let search = table
+            .vectorSearch(options.queryVector)
             .distanceType('cosine')
-            .where(`bookId = '${escapeLanceSql(bookId)}'`)
-            .limit(limit)
-            .toArray();
+            .where(`bookId = '${escapeLanceSql(options.bookId)}'`);
+
+        if (options.minimumSimilarity !== undefined) {
+            search = search.distanceRange(undefined, 1 - options.minimumSimilarity);
+        }
+
+        const records = await search.limit(options.limit).toArray();
 
         return records.map(record => ({
             paragraphId: String(record['id']),

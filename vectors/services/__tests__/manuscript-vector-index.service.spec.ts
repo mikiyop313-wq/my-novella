@@ -241,7 +241,11 @@ describe('ManuscriptVectorIndexService', () => {
             'mixedbread-ai/mxbai-embed-large-v1',
             true,
         )).rejects.toThrow('already in progress');
-        await expect(service.searchSimilar('book-1', 'query', 3)).rejects.toThrow(
+        await expect(service.searchSimilar({
+            bookId: 'book-1',
+            query: 'query',
+            limit: 3,
+        })).rejects.toThrow(
             'unavailable while the book embedding index is rebuilding',
         );
 
@@ -375,10 +379,18 @@ describe('ManuscriptVectorIndexService', () => {
 
     it('returns no search results when the preference is disabled or the model is missing', async () => {
         mocks.getVectorSearchEnabled.mockResolvedValueOnce(false);
-        await expect(service.searchSimilar('book-1', 'query', 3)).resolves.toEqual([]);
+        await expect(service.searchSimilar({
+            bookId: 'book-1',
+            query: 'query',
+            limit: 3,
+        })).resolves.toEqual([]);
 
         mocks.ensureBookSelection.mockResolvedValueOnce(null);
-        await expect(service.searchSimilar('book-1', 'query', 3)).resolves.toEqual([]);
+        await expect(service.searchSimilar({
+            bookId: 'book-1',
+            query: 'query',
+            limit: 3,
+        })).resolves.toEqual([]);
 
         expect(mocks.searchSimilar).not.toHaveBeenCalled();
         expect(provider.embedQuery).not.toHaveBeenCalled();

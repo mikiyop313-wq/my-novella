@@ -17,6 +17,7 @@ import type {
     LocalEmbeddingModelName,
     ManuscriptVectorRecord,
     OpenRouterEmbeddingModelName,
+    SearchSimilarParagraphsPayload,
     SimilarParagraphResult,
     VectorCloudProviderId,
 } from '../../shared/models/vector.model';
@@ -78,26 +79,26 @@ export class ManuscriptVectorIndexService {
 
     /** Finds the paragraphs most semantically similar to a query after ensuring the index is current. */
     async searchSimilar(
-        bookId: string,
-        query: string,
-        limit: number,
+        payload: Required<Pick<SearchSimilarParagraphsPayload, 'bookId' | 'query' | 'limit'>>
+            & Pick<SearchSimilarParagraphsPayload, 'minimumSimilarity'>,
     ): Promise<SimilarParagraphResult[]> {
-        if (!await this.isBookIndexingAvailable(bookId)) return [];
+        if (!await this.isBookIndexingAvailable(payload.bookId)) return [];
 
-        if (this.switchingBooks.has(bookId)) {
+        if (this.switchingBooks.has(payload.bookId)) {
             throw new Error('Semantic search is unavailable while the book embedding index is rebuilding.');
         }
 
-        return this.runBookOperation(bookId, async () => {
-            const provider = await this.ensureBookIndexedNow(bookId);
-            const queryVector = await provider.embedQuery(query);
+        return this.runBookOperation(payload.bookId, async () => {
+            const provider = await this.ensureBookIndexedNow(payload.bookId);
+            const queryVector = await provider.embedQuery(payload.query);
             assertEmbeddingDimensions(provider, [queryVector]);
-            return paragraphVectorRepository.searchSimilar(
-                provider.space,
-                bookId,
+            return paragraphVectorRepository.searchSimilar({
+                space: provider.space,
+                bookId: payload.bookId,
                 queryVector,
-                limit,
-            );
+                limit: payload.limit,
+                minimumSimilarity: payload.minimumSimilarity,
+            });
         });
     }
 
