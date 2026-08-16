@@ -37,8 +37,7 @@
           <p id="update-dialog-description">
             Update from version {{ state().currentVersion }} to {{ state().availableVersion }}.
           </p>
-          <section class="release-notes" aria-labelledby="release-notes-title">
-            <h3 id="release-notes-title">What’s changed</h3>
+          <section class="release-notes" aria-label="Release notes">
             <markdown
               class="release-notes-copy"
               [data]="state().releaseNotes || 'No release notes were provided.'"
