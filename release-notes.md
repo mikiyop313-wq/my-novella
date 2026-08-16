@@ -1,5 +1,3 @@
-What's new in 0.1.1
+What's new in 0.1.3
 
-- Added the Update Center.
-- Added automatic update downloads.
-- Improved update error handling.
+- Test release for the automatic update flow.
