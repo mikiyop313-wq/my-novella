@@ -1,69 +1,36 @@
-import { randomUUID } from 'crypto';
-import { sql } from 'drizzle-orm';
-import {
-  check,
-  index,
-  integer,
-  primaryKey,
-  real,
-  sqliteTable,
-  text,
-} from 'drizzle-orm/sqlite-core';
+import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
 
 import type {
   SystemPromptCategory,
   SystemPromptScope,
 } from '../../shared/models/system-prompt.model';
-import { books } from './book';
+import type { SqliteTimestamp } from '../core/sqlite-values';
 
-export const systemPromptPresets = sqliteTable(
-  'system_prompt_presets',
-  {
-    id: text('id').primaryKey().$defaultFn(randomUUID),
-    name: text('name').notNull(),
-    systemPrompt: text('system_prompt').notNull(),
-    category: text('category').$type<SystemPromptCategory>().notNull(),
-    scope: text('scope').$type<SystemPromptScope>().notNull(),
-    bookId: text('book_id').references(() => books.id, { onDelete: 'cascade' }),
-    temperature: real('temperature').notNull().default(0.5),
-    topP: real('top_p').notNull().default(1),
-    maxOutputTokens: integer('max_output_tokens'),
-    presencePenalty: real('presence_penalty').notNull().default(0),
-    frequencyPenalty: real('frequency_penalty').notNull().default(0),
-    defaultModelId: text('default_model_id'),
-    createdAt: integer('created_at', { mode: 'timestamp' })
-      .notNull()
-      .$defaultFn(() => new Date()),
-    lastEditedAt: integer('last_edited_at', { mode: 'timestamp' })
-      .notNull()
-      .$defaultFn(() => new Date()),
-  },
-  (table) => [
-    check(
-      'system_prompt_presets_scope_book_check',
-      sql`(${table.scope} = 'global' AND ${table.bookId} IS NULL) OR (${table.scope} = 'book' AND ${table.bookId} IS NOT NULL)`,
-    ),
-    index('system_prompt_presets_scope_book_category_idx').on(
-      table.scope,
-      table.bookId,
-      table.category,
-    ),
-  ],
-);
+export interface SystemPromptPresetTable {
+  id: string;
+  name: string;
+  systemPrompt: string;
+  category: SystemPromptCategory;
+  scope: SystemPromptScope;
+  bookId: Generated<string | null>;
+  temperature: Generated<number>;
+  topP: Generated<number>;
+  maxOutputTokens: Generated<number | null>;
+  presencePenalty: Generated<number>;
+  frequencyPenalty: Generated<number>;
+  defaultModelId: Generated<string | null>;
+  createdAt: SqliteTimestamp;
+  lastEditedAt: SqliteTimestamp;
+}
 
-export const activeSystemPromptPresets = sqliteTable(
-  'active_system_prompt_presets',
-  {
-    bookId: text('book_id')
-      .notNull()
-      .references(() => books.id, { onDelete: 'cascade' }),
-    category: text('category').$type<SystemPromptCategory>().notNull(),
-    presetId: text('preset_id')
-      .notNull()
-      .references(() => systemPromptPresets.id, { onDelete: 'cascade' }),
-  },
-  (table) => [
-    primaryKey({ columns: [table.bookId, table.category] }),
-    index('active_system_prompt_presets_preset_idx').on(table.presetId),
-  ],
-);
+export interface ActiveSystemPromptPresetTable {
+  bookId: string;
+  category: SystemPromptCategory;
+  presetId: string;
+}
+
+export type SystemPromptPresetRow = Selectable<SystemPromptPresetTable>;
+export type NewSystemPromptPresetRow = Insertable<SystemPromptPresetTable>;
+export type SystemPromptPresetUpdate = Updateable<SystemPromptPresetTable>;
+export type ActiveSystemPromptPresetRow = Selectable<ActiveSystemPromptPresetTable>;
+export type NewActiveSystemPromptPresetRow = Insertable<ActiveSystemPromptPresetTable>;

@@ -2,6 +2,14 @@ import { defineConfig } from 'vite';
 import electron from 'vite-plugin-electron/simple';
 
 export default defineConfig({
+  test: {
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/dist-electron/**',
+      '**/out-tsc/**',
+    ],
+  },
   plugins: [
     electron({
       main: {

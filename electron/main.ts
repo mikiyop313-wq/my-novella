@@ -7,7 +7,7 @@ import { initializeIpc } from './ipc';
 import { ChatWindowManager } from './windows/chat-window-manager';
 import { CodexWindowManager } from './windows/codex-window-manager';
 import { localEmbeddingModelManager } from '../vectors/embeddings/local-model-manager';
-import '../db/index';
+import { initializeDatabase } from '../db';
 
 if (!app.isPackaged) {
     app.commandLine.appendSwitch('remote-debugging-port', '9222');
@@ -141,6 +141,14 @@ ipcMain.on('app:close-ready', () => {
 });
 
 app.on('ready', async () => {
+    try {
+        await initializeDatabase();
+    } catch (error) {
+        console.error('Database initialization failed:', error);
+        app.quit();
+        return;
+    }
+
     if (!isDevMode()) {
         Menu.setApplicationMenu(null);
     }

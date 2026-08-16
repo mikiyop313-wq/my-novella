@@ -1,12 +1,10 @@
-import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import type { Insertable, Selectable, Updateable } from 'kysely';
 
-// ---------------------------------------------------------------------------
-// App settings
-// ---------------------------------------------------------------------------
+export interface AppSettingsTable {
+  key: string;
+  value: string;
+}
 
-// Simple key/value storage for app-wide preferences that do not belong to a
-// specific book.
-export const settings = sqliteTable('app_settings', {
-  key: text('key').primaryKey(),
-  value: text('value').notNull(),
-});
+export type AppSettingsRow = Selectable<AppSettingsTable>;
+export type NewAppSettingsRow = Insertable<AppSettingsTable>;
+export type AppSettingsUpdate = Updateable<AppSettingsTable>;

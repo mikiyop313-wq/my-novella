@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "outDir": "./dist-electron",
     "rootDir": ".",
     "strict": false,
@@ -16,6 +17,6 @@
     "electron/**/*.ts",
     "db/**/*.ts",
     "shared/**/*.ts",
-    "drizzle.config.ts"
+    "kysely.config.ts"
   ]
 }

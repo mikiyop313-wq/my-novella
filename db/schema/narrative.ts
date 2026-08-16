@@ -1,108 +1,52 @@
-import { randomUUID } from 'crypto';
-import { relations } from 'drizzle-orm';
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
 
-import type { TiptapJsonDoc } from '../../shared/models/manuscript.model';
-import { books } from './book';
+import type { SqliteBoolean } from '../core/sqlite-values';
 
-// ---------------------------------------------------------------------------
-// Shared value types
-// ---------------------------------------------------------------------------
+export type NarrativeEntityStatus = 'active' | 'archived';
+export type NarrativePointOfView = 'first' | 'second' | 'third_limited' | 'third_omni';
 
-type PointOfView = 'first' | 'second' | 'third_limited' | 'third_omni';
-type NarrativeStatus = 'active' | 'archived';
+export interface ActTable {
+  id: string;
+  title: string;
+  bookId: string;
+  position: number;
+  status: Generated<NarrativeEntityStatus>;
+  summary: Generated<string | null>;
+}
 
-// ---------------------------------------------------------------------------
-// Narrative tables
-// ---------------------------------------------------------------------------
+export interface ChapterTable {
+  id: string;
+  title: string;
+  bookId: string;
+  actId: Generated<string | null>;
+  position: number;
+  status: Generated<NarrativeEntityStatus>;
+  archiveParentTitle: Generated<string | null>;
+  summary: Generated<string | null>;
+}
 
-export const act = sqliteTable('acts', {
-  id: text('id').primaryKey().$defaultFn(randomUUID),
-  title: text('title').notNull(),
-  bookId: text('book_id')
-    .notNull()
-    .references(() => books.id, { onDelete: 'cascade' }),
-  position: integer('position').notNull(),
-  status: text('status').$type<NarrativeStatus>().notNull().default('active'),
-  summary: text('summary'),
-});
+export interface SceneTable {
+  id: string;
+  title: string;
+  bookId: string;
+  chapterId: Generated<string | null>;
+  position: number;
+  status: Generated<NarrativeEntityStatus>;
+  archiveParentTitle: Generated<string | null>;
+  prose: Generated<string | null>;
+  summary: Generated<string | null>;
+  wordCount: Generated<number | null>;
+  includeInContext: Generated<SqliteBoolean>;
+  pointOfViewOverride: Generated<NarrativePointOfView | null>;
+  povCharacterIdOverride: Generated<string | null>;
+}
 
-// Parent IDs are nullable so archived children can survive parent deletion.
-// Active-parent invariants are enforced by repository write methods.
-export const chapter = sqliteTable('chapters', {
-  id: text('id').primaryKey().$defaultFn(randomUUID),
-  title: text('title').notNull(),
-  bookId: text('book_id')
-    .notNull()
-    .references(() => books.id, { onDelete: 'cascade' }),
-  actId: text('act_id')
-    .references(() => act.id, { onDelete: 'set null' }),
-  position: integer('position').notNull(),
-  status: text('status').$type<NarrativeStatus>().notNull().default('active'),
-  archiveParentTitle: text('archive_parent_title'),
-  summary: text('summary'),
-});
-
-// Parent IDs are nullable so archived children can survive parent deletion.
-// Active-parent invariants are enforced by repository write methods.
-export const scene = sqliteTable('scenes', {
-  id: text('id').primaryKey().$defaultFn(randomUUID),
-  title: text('title').notNull(),
-  bookId: text('book_id')
-    .notNull()
-    .references(() => books.id, { onDelete: 'cascade' }),
-  chapterId: text('chapter_id')
-    .references(() => chapter.id, { onDelete: 'set null' }),
-  position: integer('position').notNull(),
-  status: text('status').$type<NarrativeStatus>().notNull().default('active'),
-  archiveParentTitle: text('archive_parent_title'),
-  prose: text('prose', { mode: 'json' }).$type<TiptapJsonDoc | null>(),
-  summary: text('summary'),
-  wordCount: integer('word_count').default(0),
-  includeInContext: integer('include_in_context', { mode: 'boolean' }).notNull().default(true),
-
-  // Scene-level AI generation overrides; null means "use the book settings".
-  pointOfViewOverride: text('point_of_view_override').$type<PointOfView>(),
-  povCharacterIdOverride: text('pov_character_id_override'),
-});
-
-// ---------------------------------------------------------------------------
-// Relationships
-// ---------------------------------------------------------------------------
-
-export const booksNarrativeRelations = relations(books, ({ many }) => ({
-  acts: many(act),
-  chapters: many(chapter),
-  scenes: many(scene),
-}));
-
-export const actRelations = relations(act, ({ one, many }) => ({
-  book: one(books, {
-    fields: [act.bookId],
-    references: [books.id],
-  }),
-  chapters: many(chapter),
-}));
-
-export const chapterRelations = relations(chapter, ({ one, many }) => ({
-  book: one(books, {
-    fields: [chapter.bookId],
-    references: [books.id],
-  }),
-  act: one(act, {
-    fields: [chapter.actId],
-    references: [act.id],
-  }),
-  scenes: many(scene),
-}));
-
-export const sceneRelations = relations(scene, ({ one }) => ({
-  book: one(books, {
-    fields: [scene.bookId],
-    references: [books.id],
-  }),
-  chapter: one(chapter, {
-    fields: [scene.chapterId],
-    references: [chapter.id],
-  }),
-}));
+export type ActRow = Selectable<ActTable>;
+export type NewActRow = Insertable<ActTable>;
+export type ActUpdate = Updateable<ActTable>;
+export type ChapterRow = Selectable<ChapterTable>;
+export type NewChapterRow = Insertable<ChapterTable>;
+export type ChapterUpdate = Updateable<ChapterTable>;
+export type SceneRow = Selectable<SceneTable>;
+export type NewSceneRow = Insertable<SceneTable>;
+export type SceneUpdate = Updateable<SceneTable>;

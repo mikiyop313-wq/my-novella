@@ -1,32 +1,17 @@
 import { randomUUID } from 'node:crypto';
 
-import { db } from '../../../db';
+import { db, type AppDatabase, type DatabaseTransaction } from '../../../db';
 import {
-  act,
-  activeSystemPromptPresets,
-  books,
-  bookSettings,
-  bookTags,
-  categories,
-  chapter,
-  chatBranchSelections,
-  chatMessages,
-  chatThreads,
-  codexEntries,
-  codexEntryNotes,
-  codexEntryProgression,
-  scene,
-  systemPromptPresets,
-} from '../../../db/schema';
+  serializeSqliteJson,
+  toSqliteBoolean,
+  toSqliteTimestamp,
+} from '../../../db/core/sqlite-values';
 import { findBuiltInSystemPromptPreset } from '../../../shared/constants/ai-system-prompts';
 import type { DataExportSnapshotData, DataImportResult } from './models';
 import { validateTransferArchive } from './transfer-archive-validator';
 
-type DataImportDatabase = typeof db;
-type DataImportTransaction = Parameters<Parameters<DataImportDatabase['transaction']>[0]>[0];
-
 interface DataImportServiceDependencies {
-  database: DataImportDatabase;
+  database: AppDatabase;
   createId: () => string;
 }
 
@@ -44,15 +29,11 @@ interface ImportIdMaps {
   systemPromptPresets: Map<string, string>;
 }
 
-/** Imports validated snapshots as independent copies in one database transaction. */
 export class DataImportService {
-  private readonly database: DataImportDatabase;
+  private readonly database: AppDatabase;
   private readonly createId: () => string;
 
-  constructor({
-    database = db,
-    createId = randomUUID,
-  }: Partial<DataImportServiceDependencies> = {}) {
+  constructor({ database = db, createId = randomUUID }: Partial<DataImportServiceDependencies> = {}) {
     this.database = database;
     this.createId = createId;
   }
@@ -60,20 +41,16 @@ export class DataImportService {
   async importSnapshot(snapshotValue: unknown): Promise<DataImportResult> {
     const snapshot = validateTransferArchive(snapshotValue);
     const ids = this.createIdMaps(snapshot.data);
-
-    return this.database.transaction((transaction) => {
-      const categoryIds = this.importCategories(transaction, snapshot.data);
-      this.importBooks(transaction, snapshot.data, ids);
-      this.importBookSettings(transaction, snapshot.data, ids);
-      this.importBookTags(transaction, snapshot.data, ids, categoryIds);
-      this.importNarrative(transaction, snapshot.data, ids);
-      this.importCodex(transaction, snapshot.data, ids);
-      this.importChats(transaction, snapshot.data, ids);
-      this.importSystemPrompts(transaction, snapshot.data, ids);
-
-      return {
-        importedBookIds: snapshot.data.books.map((book) => mappedId(ids.books, book.id)),
-      };
+    return this.database.transaction().execute(async (transaction) => {
+      const categoryIds = await this.importCategories(transaction, snapshot.data);
+      await this.importBooks(transaction, snapshot.data, ids);
+      await this.importBookSettings(transaction, snapshot.data, ids);
+      await this.importBookTags(transaction, snapshot.data, ids, categoryIds);
+      await this.importNarrative(transaction, snapshot.data, ids);
+      await this.importCodex(transaction, snapshot.data, ids);
+      await this.importChats(transaction, snapshot.data, ids);
+      await this.importSystemPrompts(transaction, snapshot.data, ids);
+      return { importedBookIds: snapshot.data.books.map((book) => mappedId(ids.books, book.id)) };
     });
   }
 
@@ -102,247 +79,101 @@ export class DataImportService {
     return new Map([...identities].map((identity) => [identity, this.createId()]));
   }
 
-  private importCategories(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-  ): Map<string, string> {
-    const existingCategories = transaction.select().from(categories).all();
-    const categoryIdByIdentity = new Map(
-      existingCategories.map((category) => [categoryIdentity(category), category.id]),
-    );
-    const importedCategoryIds = new Map<string, string>();
-
+  private async importCategories(transaction: DatabaseTransaction, data: DataExportSnapshotData): Promise<Map<string, string>> {
+    const existing = await transaction.selectFrom('categories').selectAll().execute();
+    const byIdentity = new Map(existing.map((category) => [categoryIdentity(category), category.id]));
+    const importedIds = new Map<string, string>();
     for (const category of data.categories) {
       const identity = categoryIdentity(category);
-      const existingId = categoryIdByIdentity.get(identity);
+      const existingId = byIdentity.get(identity);
       const categoryId = existingId ?? this.createId();
-
       if (!existingId) {
-        transaction
-          .insert(categories)
-          .values({ ...category, id: categoryId })
-          .run();
-        categoryIdByIdentity.set(identity, categoryId);
+        await transaction.insertInto('categories').values({ ...category, id: categoryId, isCustom: toSqliteBoolean(category.isCustom) }).execute();
+        byIdentity.set(identity, categoryId);
       }
-
-      importedCategoryIds.set(category.id, categoryId);
+      importedIds.set(category.id, categoryId);
     }
-
-    return importedCategoryIds;
+    return importedIds;
   }
 
-  private importBooks(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-    ids: ImportIdMaps,
-  ): void {
+  private async importBooks(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps): Promise<void> {
     for (const book of data.books) {
-      transaction
-        .insert(books)
-        .values({
-          ...book,
-          id: mappedId(ids.books, book.id),
-          coverImage: decodeBinary(book.coverImage),
-          createdAt: decodeDate(book.createdAt),
-          lastEditedAt: decodeDate(book.lastEditedAt),
-        })
-        .run();
+      await transaction.insertInto('books').values({ ...book, id: mappedId(ids.books, book.id), coverImage: decodeBinary(book.coverImage), createdAt: decodeDate(book.createdAt), lastEditedAt: decodeDate(book.lastEditedAt) }).execute();
     }
   }
 
-  private importBookSettings(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-    ids: ImportIdMaps,
-  ): void {
+  private async importBookSettings(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps): Promise<void> {
     for (const settings of data.bookSettings) {
-      transaction
-        .insert(bookSettings)
-        .values({
-          ...settings,
-          bookSettingId: mappedId(ids.books, settings.bookSettingId),
-          povCharacterId: mapNullableId(ids.codexEntries, settings.povCharacterId),
-        })
-        .run();
+      const { openRouterEmbeddingModel, ...values } = settings;
+      await transaction.insertInto('bookSettings').values({
+        ...values,
+        bookSettingId: mappedId(ids.books, settings.bookSettingId),
+        synopsisAiContext: toSqliteBoolean(settings.synopsisAiContext),
+        povCharacterId: mapNullableId(ids.codexEntries, settings.povCharacterId),
+        openrouterEmbeddingModel: openRouterEmbeddingModel,
+        vectorSearchEnabled: toSqliteBoolean(settings.vectorSearchEnabled),
+        automaticIndexingEnabled: toSqliteBoolean(settings.automaticIndexingEnabled),
+      }).execute();
     }
   }
 
-  private importBookTags(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-    ids: ImportIdMaps,
-    categoryIds: Map<string, string>,
-  ): void {
+  private async importBookTags(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps, categoryIds: Map<string, string>): Promise<void> {
     for (const tag of data.bookTags) {
-      transaction
-        .insert(bookTags)
-        .values({
-          bookId: mappedId(ids.books, tag.bookId),
-          categoryId: mappedId(categoryIds, tag.categoryId),
-        })
-        .run();
+      await transaction.insertInto('bookTags').values({ bookId: mappedId(ids.books, tag.bookId), categoryId: mappedId(categoryIds, tag.categoryId) }).execute();
     }
   }
 
-  private importNarrative(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-    ids: ImportIdMaps,
-  ): void {
-    for (const importedAct of data.acts) {
-      transaction
-        .insert(act)
-        .values({
-          ...importedAct,
-          id: mappedId(ids.acts, importedAct.id),
-          bookId: mappedId(ids.books, importedAct.bookId),
-        })
-        .run();
+  private async importNarrative(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps): Promise<void> {
+    for (const act of data.acts) {
+      await transaction.insertInto('acts').values({ ...act, id: mappedId(ids.acts, act.id), bookId: mappedId(ids.books, act.bookId) }).execute();
     }
-    for (const importedChapter of data.chapters) {
-      transaction
-        .insert(chapter)
-        .values({
-          ...importedChapter,
-          id: mappedId(ids.chapters, importedChapter.id),
-          bookId: mappedId(ids.books, importedChapter.bookId),
-          actId: mapNullableId(ids.acts, importedChapter.actId),
-        })
-        .run();
+    for (const chapter of data.chapters) {
+      await transaction.insertInto('chapters').values({ ...chapter, id: mappedId(ids.chapters, chapter.id), bookId: mappedId(ids.books, chapter.bookId), actId: mapNullableId(ids.acts, chapter.actId) }).execute();
     }
-    for (const importedScene of data.scenes) {
-      transaction
-        .insert(scene)
-        .values({
-          ...importedScene,
-          id: mappedId(ids.scenes, importedScene.id),
-          bookId: mappedId(ids.books, importedScene.bookId),
-          chapterId: mapNullableId(ids.chapters, importedScene.chapterId),
-          povCharacterIdOverride: mapNullableId(
-            ids.codexEntries,
-            importedScene.povCharacterIdOverride,
-          ),
-        })
-        .run();
+    for (const scene of data.scenes) {
+      await transaction.insertInto('scenes').values({
+        ...scene,
+        id: mappedId(ids.scenes, scene.id),
+        bookId: mappedId(ids.books, scene.bookId),
+        chapterId: mapNullableId(ids.chapters, scene.chapterId),
+        prose: serializeSqliteJson(scene.prose),
+        includeInContext: toSqliteBoolean(scene.includeInContext),
+        povCharacterIdOverride: mapNullableId(ids.codexEntries, scene.povCharacterIdOverride),
+      }).execute();
     }
   }
 
-  private importCodex(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-    ids: ImportIdMaps,
-  ): void {
+  private async importCodex(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps): Promise<void> {
     for (const entry of data.codexEntries) {
-      transaction
-        .insert(codexEntries)
-        .values({
-          ...entry,
-          id: mappedId(ids.codexEntries, entry.id),
-          bookId: mappedId(ids.books, entry.bookId),
-          image: decodeBinary(entry.image),
-          createdAt: decodeDate(entry.createdAt),
-          lastEditedAt: decodeDate(entry.lastEditedAt),
-        })
-        .run();
+      await transaction.insertInto('codexEntries').values({ ...entry, id: mappedId(ids.codexEntries, entry.id), bookId: mappedId(ids.books, entry.bookId), image: decodeBinary(entry.image), createdAt: decodeDate(entry.createdAt), lastEditedAt: decodeDate(entry.lastEditedAt) }).execute();
     }
     for (const note of data.codexEntryNotes) {
-      transaction
-        .insert(codexEntryNotes)
-        .values({
-          ...note,
-          id: mappedId(ids.codexEntryNotes, note.id),
-          codexEntryId: mappedId(ids.codexEntries, note.codexEntryId),
-          createdAt: decodeDate(note.createdAt),
-          lastEditedAt: decodeDate(note.lastEditedAt),
-        })
-        .run();
+      await transaction.insertInto('codexEntryNotes').values({ ...note, id: mappedId(ids.codexEntryNotes, note.id), codexEntryId: mappedId(ids.codexEntries, note.codexEntryId), createdAt: decodeDate(note.createdAt), lastEditedAt: decodeDate(note.lastEditedAt) }).execute();
     }
     for (const progression of data.codexEntryProgression) {
-      transaction
-        .insert(codexEntryProgression)
-        .values({
-          ...progression,
-          id: mappedId(ids.codexEntryProgression, progression.id),
-          codexEntryId: mappedId(ids.codexEntries, progression.codexEntryId),
-          sceneId: mapNullableId(ids.scenes, progression.sceneId),
-          createdAt: decodeDate(progression.createdAt),
-          lastEditedAt: decodeDate(progression.lastEditedAt),
-        })
-        .run();
+      await transaction.insertInto('codexEntryProgression').values({ ...progression, id: mappedId(ids.codexEntryProgression, progression.id), codexEntryId: mappedId(ids.codexEntries, progression.codexEntryId), sceneId: mapNullableId(ids.scenes, progression.sceneId), createdAt: decodeDate(progression.createdAt), lastEditedAt: decodeDate(progression.lastEditedAt) }).execute();
     }
   }
 
-  private importChats(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-    ids: ImportIdMaps,
-  ): void {
+  private async importChats(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps): Promise<void> {
     for (const thread of data.chatThreads) {
-      transaction
-        .insert(chatThreads)
-        .values({
-          ...thread,
-          id: mappedId(ids.chatThreads, thread.id),
-          bookId: mappedId(ids.books, thread.bookId),
-          createdAt: decodeDate(thread.createdAt),
-          lastEditedAt: decodeDate(thread.lastEditedAt),
-        })
-        .run();
+      await transaction.insertInto('chatThreads').values({ ...thread, id: mappedId(ids.chatThreads, thread.id), bookId: mappedId(ids.books, thread.bookId), createdAt: decodeDate(thread.createdAt), lastEditedAt: decodeDate(thread.lastEditedAt) }).execute();
     }
     for (const message of data.chatMessages) {
-      transaction
-        .insert(chatMessages)
-        .values({
-          ...message,
-          id: mappedId(ids.chatMessages, message.id),
-          threadId: mappedId(ids.chatThreads, message.threadId),
-          parentMessageId: mapNullableId(ids.chatMessages, message.parentMessageId),
-          branchGroupId: mappedId(ids.chatBranchGroups, branchGroupIdentity(message)),
-          createdAt: decodeDate(message.createdAt),
-          lastEditedAt: decodeDate(message.lastEditedAt),
-        })
-        .run();
+      await transaction.insertInto('chatMessages').values({ ...message, id: mappedId(ids.chatMessages, message.id), threadId: mappedId(ids.chatThreads, message.threadId), parentMessageId: mapNullableId(ids.chatMessages, message.parentMessageId), branchGroupId: mappedId(ids.chatBranchGroups, branchGroupIdentity(message)), createdAt: decodeDate(message.createdAt), lastEditedAt: decodeDate(message.lastEditedAt) }).execute();
     }
     for (const selection of data.chatBranchSelections) {
-      transaction
-        .insert(chatBranchSelections)
-        .values({
-          ...selection,
-          threadId: mappedId(ids.chatThreads, selection.threadId),
-          branchGroupId: mappedId(ids.chatBranchGroups, branchGroupIdentity(selection)),
-          selectedMessageId: mappedId(ids.chatMessages, selection.selectedMessageId),
-        })
-        .run();
+      await transaction.insertInto('chatBranchSelections').values({ ...selection, threadId: mappedId(ids.chatThreads, selection.threadId), branchGroupId: mappedId(ids.chatBranchGroups, branchGroupIdentity(selection)), selectedMessageId: mappedId(ids.chatMessages, selection.selectedMessageId) }).execute();
     }
   }
 
-  private importSystemPrompts(
-    transaction: DataImportTransaction,
-    data: DataExportSnapshotData,
-    ids: ImportIdMaps,
-  ): void {
+  private async importSystemPrompts(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps): Promise<void> {
     for (const preset of data.systemPromptPresets) {
-      transaction
-        .insert(systemPromptPresets)
-        .values({
-          ...preset,
-          id: mappedId(ids.systemPromptPresets, preset.id),
-          bookId: mappedId(ids.books, preset.bookId as string),
-          createdAt: new Date(preset.createdAt),
-          lastEditedAt: new Date(preset.lastEditedAt),
-        })
-        .run();
+      await transaction.insertInto('systemPromptPresets').values({ ...preset, id: mappedId(ids.systemPromptPresets, preset.id), bookId: mappedId(ids.books, preset.bookId!), createdAt: decodeDate(preset.createdAt)!, lastEditedAt: decodeDate(preset.lastEditedAt)! }).execute();
     }
     for (const selection of data.activeSystemPromptPresets) {
       if (!findBuiltInSystemPromptPreset(selection.presetId)) {
-        transaction
-          .insert(activeSystemPromptPresets)
-          .values({
-            ...selection,
-            bookId: mappedId(ids.books, selection.bookId),
-            presetId: mappedId(ids.systemPromptPresets, selection.presetId),
-          })
-          .run();
+        await transaction.insertInto('activeSystemPromptPresets').values({ ...selection, bookId: mappedId(ids.books, selection.bookId), presetId: mappedId(ids.systemPromptPresets, selection.presetId) }).execute();
       }
     }
   }
@@ -370,8 +201,8 @@ function decodeBinary(value: string | null): Buffer | null {
   return value === null ? null : Buffer.from(value, 'base64');
 }
 
-function decodeDate(value: string | null): Date | null {
-  return value === null ? null : new Date(value);
+function decodeDate(value: string | null): number | null {
+  return value === null ? null : toSqliteTimestamp(new Date(value));
 }
 
 export const dataImportService = new DataImportService();

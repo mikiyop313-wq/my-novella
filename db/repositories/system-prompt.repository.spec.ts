@@ -1,5 +1,4 @@
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BUILT_IN_SYSTEM_PROMPT_PRESETS } from '../../shared/constants/ai-system-prompts';
@@ -7,7 +6,7 @@ import type {
   CreateSystemPromptPresetDto,
   SystemPromptCategory,
 } from '../../shared/models/system-prompt.model';
-import * as schema from '../schema';
+import { createDatabaseClient } from '../core/factory';
 
 const mockedDatabase = vi.hoisted(() => ({ value: undefined as unknown }));
 
@@ -67,7 +66,7 @@ describe('SystemPromptRepository', () => {
       CREATE INDEX active_system_prompt_presets_preset_idx
         ON active_system_prompt_presets (preset_id);
     `);
-    mockedDatabase.value = drizzle(sqlite, { schema });
+    mockedDatabase.value = createDatabaseClient(sqlite);
 
     const { SystemPromptRepository } = await import('./system-prompt.repository');
     repository = new SystemPromptRepository(settingsStore);
@@ -222,6 +221,7 @@ describe('SystemPromptRepository', () => {
       expand: BUILT_IN_SYSTEM_PROMPT_PRESETS.expand.id,
       shorten: BUILT_IN_SYSTEM_PROMPT_PRESETS.shorten.id,
       title: BUILT_IN_SYSTEM_PROMPT_PRESETS.title.id,
+      codexDetection: BUILT_IN_SYSTEM_PROMPT_PRESETS.codexDetection.id,
     });
   });
 

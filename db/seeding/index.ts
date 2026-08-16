@@ -1,8 +1,10 @@
+import { randomUUID } from 'crypto';
+import { sql } from 'kysely';
+
 import { db } from '../core/client';
-import { language, categories, subcategories } from '../schema';
+import { toSqliteBoolean } from '../core/sqlite-values';
 import { GENRES_DATA } from './genre-data';
 import { TROPES_DATA } from './trope-data';
-import { eq, and, sql } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------
 // Languages
@@ -127,22 +129,16 @@ const toLanguageRow = (languageName: string) => ({
 
 export async function seedLanguages() {
   console.log('Seeding languages...');
+  const existingLanguage = await db.selectFrom('language').select('languageName').limit(1).executeTakeFirst();
 
-  try {
-    const existingLanguages = await db.select().from(language);
-
-    if (existingLanguages.length === 0) {
-      console.log('Inserting languages into database...');
-
-      await db.insert(language).values(LANGUAGES.map(toLanguageRow)).onConflictDoNothing();
-
-      console.log('Languages seeded successfully.');
-    } else {
-      console.log('Languages already exist, skipping seed.');
-    }
-  } catch (error) {
-    console.error('Error seeding languages:', error);
+  if (existingLanguage) {
+    console.log('Languages already exist, skipping seed.');
+    return;
   }
+
+  console.log('Inserting languages into database...');
+  await db.insertInto('language').values(LANGUAGES.map(toLanguageRow)).onConflict((conflict) => conflict.doNothing()).execute();
+  console.log('Languages seeded successfully.');
 }
 
 // ---------------------------------------------------------------------------
@@ -174,11 +170,13 @@ const TROPE_SEED_ITEMS: CategorySeedItem[] = TROPES_DATA.map((trope) => ({
 }));
 
 async function countSeededSubcategories(type: CategoryType): Promise<number> {
-  const [result] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(subcategories)
-    .innerJoin(categories, eq(subcategories.parentCategoryId, categories.id))
-    .where(and(eq(categories.type, type), eq(subcategories.isCustom, false)));
+  const result = await db
+    .selectFrom('subcategories')
+    .innerJoin('categories', 'categories.id', 'subcategories.parentCategoryId')
+    .select(sql<number>`count(*)`.as('count'))
+    .where('categories.type', '=', type)
+    .where('subcategories.isCustom', '=', 0)
+    .executeTakeFirst();
 
   return Number(result?.count ?? 0);
 }
@@ -191,9 +189,11 @@ async function seedCategoryCatalog(config: CategorySeedConfig): Promise<void> {
   );
 
   const currentParents = await db
-    .select()
-    .from(categories)
-    .where(and(eq(categories.type, config.type), eq(categories.isCustom, false)));
+    .selectFrom('categories')
+    .selectAll()
+    .where('type', '=', config.type)
+    .where('isCustom', '=', 0)
+    .execute();
 
   const currentChildCount = await countSeededSubcategories(config.type);
 
@@ -211,62 +211,60 @@ async function seedCategoryCatalog(config: CategorySeedConfig): Promise<void> {
 
   // Custom user entries are preserved; generated entries are rebuilt so the
   // app reflects the current static catalog exactly.
-  await db
-    .delete(categories)
-    .where(and(eq(categories.type, config.type), eq(categories.isCustom, false)));
+  await db.transaction().execute(async (transaction) => {
+    await transaction
+      .deleteFrom('categories')
+      .where('type', '=', config.type)
+      .where('isCustom', '=', 0)
+      .execute();
 
-  for (const item of config.items) {
-    const [newCategory] = await db
-      .insert(categories)
-      .values({
-        name: item.name,
-        type: config.type,
-        isCustom: false,
-      })
-      .returning();
+    for (const item of config.items) {
+      const categoryId = randomUUID();
+      await transaction
+        .insertInto('categories')
+        .values({
+          id: categoryId,
+          name: item.name,
+          type: config.type,
+          isCustom: toSqliteBoolean(false),
+        })
+        .execute();
 
-    if (item.subcategories.length === 0) {
-      continue;
+      if (item.subcategories.length > 0) {
+        await transaction
+          .insertInto('subcategories')
+          .values(
+            item.subcategories.map((name) => ({
+              id: randomUUID(),
+              name,
+              parentCategoryId: categoryId,
+              isCustom: toSqliteBoolean(false),
+            })),
+          )
+          .execute();
+      }
     }
-
-    await db.insert(subcategories).values(
-      item.subcategories.map((name) => ({
-        name,
-        parentCategoryId: newCategory.id,
-        isCustom: false,
-      })),
-    );
-  }
+  });
 
   console.log(`${config.parentLabelPlural} and ${config.childLabelPlural} seeded successfully.`);
 }
 
 export async function seedGenres() {
   console.log('Seeding genres and subgenres...');
-
-  try {
-    await seedCategoryCatalog({
-      type: 'genre',
-      parentLabelPlural: 'Genres',
-      childLabelPlural: 'Subgenres',
-      items: GENRE_SEED_ITEMS,
-    });
-  } catch (error) {
-    console.error('Error seeding genres:', error);
-  }
+  await seedCategoryCatalog({
+    type: 'genre',
+    parentLabelPlural: 'Genres',
+    childLabelPlural: 'Subgenres',
+    items: GENRE_SEED_ITEMS,
+  });
 }
 
 export async function seedTropes() {
   console.log('Seeding tropes and subtropes...');
-
-  try {
-    await seedCategoryCatalog({
-      type: 'trope',
-      parentLabelPlural: 'Tropes',
-      childLabelPlural: 'Subtropes',
-      items: TROPE_SEED_ITEMS,
-    });
-  } catch (error) {
-    console.error('Error seeding tropes:', error);
-  }
+  await seedCategoryCatalog({
+    type: 'trope',
+    parentLabelPlural: 'Tropes',
+    childLabelPlural: 'Subtropes',
+    items: TROPE_SEED_ITEMS,
+  });
 }

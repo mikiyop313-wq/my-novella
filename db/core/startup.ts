@@ -1,23 +1,13 @@
-import { seedGenres, seedLanguages, seedTropes } from '../seeding';
 import { vectorDb } from '../../vectors/lancedb.connection';
+import { seedGenres, seedLanguages, seedTropes } from '../seeding';
+import { db } from './client';
+import { migrateDatabase } from './migrator';
 
-function runStartupTask(taskName: string, task: () => Promise<unknown>): void {
-  task().catch((error) => {
-    console.error(`${taskName} failed:`, error);
-  });
-}
-
-export function runDatabaseStartupTasks(): void {
-  try {
-    runStartupTask('Seeding languages', seedLanguages);
-    runStartupTask('Seeding genres', seedGenres);
-    runStartupTask('Seeding tropes', seedTropes);
-
-    runStartupTask('LanceDB initialization', async () => {
-      await vectorDb.connect();
-      console.log('LanceDB connection ready.');
-    });
-  } catch (error) {
-    console.error('Database startup failed:', error);
-  }
+export async function initializeDatabase(): Promise<void> {
+  await migrateDatabase(db);
+  await seedLanguages();
+  await seedGenres();
+  await seedTropes();
+  await vectorDb.connect();
+  console.log('Database initialization completed.');
 }

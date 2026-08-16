@@ -1,4 +1,4 @@
-import { and, asc, eq, ne, or } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
 
 import {
   createDefaultSystemPromptPresetIds,
@@ -14,164 +14,89 @@ import type {
   UpdateSystemPromptPresetDto,
 } from '../../shared/models/system-prompt.model';
 import { db } from '../index';
-import { activeSystemPromptPresets, systemPromptPresets } from '../schema';
-import {
-  appSettingsRepository,
-  type AppSettingsStore,
-} from './app-settings.repository';
+import type {
+  NewSystemPromptPresetRow,
+  SystemPromptPresetUpdate,
+} from '../schema';
+import { toSqliteTimestamp } from '../core/sqlite-values';
+import { mapSystemPromptPresetRow } from '../mappers/system-prompt.mapper';
+import { appSettingsRepository, type AppSettingsStore } from './app-settings.repository';
 
 const builtInModelSettingKey = (presetId: string): string =>
   `system-prompt-built-in-model:${presetId}`;
 
-type SystemPromptPresetEntity = typeof systemPromptPresets.$inferSelect;
-type SystemPromptPresetInsert = typeof systemPromptPresets.$inferInsert;
-type SystemPromptPresetUpdate = Partial<Omit<SystemPromptPresetInsert, 'id' | 'createdAt'>>;
-
 export class SystemPromptRepository {
   constructor(private readonly settingsStore: AppSettingsStore = appSettingsRepository) {}
 
-  private mapToDto(preset: SystemPromptPresetEntity): SystemPromptPresetDto {
-    return {
-      id: preset.id,
-      name: preset.name,
-      systemPrompt: preset.systemPrompt,
-      category: preset.category,
-      scope: preset.scope,
-      bookId: preset.bookId,
-      temperature: preset.temperature,
-      topP: preset.topP,
-      maxOutputTokens: preset.maxOutputTokens,
-      presencePenalty: preset.presencePenalty,
-      frequencyPenalty: preset.frequencyPenalty,
-      defaultModelId: preset.defaultModelId,
-      createdAt: preset.createdAt.toISOString(),
-      lastEditedAt: preset.lastEditedAt.toISOString(),
-    };
-  }
-
   private mapOwnership(
     ownership: SystemPromptOwnership,
-  ): Pick<SystemPromptPresetInsert, 'scope' | 'bookId'> {
-    if (ownership.scope === 'global') {
-      return { scope: 'global', bookId: null };
-    }
-
-    if (
-      ownership.scope === 'book' &&
-      typeof ownership.bookId === 'string' &&
-      ownership.bookId.length > 0
-    ) {
+  ): Pick<NewSystemPromptPresetRow, 'scope' | 'bookId'> {
+    if (ownership.scope === 'global') return { scope: 'global', bookId: null };
+    if (ownership.scope === 'book' && typeof ownership.bookId === 'string' && ownership.bookId.length > 0) {
       return { scope: 'book', bookId: ownership.bookId };
     }
-
     throw new Error('Book-scoped system prompt presets require a book ID.');
   }
 
   async listAvailableForBook(bookId: string): Promise<SystemPromptPresetDto[]> {
-    const presets = await db
-      .select()
-      .from(systemPromptPresets)
-      .where(
-        or(
-          eq(systemPromptPresets.scope, 'global'),
-          and(eq(systemPromptPresets.scope, 'book'), eq(systemPromptPresets.bookId, bookId)),
-        ),
+    const rows = await db
+      .selectFrom('systemPromptPresets')
+      .selectAll()
+      .where((expression) =>
+        expression.or([
+          expression('scope', '=', 'global'),
+          expression.and([expression('scope', '=', 'book'), expression('bookId', '=', bookId)]),
+        ]),
       )
-      .orderBy(
-        asc(systemPromptPresets.category),
-        asc(systemPromptPresets.createdAt),
-        asc(systemPromptPresets.id),
-      );
-
-    return presets.map((preset) => this.mapToDto(preset));
+      .orderBy('category')
+      .orderBy('createdAt')
+      .orderBy('id')
+      .execute();
+    return rows.map(mapSystemPromptPresetRow);
   }
 
   async listGlobal(): Promise<SystemPromptPresetDto[]> {
-    const presets = await db
-      .select()
-      .from(systemPromptPresets)
-      .where(eq(systemPromptPresets.scope, 'global'))
-      .orderBy(
-        asc(systemPromptPresets.category),
-        asc(systemPromptPresets.createdAt),
-        asc(systemPromptPresets.id),
-      );
-
-    return presets.map((preset) => this.mapToDto(preset));
+    const rows = await db.selectFrom('systemPromptPresets').selectAll().where('scope', '=', 'global').orderBy('category').orderBy('createdAt').orderBy('id').execute();
+    return rows.map(mapSystemPromptPresetRow);
   }
 
   async getById(id: string): Promise<SystemPromptPresetDto | undefined> {
-    const preset = await db.query.systemPromptPresets.findFirst({
-      where: eq(systemPromptPresets.id, id),
-    });
-
-    return preset ? this.mapToDto(preset) : undefined;
+    const row = await db.selectFrom('systemPromptPresets').selectAll().where('id', '=', id).executeTakeFirst();
+    return row ? mapSystemPromptPresetRow(row) : undefined;
   }
 
   async listActivePresetIdsForBook(bookId: string): Promise<ActiveSystemPromptPresetIds> {
-    const rows = await db
-      .select({
-        category: activeSystemPromptPresets.category,
-        presetId: activeSystemPromptPresets.presetId,
-      })
-      .from(activeSystemPromptPresets)
-      .where(eq(activeSystemPromptPresets.bookId, bookId));
+    const rows = await db.selectFrom('activeSystemPromptPresets').select(['category', 'presetId']).where('bookId', '=', bookId).execute();
     const activePresetIds = createDefaultSystemPromptPresetIds();
-
-    for (const row of rows) {
-      activePresetIds[row.category] = row.presetId;
-    }
-
+    for (const row of rows) activePresetIds[row.category] = row.presetId;
     return activePresetIds;
   }
 
-  async setActivePreset(
-    bookId: string,
-    category: SystemPromptCategory,
-    presetId: string,
-  ): Promise<ActiveSystemPromptPresetIds> {
+  async setActivePreset(bookId: string, category: SystemPromptCategory, presetId: string): Promise<ActiveSystemPromptPresetIds> {
     const preset = await this.getById(presetId);
     if (!preset) throw new Error('System prompt preset does not exist.');
-    if (preset.category !== category) {
-      throw new Error('System prompt preset category does not match the active category.');
-    }
-    if (preset.scope === 'book' && preset.bookId !== bookId) {
-      throw new Error('Book-scoped system prompt preset belongs to another book.');
-    }
-
+    if (preset.category !== category) throw new Error('System prompt preset category does not match the active category.');
+    if (preset.scope === 'book' && preset.bookId !== bookId) throw new Error('Book-scoped system prompt preset belongs to another book.');
     await db
-      .insert(activeSystemPromptPresets)
+      .insertInto('activeSystemPromptPresets')
       .values({ bookId, category, presetId })
-      .onConflictDoUpdate({
-        target: [activeSystemPromptPresets.bookId, activeSystemPromptPresets.category],
-        set: { presetId },
-      });
-
+      .onConflict((conflict) => conflict.columns(['bookId', 'category']).doUpdateSet({ presetId }))
+      .execute();
     return this.listActivePresetIdsForBook(bookId);
   }
 
-  async resetActivePreset(
-    bookId: string,
-    category: SystemPromptCategory,
-  ): Promise<ActiveSystemPromptPresetIds> {
-    await db
-      .delete(activeSystemPromptPresets)
-      .where(
-        and(
-          eq(activeSystemPromptPresets.bookId, bookId),
-          eq(activeSystemPromptPresets.category, category),
-        ),
-      );
-
+  async resetActivePreset(bookId: string, category: SystemPromptCategory): Promise<ActiveSystemPromptPresetIds> {
+    await db.deleteFrom('activeSystemPromptPresets').where('bookId', '=', bookId).where('category', '=', category).execute();
     return this.listActivePresetIdsForBook(bookId);
   }
 
   async create(data: CreateSystemPromptPresetDto): Promise<SystemPromptPresetDto> {
-    const ownership = this.mapOwnership(data);
-    const [created] = await db
-      .insert(systemPromptPresets)
+    const timestamp = toSqliteTimestamp();
+    const created = await db
+      .insertInto('systemPromptPresets')
       .values({
-        ...ownership,
+        id: randomUUID(),
+        ...this.mapOwnership(data),
         name: data.name,
         systemPrompt: data.systemPrompt,
         category: data.category,
@@ -181,20 +106,16 @@ export class SystemPromptRepository {
         presencePenalty: data.presencePenalty,
         frequencyPenalty: data.frequencyPenalty,
         defaultModelId: data.defaultModelId,
+        createdAt: timestamp,
+        lastEditedAt: timestamp,
       })
-      .returning();
-
-    return this.mapToDto(created);
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return mapSystemPromptPresetRow(created);
   }
 
-  async update(
-    id: string,
-    data: UpdateSystemPromptPresetDto,
-  ): Promise<SystemPromptPresetDto | undefined> {
-    const update: SystemPromptPresetUpdate = {
-      lastEditedAt: new Date(),
-    };
-
+  async update(id: string, data: UpdateSystemPromptPresetDto): Promise<SystemPromptPresetDto | undefined> {
+    const update: SystemPromptPresetUpdate = { lastEditedAt: toSqliteTimestamp() };
     if (data.name !== undefined) update.name = data.name;
     if (data.systemPrompt !== undefined) update.systemPrompt = data.systemPrompt;
     if (data.category !== undefined) update.category = data.category;
@@ -204,92 +125,47 @@ export class SystemPromptRepository {
     if (data.presencePenalty !== undefined) update.presencePenalty = data.presencePenalty;
     if (data.frequencyPenalty !== undefined) update.frequencyPenalty = data.frequencyPenalty;
     if (data.defaultModelId !== undefined) update.defaultModelId = data.defaultModelId;
-    if (data.ownership !== undefined) {
-      Object.assign(update, this.mapOwnership(data.ownership));
-    }
+    if (data.ownership !== undefined) Object.assign(update, this.mapOwnership(data.ownership));
 
-    const [updated] = await db
-      .update(systemPromptPresets)
-      .set(update)
-      .where(eq(systemPromptPresets.id, id))
-      .returning();
-
+    const updated = await db.updateTable('systemPromptPresets').set(update).where('id', '=', id).returningAll().executeTakeFirst();
     if (!updated) return undefined;
 
-    await db
-      .delete(activeSystemPromptPresets)
-      .where(
-        and(
-          eq(activeSystemPromptPresets.presetId, id),
-          ne(activeSystemPromptPresets.category, updated.category),
-        ),
-      );
+    await db.deleteFrom('activeSystemPromptPresets').where('presetId', '=', id).where('category', '!=', updated.category).execute();
     if (updated.scope === 'book' && updated.bookId) {
-      await db
-        .delete(activeSystemPromptPresets)
-        .where(
-          and(
-            eq(activeSystemPromptPresets.presetId, id),
-            ne(activeSystemPromptPresets.bookId, updated.bookId),
-          ),
-        );
+      await db.deleteFrom('activeSystemPromptPresets').where('presetId', '=', id).where('bookId', '!=', updated.bookId).execute();
     }
-
-    return this.mapToDto(updated);
+    return mapSystemPromptPresetRow(updated);
   }
 
   async delete(id: string): Promise<{ success: boolean }> {
-    const deleted = await db
-      .delete(systemPromptPresets)
-      .where(eq(systemPromptPresets.id, id))
-      .returning({ id: systemPromptPresets.id });
-
-    return { success: deleted.length > 0 };
+    const result = await db.deleteFrom('systemPromptPresets').where('id', '=', id).executeTakeFirst();
+    return { success: result.numDeletedRows > 0n };
   }
 
   async getBuiltInDefaultModelId(presetId: string): Promise<string | null> {
     const preset = findBuiltInSystemPromptPreset(presetId);
     if (!preset) throw new Error('Built-in system prompt preset does not exist.');
-
-    return (await this.settingsStore.get(builtInModelSettingKey(presetId)))
-      ?? preset.defaultModelId;
+    return (await this.settingsStore.get(builtInModelSettingKey(presetId))) ?? preset.defaultModelId;
   }
 
   async setBuiltInDefaultModelId(presetId: string, defaultModelId: string): Promise<string> {
     const preset = findBuiltInSystemPromptPreset(presetId);
-    if (!preset || preset.defaultModelId === null) {
-      throw new Error('This built-in system prompt does not support a default model.');
-    }
+    if (!preset || preset.defaultModelId === null) throw new Error('This built-in system prompt does not support a default model.');
     const normalizedModelId = defaultModelId.trim();
     if (!normalizedModelId) throw new Error('A default model is required.');
-
     await this.settingsStore.set(builtInModelSettingKey(presetId), normalizedModelId);
     return normalizedModelId;
   }
 
-  async resolveActiveModel(
-    bookId: string,
-    category: SystemPromptCategory,
-  ): Promise<ResolvedActiveSystemPromptModelDto> {
+  async resolveActiveModel(bookId: string, category: SystemPromptCategory): Promise<ResolvedActiveSystemPromptModelDto> {
     const presetId = (await this.listActivePresetIdsForBook(bookId))[category];
     const builtIn = findBuiltInSystemPromptPreset(presetId);
-    if (builtIn) {
-      return { presetId, defaultModelId: await this.getBuiltInDefaultModelId(presetId) };
-    }
-
+    if (builtIn) return { presetId, defaultModelId: await this.getBuiltInDefaultModelId(presetId) };
     const preset = await this.getById(presetId);
-    if (!preset || preset.category !== category) {
-      throw new Error('The active system prompt preset is unavailable.');
-    }
-    if (preset.defaultModelId) {
-      return { presetId, defaultModelId: preset.defaultModelId };
-    }
-
+    if (!preset || preset.category !== category) throw new Error('The active system prompt preset is unavailable.');
+    if (preset.defaultModelId) return { presetId, defaultModelId: preset.defaultModelId };
     const defaultPresetId = createDefaultSystemPromptPresetIds()[category];
-    return {
-      presetId,
-      defaultModelId: await this.getBuiltInDefaultModelId(defaultPresetId),
-    };
+    return { presetId, defaultModelId: await this.getBuiltInDefaultModelId(defaultPresetId) };
   }
 }
 
