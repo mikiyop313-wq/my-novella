@@ -37,6 +37,7 @@ import {
   filterHierarchyForContext,
   isSceneIncludedInContext,
 } from '../../../../../../shared/utils/manuscript-context-inclusion';
+import { ParagraphReviewService, type ParagraphReviewItem } from './paragraph-review.service';
 
 export type ManuscriptAiPointOfViewSetting = BookSettingsDto['pointOfView'] | 'global';
 
@@ -68,6 +69,7 @@ export class ManuscriptAiContextService {
   private readonly saver = inject(ManuscriptProseSaverService);
   private readonly toastService = inject(ToastService);
   private readonly paragraphVectorService = inject(ParagraphVectorService);
+  private readonly paragraphReview = inject(ParagraphReviewService);
 
   async buildContext(request: ManuscriptAiContextRequest): Promise<string> {
     if (!request.bookId) throw new Error('No active book is available for AI context.');
@@ -251,12 +253,26 @@ export class ManuscriptAiContextService {
     try {
       await this.saver.flushDirtySections();
       await this.saver.flushParagraphVectorChanges();
-      const results = await this.paragraphVectorService.searchSimilarParagraphs({
+      const searchPayload = {
         bookId: request.bookId,
         query: request.promptText,
-        limit: 3,
-      });
-      return serializeSimilarParagraphs(results, request.hierarchy);
+        limit: this.vectorSearchResultLimit(request.bookId),
+        ...this.vectorSearchThreshold(request.bookId),
+      };
+      const results = await this.paragraphVectorService.searchSimilarParagraphs(searchPayload);
+      const eligibleResults = filterSimilarParagraphsForContext(results, request.hierarchy);
+      if (eligibleResults.length === 0) return '';
+
+      const settings = this.libraryStore.books()
+        .find(book => book.id === request.bookId)
+        ?.settings;
+      const selectedResults = settings?.vectorSearchManualSelectionEnabled
+        ? await this.paragraphReview.review(createParagraphReviewItems(
+          eligibleResults,
+          request.hierarchy,
+        ))
+        : eligibleResults;
+      return serializeSimilarParagraphs(selectedResults, request.hierarchy);
     } catch (error) {
       console.warn('[ManuscriptAiContext] Vector context unavailable:', error);
       this.toastService.warning(
@@ -273,6 +289,19 @@ export class ManuscriptAiContextService {
     return this.libraryStore.books()
       .find(book => book.id === request.bookId)
       ?.settings?.vectorSearchEnabled ?? true;
+  }
+
+  private vectorSearchThreshold(bookId: string): { minimumSimilarity?: number } {
+    const settings = this.libraryStore.books().find(book => book.id === bookId)?.settings;
+    if (!settings?.vectorSearchThresholdEnabled) return {};
+
+    return { minimumSimilarity: settings.vectorSearchSimilarityThreshold ?? 0.7 };
+  }
+
+  private vectorSearchResultLimit(bookId: string): number {
+    return this.libraryStore.books()
+      .find(book => book.id === bookId)
+      ?.settings?.vectorSearchResultLimit ?? 3;
   }
 }
 
@@ -316,7 +345,6 @@ function proseForScenes(
   return new Map([...sceneIds].map(sceneId => [sceneId, proseBySceneId.get(sceneId) ?? '']));
 }
 
-const VECTOR_CONTEXT_CHARACTER_LIMIT = 6_000;
 const VECTOR_CONTEXT_GUIDANCE = [
   'The following passages were selected automatically by semantic similarity and may be irrelevant.',
   'Treat them as optional reference material, not content that must appear in the response.',
@@ -328,12 +356,42 @@ function serializeSimilarParagraphs(
   results: readonly SimilarParagraphResult[],
   hierarchy: readonly ActDto[],
 ): string {
-  const contextHierarchy = filterHierarchyForContext(hierarchy);
-  const includedSceneIds = new Set(flattenSceneIds(contextHierarchy));
-  const includedResults = results.filter((result) => includedSceneIds.has(result.sceneId));
-  if (includedResults.length === 0) return '';
+  if (results.length === 0) return '';
+  const sceneLocations = buildSceneLocations(results, hierarchy);
+  const paragraphs = results.map((result, index) => {
+    const location = sceneLocations.get(result.sceneId) ?? `Scene: ${result.sceneId}`;
+    return `${index + 1}. [${location}]\n${result.text}`;
+  });
 
-  const resultSceneIds = new Set(includedResults.map((result) => result.sceneId));
+  return `## Semantically Relevant Manuscript Paragraphs\n\n${VECTOR_CONTEXT_GUIDANCE}\n\n${paragraphs.join('\n\n')}`;
+}
+
+function filterSimilarParagraphsForContext(
+  results: readonly SimilarParagraphResult[],
+  hierarchy: readonly ActDto[],
+): SimilarParagraphResult[] {
+  const includedSceneIds = new Set(flattenSceneIds(filterHierarchyForContext(hierarchy)));
+  return results.filter(result => includedSceneIds.has(result.sceneId));
+}
+
+function createParagraphReviewItems(
+  results: readonly SimilarParagraphResult[],
+  hierarchy: readonly ActDto[],
+): ParagraphReviewItem[] {
+  const sceneLocations = buildSceneLocations(results, hierarchy);
+  return results.map(result => ({
+    result,
+    location: (sceneLocations.get(result.sceneId) ?? `Scene: ${result.sceneId}`)
+      .replaceAll(' > ', ' ? '),
+  }));
+}
+
+function buildSceneLocations(
+  results: readonly SimilarParagraphResult[],
+  hierarchy: readonly ActDto[],
+): Map<string, string> {
+  const contextHierarchy = filterHierarchyForContext(hierarchy);
+  const resultSceneIds = new Set(results.map(result => result.sceneId));
   const sceneLocations = new Map<string, string>();
   let actDisplayIndex = 0;
   for (const act of contextHierarchy) {
@@ -356,29 +414,7 @@ function serializeSimilarParagraphs(
       actDisplayIndex += 1;
     }
   }
-
-  const heading = '## Semantically Relevant Manuscript Paragraphs';
-  let remaining = VECTOR_CONTEXT_CHARACTER_LIMIT
-    - heading.length
-    - VECTOR_CONTEXT_GUIDANCE.length
-    - 4;
-  const paragraphs: string[] = [];
-
-  for (const [index, result] of includedResults.entries()) {
-    if (remaining <= 0) break;
-    const location = sceneLocations.get(result.sceneId) ?? `Scene: ${result.sceneId}`;
-    const prefix = `${index + 1}. [${location}]\n`;
-    const availableText = Math.max(remaining - prefix.length, 0);
-    if (availableText === 0) break;
-    const text = result.text.slice(0, availableText);
-    const section = `${prefix}${text}`;
-    paragraphs.push(section);
-    remaining -= section.length + 2;
-  }
-
-  return paragraphs.length > 0
-    ? `${heading}\n\n${VECTOR_CONTEXT_GUIDANCE}\n\n${paragraphs.join('\n\n')}`
-    : '';
+  return sceneLocations;
 }
 
 function flattenSceneIds(hierarchy: readonly ActDto[]): string[] {
