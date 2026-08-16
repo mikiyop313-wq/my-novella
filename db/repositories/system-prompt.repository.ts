@@ -16,10 +16,10 @@ import type {
 import { db } from '../index';
 import type {
   NewSystemPromptPresetRow,
-  SystemPromptPresetRow,
   SystemPromptPresetUpdate,
 } from '../schema';
-import { fromSqliteTimestamp, toSqliteTimestamp } from '../core/sqlite-values';
+import { toSqliteTimestamp } from '../core/sqlite-values';
+import { mapSystemPromptPresetRow } from '../mappers/system-prompt.mapper';
 import { appSettingsRepository, type AppSettingsStore } from './app-settings.repository';
 
 const builtInModelSettingKey = (presetId: string): string =>
@@ -27,14 +27,6 @@ const builtInModelSettingKey = (presetId: string): string =>
 
 export class SystemPromptRepository {
   constructor(private readonly settingsStore: AppSettingsStore = appSettingsRepository) {}
-
-  private mapToDto(preset: SystemPromptPresetRow): SystemPromptPresetDto {
-    return {
-      ...preset,
-      createdAt: fromSqliteTimestamp(preset.createdAt)!.toISOString(),
-      lastEditedAt: fromSqliteTimestamp(preset.lastEditedAt)!.toISOString(),
-    };
-  }
 
   private mapOwnership(
     ownership: SystemPromptOwnership,
@@ -60,17 +52,17 @@ export class SystemPromptRepository {
       .orderBy('createdAt')
       .orderBy('id')
       .execute();
-    return rows.map((row) => this.mapToDto(row));
+    return rows.map(mapSystemPromptPresetRow);
   }
 
   async listGlobal(): Promise<SystemPromptPresetDto[]> {
     const rows = await db.selectFrom('systemPromptPresets').selectAll().where('scope', '=', 'global').orderBy('category').orderBy('createdAt').orderBy('id').execute();
-    return rows.map((row) => this.mapToDto(row));
+    return rows.map(mapSystemPromptPresetRow);
   }
 
   async getById(id: string): Promise<SystemPromptPresetDto | undefined> {
     const row = await db.selectFrom('systemPromptPresets').selectAll().where('id', '=', id).executeTakeFirst();
-    return row ? this.mapToDto(row) : undefined;
+    return row ? mapSystemPromptPresetRow(row) : undefined;
   }
 
   async listActivePresetIdsForBook(bookId: string): Promise<ActiveSystemPromptPresetIds> {
@@ -119,7 +111,7 @@ export class SystemPromptRepository {
       })
       .returningAll()
       .executeTakeFirstOrThrow();
-    return this.mapToDto(created);
+    return mapSystemPromptPresetRow(created);
   }
 
   async update(id: string, data: UpdateSystemPromptPresetDto): Promise<SystemPromptPresetDto | undefined> {
@@ -142,7 +134,7 @@ export class SystemPromptRepository {
     if (updated.scope === 'book' && updated.bookId) {
       await db.deleteFrom('activeSystemPromptPresets').where('presetId', '=', id).where('bookId', '!=', updated.bookId).execute();
     }
-    return this.mapToDto(updated);
+    return mapSystemPromptPresetRow(updated);
   }
 
   async delete(id: string): Promise<{ success: boolean }> {

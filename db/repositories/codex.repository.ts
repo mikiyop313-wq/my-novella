@@ -18,17 +18,16 @@ import type {
 } from '../../shared/models/codex.model';
 import { db } from '../index';
 import type {
-  CodexEntryNoteRow,
-  CodexEntryProgressionRow,
-  CodexEntryRow,
   CodexEntryUpdate,
   NewCodexEntryRow,
 } from '../schema';
+import { toSqliteTimestamp } from '../core/sqlite-values';
 import {
-  fromSqliteTimestamp,
-  toIpcBinary,
-  toSqliteTimestamp,
-} from '../core/sqlite-values';
+  mapCodexEntryAggregate,
+  mapCodexEntryNoteRow,
+  mapCodexEntryProgressionRow,
+  mapCodexEntryRow,
+} from '../mappers/codex-aggregate.mapper';
 
 type CodexImageInput = CodexEntryDto['image'] | undefined;
 
@@ -42,35 +41,6 @@ const CODEX_ENTRY_TYPES: CodexEntryType[] = [
 ];
 
 export class CodexRepository {
-  private mapToDto(entry: CodexEntryRow): CodexEntryDto {
-    return {
-      ...entry,
-      image: toIpcBinary(entry.image),
-      createdAt: this.dateToIso(entry.createdAt),
-      lastEditedAt: this.dateToIso(entry.lastEditedAt),
-    };
-  }
-
-  private mapNoteToDto(note: CodexEntryNoteRow): CodexEntryNoteDto {
-    return {
-      ...note,
-      createdAt: this.dateToIso(note.createdAt),
-      lastEditedAt: this.dateToIso(note.lastEditedAt),
-    };
-  }
-
-  private mapProgressionToDto(progression: CodexEntryProgressionRow): CodexEntryProgressionDto {
-    return {
-      ...progression,
-      createdAt: this.dateToIso(progression.createdAt),
-      lastEditedAt: this.dateToIso(progression.lastEditedAt),
-    };
-  }
-
-  private dateToIso(value: number | null): string {
-    return (fromSqliteTimestamp(value) ?? new Date(0)).toISOString();
-  }
-
   private dataUrlToBuffer(value: CodexImageInput): Buffer | null {
     if (!value) return null;
     if (typeof value === 'string') {
@@ -160,27 +130,39 @@ export class CodexRepository {
       );
     }
     const rows = await query.orderBy('name').execute();
-    return rows.map((row) => this.mapToDto(row));
+    return rows.map(mapCodexEntryRow);
   }
 
   async getById(id: string): Promise<CodexEntryDetailDto | undefined> {
     const entry = await db.selectFrom('codexEntries').selectAll().where('id', '=', id).executeTakeFirst();
     if (!entry) return undefined;
     const [entryNotes, entryProgression] = await Promise.all([
-      this.getEntryNotes(id),
-      this.getEntryProgression(id),
+      db
+        .selectFrom('codexEntryNotes')
+        .selectAll()
+        .where('codexEntryId', '=', id)
+        .orderBy('lastEditedAt', 'desc')
+        .orderBy('createdAt', 'desc')
+        .execute(),
+      db
+        .selectFrom('codexEntryProgression')
+        .selectAll()
+        .where('codexEntryId', '=', id)
+        .orderBy('createdAt')
+        .orderBy('lastEditedAt')
+        .execute(),
     ]);
-    return { ...this.mapToDto(entry), entryNotes, entryProgression };
+    return mapCodexEntryAggregate({ entry, entryNotes, entryProgression });
   }
 
   async getEntryNotes(entryId: string): Promise<CodexEntryNoteDto[]> {
     const rows = await db.selectFrom('codexEntryNotes').selectAll().where('codexEntryId', '=', entryId).orderBy('lastEditedAt', 'desc').orderBy('createdAt', 'desc').execute();
-    return rows.map((row) => this.mapNoteToDto(row));
+    return rows.map(mapCodexEntryNoteRow);
   }
 
   async getEntryProgression(entryId: string): Promise<CodexEntryProgressionDto[]> {
     const rows = await db.selectFrom('codexEntryProgression').selectAll().where('codexEntryId', '=', entryId).orderBy('createdAt').orderBy('lastEditedAt').execute();
-    return rows.map((row) => this.mapProgressionToDto(row));
+    return rows.map(mapCodexEntryProgressionRow);
   }
 
   async getCounts(bookId: string): Promise<CodexEntryTypeCountDto[]> {
@@ -197,12 +179,12 @@ export class CodexRepository {
 
   async create(data: CreateCodexEntryDto): Promise<CodexEntryDto> {
     const created = await db.insertInto('codexEntries').values(this.createInsert(data)).returningAll().executeTakeFirstOrThrow();
-    return this.mapToDto(created);
+    return mapCodexEntryRow(created);
   }
 
   async update(id: string, data: UpdateCodexEntryDto): Promise<CodexEntryDto | undefined> {
     const updated = await db.updateTable('codexEntries').set(this.createUpdate(data)).where('id', '=', id).returningAll().executeTakeFirst();
-    return updated ? this.mapToDto(updated) : undefined;
+    return updated ? mapCodexEntryRow(updated) : undefined;
   }
 
   async createEntryNote(data: CreateCodexEntryNoteDto): Promise<CodexEntryNoteDto> {
@@ -210,13 +192,13 @@ export class CodexRepository {
     const timestamp = toSqliteTimestamp();
     const created = await db.insertInto('codexEntryNotes').values({ id: randomUUID(), codexEntryId: data.codexEntryId, content: data.content, createdAt: timestamp, lastEditedAt: timestamp }).returningAll().executeTakeFirstOrThrow();
     await this.touchEntryLastEdited(created.codexEntryId);
-    return this.mapNoteToDto(created);
+    return mapCodexEntryNoteRow(created);
   }
 
   async updateEntryNote(id: string, data: UpdateCodexEntryNoteDto): Promise<CodexEntryNoteDto | undefined> {
     const updated = await db.updateTable('codexEntryNotes').set({ content: data.content, lastEditedAt: toSqliteTimestamp() }).where('id', '=', id).returningAll().executeTakeFirst();
     if (updated) await this.touchEntryLastEdited(updated.codexEntryId);
-    return updated ? this.mapNoteToDto(updated) : undefined;
+    return updated ? mapCodexEntryNoteRow(updated) : undefined;
   }
 
   async deleteEntryNote(id: string): Promise<{ success: boolean }> {
@@ -231,13 +213,13 @@ export class CodexRepository {
     const timestamp = toSqliteTimestamp();
     const created = await db.insertInto('codexEntryProgression').values({ id: randomUUID(), codexEntryId: data.codexEntryId, title: data.title, description: data.description, sceneId: data.sceneId ?? null, createdAt: timestamp, lastEditedAt: timestamp }).returningAll().executeTakeFirstOrThrow();
     await this.touchEntryLastEdited(created.codexEntryId);
-    return this.mapProgressionToDto(created);
+    return mapCodexEntryProgressionRow(created);
   }
 
   async updateEntryProgression(id: string, data: UpdateCodexEntryProgressionDto): Promise<CodexEntryProgressionDto | undefined> {
     const updated = await db.updateTable('codexEntryProgression').set({ ...data, lastEditedAt: toSqliteTimestamp() }).where('id', '=', id).returningAll().executeTakeFirst();
     if (updated) await this.touchEntryLastEdited(updated.codexEntryId);
-    return updated ? this.mapProgressionToDto(updated) : undefined;
+    return updated ? mapCodexEntryProgressionRow(updated) : undefined;
   }
 
   async deleteEntryProgression(id: string): Promise<{ success: boolean }> {

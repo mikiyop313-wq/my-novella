@@ -4,7 +4,6 @@ import { sql } from 'kysely';
 import type {
   ChatBranchSelectionDto,
   ChatMessageDetailDto,
-  ChatMessageDto,
   ChatThreadDetailDto,
   ChatThreadDto,
   CreateChatMessageDto,
@@ -14,15 +13,17 @@ import type {
 } from '../../shared/models/chat.model';
 import { db } from '../index';
 import type {
-  ChatBranchSelectionRow,
-  ChatMessageRow,
   ChatMessageUpdate,
-  ChatThreadRow,
   ChatThreadUpdate,
   NewChatMessageRow,
   NewChatThreadRow,
 } from '../schema';
-import { fromSqliteTimestamp, toSqliteTimestamp } from '../core/sqlite-values';
+import { toSqliteTimestamp } from '../core/sqlite-values';
+import {
+  mapChatMessageRow,
+  mapChatThreadAggregate,
+  mapChatThreadRow,
+} from '../mappers/chat-aggregate.mapper';
 
 export type CreateChatThreadData = CreateChatThreadDto;
 export type UpdateChatThreadData = UpdateChatThreadDto;
@@ -30,34 +31,6 @@ export type CreateChatMessageData = CreateChatMessageDto;
 export type UpdateChatMessageData = UpdateChatMessageDto;
 
 export class ChatRepository {
-  private mapThreadToDto(thread: ChatThreadRow): ChatThreadDto {
-    return {
-      id: thread.id,
-      bookId: thread.bookId,
-      title: thread.title,
-      status: thread.status,
-      lastModelId: thread.lastModelId,
-      createdAt: this.dateToIso(thread.createdAt),
-      lastEditedAt: this.dateToIso(thread.lastEditedAt),
-    };
-  }
-
-  private mapMessageToDto(message: ChatMessageRow): ChatMessageDto {
-    return {
-      ...message,
-      createdAt: this.dateToIso(message.createdAt),
-      lastEditedAt: this.dateToIso(message.lastEditedAt),
-    };
-  }
-
-  private mapBranchSelectionToDto(selection: ChatBranchSelectionRow): ChatBranchSelectionDto {
-    return selection;
-  }
-
-  private dateToIso(value: number | null): string {
-    return (fromSqliteTimestamp(value) ?? new Date(0)).toISOString();
-  }
-
   private createThreadInsert(data: CreateChatThreadData): NewChatThreadRow {
     const timestamp = toSqliteTimestamp();
     return {
@@ -136,17 +109,24 @@ export class ChatRepository {
       query = query.where('status', '=', 'active');
     }
     const rows = await query.orderBy('lastEditedAt', 'desc').orderBy('createdAt', 'desc').execute();
-    return rows.map((row) => this.mapThreadToDto(row));
+    return rows.map(mapChatThreadRow);
   }
 
   async getThread(id: string): Promise<ChatThreadDetailDto | undefined> {
     const thread = await db.selectFrom('chatThreads').selectAll().where('id', '=', id).executeTakeFirst();
     if (!thread) return undefined;
     const [messages, branchSelections] = await Promise.all([
-      this.getMessages(id),
-      this.getBranchSelections(id),
+      db
+        .selectFrom('chatMessages')
+        .selectAll()
+        .where('threadId', '=', id)
+        .orderBy('position')
+        .orderBy('branchOrder')
+        .orderBy('createdAt')
+        .execute(),
+      db.selectFrom('chatBranchSelections').selectAll().where('threadId', '=', id).execute(),
     ]);
-    return { ...this.mapThreadToDto(thread), messages, branchSelections };
+    return mapChatThreadAggregate({ thread, messages, branchSelections });
   }
 
   async getMessages(threadId: string): Promise<ChatMessageDetailDto[]> {
@@ -158,24 +138,23 @@ export class ChatRepository {
       .orderBy('branchOrder')
       .orderBy('createdAt')
       .execute();
-    return rows.map((row) => this.mapMessageToDto(row));
+    return rows.map(mapChatMessageRow);
   }
 
   async getBranchSelections(threadId: string): Promise<ChatBranchSelectionDto[]> {
-    const rows = await db.selectFrom('chatBranchSelections').selectAll().where('threadId', '=', threadId).execute();
-    return rows.map((row) => this.mapBranchSelectionToDto(row));
+    return db.selectFrom('chatBranchSelections').selectAll().where('threadId', '=', threadId).execute();
   }
 
   async createThread(data: CreateChatThreadData): Promise<ChatThreadDto> {
     const created = await db.insertInto('chatThreads').values(this.createThreadInsert(data)).returningAll().executeTakeFirstOrThrow();
     await this.touchBookLastEdited(created.bookId);
-    return this.mapThreadToDto(created);
+    return mapChatThreadRow(created);
   }
 
   async updateThread(id: string, data: UpdateChatThreadData): Promise<ChatThreadDto | undefined> {
     const updated = await db.updateTable('chatThreads').set(this.createThreadUpdate(data)).where('id', '=', id).returningAll().executeTakeFirst();
     if (updated) await this.touchBookLastEdited(updated.bookId);
-    return updated ? this.mapThreadToDto(updated) : undefined;
+    return updated ? mapChatThreadRow(updated) : undefined;
   }
 
   async archiveThread(id: string): Promise<ChatThreadDto | undefined> {
@@ -222,7 +201,7 @@ export class ChatRepository {
       .returningAll()
       .executeTakeFirstOrThrow();
     await this.touchThreadLastEdited(threadId);
-    return this.mapBranchSelectionToDto(selection);
+    return selection;
   }
 
   async updateMessage(id: string, data: UpdateChatMessageData): Promise<ChatMessageDetailDto | undefined> {
@@ -241,7 +220,7 @@ export class ChatRepository {
 
   private async getMessage(id: string): Promise<ChatMessageDetailDto | undefined> {
     const message = await db.selectFrom('chatMessages').selectAll().where('id', '=', id).executeTakeFirst();
-    return message ? this.mapMessageToDto(message) : undefined;
+    return message ? mapChatMessageRow(message) : undefined;
   }
 
   private async ensureThreadExists(threadId: string): Promise<void> {

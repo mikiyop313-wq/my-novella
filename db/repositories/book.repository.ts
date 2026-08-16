@@ -18,60 +18,19 @@ import type {
 import { db } from '../index';
 import type {
   BookRow,
-  BookSettingsRow,
   BookSettingsUpdate,
   NewBookSettingsRow,
 } from '../schema';
 import {
   fromSqliteBoolean,
-  fromSqliteTimestamp,
-  toIpcBinary,
   toSqliteBoolean,
   toSqliteTimestamp,
 } from '../core/sqlite-values';
+import { mapBookAggregate } from '../mappers/book-aggregate.mapper';
 
 type CoverImageInput = BookDto['coverImage'] | undefined;
-type BookWithRelations = BookRow & {
-  categories: CategoryDto[];
-  settings?: BookSettingsRow;
-};
 
 export class BookRepository {
-  private mapToDto(book: BookWithRelations): BookDto {
-    const createdAt = fromSqliteTimestamp(book.createdAt);
-    const lastEditedAt = fromSqliteTimestamp(book.lastEditedAt);
-
-    return {
-      id: book.id,
-      title: book.title,
-      author: book.author,
-      status: book.status,
-      synopsis: book.synopsis,
-      language: book.language,
-      coverImage: toIpcBinary(book.coverImage),
-      wordCount: book.wordCount ?? 0,
-      createdAt: (createdAt ?? new Date(0)).toISOString(),
-      lastEditedAt: (lastEditedAt ?? new Date(0)).toISOString(),
-      categories: book.categories,
-      ...(book.settings ? { settings: this.mapSettingsToDto(book.settings) } : {}),
-    };
-  }
-
-  private mapSettingsToDto(settings: BookSettingsRow): BookSettingsDto {
-    return {
-      language: settings.language,
-      proseTense: settings.proseTense,
-      pointOfView: settings.pointOfView,
-      synopsisAiContext: fromSqliteBoolean(settings.synopsisAiContext),
-      povCharacterId: settings.povCharacterId,
-      embeddingModel: settings.embeddingModel,
-      localEmbeddingModel: settings.localEmbeddingModel,
-      openRouterEmbeddingModel: settings.openrouterEmbeddingModel,
-      vectorSearchEnabled: fromSqliteBoolean(settings.vectorSearchEnabled),
-      automaticIndexingEnabled: fromSqliteBoolean(settings.automaticIndexingEnabled),
-    };
-  }
-
   private dataUrlToBuffer(value: CoverImageInput): Buffer | null {
     if (!value) {
       return null;
@@ -85,7 +44,7 @@ export class BookRepository {
     return Buffer.from(value);
   }
 
-  private async loadRelations(bookRows: BookRow[]): Promise<BookWithRelations[]> {
+  private async loadRelations(bookRows: BookRow[]): Promise<BookDto[]> {
     if (bookRows.length === 0) {
       return [];
     }
@@ -106,25 +65,7 @@ export class BookRepository {
         .where('bookTags.bookId', 'in', bookIds)
         .execute(),
     ]);
-    const settingsByBookId = new Map(settingsRows.map((row) => [row.bookSettingId, row]));
-    const categoriesByBookId = new Map<string, CategoryDto[]>();
-
-    for (const tag of tagRows) {
-      const categoryRows = categoriesByBookId.get(tag.bookId) ?? [];
-      categoryRows.push({
-        id: tag.id,
-        name: tag.name,
-        type: tag.type,
-        isCustom: fromSqliteBoolean(tag.isCustom),
-      });
-      categoriesByBookId.set(tag.bookId, categoryRows);
-    }
-
-    return bookRows.map((book) => ({
-      ...book,
-      categories: categoriesByBookId.get(book.id) ?? [],
-      settings: settingsByBookId.get(book.id),
-    }));
+    return mapBookAggregate({ books: bookRows, settings: settingsRows, categories: tagRows });
   }
 
   private async findById(id: string): Promise<BookDto | undefined> {
@@ -133,7 +74,7 @@ export class BookRepository {
       return undefined;
     }
     const [withRelations] = await this.loadRelations([book]);
-    return this.mapToDto(withRelations);
+    return withRelations;
   }
 
   private createSettingsRow(bookId: string, data: CreateBookDto): NewBookSettingsRow {
@@ -210,8 +151,7 @@ export class BookRepository {
   }
 
   async getAll(): Promise<BookDto[]> {
-    const books = await this.loadRelations(await db.selectFrom('books').selectAll().execute());
-    return books.map((book) => this.mapToDto(book));
+    return this.loadRelations(await db.selectFrom('books').selectAll().execute());
   }
 
   async getById(id: string): Promise<BookDto | undefined> {
