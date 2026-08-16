@@ -5,6 +5,7 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
 } from '@angular/core';
@@ -36,7 +37,15 @@ import { LibraryService } from '../../../library/services/library.service';
 import { LocalEmbeddingModelStateService } from '../../services/local-embedding-model-state.service';
 
 type BookVectorProviderId = 'local' | VectorConfigurationProviderId;
-type BookVectorOperation = 'select' | 'enable' | 'disable' | 'automatic' | 'clear';
+type BookVectorOperation =
+  | 'select'
+  | 'enable'
+  | 'disable'
+  | 'automatic'
+  | 'threshold'
+  | 'manual-selection'
+  | 'result-limit'
+  | 'clear';
 type ReindexProgress = { processedParagraphs: number; totalParagraphs: number };
 
 interface BookVectorProviderOption {
@@ -86,6 +95,8 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   readonly operation = signal<BookVectorOperation | null>(null);
   readonly operationTarget = signal<string | null>(null);
   readonly operationError = signal<string | null>(null);
+  readonly thresholdError = signal<string | null>(null);
+  readonly resultLimitError = signal<string | null>(null);
   readonly reindexProgress = signal<ReindexProgress | null>(null);
   readonly indexSizes = signal<readonly BookVectorIndexSize[]>([]);
   readonly localModelStatuses = this.localModelState.statuses;
@@ -145,6 +156,20 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   readonly automaticIndexingEnabled = computed(
     () => this.book().settings?.automaticIndexingEnabled ?? false,
   );
+  readonly thresholdEnabled = computed(
+    () => this.book().settings?.vectorSearchThresholdEnabled ?? false,
+  );
+  readonly similarityThreshold = computed(
+    () => this.book().settings?.vectorSearchSimilarityThreshold ?? 0.7,
+  );
+  readonly thresholdDraft = linkedSignal(() => this.similarityThreshold());
+  readonly manualSelectionEnabled = computed(
+    () => this.book().settings?.vectorSearchManualSelectionEnabled ?? false,
+  );
+  readonly resultLimit = computed(
+    () => this.book().settings?.vectorSearchResultLimit ?? 3,
+  );
+  readonly resultLimitDraft = linkedSignal(() => this.resultLimit());
   readonly reindexPercentage = computed(() => {
     const progress = this.reindexProgress();
     if (!progress || progress.totalParagraphs === 0) return 0;
@@ -318,6 +343,103 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
     } finally {
       this.finishOperation();
     }
+  }
+
+  async toggleThreshold(): Promise<void> {
+    if (this.operation() || !this.effectiveIndexingEnabled()) return;
+    const target = this.currentSelectionTarget();
+    if (!target) return;
+
+    this.beginOperation('threshold', target);
+    this.thresholdError.set(null);
+    try {
+      await this.saveSettingsUpdate({
+        vectorSearchThresholdEnabled: !this.thresholdEnabled(),
+      });
+    } catch {
+      // The persisted preference is unchanged and the error is rendered in the section.
+    } finally {
+      this.finishOperation();
+    }
+  }
+
+  async updateSimilarityThreshold(event: Event): Promise<void> {
+    if (this.operation() || !this.effectiveIndexingEnabled() || !this.thresholdEnabled()) return;
+
+    const input = event.target as HTMLInputElement;
+    const value = input.value.trim() === '' ? Number.NaN : Number(input.value);
+    if (!Number.isFinite(value) || value < 0 || value > 1) {
+      this.thresholdError.set('Enter a similarity from 0.00 through 1.00.');
+      return;
+    }
+
+    this.thresholdDraft.set(value);
+    this.thresholdError.set(null);
+    if (value === this.similarityThreshold()) return;
+
+    const target = this.currentSelectionTarget();
+    if (!target) return;
+    this.beginOperation('threshold', target);
+    try {
+      await this.saveSettingsUpdate({ vectorSearchSimilarityThreshold: value });
+    } catch {
+      // The persisted value is unchanged and the error is rendered in the section.
+    } finally {
+      this.finishOperation();
+    }
+  }
+
+  previewSimilarityThreshold(event: Event): void {
+    const value = Number((event.target as HTMLInputElement).value);
+    if (Number.isFinite(value)) this.thresholdDraft.set(value);
+  }
+
+  async toggleManualSelection(): Promise<void> {
+    if (this.operation() || !this.effectiveIndexingEnabled()) return;
+    const target = this.currentSelectionTarget();
+    if (!target) return;
+
+    this.beginOperation('manual-selection', target);
+    try {
+      await this.saveSettingsUpdate({
+        vectorSearchManualSelectionEnabled: !this.manualSelectionEnabled(),
+      });
+    } catch {
+      // The persisted preference is unchanged and the error is rendered in the section.
+    } finally {
+      this.finishOperation();
+    }
+  }
+
+  async updateResultLimit(event: Event): Promise<void> {
+    if (this.operation() || !this.effectiveIndexingEnabled()) return;
+
+    const input = event.target as HTMLInputElement;
+    const value = input.value.trim() === '' ? Number.NaN : Number(input.value);
+    if (!Number.isInteger(value) || value < 1 || value > 20) {
+      this.resultLimitError.set('Enter a whole number from 1 through 20.');
+      return;
+    }
+
+    this.resultLimitDraft.set(value);
+    this.resultLimitError.set(null);
+    if (value === this.resultLimit()) return;
+
+    const target = this.currentSelectionTarget();
+    if (!target) return;
+    this.beginOperation('result-limit', target);
+    try {
+      await this.saveSettingsUpdate({ vectorSearchResultLimit: value });
+    } catch {
+      // The persisted value is unchanged and the error is rendered in the section.
+    } finally {
+      this.finishOperation();
+    }
+  }
+
+  previewResultLimit(event: Event): void {
+    const value = Number((event.target as HTMLInputElement).value);
+    if (Number.isInteger(value)) this.resultLimitDraft.set(value);
   }
 
   openVectorConfiguration(event: MouseEvent): void {

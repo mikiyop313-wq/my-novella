@@ -86,3 +86,17 @@
     [saveEntry]="saveDetectedCodexEntry"
     (close)="closeModal()"></app-codex-detection-modal>
 </ng-template>
+
+<ng-container [appOverlayModal]="paragraphReviewModal"
+  #paragraphReviewModalTrigger="appOverlayModal"
+  (closed)="onParagraphReviewModalClosed()"></ng-container>
+
+<ng-template #paragraphReviewModal let-closeModal>
+  @if (paragraphReview.activeReview(); as review) {
+    <app-paragraph-review-modal
+      [reviewItems]="review.items"
+      (accepted)="paragraphReview.accept($event)"
+      (close)="closeModal()">
+    </app-paragraph-review-modal>
+  }
+</ng-template>

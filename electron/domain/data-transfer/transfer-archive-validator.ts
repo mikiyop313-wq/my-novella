@@ -136,6 +136,10 @@ function validateRows(data: UnknownRecord): void {
       'localEmbeddingModel',
       'openRouterEmbeddingModel',
       'vectorSearchEnabled',
+      'vectorSearchThresholdEnabled',
+      'vectorSearchSimilarityThreshold',
+      'vectorSearchManualSelectionEnabled',
+      'vectorSearchResultLimit',
       'automaticIndexingEnabled',
     ],
     (row, path) => {
@@ -156,6 +160,18 @@ function validateRows(data: UnknownRecord): void {
         OPEN_ROUTER_EMBEDDING_MODELS,
       );
       boolean(row['vectorSearchEnabled'], `${path}.vectorSearchEnabled`);
+      boolean(row['vectorSearchThresholdEnabled'], `${path}.vectorSearchThresholdEnabled`);
+      numberInRange(
+        row['vectorSearchSimilarityThreshold'],
+        `${path}.vectorSearchSimilarityThreshold`,
+        0,
+        1,
+      );
+      boolean(
+        row['vectorSearchManualSelectionEnabled'],
+        `${path}.vectorSearchManualSelectionEnabled`,
+      );
+      integerInRange(row['vectorSearchResultLimit'], `${path}.vectorSearchResultLimit`, 1, 20);
       boolean(row['automaticIndexingEnabled'], `${path}.automaticIndexingEnabled`);
     },
   );
@@ -718,6 +734,20 @@ function nullableInteger(value: unknown, path: string): void {
 function finiteNumber(value: unknown, path: string): void {
   if (typeof value !== 'number' || !Number.isFinite(value))
     invalid(path, 'expected a finite number');
+}
+
+function numberInRange(value: unknown, path: string, minimum: number, maximum: number): void {
+  finiteNumber(value, path);
+  if ((value as number) < minimum || (value as number) > maximum) {
+    invalid(path, `expected a number from ${minimum} through ${maximum}`);
+  }
+}
+
+function integerInRange(value: unknown, path: string, minimum: number, maximum: number): void {
+  integer(value, path);
+  if ((value as number) < minimum || (value as number) > maximum) {
+    invalid(path, `expected an integer from ${minimum} through ${maximum}`);
+  }
 }
 
 function enumeration(value: unknown, path: string, allowed: readonly string[]): void {

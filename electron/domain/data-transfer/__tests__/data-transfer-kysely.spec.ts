@@ -44,6 +44,10 @@ describe('Kysely data transfer', () => {
     expect(snapshot.data.bookSettings[0]).toMatchObject({
       synopsisAiContext: true,
       vectorSearchEnabled: true,
+      vectorSearchThresholdEnabled: true,
+      vectorSearchSimilarityThreshold: 0.7,
+      vectorSearchManualSelectionEnabled: true,
+      vectorSearchResultLimit: 8,
       automaticIndexingEnabled: false,
     });
     expect(snapshot.data.scenes[0]).toMatchObject({

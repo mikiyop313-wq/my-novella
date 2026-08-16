@@ -143,6 +143,37 @@ describe('BookVectorSettingsComponent', () => {
     )?.disabled).toBe(true);
   });
 
+  it('groups book search behavior into one settings card', async () => {
+    await create(book());
+
+    const element = fixture.nativeElement as HTMLElement;
+    const settingsGroup = element.querySelector<HTMLElement>('.vector-settings-group');
+    const headings = Array.from(
+      settingsGroup?.querySelectorAll<HTMLElement>('.vector-setting-row h2') ?? [],
+      heading => heading.textContent?.trim(),
+    );
+
+    expect(settingsGroup).not.toBeNull();
+    expect(settingsGroup?.querySelector('.vector-group-icon svg')).not.toBeNull();
+    expect(settingsGroup?.querySelector('.vector-group-header')?.textContent).toContain(
+      'Search behavior',
+    );
+    expect(settingsGroup?.querySelectorAll('.vector-setting-row')).toHaveLength(5);
+    expect(headings).toEqual([
+      'Book indexing',
+      'Automatic indexing',
+      'Similarity threshold',
+      'Paragraph results',
+      'Manual paragraph selection',
+    ]);
+
+    const providerSection = element.querySelector<HTMLElement>('.model-section');
+    expect(providerSection?.querySelector('.vector-group-icon svg')).not.toBeNull();
+    expect(providerSection?.querySelector('.vector-group-header')?.textContent).toContain(
+      'Embedding provider',
+    );
+  });
+
   it('shows configuration guidance when no embedding model is available', async () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === 'vectors:local-model:get-status') return [unavailableModel, hiddenModel];
@@ -456,6 +487,107 @@ describe('BookVectorSettingsComponent', () => {
     expect(invoke).not.toHaveBeenCalledWith(
       'vectors:local-model:select-for-book',
       expect.anything(),
+    );
+  });
+
+  it('renders vector context defaults and enables controls for an available index', async () => {
+    await create(book(true, installedModel.modelName));
+    fixture.componentInstance.selectedLocalModelName.set(installedModel.modelName);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const thresholdInput = element.querySelector<HTMLInputElement>('#vector-similarity-threshold');
+    const manualSwitch = element.querySelector<HTMLButtonElement>('.manual-selection-switch');
+    const resultLimit = element.querySelector<HTMLInputElement>('#vector-result-limit');
+
+    expect(thresholdInput?.type).toBe('range');
+    expect(thresholdInput?.value).toBe('0.7');
+    expect(element.querySelector('.threshold-value')?.textContent).toContain('0.70');
+    expect(element.querySelector('.threshold-control')?.textContent).toContain('Min');
+    expect(element.querySelector('.threshold-control')?.textContent).toContain('Max');
+    expect(element.querySelector('.threshold-switch')?.getAttribute('aria-checked')).toBe('false');
+    expect(manualSwitch?.disabled).toBe(false);
+    expect(manualSwitch?.getAttribute('aria-checked')).toBe('false');
+    expect(resultLimit?.type).toBe('range');
+    expect(resultLimit?.value).toBe('3');
+    expect(resultLimit?.disabled).toBe(false);
+    expect(element.querySelector('.result-limit-control')?.textContent).toContain('Min');
+    expect(element.querySelector('.result-limit-control')?.textContent).toContain('Max');
+  });
+
+  it('persists manual selection and validates the paragraph result limit', async () => {
+    await create(book(true, installedModel.modelName));
+    fixture.componentInstance.selectedLocalModelName.set(installedModel.modelName);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.toggleManualSelection();
+    expect(updateBook).toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({ vectorSearchManualSelectionEnabled: true }),
+      }),
+    );
+
+    updateBook.mockClear();
+    fixture.componentInstance.previewResultLimit({
+      target: { value: '14' },
+    } as unknown as Event);
+    expect(fixture.componentInstance.resultLimitDraft()).toBe(14);
+    await fixture.componentInstance.updateResultLimit({
+      target: { value: '14' },
+    } as unknown as Event);
+    expect(updateBook).toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({ vectorSearchResultLimit: 14 }),
+      }),
+    );
+
+    updateBook.mockClear();
+    await fixture.componentInstance.updateResultLimit({
+      target: { value: '21' },
+    } as unknown as Event);
+    expect(updateBook).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.resultLimitError()).toContain('1 through 20');
+  });
+
+  it('persists threshold settings and rejects values outside zero through one', async () => {
+    const thresholdBook = book(true, installedModel.modelName);
+    thresholdBook.settings = {
+      ...thresholdBook.settings!,
+      vectorSearchThresholdEnabled: true,
+      vectorSearchSimilarityThreshold: 0.7,
+    };
+    await create(thresholdBook);
+    fixture.componentInstance.selectedLocalModelName.set(installedModel.modelName);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.updateSimilarityThreshold({
+      target: { value: '0.82' },
+    } as unknown as Event);
+    expect(updateBook).toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({ vectorSearchSimilarityThreshold: 0.82 }),
+      }),
+    );
+
+    updateBook.mockClear();
+    await fixture.componentInstance.updateSimilarityThreshold({
+      target: { value: '1.2' },
+    } as unknown as Event);
+    expect(updateBook).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.thresholdError()).toContain('0.00 through 1.00');
+
+    await fixture.componentInstance.toggleThreshold();
+    expect(updateBook).toHaveBeenCalledWith(
+      'book-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          vectorSearchThresholdEnabled: false,
+          vectorSearchSimilarityThreshold: 0.7,
+        }),
+      }),
     );
   });
 

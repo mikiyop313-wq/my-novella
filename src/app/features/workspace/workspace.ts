@@ -24,6 +24,8 @@ import { CodexStore } from '../codex/store/codex.store';
 import { OverlayModalDirective } from '../../shared/directives/overlay-modal.directive';
 import { ToastService } from '../../shared/services/toast.service';
 import { filterNewCodexEntries } from '../codex/utils/codex-detection-response';
+import { ParagraphReviewModalComponent } from '../manuscript/components/paragraph-review-modal/paragraph-review-modal.component';
+import { ParagraphReviewService } from '../manuscript/helpers/ai/paragraph-review.service';
 
 @Component({
   selector: 'app-workspace',
@@ -32,6 +34,7 @@ import { filterNewCodexEntries } from '../codex/utils/codex-detection-response';
     RouterLink,
     WorkspaceSidebar,
     CodexDetectionModalComponent,
+    ParagraphReviewModalComponent,
     OverlayModalDirective,
   ],
   templateUrl: './workspace.html',
@@ -44,6 +47,7 @@ export class Workspace implements OnInit {
   readonly chatStore = inject(ChatStore);
   readonly codexContextTrie = inject(CodexContextTrieService);
   readonly codexDetectionState = inject(CodexDetectionStateService);
+  readonly paragraphReview = inject(ParagraphReviewService);
 
   readonly activeCodexDetection = computed(() => (
     this.codexDetectionState.activeDetection(this.store.bookId())
@@ -58,11 +62,15 @@ export class Workspace implements OnInit {
   private readonly codexStore = inject(CodexStore);
   private readonly toastService = inject(ToastService);
   private pendingCodexModalTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingParagraphReviewModalTimer: ReturnType<typeof setTimeout> | null = null;
   private displayedCodexDetection: PendingCodexDetection | null = null;
   private readonly processingDetectionQueues = new Set<string>();
 
   @ViewChild('codexDetectionModalTrigger')
   private codexDetectionModalTrigger?: OverlayModalDirective;
+
+  @ViewChild('paragraphReviewModalTrigger')
+  private paragraphReviewModalTrigger?: OverlayModalDirective;
 
   constructor() {
     effect(() => {
@@ -76,8 +84,24 @@ export class Workspace implements OnInit {
       });
     });
 
+    effect(() => {
+      if (!this.paragraphReview.activeReview()) return;
+
+      if (this.pendingParagraphReviewModalTimer !== null) {
+        clearTimeout(this.pendingParagraphReviewModalTimer);
+      }
+      this.pendingParagraphReviewModalTimer = setTimeout(() => {
+        this.pendingParagraphReviewModalTimer = null;
+        this.paragraphReviewModalTrigger?.openModal();
+      });
+    });
+
     this.destroyRef.onDestroy(() => {
       if (this.pendingCodexModalTimer !== null) clearTimeout(this.pendingCodexModalTimer);
+      if (this.pendingParagraphReviewModalTimer !== null) {
+        clearTimeout(this.pendingParagraphReviewModalTimer);
+      }
+      this.paragraphReview.complete();
     });
   }
 
@@ -124,6 +148,10 @@ export class Workspace implements OnInit {
     if (!closedDetection || !this.codexDetectionState.completeActive(closedDetection)) return;
 
     void this.processNextCodexDetection(closedDetection.bookId);
+  }
+
+  onParagraphReviewModalClosed(): void {
+    this.paragraphReview.complete();
   }
 
   ngOnInit(): void {

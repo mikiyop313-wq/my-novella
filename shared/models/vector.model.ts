@@ -241,6 +241,7 @@ export interface SearchSimilarParagraphsPayload {
     bookId: string;
     query: string;
     limit?: number;
+    minimumSimilarity?: number;
 }
 
 export interface SimilarParagraphResult {

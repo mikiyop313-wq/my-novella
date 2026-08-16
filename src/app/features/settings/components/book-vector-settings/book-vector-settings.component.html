@@ -17,78 +17,251 @@
     </div>
   } @else {
     <div class="vector-sections">
-      <section class="vector-card" aria-labelledby="book-indexing-heading">
-        <div class="vector-card-copy">
-          <h2 id="book-indexing-heading">Book indexing</h2>
-          <p>Keep paragraph embeddings current and allow semantic manuscript search.</p>
-          @if (selectedProviderUnavailable()) {
-            <p id="indexing-unavailable-reason" class="unavailable-message" role="note">
-              @if (selectedProviderId() === null) {
-                No embedding model is available. Install a local model or configure a cloud
-                provider in
-                <a
-                  class="settings-link"
-                  href="/settings"
-                  (click)="openVectorConfiguration($event)"
-                >General Settings &rarr; Vector Search</a>.
-              } @else if (selectedProviderId() === 'local') {
-                @if (selectedLocalModelStatus(); as status) {
-                  {{ status.displayName }} is not installed. Install it from
+      <section class="vector-card vector-settings-group" aria-label="Book vector search behavior">
+        <header class="vector-group-header">
+          <div class="vector-group-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-4-4"></path>
+              <path d="M8.5 11h5"></path>
+              <path d="M11 8.5v5"></path>
+            </svg>
+          </div>
+          <div>
+            <h2>Search behavior</h2>
+            <p>Configure indexing and how semantic paragraph matches are returned.</p>
+          </div>
+        </header>
+
+        <div class="vector-setting-row" aria-labelledby="book-indexing-heading">
+          <div class="vector-card-copy">
+            <h2 id="book-indexing-heading">Book indexing</h2>
+            <p>Keep paragraph embeddings current and allow semantic manuscript search.</p>
+            @if (selectedProviderUnavailable()) {
+              <p id="indexing-unavailable-reason" class="unavailable-message" role="note">
+                @if (selectedProviderId() === null) {
+                  No embedding model is available. Install a local model or configure a cloud
+                  provider in
                   <a
                     class="settings-link"
                     href="/settings"
                     (click)="openVectorConfiguration($event)"
-                  >General Settings &rarr; Vector Search</a>, or select another installed model.
+                  >General Settings &rarr; Vector Search</a>.
+                } @else if (selectedProviderId() === 'local') {
+                  @if (selectedLocalModelStatus(); as status) {
+                    {{ status.displayName }} is not installed. Install it from
+                    <a
+                      class="settings-link"
+                      href="/settings"
+                      (click)="openVectorConfiguration($event)"
+                    >General Settings &rarr; Vector Search</a>, or select another installed model.
+                  } @else {
+                    {{ unavailableMessage() }}
+                  }
                 } @else {
                   {{ unavailableMessage() }}
                 }
-              } @else {
-                {{ unavailableMessage() }}
-              }
-            </p>
-          }
+              </p>
+            }
+          </div>
+
+          <button
+            class="indexing-switch"
+            type="button"
+            role="switch"
+            [class.is-active]="effectiveIndexingEnabled()"
+            [attr.aria-checked]="effectiveIndexingEnabled()"
+            [attr.aria-describedby]="selectedProviderUnavailable() ? 'indexing-unavailable-reason' : null"
+            [disabled]="operation() !== null || selectedProviderUnavailable()"
+            (click)="toggleIndexing()"
+          >
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span>{{ effectiveIndexingEnabled() ? 'On' : 'Off' }}</span>
+          </button>
         </div>
 
-        <button
-          class="indexing-switch"
-          type="button"
-          role="switch"
-          [class.is-active]="effectiveIndexingEnabled()"
-          [attr.aria-checked]="effectiveIndexingEnabled()"
-          [attr.aria-describedby]="selectedProviderUnavailable() ? 'indexing-unavailable-reason' : null"
-          [disabled]="operation() !== null || selectedProviderUnavailable()"
-          (click)="toggleIndexing()"
-        >
-          <span class="switch-track" aria-hidden="true"><span></span></span>
-          <span>{{ effectiveIndexingEnabled() ? 'On' : 'Off' }}</span>
-        </button>
-      </section>
+        <div class="vector-setting-row" aria-labelledby="automatic-indexing-heading">
+          <div class="vector-card-copy">
+            <h2 id="automatic-indexing-heading">Automatic indexing</h2>
+            <p>Update paragraph embeddings after 10 seconds without manuscript edits.</p>
+          </div>
 
-      <section class="vector-card" aria-labelledby="automatic-indexing-heading">
-        <div class="vector-card-copy">
-          <h2 id="automatic-indexing-heading">Automatic indexing</h2>
-          <p>Update paragraph embeddings after 10 seconds without manuscript edits.</p>
+          <button
+            class="indexing-switch automatic-indexing-switch"
+            type="button"
+            role="switch"
+            [class.is-active]="automaticIndexingEnabled()"
+            [attr.aria-checked]="automaticIndexingEnabled()"
+            [disabled]="operation() !== null || !effectiveIndexingEnabled()"
+            (click)="toggleAutomaticIndexing()"
+          >
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span>{{ automaticIndexingEnabled() ? 'On' : 'Off' }}</span>
+          </button>
         </div>
 
-        <button
-          class="indexing-switch automatic-indexing-switch"
-          type="button"
-          role="switch"
-          [class.is-active]="automaticIndexingEnabled()"
-          [attr.aria-checked]="automaticIndexingEnabled()"
-          [disabled]="operation() !== null || !effectiveIndexingEnabled()"
-          (click)="toggleAutomaticIndexing()"
-        >
-          <span class="switch-track" aria-hidden="true"><span></span></span>
-          <span>{{ automaticIndexingEnabled() ? 'On' : 'Off' }}</span>
-        </button>
+        <div class="vector-setting-row threshold-card" aria-labelledby="similarity-threshold-heading">
+          <div class="vector-card-copy">
+            <h2 id="similarity-threshold-heading">Similarity threshold</h2>
+            <p>Only include paragraphs whose cosine similarity meets the minimum value.</p>
+            <div
+              class="threshold-control"
+              [class.is-disabled]="operation() !== null || !effectiveIndexingEnabled() || !thresholdEnabled()"
+            >
+              <div class="threshold-slider-row">
+                <span class="threshold-endpoint" aria-hidden="true">
+                  <strong>Min</strong>
+                  <span>0.00</span>
+                </span>
+                <div
+                  class="threshold-range"
+                  [style.--threshold-progress]="thresholdDraft() * 100 + '%'"
+                >
+                  <output class="threshold-value" for="vector-similarity-threshold">
+                    {{ thresholdDraft().toFixed(2) }}
+                  </output>
+                  <input
+                    id="vector-similarity-threshold"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    [value]="thresholdDraft()"
+                    [disabled]="operation() !== null || !effectiveIndexingEnabled() || !thresholdEnabled()"
+                    [attr.aria-valuetext]="thresholdDraft().toFixed(2) + ' minimum similarity'"
+                    [attr.aria-invalid]="thresholdError() ? true : null"
+                    [attr.aria-describedby]="thresholdError() ? 'similarity-threshold-error' : null"
+                    (input)="previewSimilarityThreshold($event)"
+                    (change)="updateSimilarityThreshold($event)"
+                  />
+                </div>
+                <span class="threshold-endpoint is-maximum" aria-hidden="true">
+                  <strong>Max</strong>
+                  <span>1.00</span>
+                </span>
+              </div>
+            </div>
+            @if (thresholdError()) {
+              <p id="similarity-threshold-error" class="threshold-error" role="alert">
+                {{ thresholdError() }}
+              </p>
+            }
+          </div>
+
+          <button
+            class="indexing-switch threshold-switch"
+            type="button"
+            role="switch"
+            [class.is-active]="thresholdEnabled()"
+            [attr.aria-checked]="thresholdEnabled()"
+            [disabled]="operation() !== null || !effectiveIndexingEnabled()"
+            (click)="toggleThreshold()"
+          >
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span>{{ thresholdEnabled() ? 'On' : 'Off' }}</span>
+          </button>
+        </div>
+
+        <div class="vector-setting-row threshold-card result-limit-card" aria-labelledby="paragraph-results-heading">
+          <div class="vector-card-copy">
+            <h2 id="paragraph-results-heading">Paragraph results</h2>
+            <p>Choose the maximum number of semantic paragraph matches returned for AI context.</p>
+            <div
+              class="threshold-control result-limit-control"
+              [class.is-disabled]="operation() !== null || !effectiveIndexingEnabled()"
+            >
+              <div class="threshold-slider-row">
+                <span class="threshold-endpoint" aria-hidden="true">
+                  <strong>Min</strong>
+                  <span>1</span>
+                </span>
+                <div
+                  class="threshold-range"
+                  [style.--threshold-progress]="((resultLimitDraft() - 1) / 19) * 100 + '%'"
+                >
+                  <output class="threshold-value" for="vector-result-limit">
+                    {{ resultLimitDraft() }}
+                  </output>
+                  <input
+                    id="vector-result-limit"
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="1"
+                    [value]="resultLimitDraft()"
+                    [disabled]="operation() !== null || !effectiveIndexingEnabled()"
+                    [attr.aria-valuetext]="resultLimitDraft() + ' paragraph results maximum'"
+                    [attr.aria-invalid]="resultLimitError() ? true : null"
+                    [attr.aria-describedby]="resultLimitError() ? 'paragraph-results-error' : null"
+                    (input)="previewResultLimit($event)"
+                    (change)="updateResultLimit($event)"
+                  />
+                </div>
+                <span class="threshold-endpoint is-maximum" aria-hidden="true">
+                  <strong>Max</strong>
+                  <span>20</span>
+                </span>
+              </div>
+            </div>
+            @if (resultLimitError()) {
+              <p id="paragraph-results-error" class="threshold-error" role="alert">
+                {{ resultLimitError() }}
+              </p>
+            }
+          </div>
+        </div>
+
+        <div class="vector-setting-row" aria-labelledby="manual-selection-heading">
+          <div class="vector-card-copy">
+            <h2 id="manual-selection-heading">Manual paragraph selection</h2>
+            <p>Review and choose the paragraphs returned by semantic search.</p>
+          </div>
+
+          <button
+            class="indexing-switch manual-selection-switch"
+            type="button"
+            role="switch"
+            [class.is-active]="manualSelectionEnabled()"
+            [attr.aria-checked]="manualSelectionEnabled()"
+            [disabled]="operation() !== null || !effectiveIndexingEnabled()"
+            (click)="toggleManualSelection()"
+          >
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span>{{ manualSelectionEnabled() ? 'On' : 'Off' }}</span>
+          </button>
+        </div>
       </section>
 
       <section class="vector-card model-section" aria-labelledby="embedding-model-heading">
-        <div class="vector-card-copy">
-          <h2 id="embedding-model-heading">Embedding provider</h2>
-          <p>Select where this book creates embeddings and, when available, its model.</p>
-        </div>
+        <header class="vector-group-header">
+          <div class="vector-group-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="6" cy="12" r="2.5"></circle>
+              <circle cx="18" cy="6" r="2.5"></circle>
+              <circle cx="18" cy="18" r="2.5"></circle>
+              <path d="m8.3 10.8 7.4-3.6"></path>
+              <path d="m8.3 13.2 7.4 3.6"></path>
+            </svg>
+          </div>
+          <div>
+            <h2 id="embedding-model-heading">Embedding provider</h2>
+            <p>Select where this book creates embeddings and, when available, its model.</p>
+          </div>
+        </header>
 
         <div class="provider-tabs" role="tablist" aria-label="Embedding providers">
           @for (provider of providers; track provider.id) {

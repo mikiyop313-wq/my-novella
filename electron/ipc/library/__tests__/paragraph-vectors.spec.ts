@@ -130,4 +130,42 @@ describe('paragraph vector IPC availability gate', () => {
       provider: 'unknown',
     })).rejects.toThrow('Invalid book vector index cleanup request.');
   });
+
+  it('validates and forwards an optional minimum similarity', async () => {
+    await mocks.handlers.get('vectors:searchSimilar')?.({}, {
+      bookId: 'book-1',
+      query: '  silver key  ',
+      limit: 3,
+      minimumSimilarity: 0.7,
+    });
+
+    expect(mocks.searchSimilar).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      query: 'silver key',
+      limit: 3,
+      minimumSimilarity: 0.7,
+    });
+
+    await expect(mocks.handlers.get('vectors:searchSimilar')?.({}, {
+      bookId: 'book-1',
+      query: 'silver key',
+      minimumSimilarity: 1.01,
+    })).rejects.toThrow('Minimum similarity must be a number from 0 through 1.');
+  });
+
+  it('clamps paragraph result limits from one through twenty', async () => {
+    await mocks.handlers.get('vectors:searchSimilar')?.({}, {
+      bookId: 'book-1',
+      query: 'silver key',
+      limit: 25,
+    });
+    expect(mocks.searchSimilar).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 20 }));
+
+    await mocks.handlers.get('vectors:searchSimilar')?.({}, {
+      bookId: 'book-1',
+      query: 'silver key',
+      limit: 0,
+    });
+    expect(mocks.searchSimilar).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 1 }));
+  });
 });

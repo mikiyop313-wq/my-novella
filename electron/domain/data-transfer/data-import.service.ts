@@ -112,6 +112,10 @@ export class DataImportService {
         povCharacterId: mapNullableId(ids.codexEntries, settings.povCharacterId),
         openrouterEmbeddingModel: openRouterEmbeddingModel,
         vectorSearchEnabled: toSqliteBoolean(settings.vectorSearchEnabled),
+        vectorSearchThresholdEnabled: toSqliteBoolean(settings.vectorSearchThresholdEnabled),
+        vectorSearchManualSelectionEnabled: toSqliteBoolean(
+          settings.vectorSearchManualSelectionEnabled,
+        ),
         automaticIndexingEnabled: toSqliteBoolean(settings.automaticIndexingEnabled),
       }).execute();
     }

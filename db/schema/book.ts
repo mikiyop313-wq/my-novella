@@ -36,6 +36,10 @@ export interface BookSettingsTable {
   localEmbeddingModel: Generated<LocalEmbeddingModelName | null>;
   openrouterEmbeddingModel: Generated<OpenRouterEmbeddingModelName | null>;
   vectorSearchEnabled: Generated<SqliteBoolean>;
+  vectorSearchThresholdEnabled: Generated<SqliteBoolean>;
+  vectorSearchSimilarityThreshold: Generated<number>;
+  vectorSearchManualSelectionEnabled: Generated<SqliteBoolean>;
+  vectorSearchResultLimit: Generated<number>;
   automaticIndexingEnabled: Generated<SqliteBoolean>;
 }
 

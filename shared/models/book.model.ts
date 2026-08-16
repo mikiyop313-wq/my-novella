@@ -30,6 +30,14 @@ export interface BookSettingsDto {
   openRouterEmbeddingModel?: OpenRouterEmbeddingModelName | null;
   /** Global default inherited by inline manuscript prompts. */
   vectorSearchEnabled?: boolean;
+  /** Whether semantic searches exclude paragraphs below the configured similarity. */
+  vectorSearchThresholdEnabled?: boolean;
+  /** Minimum cosine similarity accepted when threshold filtering is enabled. */
+  vectorSearchSimilarityThreshold?: number;
+  /** Whether semantic paragraph results must be reviewed before AI generation. */
+  vectorSearchManualSelectionEnabled?: boolean;
+  /** Maximum number of semantic paragraph results requested for AI context. */
+  vectorSearchResultLimit?: number;
   /** Flush queued manuscript vectors after an idle delay. */
   automaticIndexingEnabled?: boolean;
 }

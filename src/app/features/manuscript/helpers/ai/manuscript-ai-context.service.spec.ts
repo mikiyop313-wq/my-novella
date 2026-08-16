@@ -12,6 +12,7 @@ import { ManuscriptAiContextService } from './manuscript-ai-context.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ParagraphVectorService } from '../../../../shared/services/paragraph-vector.service';
 import { buildAiPrompt } from '../../../../shared/utils/ai-prompt-builder';
+import { ParagraphReviewService } from './paragraph-review.service';
 
 const AFTER_PROSE_NOTE = '[THE FOLLOWING PROSE AND ANY SUBSEQUENT SCENES, CHAPTERS, OR ACTS OCCUR AFTER THE INSERTION POINT. USE THEM ONLY AS FUTURE CONTEXT.]';
 
@@ -24,6 +25,7 @@ describe('ManuscriptAiContextService', () => {
   let warning: ReturnType<typeof vi.fn>;
   let books: ReturnType<typeof vi.fn>;
   let searchSimilarParagraphs: ReturnType<typeof vi.fn>;
+  let reviewParagraphs: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     invoke = vi.fn();
@@ -32,6 +34,7 @@ describe('ManuscriptAiContextService', () => {
     flushParagraphVectorChanges = vi.fn().mockResolvedValue(undefined);
     warning = vi.fn();
     searchSimilarParagraphs = vi.fn().mockResolvedValue([]);
+    reviewParagraphs = vi.fn(async items => items.map((item: any) => item.result));
     books = vi.fn(() => [{
       id: 'book-1',
       language: 'english',
@@ -57,6 +60,7 @@ describe('ManuscriptAiContextService', () => {
         },
         { provide: ToastService, useValue: { warning } },
         { provide: ParagraphVectorService, useValue: { searchSimilarParagraphs } },
+        { provide: ParagraphReviewService, useValue: { review: reviewParagraphs } },
       ],
     });
     service = TestBed.inject(ManuscriptAiContextService);
@@ -643,6 +647,126 @@ describe('ManuscriptAiContextService', () => {
     );
     expect(messages[0].content).toContain('Mara found the silver key.');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('passes the enabled book similarity threshold to semantic search', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: 'english',
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        vectorSearchEnabled: true,
+        vectorSearchThresholdEnabled: true,
+        vectorSearchSimilarityThreshold: 0.7,
+      },
+    }]);
+
+    await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'enabled',
+    });
+
+    expect(searchSimilarParagraphs).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      query: 'Continue the scene.',
+      limit: 3,
+      minimumSimilarity: 0.7,
+    });
+  });
+
+  it('uses the configured result limit and reviews eligible paragraphs when enabled', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    const result = {
+      paragraphId: 'paragraph-1',
+      actId: 'act-1',
+      chapterId: 'chapter-1',
+      sceneId: 'scene-1',
+      text: 'Mara found the silver key.',
+      distance: 0.12,
+    };
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: 'english',
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        vectorSearchEnabled: true,
+        vectorSearchManualSelectionEnabled: true,
+        vectorSearchResultLimit: 12,
+      },
+    }]);
+    searchSimilarParagraphs.mockResolvedValue([result]);
+    reviewParagraphs.mockResolvedValue([result]);
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'enabled',
+    });
+
+    expect(searchSimilarParagraphs).toHaveBeenCalledWith({
+      bookId: 'book-1',
+      query: 'Continue the scene.',
+      limit: 12,
+    });
+    expect(reviewParagraphs).toHaveBeenCalledWith([
+      expect.objectContaining({
+        result,
+        location: 'Act 1: Act One ? Chapter 1: Chapter One ? Scene 1: Scene 1',
+      }),
+    ]);
+    expect(messages[0].content).toContain(result.text);
+  });
+
+  it('continues without vector context when manual review rejects every paragraph', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    books.mockReturnValue([{
+      id: 'book-1',
+      language: 'english',
+      settings: {
+        proseTense: 'past',
+        pointOfView: 'third_omni',
+        vectorSearchEnabled: true,
+        vectorSearchManualSelectionEnabled: true,
+      },
+    }]);
+    searchSimilarParagraphs.mockResolvedValue([{
+      paragraphId: 'paragraph-1',
+      actId: 'act-1',
+      chapterId: 'chapter-1',
+      sceneId: 'scene-1',
+      text: 'Rejected paragraph.',
+      distance: 0.12,
+    }]);
+    reviewParagraphs.mockResolvedValue([]);
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'enabled',
+    });
+
+    expect(messages[0].content).not.toContain('Semantically Relevant Manuscript Paragraphs');
+  });
+
+  it('serializes complete semantic paragraphs without the former character cap', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    const longParagraph = `${'A'.repeat(7_000)} COMPLETE_END`;
+    searchSimilarParagraphs.mockResolvedValue([{
+      paragraphId: 'paragraph-1',
+      actId: 'act-1',
+      chapterId: 'chapter-1',
+      sceneId: 'scene-1',
+      text: longParagraph,
+      distance: 0.12,
+    }]);
+
+    const messages = await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'enabled',
+    });
+
+    expect(messages[0].content).toContain(longParagraph);
   });
 
   it('uses a prompt POV character override instead of the global character', async () => {

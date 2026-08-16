@@ -212,8 +212,26 @@ export function setupVectorHandlers() {
             const query = payload.query?.trim();
             if (!payload.bookId || !query) return [];
 
-            const limit = Math.min(Math.max(payload.limit ?? 3, 1), 10);
-            return manuscriptVectorIndexService.searchSimilar(payload.bookId, query, limit);
+            const requestedLimit = payload.limit ?? 3;
+            if (!Number.isFinite(requestedLimit) || !Number.isInteger(requestedLimit)) {
+                throw new Error('Vector search result limit must be a whole number.');
+            }
+            const limit = Math.min(Math.max(requestedLimit, 1), 20);
+            const minimumSimilarity = payload.minimumSimilarity;
+            if (
+                minimumSimilarity !== undefined
+                && (!Number.isFinite(minimumSimilarity)
+                    || minimumSimilarity < 0
+                    || minimumSimilarity > 1)
+            ) {
+                throw new Error('Minimum similarity must be a number from 0 through 1.');
+            }
+            return manuscriptVectorIndexService.searchSimilar({
+                bookId: payload.bookId,
+                query,
+                limit,
+                minimumSimilarity,
+            });
         },
     );
 }
