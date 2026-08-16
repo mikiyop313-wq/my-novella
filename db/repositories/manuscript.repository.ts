@@ -18,100 +18,41 @@ import type {
 } from '../../shared/models/manuscript.model';
 import { withEffectiveContextInclusion } from '../../shared/utils/manuscript-context-inclusion';
 import { db } from '../index';
-import type { ActRow, ChapterRow, SceneRow } from '../schema';
 import {
-  fromSqliteBoolean,
+  mapActiveManuscriptAggregate,
+  mapActRow,
+  mapChapterRow,
+  mapSceneRow,
+  type ManuscriptSceneRow,
+} from '../mappers/manuscript-aggregate.mapper';
+import {
   parseSqliteJson,
   serializeSqliteJson,
   toSqliteBoolean,
   toSqliteTimestamp,
 } from '../core/sqlite-values';
 
-type HierarchySceneRow = Omit<SceneRow, 'prose'> & { prose?: string | null };
-
 export class ManuscriptRepository {
-  private mapScene(row: HierarchySceneRow): SceneDto {
-    return {
-      id: row.id,
-      title: row.title,
-      chapterId: row.chapterId!,
-      position: row.position,
-      status: row.status,
-      prose: parseSqliteJson<TiptapJsonDoc>(row.prose ?? null),
-      summary: row.summary,
-      wordCount: row.wordCount,
-      pointOfViewOverride: row.pointOfViewOverride,
-      povCharacterIdOverride: row.povCharacterIdOverride,
-      includeInContext: fromSqliteBoolean(row.includeInContext),
-    };
-  }
-
-  private mapChapter(row: ChapterRow, scenes: SceneDto[] = []): ChapterDto {
-    return {
-      id: row.id,
-      title: row.title,
-      actId: row.actId!,
-      position: row.position,
-      status: row.status,
-      summary: row.summary,
-      scenes,
-    };
-  }
-
-  private mapAct(row: ActRow, chapters: ChapterDto[] = []): ActDto {
-    return {
-      id: row.id,
-      title: row.title,
-      bookId: row.bookId,
-      position: row.position,
-      status: row.status,
-      summary: row.summary,
-      chapters,
-    };
-  }
-
   private async loadActiveHierarchy(bookId: string, includeProse: boolean): Promise<ActDto[]> {
     const acts = await db.selectFrom('acts').selectAll().where('bookId', '=', bookId).where('status', '=', 'active').orderBy('position').execute();
-    if (acts.length === 0) return [];
-
-    const actIds = acts.map(({ id }) => id);
-    const chapters = await db.selectFrom('chapters').selectAll().where('actId', 'in', actIds).where('status', '=', 'active').orderBy('position').execute();
-    const chapterIds = chapters.map(({ id }) => id);
-    let scenes: HierarchySceneRow[] = [];
-    if (chapterIds.length > 0) {
-      if (includeProse) {
-        scenes = await db.selectFrom('scenes').selectAll().where('chapterId', 'in', chapterIds).where('status', '=', 'active').orderBy('position').execute();
-      } else {
-        scenes = await db
-          .selectFrom('scenes')
-          .select([
-            'id', 'title', 'bookId', 'chapterId', 'position', 'status', 'archiveParentTitle',
-            'summary', 'wordCount', 'includeInContext', 'pointOfViewOverride', 'povCharacterIdOverride',
-          ])
-          .where('chapterId', 'in', chapterIds)
-          .where('status', '=', 'active')
-          .orderBy('position')
-          .execute();
-      }
+    const chapters = await db.selectFrom('chapters').selectAll().where('bookId', '=', bookId).where('status', '=', 'active').orderBy('position').execute();
+    let scenes: ManuscriptSceneRow[] = [];
+    if (includeProse) {
+      scenes = await db.selectFrom('scenes').selectAll().where('bookId', '=', bookId).where('status', '=', 'active').orderBy('position').execute();
+    } else {
+      scenes = await db
+        .selectFrom('scenes')
+        .select([
+          'id', 'title', 'bookId', 'chapterId', 'position', 'status', 'archiveParentTitle',
+          'summary', 'wordCount', 'includeInContext', 'pointOfViewOverride', 'povCharacterIdOverride',
+        ])
+        .where('bookId', '=', bookId)
+        .where('status', '=', 'active')
+        .orderBy('position')
+        .execute();
     }
 
-    const scenesByChapter = new Map<string, SceneDto[]>();
-    for (const scene of scenes) {
-      if (scene.chapterId) {
-        const rows = scenesByChapter.get(scene.chapterId) ?? [];
-        rows.push(this.mapScene(scene));
-        scenesByChapter.set(scene.chapterId, rows);
-      }
-    }
-    const chaptersByAct = new Map<string, ChapterDto[]>();
-    for (const chapter of chapters) {
-      if (chapter.actId) {
-        const rows = chaptersByAct.get(chapter.actId) ?? [];
-        rows.push(this.mapChapter(chapter, scenesByChapter.get(chapter.id) ?? []));
-        chaptersByAct.set(chapter.actId, rows);
-      }
-    }
-    return acts.map((act) => this.mapAct(act, chaptersByAct.get(act.id) ?? []));
+    return mapActiveManuscriptAggregate({ acts, chapters, scenes });
   }
 
   async getManuscript(mode: ManuscriptMode, id: string): Promise<ManuscriptDataDto> {
@@ -127,12 +68,12 @@ export class ManuscriptRepository {
       const chapter = await db.selectFrom('chapters').selectAll().where('id', '=', id).where('status', '=', 'active').executeTakeFirst();
       if (!chapter) return undefined as unknown as ChapterDto;
       const scenes = await db.selectFrom('scenes').selectAll().where('chapterId', '=', id).where('status', '=', 'active').orderBy('position').execute();
-      return this.mapChapter(chapter, scenes.map((scene) => this.mapScene(scene)));
+      return mapChapterRow(chapter, scenes.map((scene) => mapSceneRow(scene)));
     }
     if (mode === 'scene') {
       if (!(await this.isActiveManuscriptPath(mode, id))) return undefined as unknown as SceneDto;
       const scene = await db.selectFrom('scenes').selectAll().where('id', '=', id).where('status', '=', 'active').executeTakeFirst();
-      return scene ? this.mapScene(scene) : (undefined as unknown as SceneDto);
+      return scene ? mapSceneRow(scene) : (undefined as unknown as SceneDto);
     }
     throw new Error('Invalid manuscript mode');
   }
@@ -179,7 +120,7 @@ export class ManuscriptRepository {
     const row = await db.selectFrom('acts').select(sql<number | null>`max(position)`.as('maxPos')).where('bookId', '=', bookId).where('status', '=', 'active').executeTakeFirst();
     const inserted = await db.insertInto('acts').values({ id: randomUUID(), title: '', bookId, position: (row?.maxPos ?? -1) + 1, status: 'active', summary: null }).returningAll().executeTakeFirstOrThrow();
     await this.touchBookLastEdited('book', bookId);
-    return this.mapAct(inserted);
+    return mapActRow(inserted);
   }
 
   async createChapter(actId: string): Promise<ChapterDto> {
@@ -189,7 +130,7 @@ export class ManuscriptRepository {
     const row = await db.selectFrom('chapters').select(sql<number | null>`max(position)`.as('maxPos')).where('actId', '=', actId).where('status', '=', 'active').executeTakeFirst();
     const inserted = await db.insertInto('chapters').values({ id: randomUUID(), title: '', bookId: parent.bookId, actId, position: (row?.maxPos ?? -1) + 1, status: 'active', archiveParentTitle: null, summary: null }).returningAll().executeTakeFirstOrThrow();
     await this.touchBookLastEdited('act', actId);
-    return this.mapChapter(inserted);
+    return mapChapterRow(inserted);
   }
 
   async createScene(chapterId: string): Promise<SceneDto> {
@@ -199,7 +140,7 @@ export class ManuscriptRepository {
     const row = await db.selectFrom('scenes').select(sql<number | null>`max(position)`.as('maxPos')).where('chapterId', '=', chapterId).where('status', '=', 'active').executeTakeFirst();
     const inserted = await db.insertInto('scenes').values({ id: randomUUID(), title: '', bookId: parent.bookId, chapterId, position: (row?.maxPos ?? -1) + 1, status: 'active', archiveParentTitle: null, prose: null, summary: null, wordCount: 0, includeInContext: 1, pointOfViewOverride: null, povCharacterIdOverride: null }).returningAll().executeTakeFirstOrThrow();
     await this.touchBookLastEdited('chapter', chapterId);
-    return this.mapScene(inserted);
+    return mapSceneRow(inserted);
   }
 
   async createActStructure(bookId: string): Promise<CreatedActStructureDto> {
@@ -209,7 +150,7 @@ export class ManuscriptRepository {
       const chapter = await transaction.insertInto('chapters').values({ id: randomUUID(), title: '', bookId, actId: act.id, position: 0, status: 'active', archiveParentTitle: null, summary: null }).returningAll().executeTakeFirstOrThrow();
       const scene = await transaction.insertInto('scenes').values({ id: randomUUID(), title: '', bookId, chapterId: chapter.id, position: 0, status: 'active', archiveParentTitle: null, prose: null, summary: null, wordCount: 0, includeInContext: 1, pointOfViewOverride: null, povCharacterIdOverride: null }).returningAll().executeTakeFirstOrThrow();
       await transaction.updateTable('books').set({ lastEditedAt: toSqliteTimestamp() }).where('id', '=', bookId).execute();
-      return { act: this.mapAct(act), chapter: this.mapChapter(chapter), scene: this.mapScene(scene) };
+      return { act: mapActRow(act), chapter: mapChapterRow(chapter), scene: mapSceneRow(scene) };
     });
   }
 
@@ -221,7 +162,7 @@ export class ManuscriptRepository {
       const chapter = await transaction.insertInto('chapters').values({ id: randomUUID(), title: '', bookId: parent.bookId, actId, position: (maxRow?.maxPos ?? -1) + 1, status: 'active', archiveParentTitle: null, summary: null }).returningAll().executeTakeFirstOrThrow();
       const scene = await transaction.insertInto('scenes').values({ id: randomUUID(), title: '', bookId: parent.bookId, chapterId: chapter.id, position: 0, status: 'active', archiveParentTitle: null, prose: null, summary: null, wordCount: 0, includeInContext: 1, pointOfViewOverride: null, povCharacterIdOverride: null }).returningAll().executeTakeFirstOrThrow();
       await transaction.updateTable('books').set({ lastEditedAt: toSqliteTimestamp() }).where('id', '=', parent.bookId).execute();
-      return { chapter: this.mapChapter(chapter), scene: this.mapScene(scene) };
+      return { chapter: mapChapterRow(chapter), scene: mapSceneRow(scene) };
     });
   }
 
@@ -229,14 +170,14 @@ export class ManuscriptRepository {
     const { id, ...data } = payload;
     const updated = await db.updateTable('acts').set(data).where('id', '=', id).returningAll().executeTakeFirst();
     if (updated) await this.touchBookLastEdited('book', updated.bookId);
-    return updated ? this.mapAct(updated) : (undefined as unknown as ActDto);
+    return updated ? mapActRow(updated) : (undefined as unknown as ActDto);
   }
 
   async updateChapter(payload: UpdateChapterPayload): Promise<ChapterDto> {
     const { id, ...data } = payload;
     const updated = await db.updateTable('chapters').set(data).where('id', '=', id).returningAll().executeTakeFirst();
     if (updated) await this.touchBookLastEdited('book', updated.bookId);
-    return updated ? this.mapChapter(updated) : (undefined as unknown as ChapterDto);
+    return updated ? mapChapterRow(updated) : (undefined as unknown as ChapterDto);
   }
 
   async updateScene(payload: UpdateScenePayload): Promise<SceneDto> {
@@ -244,7 +185,7 @@ export class ManuscriptRepository {
     const update = prose === undefined ? data : { ...data, prose: serializeSqliteJson(prose) };
     const updated = await db.updateTable('scenes').set(update).where('id', '=', id).returningAll().executeTakeFirst();
     if (updated) await this.touchBookLastEdited('book', updated.bookId);
-    return updated ? this.mapScene(updated) : (undefined as unknown as SceneDto);
+    return updated ? mapSceneRow(updated) : (undefined as unknown as SceneDto);
   }
 
   async updateStructurePositions(payload: UpdateStructurePositionsPayload): Promise<void> {

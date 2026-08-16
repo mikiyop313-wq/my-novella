@@ -1,15 +1,16 @@
 import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
 
-import type { BookSettingsDto } from '../../shared/models/book.model';
-import type { ManuscriptEntityStatus } from '../../shared/models/manuscript.model';
 import type { SqliteBoolean } from '../core/sqlite-values';
+
+export type NarrativeEntityStatus = 'active' | 'archived';
+export type NarrativePointOfView = 'first' | 'second' | 'third_limited' | 'third_omni';
 
 export interface ActTable {
   id: string;
   title: string;
   bookId: string;
   position: number;
-  status: Generated<ManuscriptEntityStatus>;
+  status: Generated<NarrativeEntityStatus>;
   summary: Generated<string | null>;
 }
 
@@ -19,7 +20,7 @@ export interface ChapterTable {
   bookId: string;
   actId: Generated<string | null>;
   position: number;
-  status: Generated<ManuscriptEntityStatus>;
+  status: Generated<NarrativeEntityStatus>;
   archiveParentTitle: Generated<string | null>;
   summary: Generated<string | null>;
 }
@@ -30,13 +31,13 @@ export interface SceneTable {
   bookId: string;
   chapterId: Generated<string | null>;
   position: number;
-  status: Generated<ManuscriptEntityStatus>;
+  status: Generated<NarrativeEntityStatus>;
   archiveParentTitle: Generated<string | null>;
   prose: Generated<string | null>;
   summary: Generated<string | null>;
   wordCount: Generated<number | null>;
   includeInContext: Generated<SqliteBoolean>;
-  pointOfViewOverride: Generated<BookSettingsDto['pointOfView'] | null>;
+  pointOfViewOverride: Generated<NarrativePointOfView | null>;
   povCharacterIdOverride: Generated<string | null>;
 }
 

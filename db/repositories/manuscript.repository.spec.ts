@@ -64,6 +64,54 @@ describe('manuscript archive repositories', () => {
     expect(row(sqlite, 'scenes', created.scene.id)).toBeDefined();
   });
 
+  it('returns the same mapped hierarchy for manuscript and outline reads', async () => {
+    insertAct(sqlite, 'act-1', 'Act', 'active');
+    insertChapter(sqlite, 'chapter-1', 'Chapter', 'act-1', 'active');
+    insertScene(sqlite, 'scene-1', 'Scene', 'chapter-1', 'active');
+    sqlite.prepare('UPDATE scenes SET prose = ?, summary = ? WHERE id = ?').run(
+      JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
+      'Scene summary',
+      'scene-1',
+    );
+
+    const manuscript = await repository.getManuscript('book', 'book-1');
+    const outline = await repository.getOutline('book-1');
+    const hierarchy = await repository.getBookHierarchy('book', 'book-1');
+
+    expect(manuscript).toMatchObject([{
+      id: 'act-1',
+      chapters: [{
+        id: 'chapter-1',
+        scenes: [{
+          id: 'scene-1',
+          prose: { type: 'doc', content: [{ type: 'paragraph' }] },
+          includeInContext: true,
+        }],
+      }],
+    }]);
+    expect(outline[0].chapters?.[0].scenes?.[0]).toMatchObject({
+      id: 'scene-1',
+      prose: null,
+      isIncludedInContext: true,
+    });
+    expect(hierarchy).toEqual(outline);
+  });
+
+  it('rejects detached active rows while loading an aggregate', async () => {
+    insertChapter(sqlite, 'chapter-orphan', 'Orphan Chapter', null, 'active');
+
+    await expect(repository.getOutline('book-1')).rejects.toThrow(
+      'Active chapter "chapter-orphan" references a missing parent act.',
+    );
+
+    sqlite.prepare('DELETE FROM chapters WHERE id = ?').run('chapter-orphan');
+    insertScene(sqlite, 'scene-orphan', 'Orphan Scene', null, 'active');
+
+    await expect(repository.getOutline('book-1')).rejects.toThrow(
+      'Active scene "scene-orphan" references a missing parent chapter.',
+    );
+  });
+
   it('rolls back the full act structure when its initial scene cannot be created', async () => {
     const originalLastEditedAt = row(sqlite, 'books', 'book-1')?.['last_edited_at'];
     sqlite.exec(`

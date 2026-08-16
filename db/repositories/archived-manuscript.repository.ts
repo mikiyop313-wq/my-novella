@@ -1,32 +1,18 @@
 import { sql } from 'kysely';
 
-import type {
-  ArchiveActDto,
-  ArchiveChapterDto,
-  ArchiveOverviewDto,
-  ArchiveSceneDto,
-} from '../../shared/models/manuscript.model';
+import type { ArchiveOverviewDto } from '../../shared/models/manuscript.model';
 import { db, type DatabaseTransaction } from '../index';
+import { mapArchiveOverviewAggregate } from '../mappers/manuscript-aggregate.mapper';
 import { toSqliteTimestamp } from '../core/sqlite-values';
 
 export class ArchivedManuscriptRepository {
   async getArchiveOverview(bookId: string): Promise<ArchiveOverviewDto> {
     const activeActs = await db.selectFrom('acts').select(['id', 'position']).where('bookId', '=', bookId).where('status', '=', 'active').orderBy('position').execute();
     const activeActIds = activeActs.map(({ id }) => id);
-    const activeActOrder = new Map(activeActIds.map((id, index) => [id, index]));
     const activeChapters = activeActIds.length > 0
       ? await db.selectFrom('chapters').select(['id', 'actId', 'position']).where('actId', 'in', activeActIds).where('status', '=', 'active').execute()
       : [];
     const activeChapterIds = activeChapters.map(({ id }) => id);
-    const activeChapterOrder = new Map(
-      [...activeChapters]
-        .sort((left, right) =>
-          (left.actId === null ? Number.MAX_SAFE_INTEGER : (activeActOrder.get(left.actId) ?? 0)) -
-            (right.actId === null ? Number.MAX_SAFE_INTEGER : (activeActOrder.get(right.actId) ?? 0)) ||
-          left.position - right.position,
-        )
-        .map(({ id }, index) => [id, index]),
-    );
 
     const archivedActRows = await db.selectFrom('acts').select(['id', 'title', 'bookId', 'position', 'status']).where('bookId', '=', bookId).where('status', '=', 'archived').orderBy('position').execute();
     const archivedActIds = archivedActRows.map(({ id }) => id);
@@ -37,19 +23,6 @@ export class ArchivedManuscriptRepository {
     const actSceneRows = actChapterIds.length > 0
       ? await db.selectFrom('scenes').select(['id', 'title', 'chapterId', 'archiveParentTitle', 'position', 'status']).where('chapterId', 'in', actChapterIds).orderBy('position').execute()
       : [];
-    const actScenesByChapter = this.groupScenes(actSceneRows);
-    const actChaptersByAct = new Map<string, ArchiveChapterDto[]>();
-    for (const chapter of actChapterRows) {
-      if (chapter.actId) {
-        const rows = actChaptersByAct.get(chapter.actId) ?? [];
-        rows.push({ ...chapter, scenes: actScenesByChapter.get(chapter.id) ?? [] });
-        actChaptersByAct.set(chapter.actId, rows);
-      }
-    }
-    const archivedActs: ArchiveActDto[] = archivedActRows.map((act) => ({
-      ...act,
-      chapters: actChaptersByAct.get(act.id) ?? [],
-    }));
 
     let archivedChapterQuery = db.selectFrom('chapters').select(['id', 'title', 'actId', 'archiveParentTitle', 'position', 'status']).where('bookId', '=', bookId).where('status', '=', 'archived');
     archivedChapterQuery = activeActIds.length > 0
@@ -60,11 +33,6 @@ export class ArchivedManuscriptRepository {
     const chapterSceneRows = archivedChapterIds.length > 0
       ? await db.selectFrom('scenes').select(['id', 'title', 'chapterId', 'archiveParentTitle', 'position', 'status']).where('chapterId', 'in', archivedChapterIds).orderBy('position').execute()
       : [];
-    const chapterScenes = this.groupScenes(chapterSceneRows);
-    const archivedChapters: ArchiveChapterDto[] = archivedChapterRows.map((chapter) => ({
-      ...chapter,
-      scenes: chapterScenes.get(chapter.id) ?? [],
-    }));
 
     let archivedSceneQuery = db.selectFrom('scenes').select(['id', 'title', 'chapterId', 'archiveParentTitle', 'position', 'status']).where('bookId', '=', bookId).where('status', '=', 'archived');
     archivedSceneQuery = activeChapterIds.length > 0
@@ -72,29 +40,16 @@ export class ArchivedManuscriptRepository {
       : archivedSceneQuery.where('chapterId', 'is', null);
     const archivedScenes = await archivedSceneQuery.orderBy('position').execute();
 
-    archivedChapters.sort((left, right) =>
-      (left.actId === null ? Number.MAX_SAFE_INTEGER : (activeActOrder.get(left.actId) ?? 0)) -
-        (right.actId === null ? Number.MAX_SAFE_INTEGER : (activeActOrder.get(right.actId) ?? 0)) ||
-      left.position - right.position,
-    );
-    archivedScenes.sort((left, right) =>
-      (left.chapterId === null ? Number.MAX_SAFE_INTEGER : (activeChapterOrder.get(left.chapterId) ?? 0)) -
-        (right.chapterId === null ? Number.MAX_SAFE_INTEGER : (activeChapterOrder.get(right.chapterId) ?? 0)) ||
-      left.position - right.position,
-    );
-    return { archivedActs, archivedChapters, archivedScenes };
-  }
-
-  private groupScenes(rows: ArchiveSceneDto[]): Map<string, ArchiveSceneDto[]> {
-    const grouped = new Map<string, ArchiveSceneDto[]>();
-    for (const row of rows) {
-      if (row.chapterId) {
-        const scenes = grouped.get(row.chapterId) ?? [];
-        scenes.push(row);
-        grouped.set(row.chapterId, scenes);
-      }
-    }
-    return grouped;
+    return mapArchiveOverviewAggregate({
+      activeActs,
+      activeChapters,
+      archivedActs: archivedActRows,
+      archivedActChapters: actChapterRows,
+      archivedActScenes: actSceneRows,
+      archivedChapters: archivedChapterRows,
+      archivedChapterScenes: chapterSceneRows,
+      archivedScenes,
+    });
   }
 
   async archiveAct(id: string): Promise<void> {
