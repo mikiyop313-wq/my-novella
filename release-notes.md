@@ -1,3 +1,3 @@
-What's new in 0.1.3
+What's new in 0.1.4
 
-- Test release for the automatic update flow.
+- Fixed Markdown editor test synchronization for release builds.

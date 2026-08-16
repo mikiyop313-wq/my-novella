@@ -1,4 +1,5 @@
 import { redo, undo } from '@codemirror/commands';
+import { forceParsing } from '@codemirror/language';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -290,6 +291,7 @@ describe('MarkdownEditorComponent', () => {
     fixture.componentRef.setInput('value', value);
     fixture.detectChanges();
     await fixture.whenStable();
+    forceParsing(editorView(), editorView().state.doc.length);
     fixture.detectChanges();
   }
 
