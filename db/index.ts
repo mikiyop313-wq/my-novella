@@ -1,5 +1,3 @@
-import { runDatabaseStartupTasks } from './core/startup';
-
 export { db } from './core/client';
-
-runDatabaseStartupTasks();
+export { initializeDatabase } from './core/startup';
+export type { AppDatabase, DatabaseTransaction } from './core/factory';

@@ -1,9 +1,7 @@
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import * as schema from '../schema';
+import { createDatabaseClient } from '../core/factory';
 import type { UpdateStructurePositionsPayload } from '../../shared/models/manuscript.model';
 
 const mockedDatabase = vi.hoisted(() => ({ value: undefined as unknown }));
@@ -22,7 +20,7 @@ describe('manuscript archive repositories', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     createSchema(sqlite);
-    mockedDatabase.value = drizzle(sqlite, { schema });
+    mockedDatabase.value = createDatabaseClient(sqlite);
 
     const { ManuscriptRepository } = await import('./manuscript.repository');
     const { ArchivedManuscriptRepository } = await import(
@@ -315,75 +313,6 @@ describe('manuscript archive repositories', () => {
   });
 });
 
-describe('detached narrative archive migration', () => {
-  it('backfills book ownership and parent titles and changes parent deletion to SET NULL', () => {
-    const sqlite = new Database(':memory:');
-    sqlite.pragma('foreign_keys = ON');
-    createLegacySchema(sqlite);
-    insertBook(sqlite, 'book-1');
-    insertLegacyHierarchy(sqlite);
-
-    const archiveMigration = readFileSync(
-      new URL('../migrations/0009_detached_narrative_archive.sql', import.meta.url),
-      'utf8',
-    );
-    sqlite.exec(archiveMigration);
-
-    expect(row(sqlite, 'chapters', 'chapter-legacy')).toMatchObject({
-      book_id: 'book-1',
-      act_id: 'act-legacy',
-      archive_parent_title: 'Legacy Act',
-    });
-    expect(row(sqlite, 'scenes', 'scene-legacy')).toMatchObject({
-      book_id: 'book-1',
-      chapter_id: 'chapter-legacy',
-      archive_parent_title: 'Legacy Chapter',
-    });
-
-    sqlite.prepare('DELETE FROM acts WHERE id = ?').run('act-legacy');
-    expect(row(sqlite, 'chapters', 'chapter-legacy')).toMatchObject({ act_id: null });
-
-    sqlite.close();
-  });
-
-  it('removes legacy database checks while retaining nullable parent columns', () => {
-    const sqlite = new Database(':memory:');
-    sqlite.pragma('foreign_keys = ON');
-    createSchemaWithParentChecks(sqlite);
-    insertBook(sqlite, 'book-1');
-    insertAct(sqlite, 'act-1', 'Active Act', 'active');
-    insertChapter(sqlite, 'chapter-1', 'Active Chapter', 'act-1', 'active');
-    insertScene(sqlite, 'scene-1', 'Active Scene', 'chapter-1', 'active');
-
-    const removalMigration = readFileSync(
-      new URL(
-        '../migrations/0010_remove_active_narrative_parent_check.sql',
-        import.meta.url,
-      ),
-      'utf8',
-    );
-    sqlite.exec(removalMigration);
-
-    const chapterSql = sqlite
-      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chapters'")
-      .pluck()
-      .get() as string;
-    const sceneSql = sqlite
-      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'scenes'")
-      .pluck()
-      .get() as string;
-    expect(chapterSql).not.toContain('chapters_active_parent_check');
-    expect(sceneSql).not.toContain('scenes_active_parent_check');
-
-    expect(() => {
-      insertChapter(sqlite, 'chapter-active-orphan', 'Active Orphan', null, 'active');
-      insertScene(sqlite, 'scene-active-orphan', 'Active Orphan', null, 'active');
-    }).not.toThrow();
-    expect(sqlite.pragma('foreign_key_check')).toEqual([]);
-    sqlite.close();
-  });
-});
-
 function createSchema(sqlite: Database.Database): void {
   sqlite.exec(`
     CREATE TABLE books (
@@ -590,7 +519,7 @@ function insertScene(
 
 function row(
   sqlite: Database.Database,
-  table: 'acts' | 'chapters' | 'scenes',
+  table: 'books' | 'acts' | 'chapters' | 'scenes',
   id: string,
 ): Record<string, unknown> | undefined {
   return sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) as

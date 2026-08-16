@@ -1,7 +1,4 @@
-import { eq } from 'drizzle-orm';
-
 import { db } from '../core/client';
-import { settings } from '../schema';
 
 export interface AppSettingsStore {
   get(key: string): Promise<string | null>;
@@ -11,25 +8,25 @@ export interface AppSettingsStore {
 
 export class AppSettingsRepository implements AppSettingsStore {
   async get(key: string): Promise<string | null> {
-    const row = await db.query.settings.findFirst({
-      where: eq(settings.key, key),
-    });
+    const row = await db
+      .selectFrom('appSettings')
+      .select('value')
+      .where('key', '=', key)
+      .executeTakeFirst();
 
     return row?.value ?? null;
   }
 
   async set(key: string, value: string): Promise<void> {
     await db
-      .insert(settings)
+      .insertInto('appSettings')
       .values({ key, value })
-      .onConflictDoUpdate({
-        target: settings.key,
-        set: { value },
-      });
+      .onConflict((conflict) => conflict.column('key').doUpdateSet({ value }))
+      .execute();
   }
 
   async delete(key: string): Promise<void> {
-    await db.delete(settings).where(eq(settings.key, key));
+    await db.deleteFrom('appSettings').where('key', '=', key).execute();
   }
 }
 

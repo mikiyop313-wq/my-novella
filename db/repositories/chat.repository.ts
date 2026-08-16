@@ -1,32 +1,28 @@
 import { randomUUID } from 'crypto';
-import { and, asc, desc, eq, max } from 'drizzle-orm';
+import { sql } from 'kysely';
 
-import { db } from '../index';
-import {
-  books,
-  chatBranchSelections,
-  chatMessages,
-  chatThreads,
-} from '../schema';
-import {
+import type {
   ChatBranchSelectionDto,
-  CreateChatMessageDto,
-  CreateChatThreadDto,
   ChatMessageDetailDto,
   ChatMessageDto,
   ChatThreadDetailDto,
   ChatThreadDto,
+  CreateChatMessageDto,
+  CreateChatThreadDto,
   UpdateChatMessageDto,
   UpdateChatThreadDto,
 } from '../../shared/models/chat.model';
-
-type ChatThreadEntity = typeof chatThreads.$inferSelect;
-type ChatThreadInsert = typeof chatThreads.$inferInsert;
-type ChatThreadUpdate = Partial<Omit<ChatThreadInsert, 'id' | 'bookId' | 'createdAt'>>;
-type ChatMessageEntity = typeof chatMessages.$inferSelect;
-type ChatMessageInsert = typeof chatMessages.$inferInsert;
-type ChatMessageUpdate = Partial<Omit<ChatMessageInsert, 'id' | 'threadId' | 'createdAt'>>;
-type ChatBranchSelectionEntity = typeof chatBranchSelections.$inferSelect;
+import { db } from '../index';
+import type {
+  ChatBranchSelectionRow,
+  ChatMessageRow,
+  ChatMessageUpdate,
+  ChatThreadRow,
+  ChatThreadUpdate,
+  NewChatMessageRow,
+  NewChatThreadRow,
+} from '../schema';
+import { fromSqliteTimestamp, toSqliteTimestamp } from '../core/sqlite-values';
 
 export type CreateChatThreadData = CreateChatThreadDto;
 export type UpdateChatThreadData = UpdateChatThreadDto;
@@ -34,11 +30,7 @@ export type CreateChatMessageData = CreateChatMessageDto;
 export type UpdateChatMessageData = UpdateChatMessageDto;
 
 export class ChatRepository {
-  // -----------------------------------------------------------------------
-  // Mapping helpers
-  // -----------------------------------------------------------------------
-
-  private mapThreadToDto(thread: ChatThreadEntity): ChatThreadDto {
+  private mapThreadToDto(thread: ChatThreadRow): ChatThreadDto {
     return {
       id: thread.id,
       bookId: thread.bookId,
@@ -50,68 +42,57 @@ export class ChatRepository {
     };
   }
 
-  private mapMessageToDto(message: ChatMessageEntity): ChatMessageDto {
+  private mapMessageToDto(message: ChatMessageRow): ChatMessageDto {
     return {
-      id: message.id,
-      threadId: message.threadId,
-      parentMessageId: message.parentMessageId,
-      branchGroupId: message.branchGroupId,
-      branchOrder: message.branchOrder,
-      role: message.role,
-      content: message.content,
-      status: message.status,
-      position: message.position,
-      modelId: message.modelId,
-      provider: message.provider,
-      inputTokens: message.inputTokens,
-      outputTokens: message.outputTokens,
-      reasoningSummary: message.reasoningSummary,
-      error: message.error,
+      ...message,
       createdAt: this.dateToIso(message.createdAt),
       lastEditedAt: this.dateToIso(message.lastEditedAt),
     };
   }
 
-  private mapBranchSelectionToDto(selection: ChatBranchSelectionEntity): ChatBranchSelectionDto {
-    return {
-      threadId: selection.threadId,
-      branchGroupId: selection.branchGroupId,
-      selectedMessageId: selection.selectedMessageId,
-    };
+  private mapBranchSelectionToDto(selection: ChatBranchSelectionRow): ChatBranchSelectionDto {
+    return selection;
   }
 
-  private dateToIso(value: Date | null): string {
-    return (value ?? new Date(0)).toISOString();
+  private dateToIso(value: number | null): string {
+    return (fromSqliteTimestamp(value) ?? new Date(0)).toISOString();
   }
 
-  private createThreadInsert(data: CreateChatThreadData): ChatThreadInsert {
+  private createThreadInsert(data: CreateChatThreadData): NewChatThreadRow {
+    const timestamp = toSqliteTimestamp();
     return {
+      id: randomUUID(),
       bookId: data.bookId,
       title: data.title ?? 'New chat',
       status: data.status ?? 'active',
       lastModelId: data.lastModelId ?? null,
+      createdAt: timestamp,
+      lastEditedAt: timestamp,
     };
   }
 
   private createThreadUpdate(data: UpdateChatThreadData): ChatThreadUpdate {
-    const updatePayload: ChatThreadUpdate = {
-      lastEditedAt: new Date(),
-    };
-
-    if (data.title !== undefined) updatePayload.title = data.title;
-    if (data.status !== undefined) updatePayload.status = data.status;
-    if (data.lastModelId !== undefined) updatePayload.lastModelId = data.lastModelId;
-
-    return updatePayload;
+    const update: ChatThreadUpdate = { lastEditedAt: toSqliteTimestamp() };
+    if (data.title !== undefined) update.title = data.title;
+    if (data.status !== undefined) update.status = data.status;
+    if (data.lastModelId !== undefined) update.lastModelId = data.lastModelId;
+    return update;
   }
 
-  private createMessageInsert(
-    data: CreateChatMessageData,
-    position: number,
-    branchGroupId: string,
-    branchOrder: number,
-  ): ChatMessageInsert {
+  private createMessageInsert({
+    data,
+    position,
+    branchGroupId,
+    branchOrder,
+  }: {
+    data: CreateChatMessageData;
+    position: number;
+    branchGroupId: string;
+    branchOrder: number;
+  }): NewChatMessageRow {
+    const timestamp = toSqliteTimestamp();
     return {
+      id: randomUUID(),
       threadId: data.threadId,
       parentMessageId: data.parentMessageId ?? null,
       branchGroupId,
@@ -126,113 +107,74 @@ export class ChatRepository {
       outputTokens: data.outputTokens ?? null,
       reasoningSummary: data.reasoningSummary ?? null,
       error: data.error ?? null,
+      createdAt: timestamp,
+      lastEditedAt: timestamp,
     };
   }
 
   private createMessageUpdate(data: UpdateChatMessageData): ChatMessageUpdate {
-    const updatePayload: ChatMessageUpdate = {
-      lastEditedAt: new Date(),
-    };
-
-    if (data.role !== undefined) updatePayload.role = data.role;
-    if (data.parentMessageId !== undefined) updatePayload.parentMessageId = data.parentMessageId;
-    if (data.branchGroupId !== undefined && data.branchGroupId !== null) {
-      updatePayload.branchGroupId = data.branchGroupId;
-    }
-    if (data.branchOrder !== undefined && data.branchOrder !== null) {
-      updatePayload.branchOrder = data.branchOrder;
-    }
-    if (data.content !== undefined) updatePayload.content = data.content;
-    if (data.status !== undefined) updatePayload.status = data.status;
-    if (data.position !== undefined) updatePayload.position = data.position;
-    if (data.modelId !== undefined) updatePayload.modelId = data.modelId;
-    if (data.provider !== undefined) updatePayload.provider = data.provider;
-    if (data.inputTokens !== undefined) updatePayload.inputTokens = data.inputTokens;
-    if (data.outputTokens !== undefined) updatePayload.outputTokens = data.outputTokens;
-    if (data.reasoningSummary !== undefined)
-      updatePayload.reasoningSummary = data.reasoningSummary;
-    if (data.error !== undefined) updatePayload.error = data.error;
-    return updatePayload;
+    const update: ChatMessageUpdate = { lastEditedAt: toSqliteTimestamp() };
+    if (data.role !== undefined) update.role = data.role;
+    if (data.parentMessageId !== undefined) update.parentMessageId = data.parentMessageId;
+    if (data.branchGroupId !== undefined && data.branchGroupId !== null) update.branchGroupId = data.branchGroupId;
+    if (data.branchOrder !== undefined && data.branchOrder !== null) update.branchOrder = data.branchOrder;
+    if (data.content !== undefined) update.content = data.content;
+    if (data.status !== undefined) update.status = data.status;
+    if (data.position !== undefined) update.position = data.position;
+    if (data.modelId !== undefined) update.modelId = data.modelId;
+    if (data.provider !== undefined) update.provider = data.provider;
+    if (data.inputTokens !== undefined) update.inputTokens = data.inputTokens;
+    if (data.outputTokens !== undefined) update.outputTokens = data.outputTokens;
+    if (data.reasoningSummary !== undefined) update.reasoningSummary = data.reasoningSummary;
+    if (data.error !== undefined) update.error = data.error;
+    return update;
   }
 
-  // -----------------------------------------------------------------------
-  // Thread queries
-  // -----------------------------------------------------------------------
-
   async getThreads(bookId: string, includeArchived = false): Promise<ChatThreadDto[]> {
-    const clauses = [eq(chatThreads.bookId, bookId)];
-
+    let query = db.selectFrom('chatThreads').selectAll().where('bookId', '=', bookId);
     if (!includeArchived) {
-      clauses.push(eq(chatThreads.status, 'active'));
+      query = query.where('status', '=', 'active');
     }
-
-    const results = await db
-      .select()
-      .from(chatThreads)
-      .where(and(...clauses))
-      .orderBy(desc(chatThreads.lastEditedAt), desc(chatThreads.createdAt));
-
-    return results.map((thread) => this.mapThreadToDto(thread));
+    const rows = await query.orderBy('lastEditedAt', 'desc').orderBy('createdAt', 'desc').execute();
+    return rows.map((row) => this.mapThreadToDto(row));
   }
 
   async getThread(id: string): Promise<ChatThreadDetailDto | undefined> {
-    const thread = await db.query.chatThreads.findFirst({
-      where: eq(chatThreads.id, id),
-    });
-
-    if (!thread) {
-      return undefined;
-    }
-
-    return {
-      ...this.mapThreadToDto(thread),
-      messages: await this.getMessages(id),
-      branchSelections: await this.getBranchSelections(id),
-    };
+    const thread = await db.selectFrom('chatThreads').selectAll().where('id', '=', id).executeTakeFirst();
+    if (!thread) return undefined;
+    const [messages, branchSelections] = await Promise.all([
+      this.getMessages(id),
+      this.getBranchSelections(id),
+    ]);
+    return { ...this.mapThreadToDto(thread), messages, branchSelections };
   }
 
   async getMessages(threadId: string): Promise<ChatMessageDetailDto[]> {
-    const messages = await db.query.chatMessages.findMany({
-      where: eq(chatMessages.threadId, threadId),
-      orderBy: [asc(chatMessages.position), asc(chatMessages.branchOrder), asc(chatMessages.createdAt)],
-    });
-
-    return messages.map((message) => this.mapMessageToDto(message));
+    const rows = await db
+      .selectFrom('chatMessages')
+      .selectAll()
+      .where('threadId', '=', threadId)
+      .orderBy('position')
+      .orderBy('branchOrder')
+      .orderBy('createdAt')
+      .execute();
+    return rows.map((row) => this.mapMessageToDto(row));
   }
 
   async getBranchSelections(threadId: string): Promise<ChatBranchSelectionDto[]> {
-    const selections = await db.query.chatBranchSelections.findMany({
-      where: eq(chatBranchSelections.threadId, threadId),
-    });
-
-    return selections.map((selection) => this.mapBranchSelectionToDto(selection));
+    const rows = await db.selectFrom('chatBranchSelections').selectAll().where('threadId', '=', threadId).execute();
+    return rows.map((row) => this.mapBranchSelectionToDto(row));
   }
 
-  // -----------------------------------------------------------------------
-  // Thread mutations
-  // -----------------------------------------------------------------------
-
   async createThread(data: CreateChatThreadData): Promise<ChatThreadDto> {
-    const [created] = await db.insert(chatThreads).values(this.createThreadInsert(data)).returning();
-
+    const created = await db.insertInto('chatThreads').values(this.createThreadInsert(data)).returningAll().executeTakeFirstOrThrow();
     await this.touchBookLastEdited(created.bookId);
     return this.mapThreadToDto(created);
   }
 
-  async updateThread(
-    id: string,
-    data: UpdateChatThreadData,
-  ): Promise<ChatThreadDto | undefined> {
-    const [updated] = await db
-      .update(chatThreads)
-      .set(this.createThreadUpdate(data))
-      .where(eq(chatThreads.id, id))
-      .returning();
-
-    if (updated) {
-      await this.touchBookLastEdited(updated.bookId);
-    }
-
+  async updateThread(id: string, data: UpdateChatThreadData): Promise<ChatThreadDto | undefined> {
+    const updated = await db.updateTable('chatThreads').set(this.createThreadUpdate(data)).where('id', '=', id).returningAll().executeTakeFirst();
+    if (updated) await this.touchBookLastEdited(updated.bookId);
     return updated ? this.mapThreadToDto(updated) : undefined;
   }
 
@@ -241,183 +183,93 @@ export class ChatRepository {
   }
 
   async deleteThread(id: string): Promise<{ success: boolean }> {
-    const thread = await db.query.chatThreads.findFirst({
-      where: eq(chatThreads.id, id),
-      columns: { bookId: true },
-    });
-
-    await db.delete(chatThreads).where(eq(chatThreads.id, id));
-
-    if (thread) {
-      await this.touchBookLastEdited(thread.bookId);
-    }
-
+    const thread = await db.selectFrom('chatThreads').select('bookId').where('id', '=', id).executeTakeFirst();
+    await db.deleteFrom('chatThreads').where('id', '=', id).execute();
+    if (thread) await this.touchBookLastEdited(thread.bookId);
     return { success: true };
   }
 
-  // -----------------------------------------------------------------------
-  // Message mutations
-  // -----------------------------------------------------------------------
-
   async createMessage(data: CreateChatMessageData): Promise<ChatMessageDetailDto> {
     await this.ensureThreadExists(data.threadId);
-
     const position = data.position ?? (await this.getNextMessagePosition(data.threadId));
     const branchGroupId = data.branchGroupId ?? randomUUID();
     const branchOrder = data.branchOrder ?? (await this.getNextBranchOrder(data.threadId, branchGroupId));
-    const [created] = await db
-      .insert(chatMessages)
-      .values(this.createMessageInsert(data, position, branchGroupId, branchOrder))
-      .returning();
-
+    const created = await db
+      .insertInto('chatMessages')
+      .values(this.createMessageInsert({ data, position, branchGroupId, branchOrder }))
+      .returningAll()
+      .executeTakeFirstOrThrow();
     await this.ensureDefaultBranchSelection(created.threadId, created.branchGroupId, created.id);
     await this.touchThreadLastEdited(created.threadId);
-
     const detail = await this.getMessage(created.id);
-
-    if (!detail) {
-      throw new Error('Failed to retrieve new chat message');
-    }
-
+    if (!detail) throw new Error('Failed to retrieve new chat message');
     return detail;
   }
 
-  async selectBranch(
-    threadId: string,
-    branchGroupId: string,
-    selectedMessageId: string,
-  ): Promise<ChatBranchSelectionDto> {
-    const selectedMessage = await db.query.chatMessages.findFirst({
-      where: and(
-        eq(chatMessages.id, selectedMessageId),
-        eq(chatMessages.threadId, threadId),
-        eq(chatMessages.branchGroupId, branchGroupId),
-      ),
-      columns: { id: true },
-    });
-
-    if (!selectedMessage) {
-      throw new Error('Selected branch message was not found.');
-    }
-
-    const [selection] = await db
-      .insert(chatBranchSelections)
+  async selectBranch(threadId: string, branchGroupId: string, selectedMessageId: string): Promise<ChatBranchSelectionDto> {
+    const selectedMessage = await db
+      .selectFrom('chatMessages')
+      .select('id')
+      .where('id', '=', selectedMessageId)
+      .where('threadId', '=', threadId)
+      .where('branchGroupId', '=', branchGroupId)
+      .executeTakeFirst();
+    if (!selectedMessage) throw new Error('Selected branch message was not found.');
+    const selection = await db
+      .insertInto('chatBranchSelections')
       .values({ threadId, branchGroupId, selectedMessageId })
-      .onConflictDoUpdate({
-        target: [chatBranchSelections.threadId, chatBranchSelections.branchGroupId],
-        set: { selectedMessageId },
-      })
-      .returning();
-
+      .onConflict((conflict) => conflict.columns(['threadId', 'branchGroupId']).doUpdateSet({ selectedMessageId }))
+      .returningAll()
+      .executeTakeFirstOrThrow();
     await this.touchThreadLastEdited(threadId);
     return this.mapBranchSelectionToDto(selection);
   }
 
-  async updateMessage(
-    id: string,
-    data: UpdateChatMessageData,
-  ): Promise<ChatMessageDetailDto | undefined> {
-    const [updated] = await db
-      .update(chatMessages)
-      .set(this.createMessageUpdate(data))
-      .where(eq(chatMessages.id, id))
-      .returning();
-
-    if (!updated) {
-      return undefined;
-    }
-
+  async updateMessage(id: string, data: UpdateChatMessageData): Promise<ChatMessageDetailDto | undefined> {
+    const updated = await db.updateTable('chatMessages').set(this.createMessageUpdate(data)).where('id', '=', id).returningAll().executeTakeFirst();
+    if (!updated) return undefined;
     await this.touchThreadLastEdited(updated.threadId);
-
     return this.getMessage(updated.id);
   }
 
   async deleteMessage(id: string): Promise<{ success: boolean }> {
-    const message = await db.query.chatMessages.findFirst({
-      where: eq(chatMessages.id, id),
-      columns: {
-        threadId: true,
-      },
-    });
-
-    await db.delete(chatMessages).where(eq(chatMessages.id, id));
-
-    if (message) {
-      await this.touchThreadLastEdited(message.threadId);
-    }
-
+    const message = await db.selectFrom('chatMessages').select('threadId').where('id', '=', id).executeTakeFirst();
+    await db.deleteFrom('chatMessages').where('id', '=', id).execute();
+    if (message) await this.touchThreadLastEdited(message.threadId);
     return { success: true };
   }
 
-  // -----------------------------------------------------------------------
-  // Internal helpers
-  // -----------------------------------------------------------------------
-
   private async getMessage(id: string): Promise<ChatMessageDetailDto | undefined> {
-    const message = await db.query.chatMessages.findFirst({
-      where: eq(chatMessages.id, id),
-    });
-
+    const message = await db.selectFrom('chatMessages').selectAll().where('id', '=', id).executeTakeFirst();
     return message ? this.mapMessageToDto(message) : undefined;
   }
 
   private async ensureThreadExists(threadId: string): Promise<void> {
-    const thread = await db.query.chatThreads.findFirst({
-      where: eq(chatThreads.id, threadId),
-      columns: { id: true },
-    });
-
-    if (!thread) {
-      throw new Error('Chat thread not found');
-    }
+    const thread = await db.selectFrom('chatThreads').select('id').where('id', '=', threadId).executeTakeFirst();
+    if (!thread) throw new Error('Chat thread not found');
   }
 
   private async getNextMessagePosition(threadId: string): Promise<number> {
-    const [maxRow] = await db
-      .select({ maxPos: max(chatMessages.position) })
-      .from(chatMessages)
-      .where(eq(chatMessages.threadId, threadId));
-
-    return (maxRow?.maxPos ?? -1) + 1;
+    const row = await db.selectFrom('chatMessages').select(sql<number | null>`max(position)`.as('maxPos')).where('threadId', '=', threadId).executeTakeFirst();
+    return (row?.maxPos ?? -1) + 1;
   }
 
   private async getNextBranchOrder(threadId: string, branchGroupId: string): Promise<number> {
-    const [maxRow] = await db
-      .select({ maxOrder: max(chatMessages.branchOrder) })
-      .from(chatMessages)
-      .where(and(
-        eq(chatMessages.threadId, threadId),
-        eq(chatMessages.branchGroupId, branchGroupId),
-      ));
-
-    return (maxRow?.maxOrder ?? -1) + 1;
+    const row = await db.selectFrom('chatMessages').select(sql<number | null>`max(branch_order)`.as('maxOrder')).where('threadId', '=', threadId).where('branchGroupId', '=', branchGroupId).executeTakeFirst();
+    return (row?.maxOrder ?? -1) + 1;
   }
 
-  private async ensureDefaultBranchSelection(
-    threadId: string,
-    branchGroupId: string,
-    selectedMessageId: string,
-  ): Promise<void> {
-    await db
-      .insert(chatBranchSelections)
-      .values({ threadId, branchGroupId, selectedMessageId })
-      .onConflictDoNothing();
+  private async ensureDefaultBranchSelection(threadId: string, branchGroupId: string, selectedMessageId: string): Promise<void> {
+    await db.insertInto('chatBranchSelections').values({ threadId, branchGroupId, selectedMessageId }).onConflict((conflict) => conflict.doNothing()).execute();
   }
 
   private async touchThreadLastEdited(threadId: string): Promise<void> {
-    const [updated] = await db
-      .update(chatThreads)
-      .set({ lastEditedAt: new Date() })
-      .where(eq(chatThreads.id, threadId))
-      .returning({ bookId: chatThreads.bookId });
-
-    if (updated) {
-      await this.touchBookLastEdited(updated.bookId);
-    }
+    const updated = await db.updateTable('chatThreads').set({ lastEditedAt: toSqliteTimestamp() }).where('id', '=', threadId).returning('bookId').executeTakeFirst();
+    if (updated) await this.touchBookLastEdited(updated.bookId);
   }
 
   private async touchBookLastEdited(bookId: string): Promise<void> {
-    await db.update(books).set({ lastEditedAt: new Date() }).where(eq(books.id, bookId));
+    await db.updateTable('books').set({ lastEditedAt: toSqliteTimestamp() }).where('id', '=', bookId).execute();
   }
 }
 

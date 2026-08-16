@@ -11,8 +11,6 @@ import {
 } from '../../../shared/models/vector.model';
 import { bookRepository } from '../../../db/repositories/book.repository';
 import { db } from '../../../db';
-import { inArray } from 'drizzle-orm';
-import { scene } from '../../../db/schema';
 import { manuscriptVectorIndexService } from '../../../vectors/services/manuscript-vector-index.service';
 import { assertEmbeddingDimensions } from '../../../vectors/embeddings/types';
 
@@ -22,14 +20,23 @@ import { assertEmbeddingDimensions } from '../../../vectors/embeddings/types';
 
 async function buildSceneMap(sceneIds: string[]) {
     const unique = [...new Set(sceneIds)];
-    const rows = await db.query.scene.findMany({
-        where: inArray(scene.id, unique),
-        with: { chapter: { with: { act: true } } },
-    });
+    if (unique.length === 0) return new Map();
+    const rows = await db
+        .selectFrom('scenes')
+        .leftJoin('chapters', 'chapters.id', 'scenes.chapterId')
+        .leftJoin('acts', 'acts.id', 'chapters.actId')
+        .select([
+            'scenes.id',
+            'scenes.chapterId',
+            'chapters.actId',
+            'acts.bookId',
+        ])
+        .where('scenes.id', 'in', unique)
+        .execute();
     return new Map(rows.map(s => [s.id, {
         chapterId: s.chapterId,
-        actId:     s.chapter?.actId    ?? 'unknown',
-        bookId:    s.chapter?.act?.bookId ?? 'unknown',
+        actId:     s.actId ?? 'unknown',
+        bookId:    s.bookId ?? 'unknown',
     }]));
 }
 
