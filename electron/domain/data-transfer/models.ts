@@ -1,66 +1,66 @@
 import type {
-  act,
-  activeSystemPromptPresets,
-  books,
-  bookSettings,
-  bookTags,
-  categories,
-  chapter,
-  chatBranchSelections,
-  chatMessages,
-  chatThreads,
-  codexEntries,
-  codexEntryNotes,
-  codexEntryProgression,
-  scene,
-  systemPromptPresets,
+  ActiveSystemPromptPresetRow,
+  ActRow,
+  BookRow,
+  BookSettingsRow,
+  BookTagRow,
+  CategoryRow,
+  ChapterRow,
+  ChatBranchSelectionRow,
+  ChatMessageRow,
+  ChatThreadRow,
+  CodexEntryNoteRow,
+  CodexEntryProgressionRow,
+  CodexEntryRow,
+  SceneRow,
+  SystemPromptPresetRow,
 } from '../../../db/schema';
+import type { TiptapJsonDoc } from '../../../shared/models/manuscript.model';
 
-type IsoDate<Value> = Value extends Date ? string : Value;
-type WithIsoDates<Row, Keys extends keyof Row> = Omit<Row, Keys> & {
-  [Key in Keys]: IsoDate<Row[Key]>;
+type WithIsoDates<Row> = Omit<Row, 'createdAt' | 'lastEditedAt'> & {
+  createdAt: string | null;
+  lastEditedAt: string | null;
 };
 
-type BookWithBase64Cover = Omit<typeof books.$inferSelect, 'coverImage'> & {
+export type DataExportBook = WithIsoDates<Omit<BookRow, 'coverImage'>> & {
   coverImage: string | null;
 };
-type CodexEntryWithBase64Image = Omit<typeof codexEntries.$inferSelect, 'image'> & {
+export type DataExportBookSettings = Omit<
+  BookSettingsRow,
+  | 'synopsisAiContext'
+  | 'openrouterEmbeddingModel'
+  | 'vectorSearchEnabled'
+  | 'automaticIndexingEnabled'
+> & {
+  synopsisAiContext: boolean;
+  openRouterEmbeddingModel: BookSettingsRow['openrouterEmbeddingModel'];
+  vectorSearchEnabled: boolean;
+  automaticIndexingEnabled: boolean;
+};
+export type DataExportCategory = Omit<CategoryRow, 'isCustom'> & { isCustom: boolean };
+export type DataExportBookTag = BookTagRow;
+export type DataExportAct = ActRow;
+export type DataExportChapter = ChapterRow;
+export type DataExportScene = Omit<SceneRow, 'prose' | 'includeInContext'> & {
+  prose: TiptapJsonDoc | null;
+  includeInContext: boolean;
+};
+export type DataExportCodexEntry = WithIsoDates<Omit<CodexEntryRow, 'image'>> & {
   image: string | null;
 };
-
-export type DataExportBook = WithIsoDates<BookWithBase64Cover, 'createdAt' | 'lastEditedAt'>;
-export type DataExportBookSettings = typeof bookSettings.$inferSelect;
-export type DataExportCategory = typeof categories.$inferSelect;
-export type DataExportBookTag = typeof bookTags.$inferSelect;
-export type DataExportAct = typeof act.$inferSelect;
-export type DataExportChapter = typeof chapter.$inferSelect;
-export type DataExportScene = typeof scene.$inferSelect;
-export type DataExportCodexEntry = WithIsoDates<
-  CodexEntryWithBase64Image,
+export type DataExportCodexEntryNote = WithIsoDates<CodexEntryNoteRow>;
+export type DataExportCodexEntryProgression = WithIsoDates<CodexEntryProgressionRow>;
+export type DataExportChatThread = WithIsoDates<ChatThreadRow>;
+export type DataExportChatMessage = WithIsoDates<ChatMessageRow>;
+export type DataExportChatBranchSelection = ChatBranchSelectionRow;
+export type DataExportSystemPromptPreset = Omit<
+  WithIsoDates<SystemPromptPresetRow>,
   'createdAt' | 'lastEditedAt'
->;
-export type DataExportCodexEntryNote = WithIsoDates<
-  typeof codexEntryNotes.$inferSelect,
-  'createdAt' | 'lastEditedAt'
->;
-export type DataExportCodexEntryProgression = WithIsoDates<
-  typeof codexEntryProgression.$inferSelect,
-  'createdAt' | 'lastEditedAt'
->;
-export type DataExportChatThread = WithIsoDates<
-  typeof chatThreads.$inferSelect,
-  'createdAt' | 'lastEditedAt'
->;
-export type DataExportChatMessage = WithIsoDates<
-  typeof chatMessages.$inferSelect,
-  'createdAt' | 'lastEditedAt'
->;
-export type DataExportChatBranchSelection = typeof chatBranchSelections.$inferSelect;
-export type DataExportSystemPromptPreset = WithIsoDates<
-  typeof systemPromptPresets.$inferSelect,
-  'createdAt' | 'lastEditedAt'
->;
-export type DataExportActiveSystemPromptPreset = typeof activeSystemPromptPresets.$inferSelect;
+> & {
+  createdAt: string;
+  lastEditedAt: string;
+};
+export type DataExportActiveSystemPromptPreset = ActiveSystemPromptPresetRow;
 
 export interface DataExportSnapshotData {
   books: DataExportBook[];
