@@ -39,7 +39,10 @@
           </p>
           <section class="release-notes" aria-labelledby="release-notes-title">
             <h3 id="release-notes-title">What’s changed</h3>
-            <div class="release-notes-copy">{{ state().releaseNotes || 'No release notes were provided.' }}</div>
+            <markdown
+              class="release-notes-copy"
+              [data]="state().releaseNotes || 'No release notes were provided.'"
+            ></markdown>
           </section>
         } @else if (state().status === 'downloading') {
           <p id="update-dialog-description">

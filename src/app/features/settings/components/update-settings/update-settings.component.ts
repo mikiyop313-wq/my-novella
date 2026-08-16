@@ -1,11 +1,12 @@
 import { DatePipe } from '@angular/common';
 import { Component, inject } from '@angular/core';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { AppUpdateService } from '../../../../core/services/app-update.service';
 
 @Component({
   selector: 'app-update-settings',
-  imports: [DatePipe],
+  imports: [DatePipe, MarkdownComponent],
   templateUrl: './update-settings.component.html',
   styleUrls: ['../../styles/settings.shared.scss', './update-settings.component.scss'],
 })

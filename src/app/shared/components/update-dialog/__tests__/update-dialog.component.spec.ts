@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideMarkdown } from 'ngx-markdown';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UpdateState } from '../../../../../../shared/models/update.model';
@@ -22,6 +23,7 @@ describe('UpdateDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [UpdateDialogComponent],
       providers: [
+        ...provideMarkdown(),
         {
           provide: ElectronService,
           useValue: {
@@ -41,21 +43,24 @@ describe('UpdateDialogComponent', () => {
     await fixture.whenStable();
   });
 
-  it('shows an available update once and renders release notes as text', () => {
+  it('shows an available update once and renders sanitized Markdown release notes', async () => {
     updateListener(
       updateState('available', {
         availableVersion: '0.2.0',
-        releaseNotes: '<img src=x onerror=alert(1)>Safer editor',
+        releaseNotes:
+          '**Safer editor**\n\n- Better recovery\n\n<em>Polished</em><script>alert(1)</script>',
       }),
     );
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('[role="dialog"]')).toBeTruthy();
-    expect(element.querySelector('.release-notes-copy')?.textContent).toContain(
-      '<img src=x onerror=alert(1)>Safer editor',
-    );
-    expect(element.querySelector('.release-notes-copy img')).toBeNull();
+    expect(element.querySelector('.release-notes-copy strong')?.textContent).toBe('Safer editor');
+    expect(element.querySelector('.release-notes-copy li')?.textContent).toBe('Better recovery');
+    expect(element.querySelector('.release-notes-copy em')?.textContent).toBe('Polished');
+    expect(element.querySelector('.release-notes-copy script')).toBeNull();
 
     element.querySelector<HTMLButtonElement>('.secondary-action')?.click();
     fixture.detectChanges();

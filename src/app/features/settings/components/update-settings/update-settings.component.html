@@ -99,7 +99,10 @@
         </div>
         <div class="inline-release-notes">
           <h3>What&rsquo;s changed</h3>
-          <div>{{ state().releaseNotes || 'No release notes were provided.' }}</div>
+          <markdown
+            class="inline-release-notes-copy"
+            [data]="state().releaseNotes || 'No release notes were provided.'"
+          ></markdown>
         </div>
       } @else if (state().status === 'downloading') {
         <div class="update-status-body update-progress-body">

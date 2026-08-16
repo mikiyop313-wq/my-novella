@@ -1,3 +1,5 @@
+@use '../../../../shared/styles/markdown' as markdown;
+
 .update-status-body {
   min-height: 92px;
   padding: 18px 22px;
@@ -52,14 +54,14 @@
     color: var(--color-text-primary);
     font-size: 0.82rem;
   }
+}
 
-  div {
-    color: var(--color-text-secondary);
-    font-size: 0.8rem;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
+.inline-release-notes-copy {
+  @include markdown.markdown-compact-content;
+
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.6;
 }
 
 .inline-progress-wrap {

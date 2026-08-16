@@ -1,9 +1,11 @@
 import { Component, HostListener, OnDestroy, effect, inject, signal } from '@angular/core';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { AppUpdateService } from '../../../core/services/app-update.service';
 
 @Component({
   selector: 'app-update-dialog',
+  imports: [MarkdownComponent],
   templateUrl: './update-dialog.component.html',
   styleUrl: './update-dialog.component.scss',
 })

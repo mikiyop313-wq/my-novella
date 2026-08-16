@@ -1,5 +1,6 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideMarkdown } from 'ngx-markdown';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UpdateState } from '../../../../../../../shared/models/update.model';
@@ -27,6 +28,7 @@ describe('UpdateSettingsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [UpdateSettingsComponent],
       providers: [
+        ...provideMarkdown(),
         {
           provide: AppUpdateService,
           useValue: {
@@ -76,21 +78,24 @@ describe('UpdateSettingsComponent', () => {
     );
   });
 
-  it('shows available release details and downloads the update', () => {
+  it('shows available release details and downloads the update', async () => {
     state.set(
       updateState('available', {
         availableVersion: '0.2.0',
         releaseDate: '2026-08-14T00:00:00.000Z',
-        releaseNotes: '<strong>Safer editor</strong>',
+        releaseNotes: '**Safer editor**\n\n- Better recovery\n\n<em>Polished</em>',
       }),
     );
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('Version 0.2.0 is available');
     expect(element.textContent).toContain('Aug 14, 2026');
-    expect(element.textContent).toContain('<strong>Safer editor</strong>');
-    expect(element.querySelector('.inline-release-notes strong')).toBeNull();
+    expect(element.querySelector('.inline-release-notes strong')?.textContent).toBe('Safer editor');
+    expect(element.querySelector('.inline-release-notes li')?.textContent).toBe('Better recovery');
+    expect(element.querySelector('.inline-release-notes em')?.textContent).toBe('Polished');
 
     findButton(element, 'Download update')?.click();
     expect(downloadUpdate).toHaveBeenCalledOnce();
