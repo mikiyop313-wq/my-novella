@@ -381,8 +381,7 @@ function createParagraphReviewItems(
   const sceneLocations = buildSceneLocations(results, hierarchy);
   return results.map(result => ({
     result,
-    location: (sceneLocations.get(result.sceneId) ?? `Scene: ${result.sceneId}`)
-      .replaceAll(' > ', ' ? '),
+    location: sceneLocations.get(result.sceneId) ?? `Scene: ${result.sceneId}`,
   }));
 }
 

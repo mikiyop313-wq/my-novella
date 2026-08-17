@@ -713,7 +713,7 @@ describe('ManuscriptAiContextService', () => {
     expect(reviewParagraphs).toHaveBeenCalledWith([
       expect.objectContaining({
         result,
-        location: 'Act 1: Act One ? Chapter 1: Chapter One ? Scene 1: Scene 1',
+        location: 'Act 1: Act One > Chapter 1: Chapter One > Scene 1: Scene 1',
       }),
     ]);
     expect(messages[0].content).toContain(result.text);

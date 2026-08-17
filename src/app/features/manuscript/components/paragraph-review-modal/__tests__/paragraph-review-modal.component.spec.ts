@@ -12,7 +12,7 @@ describe('ParagraphReviewModalComponent', () => {
     fixture = TestBed.createComponent(ParagraphReviewModalComponent);
     fixture.componentRef.setInput('reviewItems', [
       {
-        location: 'Act 1 ? Chapter 2 ? Scene 3',
+        location: 'Act 1 > Chapter 2 > Scene 3',
         result: {
           paragraphId: 'paragraph-1',
           actId: 'act-1',
@@ -29,7 +29,7 @@ describe('ParagraphReviewModalComponent', () => {
   it('renders the hierarchy location and complete paragraph', () => {
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.location-label')?.textContent).toContain(
-      'Act 1 ? Chapter 2 ? Scene 3',
+      'Act 1 > Chapter 2 > Scene 3',
     );
     expect(element.querySelector('.modal-body')?.textContent).toContain(
       'The complete paragraph remains visible.',
