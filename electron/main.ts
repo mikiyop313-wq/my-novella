@@ -92,7 +92,6 @@ function createWindow() {
     win = new BrowserWindow({
         width: 1200,
         height: 800,
-        fullscreen: true,
         minWidth: 900,
         minHeight: 650,
         icon: appIconPath,
@@ -102,6 +101,7 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js')
         }
     });
+    win.maximize();
 
     win.webContents.once('did-finish-load', () => {
         void updateService.checkForUpdatesAtStartup();
