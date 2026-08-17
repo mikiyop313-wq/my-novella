@@ -65,6 +65,23 @@ describe('UpdateSettingsComponent', () => {
     expect(findButton(element, 'Check for updates')?.disabled).toBe(true);
   });
 
+  it('explains manual updates and disables checks in portable builds', () => {
+    state.set(updateState('portable'));
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const checkButton = findButton(element, 'Check for updates');
+
+    expect(element.textContent).toContain('Portable version');
+    expect(element.textContent).toContain('replace this one manually');
+    expect(checkButton?.disabled).toBe(true);
+    expect(checkButton?.classList.contains('portable-update-button')).toBe(true);
+    checkButton?.click();
+    expect(checkForUpdates).not.toHaveBeenCalled();
+    expect(downloadUpdate).not.toHaveBeenCalled();
+    expect(installUpdate).not.toHaveBeenCalled();
+  });
+
   it('renders checking and up-to-date states', () => {
     state.set(updateState('checking'));
     fixture.detectChanges();

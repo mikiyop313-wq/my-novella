@@ -5,13 +5,14 @@ import type { UpdateState } from '../../../shared/models/update.model';
 interface UpdateServiceOptions {
   updater: AppUpdater;
   isPackaged: boolean;
+  isPortable: boolean;
   currentVersion: string;
   broadcast: (state: UpdateState) => void;
 }
 
 export class UpdateService {
   private readonly updater: AppUpdater;
-  private readonly isPackaged: boolean;
+  private readonly updatesEnabled: boolean;
   private readonly broadcast: (state: UpdateState) => void;
   private initialized = false;
   private startupCheckStarted = false;
@@ -19,10 +20,10 @@ export class UpdateService {
 
   constructor(options: UpdateServiceOptions) {
     this.updater = options.updater;
-    this.isPackaged = options.isPackaged;
+    this.updatesEnabled = options.isPackaged && !options.isPortable;
     this.broadcast = options.broadcast;
     this.state = {
-      status: options.isPackaged ? 'idle' : 'unavailable',
+      status: options.isPortable ? 'portable' : options.isPackaged ? 'idle' : 'unavailable',
       currentVersion: options.currentVersion,
       availableVersion: null,
       releaseNotes: null,
@@ -33,7 +34,7 @@ export class UpdateService {
   }
 
   initialize(): void {
-    if (this.initialized || !this.isPackaged) return;
+    if (this.initialized || !this.updatesEnabled) return;
 
     this.initialized = true;
     this.updater.autoDownload = false;
@@ -81,14 +82,14 @@ export class UpdateService {
   }
 
   async checkForUpdatesAtStartup(): Promise<void> {
-    if (this.startupCheckStarted) return;
+    if (this.startupCheckStarted || !this.updatesEnabled) return;
 
     this.startupCheckStarted = true;
     await this.checkForUpdates();
   }
 
   async checkForUpdates(): Promise<void> {
-    if (!this.isPackaged) return;
+    if (!this.updatesEnabled) return;
 
     try {
       await this.updater.checkForUpdates();

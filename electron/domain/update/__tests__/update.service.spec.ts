@@ -79,6 +79,23 @@ describe('UpdateService', () => {
     expect(checkForUpdates).not.toHaveBeenCalled();
   });
 
+  it('disables every updater action in portable builds', async () => {
+    const service = createService({ isPortable: true });
+
+    service.initialize();
+    await service.checkForUpdatesAtStartup();
+    await service.checkForUpdates();
+
+    expect(service.getState().status).toBe('portable');
+    expect(checkForUpdates).not.toHaveBeenCalled();
+    expect(updater.autoDownload).toBe(true);
+    expect(updater.autoInstallOnAppQuit).toBe(false);
+    expect(emitter.listenerCount('update-available')).toBe(0);
+    await expect(service.downloadUpdate()).rejects.toThrow('No update is available');
+    expect(service.quitAndInstall()).toBe(false);
+    expect(quitAndInstall).not.toHaveBeenCalled();
+  });
+
   it('publishes available, progress, and downloaded states', () => {
     const service = createService();
     service.initialize();
@@ -160,10 +177,13 @@ describe('UpdateService', () => {
     expect(normalizeReleaseNotes(null)).toBeNull();
   });
 
-  function createService(options: { isPackaged?: boolean } = {}): UpdateService {
+  function createService(
+    options: { isPackaged?: boolean; isPortable?: boolean } = {},
+  ): UpdateService {
     return new UpdateService({
       updater,
       isPackaged: options.isPackaged ?? true,
+      isPortable: options.isPortable ?? false,
       currentVersion: '0.1.0',
       broadcast,
     });

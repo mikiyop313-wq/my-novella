@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import electronUpdater from 'electron-updater';
 import * as path from 'path';
+import { isPortableApp } from './runtime/application-runtime';
 import { AppCloseCoordinator } from './app-close-coordinator';
 import { UpdateService } from './domain/update/update.service';
 import { initializeIpc } from './ipc';
@@ -19,6 +20,7 @@ const { autoUpdater } = electronUpdater;
 const updateService = new UpdateService({
     updater: autoUpdater,
     isPackaged: app.isPackaged,
+    isPortable: isPortableApp(),
     currentVersion: app.getVersion(),
     broadcast: (state) => {
         BrowserWindow.getAllWindows().forEach((window) => {

@@ -77,6 +77,10 @@
   }
 }
 
+.portable-update-button:disabled {
+  cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .inline-progress span {
     transition: none;

@@ -23,6 +23,9 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: portable
+      arch:
+        - x64
 
 nsis:
   oneClick: false
@@ -33,6 +36,9 @@ nsis:
   uninstallerSidebar: build/installerSidebar.bmp
   installerHeader: build/installerHeader.bmp
   artifactName: "My-Novella-Setup-${version}.${ext}"
+
+portable:
+  artifactName: "My-Novella-Portable-${version}.${ext}"
 
 publish:
   provider: github

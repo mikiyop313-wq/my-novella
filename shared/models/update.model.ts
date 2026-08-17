@@ -1,5 +1,6 @@
 export type UpdateStatus =
   | 'unavailable'
+  | 'portable'
   | 'idle'
   | 'checking'
   | 'up-to-date'

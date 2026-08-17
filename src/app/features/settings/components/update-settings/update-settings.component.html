@@ -60,7 +60,24 @@
         </div>
       </header>
 
-      @if (state().status === 'unavailable') {
+      @if (state().status === 'portable') {
+        <div class="update-status-body">
+          <div class="update-status-copy">
+            <strong>Portable version</strong>
+            <p>
+              Automatic updates are disabled for the portable version. Download a new portable
+              version and replace this one manually.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="secondary-button portable-update-button"
+            disabled
+          >
+            Check for updates
+          </button>
+        </div>
+      } @else if (state().status === 'unavailable') {
         <div class="update-status-body">
           <div class="update-status-copy">
             <strong>Update checks are unavailable</strong>
