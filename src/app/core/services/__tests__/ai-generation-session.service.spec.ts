@@ -50,6 +50,7 @@ describe('AiGenerationSessionService', () => {
       error: null,
     });
     expect(session.status()).toBe('complete');
+    expect(session.bookId).toBe('book-1');
     expect(service.getSession('session-1')).toBe(session);
 
     service.release('session-1');
@@ -65,6 +66,17 @@ describe('AiGenerationSessionService', () => {
       status: 'complete',
       content: 'Final only',
     });
+  });
+
+  it('preserves the optional activity label', () => {
+    streamText.mockReturnValue(new Promise(() => undefined));
+
+    const session = service.start({
+      ...request('selection-1'),
+      activityLabel: 'Rephrasing prose',
+    });
+
+    expect(session?.activityLabel).toBe('Rephrasing prose');
   });
 
   it('allows different purposes to run concurrently', async () => {

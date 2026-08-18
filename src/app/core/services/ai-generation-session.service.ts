@@ -28,6 +28,7 @@ export interface StartAiGenerationSessionRequest
   extends Omit<AiStreamRequest, 'onToken' | 'onReasoningUpdate' | 'onStatusChange'> {
   source: AiGenerationSessionSource;
   scopeId?: string;
+  activityLabel?: string;
   onContentChange?: (content: string) => void;
   onReasoningChange?: (reasoning: string) => void;
   onStatusChange?: (status: AiGenerationSessionStatus) => void;
@@ -35,8 +36,10 @@ export interface StartAiGenerationSessionRequest
 
 export interface AiGenerationSession {
   id: string;
+  bookId: string;
   source: AiGenerationSessionSource;
   scopeId: string | null;
+  activityLabel?: string;
   status: Signal<AiGenerationSessionStatus>;
   content: Signal<string>;
   reasoning: Signal<string>;
@@ -120,8 +123,10 @@ export class AiGenerationSessionService {
     const error = signal<unknown | null>(null);
     const session: ManagedAiGenerationSession = {
       id: request.streamId,
+      bookId: request.bookId,
       source: request.source,
       scopeId,
+      activityLabel: request.activityLabel,
       status,
       content,
       reasoning,

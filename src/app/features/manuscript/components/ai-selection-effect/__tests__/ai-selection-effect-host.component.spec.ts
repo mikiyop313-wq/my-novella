@@ -1,61 +1,66 @@
-import { EventEmitter, type ComponentRef, type ViewContainerRef } from '@angular/core';
-import { describe, expect, it, vi } from 'vitest';
+import { signal, type ComponentRef } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 
+import { WorkspaceStore } from '../../../../workspace/workspace.store';
+import { ManuscriptStore } from '../../../store/manuscript.store';
+import { AiSelectionEditService } from '../../../helpers/ai/ai-selection-edit.service';
 import { AiSelectionEffectHostComponent } from '../ai-selection-effect-host.component';
-import {
-  AiSelectionEffectComponent,
-  type AiSelectionEditRequest,
-} from '../ai-selection-effect.component';
+import { AiSelectionEffectComponent } from '../ai-selection-effect.component';
 
-const request: AiSelectionEditRequest = {
-  category: 'rephrase',
+const request = {
+  category: 'rephrase' as const,
   instruction: 'Rephrase the marked passage.',
-  actionLabel: 'Rephrase',
+  actionLabel: 'Rephrase' as const,
 };
 
 describe('AiSelectionEffectHostComponent', () => {
-  it('owns multiple independent effects and removes only the dismissed one', () => {
-    const first = createEffectRef(true);
-    const second = createEffectRef(true);
-    const pendingEffects = [first, second];
-    const host = new AiSelectionEffectHostComponent();
-    (host as any).effectContainer = {
-      createComponent: vi.fn(() => pendingEffects.shift()),
-    } as unknown as ViewContainerRef;
+  let fixture: ComponentFixture<AiSelectionEffectHostComponent>;
+  let component: AiSelectionEffectHostComponent;
+  let startEdit: ReturnType<typeof vi.fn>;
 
-    expect(host.startEdit(request)).toBe(true);
-    expect(host.startEdit(request)).toBe(true);
-    expect(host.activeEditCount()).toBe(2);
-
-    first.instance.dismissed.emit();
-
-    expect(first.destroy).toHaveBeenCalledOnce();
-    expect(second.destroy).not.toHaveBeenCalled();
-    expect(host.activeEditCount()).toBe(1);
+  beforeEach(async () => {
+    startEdit = vi.fn(() => 'selection-1');
+    await TestBed.configureTestingModule({
+      imports: [AiSelectionEffectHostComponent],
+      providers: [
+        { provide: ManuscriptStore, useValue: { editor: signal({}) } },
+        {
+          provide: WorkspaceStore,
+          useValue: { bookId: signal('book-1'), bookTitle: signal('Book One') },
+        },
+        {
+          provide: AiSelectionEditService,
+          useValue: { sessions: signal([]), startEdit, getSession: vi.fn(() => null) },
+        },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(AiSelectionEffectHostComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
   });
 
-  it('destroys an effect that cannot acquire its scene', () => {
-    const rejected = createEffectRef(false);
-    const host = new AiSelectionEffectHostComponent();
-    (host as any).effectContainer = {
-      createComponent: vi.fn(() => rejected),
-    } as unknown as ViewContainerRef;
+  it('delegates new edits to the in-memory service', () => {
+    expect(component.startEdit(request)).toBe(true);
+    expect(startEdit).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'book-1',
+      request,
+    }));
+  });
 
-    expect(host.startEdit(request)).toBe(false);
-    expect(rejected.destroy).toHaveBeenCalledOnce();
-    expect(host.hasActiveEdits()).toBe(false);
+  it('reports a rejected scene lock without creating a visual effect', () => {
+    startEdit.mockReturnValue(null);
+    expect(component.startEdit(request)).toBe(false);
+    expect(component.hasActiveEdits()).toBe(false);
+  });
+
+  it('focuses the visual effect for the requested service session', () => {
+    const focusSession = vi.fn(() => true);
+    (component as any).effects.set('selection-1', {
+      instance: { focusSession },
+    } as unknown as ComponentRef<AiSelectionEffectComponent>);
+
+    expect(component.focusSession('selection-1')).toBe(true);
+    expect(focusSession).toHaveBeenCalledWith('selection-1');
   });
 });
-
-function createEffectRef(starts: boolean): ComponentRef<AiSelectionEffectComponent> {
-  const instance = {
-    startEdit: vi.fn(() => starts),
-    dismissed: new EventEmitter<void>(),
-  } as unknown as AiSelectionEffectComponent;
-
-  return {
-    instance,
-    changeDetectorRef: { detectChanges: vi.fn() },
-    destroy: vi.fn(),
-  } as unknown as ComponentRef<AiSelectionEffectComponent>;
-}
