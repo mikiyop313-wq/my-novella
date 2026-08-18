@@ -20,6 +20,10 @@ import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
 import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
 import { ManuscriptIndexItem, ManuscriptIndexScrollComponent } from './components/manuscript-index-scroll/manuscript-index-scroll.component';
 import { ActHeaderExtension, ChapterHeaderExtension } from './components/manuscript-header/manuscript-header.extension';
+import {
+  ProseGenerationFocusRequest,
+  ProseGenerationWidgetComponent,
+} from './components/prose-generation-widget/prose-generation-widget.component';
 import { SceneHeaderComponent } from './components/scene/scene-header/scene-header.component';
 import { SceneSkeletonExtension } from './components/scene/scene-skeleton/scene-skeleton.extension';
 import { SceneSummaryExtension } from './components/scene/scene-summary/scene-summary.extension';
@@ -52,6 +56,7 @@ import { ToastService } from '../../shared/services/toast.service';
     EditorBubbleMenuComponent,
     CdkMenuModule,
     ManuscriptIndexScrollComponent,
+    ProseGenerationWidgetComponent,
     SceneHeaderComponent,
     CodexContextHighlightDirective,
   ],
@@ -91,6 +96,8 @@ export class Manuscript implements OnInit, OnDestroy {
   hasChapterNodes = signal(false);
   hasSceneNodes = signal(false);
   private isNavigatingAfterRemoval = false;
+  private pendingGenerationFocus: ProseGenerationFocusRequest | null = null;
+  private generationFocusTimeout: number | null = null;
 
   showCreateSceneHint = computed(() => this.hasLoadedContent() && !this.hasSceneNodes());
   canInsertChapter = computed(() => this.hasActNodes());
@@ -210,6 +217,9 @@ export class Manuscript implements OnInit, OnDestroy {
     if (this.editor) this.aiStreamEditor.detachEditor(this.editor);
     this.editor?.destroy();
     this.store.setEditor(null);
+    if (this.generationFocusTimeout !== null) {
+      window.clearTimeout(this.generationFocusTimeout);
+    }
   }
 
 
@@ -282,6 +292,7 @@ export class Manuscript implements OnInit, OnDestroy {
       this.hasLoadedContent.set(true);
       this.refreshStructureAvailability();
       this.refreshIndexItems();
+      void this.focusPendingGeneration();
     } catch (error) {
       this.hasLoadedContent.set(true);
       this.refreshStructureAvailability();
@@ -351,6 +362,24 @@ export class Manuscript implements OnInit, OnDestroy {
     if (!bookId) return;
 
     this.router.navigate(['/workspace', bookId, 'manuscript', mode, id], { replaceUrl: true });
+  }
+
+  async focusProseGeneration(request: ProseGenerationFocusRequest): Promise<void> {
+    const location = this.resolveSceneLocation(request.sceneId);
+    if (!location) return;
+
+    if (this.currentViewContainsScene(location)) {
+      await this.focusGenerationInCurrentView(request);
+      return;
+    }
+
+    this.pendingGenerationFocus = request;
+    const navigated = await this.router.navigate(
+      ['/workspace', location.bookId, 'manuscript', 'scene', request.sceneId],
+      { replaceUrl: true },
+    );
+
+    if (!navigated) this.pendingGenerationFocus = null;
   }
 
   private hasActiveSelectionGeneration(): boolean {
@@ -449,6 +478,120 @@ export class Manuscript implements OnInit, OnDestroy {
     });
 
     this.indexItems.set(items);
+  }
+
+  private async focusPendingGeneration(): Promise<void> {
+    const request = this.pendingGenerationFocus;
+    if (!request) return;
+
+    const location = this.resolveSceneLocation(request.sceneId);
+    if (!location || !this.currentViewContainsScene(location)) return;
+
+    this.pendingGenerationFocus = null;
+    await this.focusGenerationInCurrentView(request);
+  }
+
+  private async focusGenerationInCurrentView(
+    request: ProseGenerationFocusRequest,
+  ): Promise<void> {
+    await this.store.loadAndPatchScene(request.sceneId);
+    if (!this.editor || this.editor.isDestroyed) return;
+
+    this.aiStreamEditor.syncActiveGenerations(this.editor);
+    requestAnimationFrame(() => this.scrollToGenerationBlock(request.blockId));
+  }
+
+  private scrollToGenerationBlock(blockId: string): void {
+    if (!this.editor || this.editor.isDestroyed) return;
+
+    let blockPosition: number | null = null;
+    this.editor.state.doc.descendants((node, position) => {
+      if (
+        blockPosition === null
+        && node.type.name === 'aiGeneratedBlock'
+        && node.attrs['id'] === blockId
+      ) {
+        blockPosition = position;
+      }
+
+      return blockPosition === null;
+    });
+    if (blockPosition === null) return;
+
+    const nodeDom = this.editor.view.nodeDOM(blockPosition);
+    const domAtPosition = this.editor.view.domAtPos(blockPosition);
+    const nodeAtPosition = domAtPosition.node.childNodes.item(domAtPosition.offset);
+    const element = nodeDom instanceof HTMLElement
+      ? nodeDom
+      : nodeAtPosition instanceof HTMLElement
+        ? nodeAtPosition
+        : nodeDom?.parentElement ?? nodeAtPosition?.parentElement;
+    if (!element) return;
+
+    const scrollContainer = element.closest<HTMLElement>('.editor-content-wrapper')
+      ?? document.querySelector<HTMLElement>('.editor-content-wrapper');
+    if (scrollContainer) {
+      const elementRect = element.getBoundingClientRect();
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const centeredTop = elementRect.top
+        - containerRect.top
+        + scrollContainer.scrollTop
+        - (scrollContainer.clientHeight - elementRect.height) / 2;
+      scrollContainer.scrollTo({ top: Math.max(0, centeredTop), behavior: 'smooth' });
+    } else {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    element.classList.remove('prose-generation-focus');
+    void element.offsetWidth;
+    element.classList.add('prose-generation-focus');
+
+    if (this.generationFocusTimeout !== null) {
+      window.clearTimeout(this.generationFocusTimeout);
+    }
+    this.generationFocusTimeout = window.setTimeout(() => {
+      element.classList.remove('prose-generation-focus');
+      this.generationFocusTimeout = null;
+    }, 1800);
+  }
+
+  private resolveSceneLocation(sceneId: string): {
+    actId: string;
+    bookId: string;
+    chapterId: string;
+    sceneId: string;
+  } | null {
+    for (const act of this.store.bookHierarchy()) {
+      for (const chapter of act.chapters || []) {
+        if ((chapter.scenes || []).some(scene => scene.id === sceneId)) {
+          return {
+            actId: act.id,
+            bookId: act.bookId,
+            chapterId: chapter.id,
+            sceneId,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private currentViewContainsScene(location: {
+    actId: string;
+    bookId: string;
+    chapterId: string;
+    sceneId: string;
+  }): boolean {
+    const activeEntityId = this.store.activeEntityId();
+
+    switch (this.store.mode()) {
+      case 'book': return activeEntityId === location.bookId;
+      case 'act': return activeEntityId === location.actId;
+      case 'chapter': return activeEntityId === location.chapterId;
+      case 'scene': return activeEntityId === location.sceneId;
+      default: return false;
+    }
   }
 
   private refreshStructureAvailability(): void {

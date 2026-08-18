@@ -79,6 +79,33 @@
   color: var(--color-success, #3f8a5b);
 }
 
+::ng-deep .prose-generation-focus {
+  animation: prose-generation-focus-pulse 1.8s ease-out;
+}
+
+@keyframes prose-generation-focus-pulse {
+  0%,
+  35% {
+    outline: 2px solid color-mix(in srgb, var(--color-btn-primary-bg) 72%, transparent);
+    outline-offset: 7px;
+    filter: drop-shadow(0 0 14px color-mix(in srgb, var(--color-btn-primary-bg) 28%, transparent));
+  }
+
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 12px;
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::ng-deep .prose-generation-focus {
+    animation: none;
+    outline: 2px solid color-mix(in srgb, var(--color-btn-primary-bg) 72%, transparent);
+    outline-offset: 7px;
+  }
+}
+
 @keyframes manuscript-indexing-spin {
   to {
     transform: rotate(360deg);

@@ -394,6 +394,86 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
   });
 
+  it('keeps containing manuscript scopes while focusing a prose generation', async () => {
+    setGenerationHierarchy();
+    const loadAndPatchScene = vi.spyOn(component.store, 'loadAndPatchScene')
+      .mockResolvedValue(undefined);
+
+    for (const route of [
+      { mode: 'book' as const, id: 'book-1' },
+      { mode: 'act' as const, id: 'act-1' },
+      { mode: 'chapter' as const, id: 'chapter-1' },
+      { mode: 'scene' as const, id: 'scene-2' },
+    ]) {
+      component.store.setRouteParams(route.mode, route.id);
+      routerNavigate.mockClear();
+
+      await component.focusProseGeneration({ blockId: 'response-2', sceneId: 'scene-2' });
+
+      expect(routerNavigate).not.toHaveBeenCalled();
+    }
+
+    expect(loadAndPatchScene).toHaveBeenCalledWith('scene-2');
+  });
+
+  it('opens the exact scene when the current manuscript view does not contain it', async () => {
+    setGenerationHierarchy();
+    component.store.setRouteParams('scene', 'scene-1');
+    routerNavigate.mockClear();
+
+    await component.focusProseGeneration({ blockId: 'response-2', sceneId: 'scene-2' });
+
+    expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'scene', 'scene-2'],
+      { replaceUrl: true },
+    );
+  });
+
+  it('loads the target scene and highlights the exact generated block', async () => {
+    setGenerationHierarchy();
+    component.store.setRouteParams('scene', 'scene-2');
+    const loadAndPatchScene = vi.spyOn(component.store, 'loadAndPatchScene')
+      .mockResolvedValue(undefined);
+    const editor = component.editor!;
+    const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, [
+      editor.schema.nodes['sceneSummary'].create({
+        id: 'scene-2',
+        chapterId: 'chapter-1',
+        title: '',
+        summary: '',
+        position: 1,
+      }),
+      editor.schema.nodes['aiGeneratedBlock'].create(
+        { id: 'response-2', isGenerating: true },
+        editor.schema.nodes['paragraph'].create(null, editor.schema.text('Live prose')),
+      ),
+    ]);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const scrollContainer = fixture.nativeElement.querySelector(
+      '.editor-content-wrapper',
+    ) as HTMLElement;
+    const scrollTo = vi.fn();
+    Object.defineProperty(scrollContainer, 'scrollTo', {
+      configurable: true,
+      value: scrollTo,
+    });
+    const generatedBlock = document.createElement('div');
+    scrollContainer.appendChild(generatedBlock);
+    const nodeDom = vi.spyOn(component.editor!.view, 'nodeDOM')
+      .mockReturnValue(generatedBlock);
+
+    await component.focusProseGeneration({ blockId: 'response-2', sceneId: 'scene-2' });
+    flushFrames();
+
+    expect(loadAndPatchScene).toHaveBeenCalledWith('scene-2');
+    expect(nodeDom).toHaveBeenCalled();
+    expect(generatedBlock.classList.contains('prose-generation-focus')).toBe(true);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+  });
+
   it('indexes the first act structure inserted into an empty book', async () => {
     electronInvoke.mockImplementation(async (channel: string) => {
       if (channel === 'manuscript:createActStructure') {
@@ -644,6 +724,51 @@ describe('Manuscript', () => {
     ]);
     tr.setMeta('skipSaver', true);
     editor.view.dispatch(tr);
+  }
+
+  function setGenerationHierarchy(): void {
+    TestBed.inject(WorkspaceBookStore).setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [
+          {
+            id: 'scene-1',
+            title: 'First Scene',
+            chapterId: 'chapter-1',
+            position: 0,
+            status: 'active',
+            prose: null,
+            summary: null,
+            wordCount: 0,
+            pointOfViewOverride: null,
+            povCharacterIdOverride: null,
+          },
+          {
+            id: 'scene-2',
+            title: 'Second Scene',
+            chapterId: 'chapter-1',
+            position: 1,
+            status: 'active',
+            prose: null,
+            summary: null,
+            wordCount: 0,
+            pointOfViewOverride: null,
+            povCharacterIdOverride: null,
+          },
+        ],
+      }],
+    }]);
   }
 
   function flushFrames(): void {

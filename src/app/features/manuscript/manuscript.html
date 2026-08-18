@@ -551,6 +551,10 @@
   <app-manuscript-index-scroll [items]="indexItems()" (select)="scrollToSection($event)"></app-manuscript-index-scroll>
   }
 
+  <app-prose-generation-widget
+    (focusRequested)="focusProseGeneration($event)">
+  </app-prose-generation-widget>
+
   @if (paragraphVectorSync.indexingAvailable()) {
   <div class="indexing-status" [class.is-error]="paragraphVectorSync.indexingState() === 'error'"
     role="status" aria-live="polite">
