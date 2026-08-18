@@ -194,6 +194,78 @@ describe('Manuscript', () => {
     expect(component).toBeTruthy();
   });
 
+  it('opens manuscript search for Ctrl+F and resets it on Escape', async () => {
+    const shortcut = new KeyboardEvent('keydown', {
+      key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+
+    document.dispatchEvent(shortcut);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise<void>(resolve => queueMicrotask(resolve));
+
+    const input = fixture.nativeElement.querySelector(
+      'app-manuscript-search input',
+    ) as HTMLInputElement;
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(input).toBeTruthy();
+    expect(document.activeElement).toBe(input);
+
+    input.value = 'sea';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(component.search.open()).toBe(false);
+    expect(component.search.query()).toBe('');
+    expect(fixture.nativeElement.querySelector('app-manuscript-search')).toBeNull();
+  });
+
+  it('toggles manuscript search off when Ctrl+F is pressed again', async () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component.search.open()).toBe(true);
+
+    const secondShortcut = new KeyboardEvent('keydown', {
+      key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+    document.dispatchEvent(secondShortcut);
+    fixture.detectChanges();
+
+    expect(secondShortcut.defaultPrevented).toBe(true);
+    expect(component.search.open()).toBe(false);
+    expect(component.search.query()).toBe('');
+  });
+
+  it('opens the matching scene when whole-manuscript navigation leaves the current view', async () => {
+    const wholeData = searchHierarchy();
+    const currentData = structuredClone(wholeData[0].chapters![0].scenes![0]);
+    const editor = component.editor!;
+    const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, [
+      editor.schema.nodes['sceneSummary'].create({ id: 'scene-1', chapterId: 'chapter-1' }),
+      editor.schema.nodes['paragraph'].create(undefined, editor.schema.text('First sea.')),
+    ]);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+    component.search.setCurrentScopeData(currentData);
+    (component.search as any).wholeManuscriptData = wholeData;
+    component.search.show();
+    component.search.wholeManuscript.set(true);
+
+    component.updateSearchQuery('sea');
+    await component.selectNextSearchMatch();
+
+    expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'scene', 'scene-2'],
+      { replaceUrl: true },
+    );
+    expect(component.search.open()).toBe(true);
+    expect(component.search.query()).toBe('sea');
+  });
+
   it('shows a create-scene hint only while the loaded scope has no scenes', () => {
     component.hasLoadedContent.set(true);
     component.hasSceneNodes.set(false);
@@ -949,6 +1021,43 @@ function paragraphNode(id: string, text: string): Record<string, unknown> {
     attrs: { id },
     content: [{ type: 'text', text }],
   };
+}
+
+function searchHierarchy(): ActDto[] {
+  const prose = (text: string) => ({
+    type: 'doc' as const,
+    content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+  });
+  const scene = (id: string, position: number, text: string) => ({
+    id,
+    title: '',
+    chapterId: 'chapter-1',
+    position,
+    status: 'active' as const,
+    prose: prose(text),
+    summary: null,
+    wordCount: 2,
+    pointOfViewOverride: null,
+    povCharacterIdOverride: null,
+  });
+
+  return [{
+    id: 'act-1',
+    title: '',
+    bookId: 'book-1',
+    position: 0,
+    status: 'active',
+    summary: null,
+    chapters: [{
+      id: 'chapter-1',
+      title: '',
+      actId: 'act-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      scenes: [scene('scene-1', 0, 'First sea.'), scene('scene-2', 1, 'Second sea.')],
+    }],
+  }];
 }
 
 function findMatches(text: string) {

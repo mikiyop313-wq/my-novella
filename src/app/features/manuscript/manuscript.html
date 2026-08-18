@@ -369,6 +369,19 @@
   </ng-template>
 
   <div class="editor-main-layout">
+    @if (search.open()) {
+    <app-manuscript-search class="manuscript-search-overlay" animate.enter="search-slide-enter"
+      animate.leave="search-slide-leave" [query]="search.query()"
+      [currentMatch]="search.currentMatchNumber()" [totalMatches]="search.matches().length"
+      [wholeManuscript]="search.wholeManuscript()" [matchCase]="search.matchCase()"
+      [wholeWord]="search.wholeWord()" [loading]="search.loading()" [error]="search.error()"
+      (queryChange)="updateSearchQuery($event)" (wholeManuscriptChange)="updateSearchScope($event)"
+      (matchCaseChange)="updateSearchMatchCase($event)" (wholeWordChange)="updateSearchWholeWord($event)"
+      (previous)="selectPreviousSearchMatch()" (next)="selectNextSearchMatch()" (closed)="closeSearch()"
+      (retry)="retryWholeManuscriptSearch()">
+    </app-manuscript-search>
+    }
+
     <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'">
       @if (store.mode() === 'scene') {
       <app-scene-header></app-scene-header>

@@ -25,6 +25,8 @@ $colors-light: (
 
     // Interactive Elements
     hover-bg: rgba(0, 0, 0, 0.05),
+    search-match-bg: rgba(250, 204, 21, 0.35),
+    search-match-active-bg: rgba(249, 115, 22, 0.52),
 
     // Buttons
     btn-primary-bg: #171717,
@@ -59,6 +61,8 @@ $colors-dark: (
 
     // Interactive Elements
     hover-bg: #ffffff25,
+    search-match-bg: rgba(250, 204, 21, 0.3),
+    search-match-active-bg: rgba(251, 146, 60, 0.58),
 
     // Buttons
     btn-primary-bg: #c4c4c4,

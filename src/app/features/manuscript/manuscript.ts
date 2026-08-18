@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
-import { Component, Injector, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, Injector, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
 import { Markdown } from '@tiptap/markdown';
@@ -27,11 +27,13 @@ import {
 import { SceneHeaderComponent } from './components/scene/scene-header/scene-header.component';
 import { SceneSkeletonExtension } from './components/scene/scene-skeleton/scene-skeleton.extension';
 import { SceneSummaryExtension } from './components/scene/scene-summary/scene-summary.extension';
+import { ManuscriptSearchComponent } from './components/manuscript-search/manuscript-search.component';
 import {
   isPositionInsideSceneProse,
   ManuscriptEditingGuardExtension,
 } from './extensions/manuscript-editing-guard.extension';
 import { UniqueIdExtension } from './extensions/unique-id.extension';
+import { ManuscriptSearchExtension } from './extensions/manuscript-search.extension';
 import {
   buildEditorContentLazy,
   extractManuscriptHierarchyById,
@@ -46,6 +48,7 @@ import { AiStreamEditorService } from './helpers/ai/ai-stream-editor.service';
 import { AiSelectionEditService } from './helpers/ai/ai-selection-edit.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { MarkdownPlainTextPipe } from '../../shared/pipes/markdown-plain-text.pipe';
+import { ManuscriptSearchService } from './helpers/search/manuscript-search.service';
 
 @Component({
   selector: 'app-manuscript',
@@ -61,14 +64,19 @@ import { MarkdownPlainTextPipe } from '../../shared/pipes/markdown-plain-text.pi
     SceneHeaderComponent,
     CodexContextHighlightDirective,
     MarkdownPlainTextPipe,
+    ManuscriptSearchComponent,
   ],
   templateUrl: './manuscript.html',
   styleUrl: './manuscript.scss',
+  providers: [ManuscriptSearchService],
 })
 export class Manuscript implements OnInit, OnDestroy {
 
   @ViewChild(EditorBubbleMenuComponent)
   private editorBubbleMenu!: EditorBubbleMenuComponent;
+
+  @ViewChild(ManuscriptSearchComponent)
+  private manuscriptSearchWidget?: ManuscriptSearchComponent;
 
   // ---------------------------------------------------------------------------
   // Dependencies
@@ -79,6 +87,7 @@ export class Manuscript implements OnInit, OnDestroy {
   readonly themeService = inject(ThemeService);
   readonly electronService = inject(ElectronService);
   readonly paragraphVectorSync = inject(ManuscriptParagraphVectorSyncService);
+  readonly search = inject(ManuscriptSearchService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -182,6 +191,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.editor = this.createEditor();
+    this.search.attachEditor(this.editor);
     this.aiStreamEditor.attachEditor(this.editor);
 
     this.store.setEditor(this.editor);
@@ -202,9 +212,14 @@ export class Manuscript implements OnInit, OnDestroy {
         const mode = params['mode'] as ManuscriptMode;
         const id = params['id'];
         this.hasLoadedContent.set(false);
+        this.search.setCurrentScopeData(null);
         this.store.setRouteParams(mode, id);
 
         const bookId = this.getWorkspaceBookId();
+        this.search.invalidateWholeManuscriptData(bookId ?? undefined);
+        if (this.search.open() && this.search.wholeManuscript() && bookId) {
+          await this.search.reloadWholeManuscript({ bookId, mode });
+        }
         if (bookId) {
           void this.paragraphVectorSync.refreshIndexingConfiguration(bookId).catch(error => {
             console.error('Failed to load manuscript indexing configuration:', error);
@@ -225,6 +240,7 @@ export class Manuscript implements OnInit, OnDestroy {
     this.closeHandler();
 
     if (this.editor) {
+      this.search.detachEditor();
       this.selectionEdits.detachEditor(this.editor);
       this.aiStreamEditor.detachEditor(this.editor);
     }
@@ -263,6 +279,7 @@ export class Manuscript implements OnInit, OnDestroy {
         SceneSummaryExtension(this.injector),
         SceneSkeletonExtension(this.injector),
         ManuscriptEditingGuardExtension,
+        ManuscriptSearchExtension,
         UniqueIdExtension,
       ],
 
@@ -276,6 +293,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
         if (transaction.docChanged) {
           void this.navigateAfterActiveScopeRemoval();
+          if (this.search.open()) this.search.refresh({ preserveActiveMatch: true });
         }
       },
     });
@@ -288,6 +306,7 @@ export class Manuscript implements OnInit, OnDestroy {
   private async loadEditorContent(mode: ManuscriptMode, id: string): Promise<void> {
     try {
       const data = await this.store.loadManuscriptData(mode, id);
+      this.search.setCurrentScopeData(data);
 
       const { doc, skeletonSceneIds } = buildEditorContentLazy(mode, data);
       this.store.setPendingSkeletons(skeletonSceneIds);
@@ -307,6 +326,10 @@ export class Manuscript implements OnInit, OnDestroy {
       this.hasLoadedContent.set(true);
       this.refreshStructureAvailability();
       this.refreshIndexItems();
+      if (this.search.open()) {
+        this.search.refresh({ preserveActiveMatch: true });
+        void this.focusActiveSearchMatch();
+      }
       void this.focusPendingGeneration();
     } catch (error) {
       this.hasLoadedContent.set(true);
@@ -315,6 +338,117 @@ export class Manuscript implements OnInit, OnDestroy {
     }
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Manuscript Search
+  // ---------------------------------------------------------------------------
+
+  @HostListener('document:keydown', ['$event'])
+  handleSearchShortcut(event: KeyboardEvent): void {
+    if (event.key.toLowerCase() !== 'f' || (!event.ctrlKey && !event.metaKey) || event.altKey) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.search.open()) this.openSearch();
+    else this.closeSearch();
+  }
+
+  openSearch(): void {
+    this.search.show();
+    queueMicrotask(() => this.manuscriptSearchWidget?.focusInput());
+  }
+
+  closeSearch(): void {
+    this.search.close();
+    this.editor?.commands.focus();
+  }
+
+  updateSearchQuery(query: string): void {
+    this.search.updateQuery(query);
+    void this.focusActiveSearchMatch();
+  }
+
+  updateSearchMatchCase(matchCase: boolean): void {
+    this.search.updateMatchCase(matchCase);
+    void this.focusActiveSearchMatch();
+  }
+
+  updateSearchWholeWord(wholeWord: boolean): void {
+    this.search.updateWholeWord(wholeWord);
+    void this.focusActiveSearchMatch();
+  }
+
+  async updateSearchScope(wholeManuscript: boolean): Promise<void> {
+    await this.search.updateScope({
+      wholeManuscript,
+      bookId: this.getWorkspaceBookId(),
+      mode: this.store.mode(),
+    });
+    await this.focusActiveSearchMatch();
+  }
+
+  async retryWholeManuscriptSearch(): Promise<void> {
+    await this.search.retryWholeManuscript({
+      bookId: this.getWorkspaceBookId(),
+      mode: this.store.mode(),
+    });
+    await this.focusActiveSearchMatch();
+  }
+
+  async selectPreviousSearchMatch(): Promise<void> {
+    this.search.select(-1);
+    await this.focusActiveSearchMatch();
+  }
+
+  async selectNextSearchMatch(): Promise<void> {
+    this.search.select(1);
+    await this.focusActiveSearchMatch();
+  }
+
+  private async focusActiveSearchMatch(): Promise<void> {
+    let activeMatch = this.search.activeMatch();
+    if (!activeMatch || !this.editor) return;
+    if (typeof activeMatch.from === 'number') {
+      this.scrollToSearchMatch(activeMatch.from);
+      return;
+    }
+
+    if (this.search.currentScopeContainsScene(activeMatch.sceneId)) {
+      await this.store.loadAndPatchScene(activeMatch.sceneId);
+      this.search.refresh({ preserveActiveMatch: true });
+      activeMatch = this.search.activeMatch();
+      if (activeMatch && typeof activeMatch.from === 'number') this.scrollToSearchMatch(activeMatch.from);
+      return;
+    }
+
+    if (!this.search.wholeManuscript()) return;
+    const bookId = this.getWorkspaceBookId();
+    if (!bookId) return;
+
+    const navigated = await this.router.navigate(
+      ['/workspace', bookId, 'manuscript', 'scene', activeMatch.sceneId],
+      { replaceUrl: true },
+    );
+    if (!navigated) this.search.clearPendingMatch();
+  }
+
+  private scrollToSearchMatch(position: number): void {
+    if (!this.editor || this.editor.isDestroyed) return;
+
+    requestAnimationFrame(() => {
+      if (!this.editor || this.editor.isDestroyed) return;
+      const coordinates = this.editor.view.coordsAtPos(position);
+      const scrollContainer = document.querySelector<HTMLElement>('.editor-content-wrapper');
+      if (!scrollContainer) return;
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const targetTop = coordinates.top
+        - containerRect.top
+        + scrollContainer.scrollTop
+        - scrollContainer.clientHeight / 3;
+      scrollContainer.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Toolbar Actions
