@@ -157,8 +157,10 @@ export class ManuscriptProseSaverService {
 
     const commit = (id: string, content: TiptapNode[]) => {
       if (affectedIds.has(id)) {
+        const wordCount = countWordsInScene(editor, id);
+        this.store.updateLiveSceneWordCount(id, wordCount);
+
         if (this.hasMeaningfulProseChange(id, content)) {
-          const wordCount = countWordsInScene(editor, id);
           this.dirtySections.set(id, {
             prose: { type: 'doc', content },
             wordCount,

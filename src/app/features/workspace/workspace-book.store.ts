@@ -173,6 +173,7 @@ export const WorkspaceBookStore = signalStore(
                     ...scene,
                     ...(payload.title !== undefined ? { title: payload.title } : {}),
                     ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
+                    ...(payload.wordCount !== undefined ? { wordCount: payload.wordCount } : {}),
                   }
                 : scene
             ),

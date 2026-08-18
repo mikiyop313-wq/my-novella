@@ -333,6 +333,48 @@ export const ManuscriptStore = signalStore(
     workspaceStore = inject(WorkspaceStore),
     manuscriptStructureService = inject(ManuscriptStructureService),
   ) => {
+    const liveSceneWordCounts = new Map<string, number>();
+
+    const findSceneLocation = (sceneId: string): {
+      actId: string;
+      bookId: string;
+      chapterId: string;
+      scene: SceneDto;
+    } | null => {
+      for (const act of workspaceBookStore.bookHierarchy()) {
+        for (const chapter of act.chapters || []) {
+          const scene = chapter.scenes?.find(candidate => candidate.id === sceneId);
+          if (scene) {
+            return {
+              actId: act.id,
+              bookId: act.bookId,
+              chapterId: chapter.id,
+              scene,
+            };
+          }
+        }
+      }
+
+      return null;
+    };
+
+    const isSceneInActiveScope = ({
+      actId,
+      bookId,
+      chapterId,
+      scene,
+    }: NonNullable<ReturnType<typeof findSceneLocation>>): boolean => {
+      const activeEntityId = store.activeEntityId();
+
+      switch (store.mode()) {
+        case 'book': return activeEntityId === bookId;
+        case 'act': return activeEntityId === actId;
+        case 'chapter': return activeEntityId === chapterId;
+        case 'scene': return activeEntityId === scene.id;
+        default: return false;
+      }
+    };
+
     const resetLastRouteForRemovedEntity = (
       mode: Exclude<ManuscriptMode, 'book'>,
       id: string,
@@ -350,6 +392,7 @@ export const ManuscriptStore = signalStore(
     // -------------------------------------------------------------------------
 
     setRouteParams(mode: ManuscriptMode | null, id: string | null): void {
+      liveSceneWordCounts.clear();
       patchState(store, {
         mode,
         activeEntityId: id,
@@ -400,7 +443,7 @@ export const ManuscriptStore = signalStore(
     // -------------------------------------------------------------------------
 
     async loadManuscriptData<T extends ManuscriptMode>(mode: T, id: string): Promise<ManuscriptModeDto<T>> {
-      Promise.all([
+      const statsAndHierarchy = Promise.all([
         electronService.invoke('manuscript:getWordCount', { mode, id }),
         workspaceBookStore.loadBookHierarchy(mode, id),
       ])
@@ -412,7 +455,23 @@ export const ManuscriptStore = signalStore(
         .catch(error => console.error('Failed to load stats/hierarchy', error));
 
       const result = await electronService.invoke('manuscript:get', { mode, id });
+      await statsAndHierarchy;
       return result as ManuscriptModeDto<T>;
+    },
+
+    updateLiveSceneWordCount(sceneId: string, wordCount: number): void {
+      const location = findSceneLocation(sceneId);
+      if (!location) return;
+
+      const previousWordCount = liveSceneWordCounts.get(sceneId) ?? location.scene.wordCount ?? 0;
+      if (previousWordCount === wordCount) return;
+
+      liveSceneWordCounts.set(sceneId, wordCount);
+      if (!isSceneInActiveScope(location)) return;
+
+      patchState(store, {
+        currentWordCount: Math.max(0, store.currentWordCount() + wordCount - previousWordCount),
+      });
     },
 
     setPendingSkeletons(sceneIds: string[]): void {

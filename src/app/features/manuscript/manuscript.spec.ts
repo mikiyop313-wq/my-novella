@@ -394,6 +394,58 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
   });
 
+  it('updates words, pages, and reading time as prose changes', () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'Scene',
+          chapterId: 'chapter-1',
+          position: 0,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }]);
+    component.store.setRouteParams('book', 'book-1');
+    component.editor!.chain().command(({ tr }) => {
+      tr.setMeta('skipSaver', true);
+      return true;
+    }).setContent({
+      type: 'doc',
+      content: [
+        {
+          type: 'sceneSummary',
+          attrs: { id: 'scene-1', chapterId: 'chapter-1', title: '', summary: '', position: 0 },
+        },
+        { type: 'paragraph' },
+      ],
+    }).run();
+
+    component.editor!.commands.insertContent(Array(251).fill('word').join(' '));
+
+    expect(component.store.currentWordCount()).toBe(251);
+    expect(component.store.estimatedPages()).toBe(2);
+    expect(component.store.estimatedReadTime()).toBe(2);
+  });
+
   it('keeps containing manuscript scopes while focusing a prose generation', async () => {
     setGenerationHierarchy();
     const loadAndPatchScene = vi.spyOn(component.store, 'loadAndPatchScene')
