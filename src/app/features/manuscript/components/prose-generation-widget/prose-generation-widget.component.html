@@ -3,19 +3,33 @@
   class="prose-generation-widget"
   role="button"
   tabindex="0"
-  [attr.aria-label]="'Show prose generation in ' + generation.breadcrumb"
+  [attr.aria-label]="'Show ' + generation.activityLabel.toLowerCase() + ' in ' + generation.breadcrumb"
   (click)="requestFocus()"
   (keydown.enter)="requestFocus()"
   (keydown.space)="$event.preventDefault(); requestFocus()">
   <div class="generation-main-row">
+    @if (generation.isComplete) {
+    <button
+      class="generation-complete-button"
+      type="button"
+      [attr.aria-label]="'Dismiss ' + generation.activityLabel.toLowerCase()"
+      [title]="'Dismiss ' + generation.activityLabel.toLowerCase()"
+      (click)="dismissSelected($event)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </button>
+    } @else {
     <button
       class="generation-stop-button"
       type="button"
-      aria-label="Stop this prose generation"
-      title="Stop generation"
+      [attr.aria-label]="'Stop ' + generation.activityLabel.toLowerCase()"
+      [title]="'Stop ' + generation.activityLabel.toLowerCase()"
       (click)="stopSelected($event)">
       <span aria-hidden="true"></span>
     </button>
+    }
 
     <div class="generation-word-count" aria-live="polite">
       <strong>{{ generation.wordCount }}</strong>
@@ -23,7 +37,7 @@
     </div>
 
     <div class="generation-details">
-      <span class="generation-eyebrow">Generating prose</span>
+      <span class="generation-eyebrow">{{ generation.activityLabel }}</span>
       <span class="generation-location" [title]="generation.breadcrumb">
         {{ generation.breadcrumb }}
       </span>
@@ -31,10 +45,10 @@
   </div>
 
   @if (hasMultipleGenerations()) {
-  <div class="generation-navigation" aria-label="Prose generation navigation">
+  <div class="generation-navigation" aria-label="AI activity navigation">
     <button
       type="button"
-      aria-label="Previous prose generation"
+      aria-label="Previous AI activity"
       [disabled]="!canSelectPrevious()"
       (click)="selectPrevious($event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -47,7 +61,7 @@
 
     <button
       type="button"
-      aria-label="Next prose generation"
+      aria-label="Next AI activity"
       [disabled]="!canSelectNext()"
       (click)="selectNext($event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"

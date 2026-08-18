@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
-import { Component, Injector, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, Injector, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
 import { Markdown } from '@tiptap/markdown';
@@ -43,7 +43,7 @@ import { AiStore } from '../../core/store/ai.store';
 import { CodexContextHighlightDirective } from '../codex/highlighting/codex-context-highlight.directive';
 import { ManuscriptStore } from './store/manuscript.store';
 import { AiStreamEditorService } from './helpers/ai/ai-stream-editor.service';
-import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
+import { AiSelectionEditService } from './helpers/ai/ai-selection-edit.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { MarkdownPlainTextPipe } from '../../shared/pipes/markdown-plain-text.pipe';
 
@@ -67,6 +67,9 @@ import { MarkdownPlainTextPipe } from '../../shared/pipes/markdown-plain-text.pi
 })
 export class Manuscript implements OnInit, OnDestroy {
 
+  @ViewChild(EditorBubbleMenuComponent)
+  private editorBubbleMenu!: EditorBubbleMenuComponent;
+
   // ---------------------------------------------------------------------------
   // Dependencies
   // ---------------------------------------------------------------------------
@@ -82,7 +85,7 @@ export class Manuscript implements OnInit, OnDestroy {
   private readonly injector = inject(Injector);
   private readonly saver = inject(ManuscriptProseSaverService);
   private readonly aiStreamEditor = inject(AiStreamEditorService);
-  private readonly generationSessions = inject(AiGenerationSessionService);
+  private readonly selectionEdits = inject(AiSelectionEditService);
   private readonly toastService = inject(ToastService);
 
 
@@ -171,6 +174,7 @@ export class Manuscript implements OnInit, OnDestroy {
    * cache reflects the latest editor state.
    */
   private closeHandler = async () => {
+    if (this.editor) this.selectionEdits.detachEditor(this.editor);
     await this.saver.flushDirtySections();
     await this.saver.flushStructuralChanges();
     await this.saver.flushParagraphVectorChanges();
@@ -189,6 +193,7 @@ export class Manuscript implements OnInit, OnDestroy {
       this.aiStreamEditor.beginViewChange();
       try {
         this.isNavigatingAfterRemoval = false;
+        if (this.editor) this.selectionEdits.detachEditor(this.editor);
         // Route changes reuse this component, so flush pending prose and vector
         // updates before replacing the editor document.
         await this.saver.flushDirtySections();
@@ -219,7 +224,10 @@ export class Manuscript implements OnInit, OnDestroy {
     this.electronService.removeBeforeCloseHandler(this.closeHandler);
     this.closeHandler();
 
-    if (this.editor) this.aiStreamEditor.detachEditor(this.editor);
+    if (this.editor) {
+      this.selectionEdits.detachEditor(this.editor);
+      this.aiStreamEditor.detachEditor(this.editor);
+    }
     this.editor?.destroy();
     this.store.setEditor(null);
     if (this.generationFocusTimeout !== null) {
@@ -294,6 +302,8 @@ export class Manuscript implements OnInit, OnDestroy {
       this.editor!.view.dispatch(tr);
       this.saver.seedCleanSnapshots(this.editor!);
       this.aiStreamEditor.syncActiveGenerations(this.editor!);
+      const bookId = this.getWorkspaceBookId();
+      if (bookId) this.selectionEdits.attachEditor(this.editor!, bookId);
       this.hasLoadedContent.set(true);
       this.refreshStructureAvailability();
       this.refreshIndexItems();
@@ -355,14 +365,6 @@ export class Manuscript implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   switchViewMode(mode: ManuscriptMode, id: string): void {
-    if (this.hasActiveSelectionGeneration()) {
-      this.toastService.warning(
-        'Finish or cancel the active Ask AI selection before changing views.',
-        'AI Generation',
-      );
-      return;
-    }
-
     const bookId = this.getWorkspaceBookId();
     if (!bookId) return;
 
@@ -385,15 +387,6 @@ export class Manuscript implements OnInit, OnDestroy {
     );
 
     if (!navigated) this.pendingGenerationFocus = null;
-  }
-
-  private hasActiveSelectionGeneration(): boolean {
-    return this.generationSessions.sessions().some(session => (
-      session.source === 'manuscript-selection'
-      && session.status() !== 'complete'
-      && session.status() !== 'stopped'
-      && session.status() !== 'failed'
-    ));
   }
 
   retryIndexing(): void {
@@ -501,6 +494,13 @@ export class Manuscript implements OnInit, OnDestroy {
   ): Promise<void> {
     await this.store.loadAndPatchScene(request.sceneId);
     if (!this.editor || this.editor.isDestroyed) return;
+
+    if (request.target === 'selection-edit') {
+      const bookId = this.getWorkspaceBookId();
+      if (bookId) this.selectionEdits.attachEditor(this.editor, bookId);
+      this.editorBubbleMenu.focusSelectionEdit(request.sessionId);
+      return;
+    }
 
     this.aiStreamEditor.syncActiveGenerations(this.editor);
     requestAnimationFrame(() => this.scrollToGenerationBlock(request.blockId));

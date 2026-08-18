@@ -1,8 +1,9 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
 import { ManuscriptStore } from '../../store/manuscript.store';
 import { TiptapJsonDoc, TiptapNode } from '../../../../../../shared/models/manuscript.model';
-import { countWordsInScene, extractTextFromJsonNode } from '../content/manuscript-content.utils';
+import { extractTextFromJsonNode } from '../content/manuscript-content.utils';
+import { AiSelectionEditService } from '../ai/ai-selection-edit.service';
 import { ManuscriptStructuralDeleteQueueService } from './manuscript-structural-delete-queue.service';
 import { ManuscriptParagraphVectorSyncService } from './manuscript-paragraph-vector-sync.service';
 import {
@@ -34,6 +35,7 @@ export class ManuscriptProseSaverService {
   private readonly store = inject(ManuscriptStore);
   private readonly structuralDeleteQueue = inject(ManuscriptStructuralDeleteQueueService);
   private readonly paragraphVectorSync = inject(ManuscriptParagraphVectorSyncService);
+  private readonly injector = inject(Injector);
 
 
   // ---------------------------------------------------------------------------
@@ -148,7 +150,9 @@ export class ManuscriptProseSaverService {
    * affected scene, updating `dirtySections`.
    */
   private snapshotDirtySections(affectedIds: Set<string>, editor: Editor): boolean {
-    const json = editor.getJSON();
+    const json = this.injector.get(AiSelectionEditService)
+      .persistenceSafeDocument(editor)
+      .toJSON() as TiptapJsonDoc;
     if (!json.content) return false;
 
     let currentSceneId: string | null = null;
@@ -157,7 +161,7 @@ export class ManuscriptProseSaverService {
 
     const commit = (id: string, content: TiptapNode[]) => {
       if (affectedIds.has(id)) {
-        const wordCount = countWordsInScene(editor, id);
+        const wordCount = countWords(content);
         this.store.updateLiveSceneWordCount(id, wordCount);
 
         if (this.hasMeaningfulProseChange(id, content)) {
@@ -181,7 +185,8 @@ export class ManuscriptProseSaverService {
         }
 
         if (node.type === SCENE_HEADER_NODE_TYPE) {
-          currentSceneId = node.attrs?.['id'] ?? null;
+          const sceneId = node.attrs?.['id'];
+          currentSceneId = typeof sceneId === 'string' ? sceneId : null;
           currentContent = [];
         } else {
           currentSceneId = null;
@@ -215,7 +220,9 @@ export class ManuscriptProseSaverService {
   }
 
   private seedCleanSnapshotsForScenes(sceneIds: Set<string> | null, editor: Editor): void {
-    const json = editor.getJSON();
+    const json = this.injector.get(AiSelectionEditService)
+      .persistenceSafeDocument(editor)
+      .toJSON() as TiptapJsonDoc;
     if (!json.content) return;
 
     let currentSceneId: string | null = null;
@@ -235,7 +242,8 @@ export class ManuscriptProseSaverService {
         }
 
         if (node.type === SCENE_HEADER_NODE_TYPE) {
-          currentSceneId = node.attrs?.['id'] ?? null;
+          const sceneId = node.attrs?.['id'];
+          currentSceneId = typeof sceneId === 'string' ? sceneId : null;
           currentContent = [];
         } else {
           currentSceneId = null;
@@ -301,4 +309,9 @@ export class ManuscriptProseSaverService {
   private normalizeTextForSaveSignature(text: string): string {
     return text.trim().replace(/\s+/g, ' ');
   }
+}
+
+function countWords(content: TiptapNode[]): number {
+  const text = content.map(node => extractTextFromJsonNode(node)).join(' ').trim();
+  return text ? text.split(/\s+/u).length : 0;
 }

@@ -1,4 +1,4 @@
-import { computed, inject } from '@angular/core';
+import { Injector, computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { Editor } from '@tiptap/core';
 
@@ -19,6 +19,7 @@ import {
 } from '../../../../../shared/models/manuscript.model';
 import { buildScenePatch } from '../helpers/content/manuscript-content.utils';
 import { ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META } from '../extensions/manuscript-editing-guard.extension';
+import { AiSelectionEditService } from '../helpers/ai/ai-selection-edit.service';
 
 const FORMAT_SETTINGS_STORAGE_KEY = 'manuscript_format_global';
 
@@ -332,6 +333,7 @@ export const ManuscriptStore = signalStore(
     workspaceBookStore = inject(WorkspaceBookStore),
     workspaceStore = inject(WorkspaceStore),
     manuscriptStructureService = inject(ManuscriptStructureService),
+    injector = inject(Injector),
   ) => {
     const liveSceneWordCounts = new Map<string, number>();
 
@@ -383,6 +385,17 @@ export const ManuscriptStore = signalStore(
       if (!bookId) return;
 
       workspaceStore.resetLastManuscriptRouteForRemovedEntity({ bookId, mode, id });
+    };
+
+    const cancelSelectionEdits = (
+      entityType: 'act' | 'chapter' | 'scene',
+      entityId: string,
+    ): void => {
+      injector.get(AiSelectionEditService).cancelForEntity({
+        entityType,
+        entityId,
+        hierarchy: workspaceBookStore.bookHierarchy(),
+      });
     };
 
     return ({
@@ -696,6 +709,7 @@ export const ManuscriptStore = signalStore(
       const editor = store.editor();
       if (!editor) return;
 
+      cancelSelectionEdits('act', id);
       deleteNodeRangeInDoc({ editor, targetType: ACT_HEADER_NODE, id, stopTypes: [ACT_HEADER_NODE] });
       resetLastRouteForRemovedEntity('act', id);
     },
@@ -704,6 +718,7 @@ export const ManuscriptStore = signalStore(
       const editor = store.editor();
       if (!editor) return;
 
+      cancelSelectionEdits('chapter', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: CHAPTER_HEADER_NODE,
@@ -717,6 +732,7 @@ export const ManuscriptStore = signalStore(
       const editor = store.editor();
       if (!editor) return;
 
+      cancelSelectionEdits('scene', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: SCENE_SUMMARY_NODE,
@@ -731,6 +747,7 @@ export const ManuscriptStore = signalStore(
       if (!editor) return;
 
       await manuscriptStructureService.archiveAct(id);
+      cancelSelectionEdits('act', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: ACT_HEADER_NODE,
@@ -746,6 +763,7 @@ export const ManuscriptStore = signalStore(
       if (!editor) return;
 
       await manuscriptStructureService.archiveChapter(id);
+      cancelSelectionEdits('chapter', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: CHAPTER_HEADER_NODE,
@@ -761,6 +779,7 @@ export const ManuscriptStore = signalStore(
       if (!editor) return;
 
       await manuscriptStructureService.archiveScene(id);
+      cancelSelectionEdits('scene', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: SCENE_SUMMARY_NODE,

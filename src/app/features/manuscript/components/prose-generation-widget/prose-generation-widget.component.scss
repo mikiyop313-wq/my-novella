@@ -87,6 +87,7 @@
 }
 
 .generation-stop-button,
+.generation-complete-button,
 .generation-navigation button {
   display: inline-grid;
   place-items: center;
@@ -118,6 +119,19 @@
     height: 10px;
     border-radius: 2px;
     background: currentColor;
+  }
+}
+
+.generation-complete-button {
+  width: 34px;
+  height: 34px;
+  border-color: color-mix(in srgb, var(--color-btn-primary-bg) 38%, var(--color-border));
+  border-radius: 10px;
+  color: var(--color-btn-primary-bg);
+
+  svg {
+    width: 17px;
+    height: 17px;
   }
 }
 

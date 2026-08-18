@@ -13,6 +13,7 @@ import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.se
 import { Manuscript } from './manuscript';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
 import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
+import { AiSelectionEditService } from './helpers/ai/ai-selection-edit.service';
 import { ToastService } from '../../shared/services/toast.service';
 
 const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
@@ -45,6 +46,17 @@ describe('Manuscript', () => {
     invoke: (channel: string, payload?: unknown) => electronInvoke(channel, payload),
     onBeforeClose: () => undefined,
     removeBeforeCloseHandler: () => undefined,
+  };
+  const selectionEdits = {
+    sessions: signal([]),
+    sessionsForBook: () => [],
+    getSession: vi.fn(() => null),
+    startEdit: vi.fn(() => null),
+    attachEditor: vi.fn(),
+    detachEditor: vi.fn(),
+    cancelForSceneIds: vi.fn(),
+    cancelForEntity: vi.fn(),
+    persistenceSafeDocument: (editor: { state: { doc: unknown } }) => editor.state.doc,
   };
 
   beforeEach(async () => {
@@ -107,6 +119,7 @@ describe('Manuscript', () => {
     registry.clearRanges.mockClear();
     trieState.set({});
     routerNavigate = vi.fn().mockResolvedValue(true);
+    selectionEdits.cancelForEntity.mockClear();
 
     await TestBed.configureTestingModule({
       imports: [Manuscript],
@@ -136,6 +149,10 @@ describe('Manuscript', () => {
         { provide: CodexContextHighlightRegistryService, useValue: registry },
         { provide: CodexMatchChooserService, useValue: { open: vi.fn() } },
         { provide: CodexEntryOpenerService, useValue: { open: vi.fn() } },
+        {
+          provide: AiSelectionEditService,
+          useValue: selectionEdits,
+        },
       ],
     }).compileComponents();
 
@@ -143,6 +160,7 @@ describe('Manuscript', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
     await fixture.whenStable();
+    await vi.waitFor(() => expect(component.hasLoadedContent()).toBe(true));
     flushFrames();
     registry.setRanges.mockClear();
   });
@@ -520,7 +538,9 @@ describe('Manuscript', () => {
       component.store.setRouteParams(route.mode, route.id);
       routerNavigate.mockClear();
 
-      await component.focusProseGeneration({ blockId: 'response-2', sceneId: 'scene-2' });
+      await component.focusProseGeneration({
+        target: 'prose-block', blockId: 'response-2', sceneId: 'scene-2',
+      });
 
       expect(routerNavigate).not.toHaveBeenCalled();
     }
@@ -533,12 +553,30 @@ describe('Manuscript', () => {
     component.store.setRouteParams('scene', 'scene-1');
     routerNavigate.mockClear();
 
-    await component.focusProseGeneration({ blockId: 'response-2', sceneId: 'scene-2' });
+    await component.focusProseGeneration({
+      target: 'prose-block', blockId: 'response-2', sceneId: 'scene-2',
+    });
 
     expect(routerNavigate).toHaveBeenCalledWith(
       ['/workspace', 'book-1', 'manuscript', 'scene', 'scene-2'],
       { replaceUrl: true },
     );
+  });
+
+  it('focuses a selection edit without navigating', async () => {
+    setGenerationHierarchy();
+    component.store.setRouteParams('scene', 'scene-1');
+    const editorBubbleMenu = (component as any).editorBubbleMenu;
+    const focusSelectionEdit = vi.spyOn(editorBubbleMenu, 'focusSelectionEdit');
+    routerNavigate.mockClear();
+
+    await component.focusProseGeneration({
+      target: 'selection-edit', sessionId: 'selection-1', sceneId: 'scene-1',
+    });
+    flushFrames();
+
+    expect(focusSelectionEdit).toHaveBeenCalledWith('selection-1');
+    expect(routerNavigate).not.toHaveBeenCalled();
   });
 
   it('loads the target scene and highlights the exact generated block', async () => {
@@ -577,7 +615,9 @@ describe('Manuscript', () => {
     const nodeDom = vi.spyOn(component.editor!.view, 'nodeDOM')
       .mockReturnValue(generatedBlock);
 
-    await component.focusProseGeneration({ blockId: 'response-2', sceneId: 'scene-2' });
+    await component.focusProseGeneration({
+      target: 'prose-block', blockId: 'response-2', sceneId: 'scene-2',
+    });
     flushFrames();
 
     expect(loadAndPatchScene).toHaveBeenCalledWith('scene-2');
@@ -664,6 +704,10 @@ describe('Manuscript', () => {
         mode: 'book',
         id: 'book-1',
       });
+      expect(selectionEdits.cancelForEntity).toHaveBeenCalledWith(expect.objectContaining({
+        entityType: mode,
+        entityId: id,
+      }));
     });
   });
 
@@ -696,6 +740,10 @@ describe('Manuscript', () => {
       mode: 'book',
       id: 'book-1',
     });
+    expect(selectionEdits.cancelForEntity).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: mode,
+      entityId: id,
+    }));
   });
 
   it('does not navigate when removing a nested entity from a broader view', async () => {
@@ -729,6 +777,7 @@ describe('Manuscript', () => {
     expect(component.editor?.getJSON().content?.some(node => (
       node.type === 'actHeader' && node.attrs?.['id'] === 'act-1'
     ))).toBe(true);
+    expect(selectionEdits.cancelForEntity).not.toHaveBeenCalled();
     expect(routerNavigate).not.toHaveBeenCalled();
     expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
       mode: 'act',
