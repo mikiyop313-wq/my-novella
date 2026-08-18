@@ -49,7 +49,7 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
   isModifying = signal(false);
   modifyPrompt = signal('');
   hasCopied = signal(false);
-  isReasoningExpanded = signal(true);
+  isReasoningExpanded = signal(false);
 
 
   // ---------------------------------------------------------------------------

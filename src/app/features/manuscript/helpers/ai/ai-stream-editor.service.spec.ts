@@ -79,7 +79,10 @@ describe('AiStreamEditorService', () => {
       ],
     });
     const service = TestBed.inject(AiStreamEditorService);
-    vi.spyOn(service as any, 'persistCompletedGeneration').mockResolvedValue(undefined);
+    const persistCompletedGeneration = vi.spyOn(
+      service as any,
+      'persistCompletedGeneration',
+    ).mockResolvedValue(undefined);
 
     const generation = (service as any).streamToBlock(
       { id: 'response-1', sourcePromptId: 'prompt-1' },
@@ -98,7 +101,55 @@ describe('AiStreamEditorService', () => {
     await generation;
 
     expect(stopStream).toHaveBeenCalledWith('response-1');
+    expect(persistCompletedGeneration).toHaveBeenCalledWith(expect.objectContaining({
+      blockId: 'response-1',
+      content: '',
+      removeBlock: true,
+    }));
     expect(service.ensurePromptLoadingState('prompt-1')()).toBe('idle');
+    TestBed.resetTestingModule();
+  });
+
+  it('preserves a stopped generated block after receiving partial content', async () => {
+    let rejectStream!: (error: Error) => void;
+    const streamText = vi.fn((request: { onToken: (token: string) => void }) => {
+      request.onToken('Partial prose');
+      return new Promise<string>((_, reject) => {
+        rejectStream = reject;
+      });
+    });
+    const stopStream = vi.fn(async () => rejectStream(new Error('aborted')));
+    TestBed.configureTestingModule({
+      providers: [
+        AiStreamEditorService,
+        { provide: AiStreamService, useValue: { streamText, stopStream } },
+        { provide: ToastService, useValue: { error: vi.fn(), warning: vi.fn() } },
+      ],
+    });
+    const service = TestBed.inject(AiStreamEditorService);
+    const persistCompletedGeneration = vi.spyOn(
+      service as any,
+      'persistCompletedGeneration',
+    ).mockResolvedValue(undefined);
+
+    const generation = (service as any).streamToBlock(
+      { id: 'response-1', sourcePromptId: 'prompt-1' },
+      textPrompt('Continue.'),
+      'openrouter',
+      'model-1',
+      false,
+      'book-1',
+      'scene-1',
+    );
+
+    await service.stopPromptGeneration('prompt-1');
+    await generation;
+
+    expect(persistCompletedGeneration).toHaveBeenCalledWith(expect.objectContaining({
+      blockId: 'response-1',
+      content: 'Partial prose',
+      removeBlock: false,
+    }));
     TestBed.resetTestingModule();
   });
 
@@ -271,6 +322,37 @@ describe('AiStreamEditorService', () => {
     expect((service as any).findGeneratingBlockPos(editor, 'response-1')).toBe(5);
     expect((service as any).findGeneratingBlockPos(editor, 'response-2')).toBe(20);
 
+    TestBed.resetTestingModule();
+  });
+
+  it('removes a stopped empty block when the manuscript editor is recreated', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        AiStreamEditorService,
+        { provide: AiStreamService, useValue: { loadingState: new Map() } },
+      ],
+    });
+    const service = TestBed.inject(AiStreamEditorService);
+    const editor = createGeneratingEditor();
+    (service as any).activeGenerations.set('response-1', {
+      blockId: 'response-1',
+      sceneId: 'scene-1',
+      blockAttrs: { id: 'response-1', sourcePromptId: 'prompt-1' },
+      session: {
+        status: () => 'stopped',
+        content: () => '',
+        reasoning: () => '',
+      },
+    });
+
+    service.syncActiveGenerations(editor);
+
+    expect(editor.getJSON().content).not.toContainEqual(
+      expect.objectContaining({ type: 'aiGeneratedBlock' }),
+    );
+    expect((service as any).activeGenerations.has('response-1')).toBe(false);
+
+    editor.destroy();
     TestBed.resetTestingModule();
   });
 
