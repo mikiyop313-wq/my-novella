@@ -45,6 +45,7 @@ import { ManuscriptStore } from './store/manuscript.store';
 import { AiStreamEditorService } from './helpers/ai/ai-stream-editor.service';
 import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { MarkdownPlainTextPipe } from '../../shared/pipes/markdown-plain-text.pipe';
 
 @Component({
   selector: 'app-manuscript',
@@ -59,6 +60,7 @@ import { ToastService } from '../../shared/services/toast.service';
     ProseGenerationWidgetComponent,
     SceneHeaderComponent,
     CodexContextHighlightDirective,
+    MarkdownPlainTextPipe,
   ],
   templateUrl: './manuscript.html',
   styleUrl: './manuscript.scss',
@@ -112,17 +114,20 @@ export class Manuscript implements OnInit, OnDestroy {
 
     for (const act of this.store.bookHierarchy()) {
       if (mode === 'act' && act.id === id) {
-        return `Act ${act.position + 1}: ${act.title || 'Untitled Act'}`;
+        const actLabel = `Act ${act.position + 1}`;
+        return act.title ? `${actLabel}: ${act.title}` : actLabel;
       }
 
       for (const chapter of act.chapters || []) {
         if (mode === 'chapter' && chapter.id === id) {
-          return `Chapter ${chapter.position + 1}: ${chapter.title || 'Untitled Chapter'}`;
+          const chapterLabel = `Chapter ${chapter.position + 1}`;
+          return chapter.title ? `${chapterLabel}: ${chapter.title}` : chapterLabel;
         }
 
         const scene = (chapter.scenes || []).find(s => s.id === id);
         if (mode === 'scene' && scene) {
-          return `Scene ${scene.position + 1}: ${scene.title || 'Untitled Scene'}`;
+          const sceneLabel = `Scene ${scene.position + 1}`;
+          return scene.title ? `${sceneLabel}: ${scene.title}` : sceneLabel;
         }
       }
     }

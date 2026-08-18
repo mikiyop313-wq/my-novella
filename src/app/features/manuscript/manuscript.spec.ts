@@ -377,7 +377,7 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Scene 2: A Door Opens');
   });
 
-  it('uses untitled labels in the view scope', () => {
+  it('uses position labels for untitled act and chapter view scopes', () => {
     const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
     workspaceBookStore.setBookHierarchy([{
       id: 'act-1',
@@ -386,12 +386,72 @@ describe('Manuscript', () => {
       position: 0,
       status: 'active',
       summary: null,
-      chapters: [],
+      chapters: [{
+        id: 'chapter-1',
+        title: '',
+        actId: 'act-1',
+        position: 2,
+        status: 'active',
+        summary: null,
+        scenes: [],
+      }],
     }]);
 
     component.store.setRouteParams('act', 'act-1');
+    expect(component.currentScopeLabel()).toBe('Act 1');
 
-    expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
+    component.store.setRouteParams('chapter', 'chapter-1');
+    expect(component.currentScopeLabel()).toBe('Chapter 3');
+  });
+
+  it('shows numbered hierarchy titles and plain-text scene summaries in the view menu', async () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act One',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter One',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'Arrival',
+          chapterId: 'chapter-1',
+          position: 1,
+          status: 'active',
+          prose: null,
+          summary: '**Mara** enters the [keep](https://example.com).',
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }]);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.view-scope-btn') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    (Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Act 1: Act One'))!).click();
+    await fixture.whenStable();
+    (Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Chapter 1: Chapter One'))!).click();
+    await fixture.whenStable();
+
+    const sceneCopy = document.querySelector('.scene-menu-copy');
+    expect(sceneCopy?.querySelector('.item-label')?.textContent).toContain('Scene 2: Arrival');
+    expect(sceneCopy?.querySelector('.item-summary')?.textContent).toContain('Mara enters the keep.');
+    expect(sceneCopy?.querySelector('.item-summary')?.textContent).not.toContain('**');
+
+    (sceneCopy?.closest('button') as HTMLButtonElement).click();
+    await fixture.whenStable();
   });
 
   it('updates words, pages, and reading time as prose changes', () => {

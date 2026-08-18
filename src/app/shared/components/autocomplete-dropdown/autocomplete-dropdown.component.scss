@@ -353,6 +353,16 @@
   font-size: 0.67rem;
 }
 
+.row-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
 .row-count {
   min-width: 22px;
   text-align: right;

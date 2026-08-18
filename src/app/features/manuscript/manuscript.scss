@@ -423,6 +423,25 @@
       }
     }
 
+    .scene-menu-copy {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .item-summary {
+      display: -webkit-box;
+      overflow: hidden;
+      color: var(--color-text-secondary);
+      font-size: 0.72rem;
+      line-height: 1.35;
+      font-weight: 400;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 4;
+    }
+
     .check-icon {
       color: var(--color-text-primary);
       margin-left: 8px;
