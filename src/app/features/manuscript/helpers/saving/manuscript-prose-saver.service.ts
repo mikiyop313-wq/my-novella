@@ -1,8 +1,14 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { Editor } from '@tiptap/core';
 import { ManuscriptStore } from '../../store/manuscript.store';
-import { TiptapJsonDoc, TiptapNode } from '../../../../../../shared/models/manuscript.model';
-import { countWordsInScene, extractTextFromJsonNode } from '../content/manuscript-content.utils';
+import {
+  CreatedStructureSplitDto,
+  TiptapJsonDoc,
+  TiptapNode,
+  UpdateStructurePositionsPayload,
+} from '../../../../../../shared/models/manuscript.model';
+import { extractTextFromJsonNode } from '../content/manuscript-content.utils';
+import { AiSelectionEditService } from '../ai/ai-selection-edit.service';
 import { ManuscriptStructuralDeleteQueueService } from './manuscript-structural-delete-queue.service';
 import { ManuscriptParagraphVectorSyncService } from './manuscript-paragraph-vector-sync.service';
 import {
@@ -34,6 +40,7 @@ export class ManuscriptProseSaverService {
   private readonly store = inject(ManuscriptStore);
   private readonly structuralDeleteQueue = inject(ManuscriptStructuralDeleteQueueService);
   private readonly paragraphVectorSync = inject(ManuscriptParagraphVectorSyncService);
+  private readonly injector = inject(Injector);
 
 
   // ---------------------------------------------------------------------------
@@ -43,6 +50,8 @@ export class ManuscriptProseSaverService {
   private dirtySections = new Map<string, DirtySection>();
   private lastSavedProseSignatures = new Map<string, string>();
   private proseDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private structureDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingStructurePositions: UpdateStructurePositionsPayload | null = null;
 
   /**
    * Called on every Tiptap `onUpdate` where `docChanged` is true.
@@ -52,6 +61,11 @@ export class ManuscriptProseSaverService {
   onDocumentChanged(transaction: any, editor: Editor): void {
     this.structuralDeleteQueue.cacheDeletedSections(transaction);
     this.structuralDeleteQueue.cancelRestoredSections(transaction);
+
+    const structureChanged = headerSignature(transaction.before) !== headerSignature(transaction.doc);
+    if (structureChanged && transaction.getMeta('history$')) {
+      this.scheduleStructurePositionSync(editor);
+    }
 
     const affectedIds = this.findAffectedSectionIds(transaction, editor);
     if (affectedIds.size === 0) return;
@@ -76,7 +90,27 @@ export class ManuscriptProseSaverService {
    * issue the real IPC deletes.
    */
   async flushStructuralChanges(): Promise<void> {
+    await this.flushStructurePositions();
     await this.structuralDeleteQueue.flushStructuralChanges();
+  }
+
+  registerStructureSplit(created: CreatedStructureSplitDto): void {
+    this.structuralDeleteQueue.registerSplitRoot(
+      created.act?.id ?? created.chapter?.id ?? created.scene.id,
+    );
+  }
+
+  async flushStructurePositions(): Promise<void> {
+    if (this.structureDebounceTimer !== null) {
+      clearTimeout(this.structureDebounceTimer);
+      this.structureDebounceTimer = null;
+    }
+    const payload = this.pendingStructurePositions;
+    this.pendingStructurePositions = null;
+    if (payload) {
+      await this.store.syncStructurePositions(payload);
+      await this.store.refreshHierarchy(this.structuralDeleteQueue.pendingDeleteIds());
+    }
   }
 
   /** Persists all dirty scene sections immediately and clears the queue. */
@@ -119,6 +153,12 @@ export class ManuscriptProseSaverService {
    * contain the changed positions. Only scenes hold prose.
    */
   private findAffectedSectionIds(transaction: any, editor: Editor): Set<string> {
+    if (headerSignature(transaction.before) !== headerSignature(transaction.doc)) {
+      return new Set([
+        ...sceneIdsInDocument(transaction.before),
+        ...sceneIdsInDocument(transaction.doc),
+      ]);
+    }
     const children: Array<{ node: any; from: number }> = [];
     editor.state.doc.forEach((node: any, offset: number) =>
       children.push({ node, from: offset })
@@ -148,7 +188,9 @@ export class ManuscriptProseSaverService {
    * affected scene, updating `dirtySections`.
    */
   private snapshotDirtySections(affectedIds: Set<string>, editor: Editor): boolean {
-    const json = editor.getJSON();
+    const json = this.injector.get(AiSelectionEditService)
+      .persistenceSafeDocument(editor)
+      .toJSON() as TiptapJsonDoc;
     if (!json.content) return false;
 
     let currentSceneId: string | null = null;
@@ -157,8 +199,10 @@ export class ManuscriptProseSaverService {
 
     const commit = (id: string, content: TiptapNode[]) => {
       if (affectedIds.has(id)) {
+        const wordCount = countWords(content);
+        this.store.updateLiveSceneWordCount(id, wordCount);
+
         if (this.hasMeaningfulProseChange(id, content)) {
-          const wordCount = countWordsInScene(editor, id);
           this.dirtySections.set(id, {
             prose: { type: 'doc', content },
             wordCount,
@@ -179,7 +223,8 @@ export class ManuscriptProseSaverService {
         }
 
         if (node.type === SCENE_HEADER_NODE_TYPE) {
-          currentSceneId = node.attrs?.['id'] ?? null;
+          const sceneId = node.attrs?.['id'];
+          currentSceneId = typeof sceneId === 'string' ? sceneId : null;
           currentContent = [];
         } else {
           currentSceneId = null;
@@ -196,7 +241,23 @@ export class ManuscriptProseSaverService {
       commit(currentSceneId, currentContent);
     }
 
+    const presentSceneIds = sceneIdsInDocument(editor.state.doc);
+    affectedIds.forEach(sceneId => {
+      if (!presentSceneIds.has(sceneId)) {
+        this.dirtySections.delete(sceneId);
+        this.paragraphVectorSync.snapshotDirtyParagraphs(sceneId, []);
+      }
+    });
+
     return hasDirtySections;
+  }
+
+  private scheduleStructurePositionSync(editor: Editor): void {
+    this.pendingStructurePositions = structurePositionsFromDocument(editor);
+    if (this.structureDebounceTimer !== null) clearTimeout(this.structureDebounceTimer);
+    this.structureDebounceTimer = setTimeout(() => {
+      void this.flushStructurePositions();
+    }, 250);
   }
 
 
@@ -213,7 +274,9 @@ export class ManuscriptProseSaverService {
   }
 
   private seedCleanSnapshotsForScenes(sceneIds: Set<string> | null, editor: Editor): void {
-    const json = editor.getJSON();
+    const json = this.injector.get(AiSelectionEditService)
+      .persistenceSafeDocument(editor)
+      .toJSON() as TiptapJsonDoc;
     if (!json.content) return;
 
     let currentSceneId: string | null = null;
@@ -233,7 +296,8 @@ export class ManuscriptProseSaverService {
         }
 
         if (node.type === SCENE_HEADER_NODE_TYPE) {
-          currentSceneId = node.attrs?.['id'] ?? null;
+          const sceneId = node.attrs?.['id'];
+          currentSceneId = typeof sceneId === 'string' ? sceneId : null;
           currentContent = [];
         } else {
           currentSceneId = null;
@@ -299,4 +363,62 @@ export class ManuscriptProseSaverService {
   private normalizeTextForSaveSignature(text: string): string {
     return text.trim().replace(/\s+/g, ' ');
   }
+}
+
+function countWords(content: TiptapNode[]): number {
+  const text = content.map(node => extractTextFromJsonNode(node)).join(' ').trim();
+  return text ? text.split(/\s+/u).length : 0;
+}
+
+function headerSignature(doc: any): string {
+  const headers: unknown[] = [];
+  doc.forEach((node: any) => {
+    if (isHeaderNodeType(node.type.name)) {
+      headers.push({
+        type: node.type.name,
+        id: node.attrs['id'],
+        bookId: node.attrs['bookId'],
+        actId: node.attrs['actId'],
+        chapterId: node.attrs['chapterId'],
+        position: Number(node.attrs['position']) || 0,
+      });
+    }
+  });
+  return JSON.stringify(headers);
+}
+
+function sceneIdsInDocument(doc: any): Set<string> {
+  const ids = new Set<string>();
+  doc.forEach((node: any) => {
+    if (isSceneHeaderNodeType(node.type.name) && node.attrs['id']) ids.add(node.attrs['id']);
+  });
+  return ids;
+}
+
+function structurePositionsFromDocument(editor: Editor): UpdateStructurePositionsPayload {
+  const payload: UpdateStructurePositionsPayload = { acts: [], chapters: [], scenes: [] };
+  editor.state.doc.forEach(node => {
+    const id = node.attrs['id'] as string | undefined;
+    if (!id) return;
+    if (node.type.name === 'actHeader' && node.attrs['bookId']) {
+      payload.acts!.push({
+        id,
+        bookId: node.attrs['bookId'] as string,
+        position: Number(node.attrs['position']) || 0,
+      });
+    } else if (node.type.name === 'chapterHeader' && node.attrs['actId']) {
+      payload.chapters!.push({
+        id,
+        actId: node.attrs['actId'] as string,
+        position: Number(node.attrs['position']) || 0,
+      });
+    } else if (node.type.name === 'sceneSummary' && node.attrs['chapterId']) {
+      payload.scenes!.push({
+        id,
+        chapterId: node.attrs['chapterId'] as string,
+        position: Number(node.attrs['position']) || 0,
+      });
+    }
+  });
+  return payload;
 }

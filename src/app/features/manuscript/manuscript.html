@@ -309,7 +309,9 @@
       <div class="menu-divider"></div>
       @for (act of store.bookHierarchy(); track act.id) {
       <button class="menu-item" [cdkMenuTriggerFor]="actMenu" [cdkMenuTriggerData]="{ $implicit: act }" cdkMenuItem>
-        <span class="item-label">{{ act.title || 'Untitled Act' }}</span>
+        <span class="item-label">
+          {{ 'Act ' + (act.position + 1) + (act.title ? ': ' + act.title : '') }}
+        </span>
         <svg class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           width="12" height="12">
           <polyline points="9 18 15 12 9 6"></polyline>
@@ -330,7 +332,9 @@
       @for (chapter of act.chapters; track chapter.id) {
       <button class="menu-item" [cdkMenuTriggerFor]="chapterMenu" [cdkMenuTriggerData]="{ $implicit: chapter }"
         cdkMenuItem>
-        <span class="item-label">{{ chapter.title || 'Untitled Chapter' }}</span>
+        <span class="item-label">
+          {{ 'Chapter ' + (chapter.position + 1) + (chapter.title ? ': ' + chapter.title : '') }}
+        </span>
         <svg class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           width="12" height="12">
           <polyline points="9 18 15 12 9 6"></polyline>
@@ -350,7 +354,14 @@
       <div class="menu-divider"></div>
       @for (scene of chapter.scenes; track scene.id) {
       <button class="menu-item" (click)="switchViewMode('scene', scene.id)" cdkMenuItem>
-        <span class="item-label">{{ scene.title || 'Untitled Scene' }}</span>
+        <span class="scene-menu-copy">
+          <span class="item-label">
+            {{ 'Scene ' + (scene.position + 1) + (scene.title ? ': ' + scene.title : '') }}
+          </span>
+          @if (scene.summary | markdownPlainText; as summary) {
+          <span class="item-summary">{{ summary }}</span>
+          }
+        </span>
       </button>
       }
       }
@@ -358,7 +369,21 @@
   </ng-template>
 
   <div class="editor-main-layout">
-    <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'">
+    @if (search.open()) {
+    <app-manuscript-search class="manuscript-search-overlay" animate.enter="search-slide-enter"
+      animate.leave="search-slide-leave" [query]="search.query()"
+      [currentMatch]="search.currentMatchNumber()" [totalMatches]="search.matches().length"
+      [wholeManuscript]="search.wholeManuscript()" [matchCase]="search.matchCase()"
+      [wholeWord]="search.wholeWord()" [loading]="search.loading()" [error]="search.error()"
+      (queryChange)="updateSearchQuery($event)" (wholeManuscriptChange)="updateSearchScope($event)"
+      (matchCaseChange)="updateSearchMatchCase($event)" (wholeWordChange)="updateSearchWholeWord($event)"
+      (previous)="selectPreviousSearchMatch()" (next)="selectNextSearchMatch()" (closed)="closeSearch()"
+      (retry)="retryWholeManuscriptSearch()">
+    </app-manuscript-search>
+    }
+
+    <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'"
+      (scroll)="dismissSlashCommandMenu()">
       @if (store.mode() === 'scene') {
       <app-scene-header></app-scene-header>
       }
@@ -381,6 +406,12 @@
       </div>
       }
     </div>
+
+    @if (slashCommandMenuPosition(); as menuPosition) {
+    <app-slash-command-menu [position]="menuPosition" [items]="slashCommandMenuItems()"
+      [selectedIndex]="slashCommandMenuSelectedIndex()"
+      (commandSelected)="selectSlashCommand($event)" (dismissed)="dismissSlashCommandMenu()" />
+    }
 
     <aside class="format-sidebar" [class.is-open]="store.showFormatMenu()">
       <div class="sidebar-header">
@@ -550,6 +581,10 @@
   @if (indexItems().length > 0) {
   <app-manuscript-index-scroll [items]="indexItems()" (select)="scrollToSection($event)"></app-manuscript-index-scroll>
   }
+
+  <app-prose-generation-widget
+    (focusRequested)="focusProseGeneration($event)">
+  </app-prose-generation-widget>
 
   @if (paragraphVectorSync.indexingAvailable()) {
   <div class="indexing-status" [class.is-error]="paragraphVectorSync.indexingState() === 'error'"

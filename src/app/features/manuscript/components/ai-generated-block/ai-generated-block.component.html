@@ -1,52 +1,59 @@
 <div class="ai-generated-container" [class.is-loading]="isLoading()">
-  <!-- Model metadata -->
-  <div class="ai-header" contenteditable="false">
-    @if(modelId()) {
-    <div class="ai-model-badge">
-      <span>{{ modelId() }}</span>
+  <div class="ai-metadata" contenteditable="false">
+    <div class="ai-identity">
+      <span class="ai-draft-label">AI draft</span>
+      @if(modelId()) {
+      <span class="metadata-separator" aria-hidden="true">·</span>
+      <span class="ai-model" [title]="modelId()">{{ modelId() }}</span>
+      }
     </div>
-    }
+
+    <div class="ai-status">
+      @if(reasoningText()) {
+      <button
+        type="button"
+        class="reasoning-toggle"
+        [attr.aria-expanded]="isReasoningExpanded()"
+        (click)="toggleReasoning()"
+        title="Toggle reasoning"
+      >
+        <svg [class.expanded]="isReasoningExpanded()" viewBox="0 0 24 24" width="14" height="14" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+        <span>Reasoning</span>
+      </button>
+      }
+
+      @if(isLoading() || wordCount() > 0) {
+      <span class="word-count" [class.is-live]="isLoading()">
+        @if(isLoading()) {
+        <span class="live-dot" aria-hidden="true"></span>
+        }
+        @if(wordCount() > 0) {
+        {{ wordCount() }} {{ wordCount() === 1 ? 'word' : 'words' }}
+        } @else {
+        Generating
+        }
+      </span>
+      }
+    </div>
   </div>
 
-  <!-- Reasoning output -->
-  @if(reasoningText()){
+  @if(reasoningText() && isReasoningExpanded()) {
   <div class="reasoning-block" contenteditable="false">
-    <div class="reasoning-header" (click)="toggleReasoning()" title="Toggle Thinking Process">
-      <svg [class.expanded]="isReasoningExpanded()" viewBox="0 0 24 24" width="16" height="16" fill="none"
-        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="9 18 15 12 9 6"></polyline>
-      </svg>
-      <span class="reasoning-title">Thinking Process</span>
-    </div>
-
-    @if(isReasoningExpanded()){
     <div class="reasoning-content">
       {{ reasoningText() }}
     </div>
-    }
   </div>
   }
 
-  <!-- Generated manuscript content -->
   <div class="ai-generated-content" #contentDOM data-node-view-content></div>
 
-  <!-- Live word count -->
-  @if(wordCount() > 0){
-  <div class="word-count-row" contenteditable="false">
-    <span class="word-count-badge" [class.is-live]="isLoading()">
-      @if(isLoading()){
-      <span class="live-dot"></span>
-      }
-      {{ wordCount() }} {{ wordCount() === 1 ? 'word' : 'words' }}
-    </span>
-  </div>
-  }
-
-  <!-- Review actions -->
-  @if(!isLoading()){
+  @if(!isLoading()) {
   <div class="ai-post-actions" contenteditable="false">
     <div class="main-actions" *ngIf="!isModifying()">
-      <button class="action-btn discard" (click)="discardText()" title="Discard text">
+      <button type="button" class="action-btn discard" (click)="discardText()" title="Discard text">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6"></polyline>
@@ -55,7 +62,7 @@
         Discard
       </button>
 
-      <button class="action-btn copy" (click)="copyText()" title="Copy to clipboard">
+      <button type="button" class="action-btn copy" (click)="copyText()" title="Copy to clipboard">
         @if(hasCopied()) {
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
@@ -72,7 +79,7 @@
         }
       </button>
 
-      <button class="action-btn retry" (click)="tryAgain()" [disabled]="isSceneGenerationBlocked()" title="Try again">
+      <button type="button" class="action-btn retry" (click)="tryAgain()" [disabled]="isSceneGenerationBlocked()" title="Try again">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"></polyline>
@@ -82,7 +89,7 @@
         Try Again
       </button>
 
-      <button class="action-btn modify" (click)="toggleModify()" [disabled]="isSceneGenerationBlocked()" title="Tell AI what to change">
+      <button type="button" class="action-btn modify" (click)="toggleModify()" [disabled]="isSceneGenerationBlocked()" title="Tell AI what to change">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -91,7 +98,7 @@
         Modify
       </button>
 
-      <button class="action-btn apply" (click)="applyText()" title="Apply to manuscript">
+      <button type="button" class="action-btn apply" (click)="applyText()" title="Apply to manuscript">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"></polyline>
@@ -100,14 +107,13 @@
       </button>
     </div>
 
-    <!-- Modification request form -->
-    @if(isModifying()){
+    @if(isModifying()) {
     <div class="modify-actions">
       <input type="text" class="modify-input" [(ngModel)]="modifyPrompt" placeholder="Tell AI what to change..."
         (keydown.enter)="submitModify()">
 
       <div class="modify-btns">
-        <button class="action-btn outline" (click)="toggleModify()">
+        <button type="button" class="action-btn outline" (click)="toggleModify()">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -116,7 +122,7 @@
           Cancel
         </button>
 
-        <button class="action-btn apply" (click)="submitModify()" [disabled]="!modifyPrompt().trim() || isSceneGenerationBlocked()">
+        <button type="button" class="action-btn apply" (click)="submitModify()" [disabled]="!modifyPrompt().trim() || isSceneGenerationBlocked()">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>

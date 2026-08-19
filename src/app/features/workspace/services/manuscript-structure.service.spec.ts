@@ -67,6 +67,20 @@ describe('ManuscriptStructureService', () => {
       { actId: 'act-1' },
     );
 
+    const splitPayload = {
+      command: 'scene' as const,
+      sourceSceneId: 'scene-1',
+      sourceProse: { type: 'doc' as const, content: [{ type: 'paragraph' }] },
+      sourceWordCount: 0,
+      splitProse: { type: 'doc' as const, content: [{ type: 'paragraph' }] },
+      splitWordCount: 0,
+    };
+    await expect(service.createStructureSplit(splitPayload)).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:createStructureSplit',
+      splitPayload,
+    );
+
     await expect(service.deleteAct('act-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:deleteAct', { id: 'act-1' });
 
@@ -75,6 +89,12 @@ describe('ManuscriptStructureService', () => {
 
     await expect(service.deleteScene('scene-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:deleteScene', { id: 'scene-1' });
+
+    await expect(service.deleteScene('scene-1', { preservePositions: true })).resolves.toBe(result);
+    expect(electronService.invoke).toHaveBeenLastCalledWith(
+      'manuscript:deleteScene',
+      { id: 'scene-1', preservePositions: true },
+    );
 
     await expect(service.archiveAct('act-1')).resolves.toBe(result);
     expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript:archiveAct', { id: 'act-1' });

@@ -7,6 +7,8 @@ import {
   ChapterDto,
   CreatedActStructureDto,
   CreatedChapterStructureDto,
+  CreatedStructureSplitDto,
+  CreateStructureSplitPayload,
   ManuscriptMode,
   SceneDto,
   SetContextInclusionPayload,
@@ -15,6 +17,10 @@ import {
   UpdateScenePayload,
   UpdateStructurePositionsPayload,
 } from '../../../../../shared/models/manuscript.model';
+
+interface DeleteManuscriptOptions {
+  preservePositions?: boolean;
+}
 
 @Injectable({
   providedIn: 'root',
@@ -57,16 +63,29 @@ export class ManuscriptStructureService {
     return await this.electronService.invoke('manuscript:createChapterStructure', { actId });
   }
 
-  async deleteAct(id: string): Promise<void> {
-    return await this.electronService.invoke('manuscript:deleteAct', { id });
+  async createStructureSplit(payload: CreateStructureSplitPayload): Promise<CreatedStructureSplitDto> {
+    return await this.electronService.invoke('manuscript:createStructureSplit', payload);
   }
 
-  async deleteChapter(id: string): Promise<void> {
-    return await this.electronService.invoke('manuscript:deleteChapter', { id });
+  async deleteAct(id: string, options: DeleteManuscriptOptions = {}): Promise<void> {
+    return await this.electronService.invoke(
+      'manuscript:deleteAct',
+      options.preservePositions ? { id, preservePositions: true } : { id },
+    );
   }
 
-  async deleteScene(id: string): Promise<void> {
-    return await this.electronService.invoke('manuscript:deleteScene', { id });
+  async deleteChapter(id: string, options: DeleteManuscriptOptions = {}): Promise<void> {
+    return await this.electronService.invoke(
+      'manuscript:deleteChapter',
+      options.preservePositions ? { id, preservePositions: true } : { id },
+    );
+  }
+
+  async deleteScene(id: string, options: DeleteManuscriptOptions = {}): Promise<void> {
+    return await this.electronService.invoke(
+      'manuscript:deleteScene',
+      options.preservePositions ? { id, preservePositions: true } : { id },
+    );
   }
 
   async archiveAct(id: string): Promise<void> {

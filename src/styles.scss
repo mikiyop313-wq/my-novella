@@ -25,6 +25,14 @@ body {
   color: var(--color-text);
 }
 
+::selection {
+  background-color: color-mix(
+    in srgb,
+    var(--color-btn-primary-bg, var(--color-text-primary)) 24%,
+    transparent
+  );
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;

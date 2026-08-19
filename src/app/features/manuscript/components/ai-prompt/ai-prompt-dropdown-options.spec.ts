@@ -39,7 +39,42 @@ describe('AI prompt dropdown options', () => {
       'scene:scene-1',
       'scene:scene-2',
     ]);
-    expect(chapter.submenu!.sections[0].options.map(option => option.label)).toEqual(['Opening', 'Crossroads']);
+    expect(chapter.submenu!.sections[0].options.map(option => option.label)).toEqual([
+      'Scene 1: Opening',
+      'Scene 2: Crossroads',
+    ]);
+  });
+
+  it('adds plain-text scene descriptions and uses the scene index for untitled scenes', () => {
+    const hierarchy = createHierarchy();
+    hierarchy[0].title = '';
+    hierarchy[0].chapters![0].title = '';
+    const scenes = hierarchy[0].chapters![0].scenes!;
+    scenes[0].summary = '**Mara** enters the [keep](https://example.com).';
+    scenes[1].title = '';
+    scenes[1].summary = '<script>hidden()</script>';
+
+    const sections = buildContextDropdownSections({
+      hierarchy,
+      codexEntries: [],
+      automaticallyIncludedCodexEntryIds: new Set(),
+      hierarchyLoading: false,
+      codexLoading: false,
+      hierarchyError: null,
+      codexError: null,
+    });
+    const actOption = sections[0].options[1].submenu!.sections[0].options[0];
+    const chapterOption = actOption.submenu!.sections[0].options[0];
+    const sceneOptions = chapterOption.submenu!.sections[0].options;
+
+    expect(actOption.label).toBe('Act 1');
+    expect(chapterOption.label).toBe('Chapter 1');
+    expect(sceneOptions[0]).toEqual(expect.objectContaining({
+      label: 'Scene 1: Opening',
+      description: 'Mara enters the keep.',
+    }));
+    expect(sceneOptions[1].label).toBe('Scene 2');
+    expect(sceneOptions[1]).not.toHaveProperty('description');
   });
 
   it('adds optional book metadata and disables it when no fields are available', () => {
@@ -108,7 +143,7 @@ describe('AI prompt dropdown options', () => {
 
     expect(novel.count).toBe(1);
     expect(novel.selectionValues).toEqual(['scene:scene-1']);
-    expect(novel.submenu?.sections[0].options.map((option) => option.label)).toEqual(['Act One']);
+    expect(novel.submenu?.sections[0].options.map((option) => option.label)).toEqual(['Act 1: Act One']);
     expect(contextSelectionToValues({
       includeBookMetadata: false,
       includeFullOutline: false,

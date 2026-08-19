@@ -203,6 +203,10 @@ export class EditorBubbleMenuComponent {
     return sceneId ? this.aiStreamEditor.hasActiveSceneGeneration(sceneId) : false;
   }
 
+  focusSelectionEdit(sessionId: string): boolean {
+    return this.aiSelectionEffect.focusSession(sessionId);
+  }
+
   private startAiEdit(request: AiSelectionEditRequest): boolean {
     if (this.isAskAiDisabled()) return false;
 

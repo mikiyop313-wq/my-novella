@@ -83,6 +83,8 @@ export interface DropdownSection<T = any> {
 export interface DropdownOption<T = any> {
   value: T;
   label: string;
+  /** Optional supporting copy displayed below the option label. */
+  description?: string;
   /** Legacy inline child chips. Flyout menus use `submenu`. */
   subOptions?: readonly DropdownOption<T>[];
   fontFamily?: string;

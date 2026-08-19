@@ -119,19 +119,5 @@ export const AiPromptExtension = (injector: Injector) => {
       return AngularNodeViewRenderer(AiPromptComponent, { injector });
     },
 
-    addInputRules() {
-      return [
-        {
-          find: /^\/ai\s$/,
-          handler: ({ state, range }) => {
-            const { tr } = state;
-            const start = state.doc.resolve(range.from);
-
-            tr.replaceWith(start.before(), start.after(), this.type.create());
-          },
-          undoable: true,
-        },
-      ];
-    },
   });
 };

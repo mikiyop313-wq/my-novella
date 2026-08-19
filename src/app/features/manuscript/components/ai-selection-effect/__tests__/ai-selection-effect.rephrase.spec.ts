@@ -167,6 +167,7 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     expect(sessionStart).toHaveBeenCalledWith(expect.objectContaining({
       source: 'manuscript-selection',
       scopeId: 'scene-1',
+      activityLabel: 'Rephrasing prose',
       suppressErrorToasts: true,
     }));
     expect(component.state()).toBe('ready');
@@ -178,6 +179,21 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
       sceneId: 'scene-1',
       ownerId: expect.any(String),
     });
+  });
+
+  it.each([
+    ['rephrase', 'Rephrase', 'Rephrasing prose'],
+    ['expand', 'Expand', 'Expanding prose'],
+    ['shorten', 'Shorten', 'Shortening prose'],
+    ['rephrase', 'Other', 'Editing prose'],
+  ] as const)('labels %s/%s sessions as %s', async (category, actionLabel, activityLabel) => {
+    streamText.mockReturnValue(new Promise(() => undefined));
+    const sessionStart = vi.spyOn(TestBed.inject(AiGenerationSessionService), 'start');
+
+    component.startEdit({ category, actionLabel, instruction: 'Edit the marked passage.' });
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(sessionStart).toHaveBeenCalledWith(expect.objectContaining({ activityLabel }));
   });
 
   it('retains the scene lock until an in-flight cancellation completes', async () => {
@@ -200,6 +216,28 @@ describe('AiSelectionEffectComponent AI selection edits', () => {
     abortCompletion.resolve();
     await vi.runAllTimersAsync();
 
+    expect(releaseSceneGeneration).toHaveBeenCalledWith({
+      sceneId: 'scene-1',
+      ownerId: expect.any(String),
+    });
+  });
+
+  it('dismisses the selection effect when its session is stopped externally', async () => {
+    let rejectStream!: (error: Error) => void;
+    streamText.mockReturnValue(new Promise<string>((_resolve, reject) => rejectStream = reject));
+    const aiStream = TestBed.inject(AiStreamService);
+    vi.mocked(aiStream.stopStream).mockImplementation(async () => {
+      rejectStream(new Error('aborted'));
+    });
+    const generationSessions = TestBed.inject(AiGenerationSessionService);
+
+    startEdit(component);
+    await vi.advanceTimersByTimeAsync(600);
+    const sessionId = (component as any).streamId as string;
+    await generationSessions.stop(sessionId);
+    await vi.runAllTimersAsync();
+
+    expect(component.state()).toBe('idle');
     expect(releaseSceneGeneration).toHaveBeenCalledWith({
       sceneId: 'scene-1',
       ownerId: expect.any(String),

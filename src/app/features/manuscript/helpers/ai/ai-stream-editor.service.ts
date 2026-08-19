@@ -203,7 +203,8 @@ export class AiStreamEditorService {
       const blockPos = this.findGeneratingBlockPos(editor, generation.blockId);
       if (isTerminal) {
         if (blockPos !== null) {
-          if (status === 'failed' && !generation.session.content()) {
+          const hasNoGeneratedContent = !generation.session.content();
+          if ((status === 'stopped' || status === 'failed') && hasNoGeneratedContent) {
             this.removeGeneratingBlock(editor, generation.blockId);
           } else {
             this.renderGeneratedMarkdown(editor, generation.session.content(), generation.blockId);
@@ -461,7 +462,10 @@ export class AiStreamEditorService {
         blockAttrs,
         content: result.content,
         reasoning: result.reasoning,
-        removeBlock: result.status === 'failed' && !result.content,
+        removeBlock: (
+          (result.status === 'stopped' || result.status === 'failed')
+          && !result.content
+        ),
       });
 
       if (result.status === 'failed') {

@@ -13,7 +13,9 @@ import { CodexEntryOpenerService } from '../codex/services/codex-entry-opener.se
 import { Manuscript } from './manuscript';
 import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-saver.service';
 import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
+import { AiSelectionEditService } from './helpers/ai/ai-selection-edit.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { getSlashCommandRange } from './extensions/slash-command-menu.extension';
 
 const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
@@ -45,6 +47,17 @@ describe('Manuscript', () => {
     invoke: (channel: string, payload?: unknown) => electronInvoke(channel, payload),
     onBeforeClose: () => undefined,
     removeBeforeCloseHandler: () => undefined,
+  };
+  const selectionEdits = {
+    sessions: signal([]),
+    sessionsForBook: () => [],
+    getSession: vi.fn(() => null),
+    startEdit: vi.fn(() => null),
+    attachEditor: vi.fn(),
+    detachEditor: vi.fn(),
+    cancelForSceneIds: vi.fn(),
+    cancelForEntity: vi.fn(),
+    persistenceSafeDocument: (editor: { state: { doc: unknown } }) => editor.state.doc,
   };
 
   beforeEach(async () => {
@@ -107,6 +120,7 @@ describe('Manuscript', () => {
     registry.clearRanges.mockClear();
     trieState.set({});
     routerNavigate = vi.fn().mockResolvedValue(true);
+    selectionEdits.cancelForEntity.mockClear();
 
     await TestBed.configureTestingModule({
       imports: [Manuscript],
@@ -136,6 +150,10 @@ describe('Manuscript', () => {
         { provide: CodexContextHighlightRegistryService, useValue: registry },
         { provide: CodexMatchChooserService, useValue: { open: vi.fn() } },
         { provide: CodexEntryOpenerService, useValue: { open: vi.fn() } },
+        {
+          provide: AiSelectionEditService,
+          useValue: selectionEdits,
+        },
       ],
     }).compileComponents();
 
@@ -143,6 +161,7 @@ describe('Manuscript', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
     await fixture.whenStable();
+    await vi.waitFor(() => expect(component.hasLoadedContent()).toBe(true));
     flushFrames();
     registry.setRanges.mockClear();
   });
@@ -174,6 +193,78 @@ describe('Manuscript', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('opens manuscript search for Ctrl+F and resets it on Escape', async () => {
+    const shortcut = new KeyboardEvent('keydown', {
+      key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+
+    document.dispatchEvent(shortcut);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise<void>(resolve => queueMicrotask(resolve));
+
+    const input = fixture.nativeElement.querySelector(
+      'app-manuscript-search input',
+    ) as HTMLInputElement;
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(input).toBeTruthy();
+    expect(document.activeElement).toBe(input);
+
+    input.value = 'sea';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(component.search.open()).toBe(false);
+    expect(component.search.query()).toBe('');
+    expect(fixture.nativeElement.querySelector('app-manuscript-search')).toBeNull();
+  });
+
+  it('toggles manuscript search off when Ctrl+F is pressed again', async () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component.search.open()).toBe(true);
+
+    const secondShortcut = new KeyboardEvent('keydown', {
+      key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+    document.dispatchEvent(secondShortcut);
+    fixture.detectChanges();
+
+    expect(secondShortcut.defaultPrevented).toBe(true);
+    expect(component.search.open()).toBe(false);
+    expect(component.search.query()).toBe('');
+  });
+
+  it('opens the matching scene when whole-manuscript navigation leaves the current view', async () => {
+    const wholeData = searchHierarchy();
+    const currentData = structuredClone(wholeData[0].chapters![0].scenes![0]);
+    const editor = component.editor!;
+    const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, [
+      editor.schema.nodes['sceneSummary'].create({ id: 'scene-1', chapterId: 'chapter-1' }),
+      editor.schema.nodes['paragraph'].create(undefined, editor.schema.text('First sea.')),
+    ]);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+    component.search.setCurrentScopeData(currentData);
+    (component.search as any).wholeManuscriptData = wholeData;
+    component.search.show();
+    component.search.wholeManuscript.set(true);
+
+    component.updateSearchQuery('sea');
+    await component.selectNextSearchMatch();
+
+    expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'scene', 'scene-2'],
+      { replaceUrl: true },
+    );
+    expect(component.search.open()).toBe(true);
+    expect(component.search.query()).toBe('sea');
   });
 
   it('shows a create-scene hint only while the loaded scope has no scenes', () => {
@@ -238,6 +329,96 @@ describe('Manuscript', () => {
     editor.view.dispatch(tr);
 
     expect(component.canInsertScene()).toBe(true);
+  });
+
+  it('filters slash commands to structures contained by the active scope', () => {
+    const commandsFor = (mode: 'book' | 'act' | 'chapter' | 'scene') => {
+      component.store.setRouteParams(mode, `${mode}-1`);
+      return component.slashCommandMenuItems().map(item => item.command);
+    };
+
+    expect(commandsFor('book')).toEqual(['ai', 'act', 'chapter', 'scene']);
+    expect(commandsFor('act')).toEqual(['ai', 'chapter', 'scene']);
+    expect(commandsFor('chapter')).toEqual(['ai', 'scene']);
+    expect(commandsFor('scene')).toEqual(['ai']);
+  });
+
+  it('splits prose into a new chapter and moves following scenes with undo support', async () => {
+    const editor = component.editor!;
+    component.store.setRouteParams('book', 'book-1');
+    editor.chain().command(({ tr }) => {
+      tr.setMeta('skipSaver', true);
+      return true;
+    }).setContent({
+      type: 'doc',
+      content: [
+        { type: 'actHeader', attrs: { id: 'act-1', bookId: 'book-1', position: 0 } },
+        { type: 'chapterHeader', attrs: { id: 'chapter-1', actId: 'act-1', position: 0 } },
+        { type: 'sceneSummary', attrs: { id: 'scene-1', chapterId: 'chapter-1', position: 0 } },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '/' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
+        { type: 'sceneSummary', attrs: { id: 'scene-2', chapterId: 'chapter-1', position: 1 } },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Second scene' }] },
+      ],
+    }).run();
+    editor.view.coordsAtPos = vi.fn(() => ({ left: 100, right: 100, top: 40, bottom: 60 }));
+    let slashSelection = 0;
+    editor.state.doc.forEach((node, offset) => {
+      if (node.textContent === '/') slashSelection = offset + 2;
+    });
+    editor.commands.setTextSelection(slashSelection);
+    expect(getSlashCommandRange(editor)).not.toBeNull();
+
+    electronInvoke.mockImplementation(async (channel: string, payload?: any) => {
+      if (channel === 'manuscript:createStructureSplit') {
+        expect(payload.sourceProse.content.map((node: any) => node.content?.[0]?.text))
+          .toEqual(['Before']);
+        expect(payload.splitProse.content.map((node: any) => node.content?.[0]?.text))
+          .toEqual(['After']);
+        return {
+          command: 'chapter',
+          chapter: { id: 'chapter-new', title: '', actId: 'act-1', position: 1, status: 'active', summary: null },
+          scene: {
+            id: 'scene-new', title: '', chapterId: 'chapter-new', position: 0,
+            status: 'active', prose: null, summary: null, wordCount: 1,
+            pointOfViewOverride: null, povCharacterIdOverride: null,
+          },
+          beforePositions: {
+            scenes: [{ id: 'scene-2', chapterId: 'chapter-1', position: 1 }],
+          },
+          afterPositions: {
+            chapters: [{ id: 'chapter-new', actId: 'act-1', position: 1 }],
+            scenes: [
+              { id: 'scene-new', chapterId: 'chapter-new', position: 0 },
+              { id: 'scene-2', chapterId: 'chapter-new', position: 1 },
+            ],
+          },
+        };
+      }
+      if (channel === 'manuscript:getBookHierarchy') return [];
+      return undefined;
+    });
+
+    component.selectSlashCommand('chapter');
+    await vi.waitFor(() => expect(electronInvoke).toHaveBeenCalledWith(
+      'manuscript:createStructureSplit',
+      expect.objectContaining({ command: 'chapter', sourceSceneId: 'scene-1' }),
+    ));
+    await vi.waitFor(() => expect(editor.getJSON().content?.some(node => (
+      node.type === 'chapterHeader' && node.attrs?.['id'] === 'chapter-new'
+    ))).toBe(true));
+
+    const movedScene = editor.getJSON().content?.find(node => node.attrs?.['id'] === 'scene-2');
+    expect(movedScene?.attrs).toMatchObject({ chapterId: 'chapter-new', position: 1 });
+    expect(editor.commands.undo()).toBe(true);
+    const restoredScene = editor.getJSON().content?.find(node => node.attrs?.['id'] === 'scene-2');
+    expect(restoredScene?.attrs).toMatchObject({ chapterId: 'chapter-1', position: 1 });
+    expect(editor.getText()).toContain('/');
+    const saver = TestBed.inject(ManuscriptProseSaverService);
+    await saver.flushDirtySections();
+    await saver.flushStructuralChanges();
+    await saver.flushParagraphVectorChanges();
   });
 
   it('renders pending, active, and updated indexing states', async () => {
@@ -377,7 +558,7 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Scene 2: A Door Opens');
   });
 
-  it('uses untitled labels in the view scope', () => {
+  it('uses position labels for untitled act and chapter view scopes', () => {
     const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
     workspaceBookStore.setBookHierarchy([{
       id: 'act-1',
@@ -386,12 +567,226 @@ describe('Manuscript', () => {
       position: 0,
       status: 'active',
       summary: null,
-      chapters: [],
+      chapters: [{
+        id: 'chapter-1',
+        title: '',
+        actId: 'act-1',
+        position: 2,
+        status: 'active',
+        summary: null,
+        scenes: [],
+      }],
     }]);
 
     component.store.setRouteParams('act', 'act-1');
+    expect(component.currentScopeLabel()).toBe('Act 1');
 
-    expect(component.currentScopeLabel()).toBe('Act 1: Untitled Act');
+    component.store.setRouteParams('chapter', 'chapter-1');
+    expect(component.currentScopeLabel()).toBe('Chapter 3');
+  });
+
+  it('shows numbered hierarchy titles and plain-text scene summaries in the view menu', async () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act One',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter One',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'Arrival',
+          chapterId: 'chapter-1',
+          position: 1,
+          status: 'active',
+          prose: null,
+          summary: '**Mara** enters the [keep](https://example.com).',
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }]);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.view-scope-btn') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    (Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Act 1: Act One'))!).click();
+    await fixture.whenStable();
+    (Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Chapter 1: Chapter One'))!).click();
+    await fixture.whenStable();
+
+    const sceneCopy = document.querySelector('.scene-menu-copy');
+    expect(sceneCopy?.querySelector('.item-label')?.textContent).toContain('Scene 2: Arrival');
+    expect(sceneCopy?.querySelector('.item-summary')?.textContent).toContain('Mara enters the keep.');
+    expect(sceneCopy?.querySelector('.item-summary')?.textContent).not.toContain('**');
+
+    (sceneCopy?.closest('button') as HTMLButtonElement).click();
+    await fixture.whenStable();
+  });
+
+  it('updates words, pages, and reading time as prose changes', () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'Scene',
+          chapterId: 'chapter-1',
+          position: 0,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }]);
+    component.store.setRouteParams('book', 'book-1');
+    component.editor!.chain().command(({ tr }) => {
+      tr.setMeta('skipSaver', true);
+      return true;
+    }).setContent({
+      type: 'doc',
+      content: [
+        {
+          type: 'sceneSummary',
+          attrs: { id: 'scene-1', chapterId: 'chapter-1', title: '', summary: '', position: 0 },
+        },
+        { type: 'paragraph' },
+      ],
+    }).run();
+
+    component.editor!.commands.insertContent(Array(251).fill('word').join(' '));
+
+    expect(component.store.currentWordCount()).toBe(251);
+    expect(component.store.estimatedPages()).toBe(2);
+    expect(component.store.estimatedReadTime()).toBe(2);
+  });
+
+  it('keeps containing manuscript scopes while focusing a prose generation', async () => {
+    setGenerationHierarchy();
+    const loadAndPatchScene = vi.spyOn(component.store, 'loadAndPatchScene')
+      .mockResolvedValue(undefined);
+
+    for (const route of [
+      { mode: 'book' as const, id: 'book-1' },
+      { mode: 'act' as const, id: 'act-1' },
+      { mode: 'chapter' as const, id: 'chapter-1' },
+      { mode: 'scene' as const, id: 'scene-2' },
+    ]) {
+      component.store.setRouteParams(route.mode, route.id);
+      routerNavigate.mockClear();
+
+      await component.focusProseGeneration({
+        target: 'prose-block', blockId: 'response-2', sceneId: 'scene-2',
+      });
+
+      expect(routerNavigate).not.toHaveBeenCalled();
+    }
+
+    expect(loadAndPatchScene).toHaveBeenCalledWith('scene-2');
+  });
+
+  it('opens the exact scene when the current manuscript view does not contain it', async () => {
+    setGenerationHierarchy();
+    component.store.setRouteParams('scene', 'scene-1');
+    routerNavigate.mockClear();
+
+    await component.focusProseGeneration({
+      target: 'prose-block', blockId: 'response-2', sceneId: 'scene-2',
+    });
+
+    expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'scene', 'scene-2'],
+      { replaceUrl: true },
+    );
+  });
+
+  it('focuses a selection edit without navigating', async () => {
+    setGenerationHierarchy();
+    component.store.setRouteParams('scene', 'scene-1');
+    const editorBubbleMenu = (component as any).editorBubbleMenu;
+    const focusSelectionEdit = vi.spyOn(editorBubbleMenu, 'focusSelectionEdit');
+    routerNavigate.mockClear();
+
+    await component.focusProseGeneration({
+      target: 'selection-edit', sessionId: 'selection-1', sceneId: 'scene-1',
+    });
+    flushFrames();
+
+    expect(focusSelectionEdit).toHaveBeenCalledWith('selection-1');
+    expect(routerNavigate).not.toHaveBeenCalled();
+  });
+
+  it('loads the target scene and highlights the exact generated block', async () => {
+    setGenerationHierarchy();
+    component.store.setRouteParams('scene', 'scene-2');
+    const loadAndPatchScene = vi.spyOn(component.store, 'loadAndPatchScene')
+      .mockResolvedValue(undefined);
+    const editor = component.editor!;
+    const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, [
+      editor.schema.nodes['sceneSummary'].create({
+        id: 'scene-2',
+        chapterId: 'chapter-1',
+        title: '',
+        summary: '',
+        position: 1,
+      }),
+      editor.schema.nodes['aiGeneratedBlock'].create(
+        { id: 'response-2', isGenerating: true },
+        editor.schema.nodes['paragraph'].create(null, editor.schema.text('Live prose')),
+      ),
+    ]);
+    tr.setMeta('skipSaver', true);
+    editor.view.dispatch(tr);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const scrollContainer = fixture.nativeElement.querySelector(
+      '.editor-content-wrapper',
+    ) as HTMLElement;
+    const scrollTo = vi.fn();
+    Object.defineProperty(scrollContainer, 'scrollTo', {
+      configurable: true,
+      value: scrollTo,
+    });
+    const generatedBlock = document.createElement('div');
+    scrollContainer.appendChild(generatedBlock);
+    const nodeDom = vi.spyOn(component.editor!.view, 'nodeDOM')
+      .mockReturnValue(generatedBlock);
+
+    await component.focusProseGeneration({
+      target: 'prose-block', blockId: 'response-2', sceneId: 'scene-2',
+    });
+    flushFrames();
+
+    expect(loadAndPatchScene).toHaveBeenCalledWith('scene-2');
+    expect(nodeDom).toHaveBeenCalled();
+    expect(generatedBlock.classList.contains('prose-generation-focus')).toBe(true);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
   });
 
   it('indexes the first act structure inserted into an empty book', async () => {
@@ -472,6 +867,10 @@ describe('Manuscript', () => {
         mode: 'book',
         id: 'book-1',
       });
+      expect(selectionEdits.cancelForEntity).toHaveBeenCalledWith(expect.objectContaining({
+        entityType: mode,
+        entityId: id,
+      }));
     });
   });
 
@@ -504,6 +903,10 @@ describe('Manuscript', () => {
       mode: 'book',
       id: 'book-1',
     });
+    expect(selectionEdits.cancelForEntity).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: mode,
+      entityId: id,
+    }));
   });
 
   it('does not navigate when removing a nested entity from a broader view', async () => {
@@ -537,6 +940,7 @@ describe('Manuscript', () => {
     expect(component.editor?.getJSON().content?.some(node => (
       node.type === 'actHeader' && node.attrs?.['id'] === 'act-1'
     ))).toBe(true);
+    expect(selectionEdits.cancelForEntity).not.toHaveBeenCalled();
     expect(routerNavigate).not.toHaveBeenCalled();
     expect(workspaceStore.getLastManuscriptRoute('book-1')).toEqual({
       mode: 'act',
@@ -646,6 +1050,51 @@ describe('Manuscript', () => {
     editor.view.dispatch(tr);
   }
 
+  function setGenerationHierarchy(): void {
+    TestBed.inject(WorkspaceBookStore).setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [
+          {
+            id: 'scene-1',
+            title: 'First Scene',
+            chapterId: 'chapter-1',
+            position: 0,
+            status: 'active',
+            prose: null,
+            summary: null,
+            wordCount: 0,
+            pointOfViewOverride: null,
+            povCharacterIdOverride: null,
+          },
+          {
+            id: 'scene-2',
+            title: 'Second Scene',
+            chapterId: 'chapter-1',
+            position: 1,
+            status: 'active',
+            prose: null,
+            summary: null,
+            wordCount: 0,
+            pointOfViewOverride: null,
+            povCharacterIdOverride: null,
+          },
+        ],
+      }],
+    }]);
+  }
+
   function flushFrames(): void {
     const callbacks = [...frameCallbacks.values()];
     frameCallbacks.clear();
@@ -663,6 +1112,43 @@ function paragraphNode(id: string, text: string): Record<string, unknown> {
     attrs: { id },
     content: [{ type: 'text', text }],
   };
+}
+
+function searchHierarchy(): ActDto[] {
+  const prose = (text: string) => ({
+    type: 'doc' as const,
+    content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+  });
+  const scene = (id: string, position: number, text: string) => ({
+    id,
+    title: '',
+    chapterId: 'chapter-1',
+    position,
+    status: 'active' as const,
+    prose: prose(text),
+    summary: null,
+    wordCount: 2,
+    pointOfViewOverride: null,
+    povCharacterIdOverride: null,
+  });
+
+  return [{
+    id: 'act-1',
+    title: '',
+    bookId: 'book-1',
+    position: 0,
+    status: 'active',
+    summary: null,
+    chapters: [{
+      id: 'chapter-1',
+      title: '',
+      actId: 'act-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      scenes: [scene('scene-1', 0, 'First sea.'), scene('scene-2', 1, 'Second sea.')],
+    }],
+  }];
 }
 
 function findMatches(text: string) {

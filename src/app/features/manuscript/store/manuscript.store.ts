@@ -1,4 +1,4 @@
-import { computed, inject } from '@angular/core';
+import { Injector, computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { Editor } from '@tiptap/core';
 
@@ -9,6 +9,8 @@ import { ManuscriptStructureService } from '../../workspace/services/manuscript-
 import {
   ActDto,
   ChapterDto,
+  CreatedStructureSplitDto,
+  CreateStructureSplitPayload,
   ManuscriptMode,
   ManuscriptModeDto,
   SceneDto,
@@ -16,9 +18,11 @@ import {
   UpdateActPayload,
   UpdateChapterPayload,
   UpdateScenePayload,
+  UpdateStructurePositionsPayload,
 } from '../../../../../shared/models/manuscript.model';
 import { buildScenePatch } from '../helpers/content/manuscript-content.utils';
 import { ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META } from '../extensions/manuscript-editing-guard.extension';
+import { AiSelectionEditService } from '../helpers/ai/ai-selection-edit.service';
 
 const FORMAT_SETTINGS_STORAGE_KEY = 'manuscript_format_global';
 
@@ -332,7 +336,50 @@ export const ManuscriptStore = signalStore(
     workspaceBookStore = inject(WorkspaceBookStore),
     workspaceStore = inject(WorkspaceStore),
     manuscriptStructureService = inject(ManuscriptStructureService),
+    injector = inject(Injector),
   ) => {
+    const liveSceneWordCounts = new Map<string, number>();
+
+    const findSceneLocation = (sceneId: string): {
+      actId: string;
+      bookId: string;
+      chapterId: string;
+      scene: SceneDto;
+    } | null => {
+      for (const act of workspaceBookStore.bookHierarchy()) {
+        for (const chapter of act.chapters || []) {
+          const scene = chapter.scenes?.find(candidate => candidate.id === sceneId);
+          if (scene) {
+            return {
+              actId: act.id,
+              bookId: act.bookId,
+              chapterId: chapter.id,
+              scene,
+            };
+          }
+        }
+      }
+
+      return null;
+    };
+
+    const isSceneInActiveScope = ({
+      actId,
+      bookId,
+      chapterId,
+      scene,
+    }: NonNullable<ReturnType<typeof findSceneLocation>>): boolean => {
+      const activeEntityId = store.activeEntityId();
+
+      switch (store.mode()) {
+        case 'book': return activeEntityId === bookId;
+        case 'act': return activeEntityId === actId;
+        case 'chapter': return activeEntityId === chapterId;
+        case 'scene': return activeEntityId === scene.id;
+        default: return false;
+      }
+    };
+
     const resetLastRouteForRemovedEntity = (
       mode: Exclude<ManuscriptMode, 'book'>,
       id: string,
@@ -343,6 +390,17 @@ export const ManuscriptStore = signalStore(
       workspaceStore.resetLastManuscriptRouteForRemovedEntity({ bookId, mode, id });
     };
 
+    const cancelSelectionEdits = (
+      entityType: 'act' | 'chapter' | 'scene',
+      entityId: string,
+    ): void => {
+      injector.get(AiSelectionEditService).cancelForEntity({
+        entityType,
+        entityId,
+        hierarchy: workspaceBookStore.bookHierarchy(),
+      });
+    };
+
     return ({
 
     // -------------------------------------------------------------------------
@@ -350,6 +408,7 @@ export const ManuscriptStore = signalStore(
     // -------------------------------------------------------------------------
 
     setRouteParams(mode: ManuscriptMode | null, id: string | null): void {
+      liveSceneWordCounts.clear();
       patchState(store, {
         mode,
         activeEntityId: id,
@@ -400,7 +459,7 @@ export const ManuscriptStore = signalStore(
     // -------------------------------------------------------------------------
 
     async loadManuscriptData<T extends ManuscriptMode>(mode: T, id: string): Promise<ManuscriptModeDto<T>> {
-      Promise.all([
+      const statsAndHierarchy = Promise.all([
         electronService.invoke('manuscript:getWordCount', { mode, id }),
         workspaceBookStore.loadBookHierarchy(mode, id),
       ])
@@ -412,7 +471,23 @@ export const ManuscriptStore = signalStore(
         .catch(error => console.error('Failed to load stats/hierarchy', error));
 
       const result = await electronService.invoke('manuscript:get', { mode, id });
+      await statsAndHierarchy;
       return result as ManuscriptModeDto<T>;
+    },
+
+    updateLiveSceneWordCount(sceneId: string, wordCount: number): void {
+      const location = findSceneLocation(sceneId);
+      if (!location) return;
+
+      const previousWordCount = liveSceneWordCounts.get(sceneId) ?? location.scene.wordCount ?? 0;
+      if (previousWordCount === wordCount) return;
+
+      liveSceneWordCounts.set(sceneId, wordCount);
+      if (!isSceneInActiveScope(location)) return;
+
+      patchState(store, {
+        currentWordCount: Math.max(0, store.currentWordCount() + wordCount - previousWordCount),
+      });
     },
 
     setPendingSkeletons(sceneIds: string[]): void {
@@ -628,6 +703,46 @@ export const ManuscriptStore = signalStore(
       workspaceBookStore.addScene(scene);
     },
 
+    async createStructureSplit(payload: CreateStructureSplitPayload): Promise<CreatedStructureSplitDto> {
+      const initialMode = store.mode();
+      const initialEntityId = store.activeEntityId();
+      if (!initialMode || !initialEntityId) throw new Error('No manuscript scope is active.');
+
+      const created = await manuscriptStructureService.createStructureSplit(payload);
+      if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) {
+        throw new Error('The manuscript view changed before creation completed.');
+      }
+
+      void workspaceBookStore.loadBookHierarchy(initialMode, initialEntityId).catch(error => {
+        console.error('Failed to refresh hierarchy after structure split:', error);
+      });
+      return created;
+    },
+
+    async syncStructurePositions(payload: UpdateStructurePositionsPayload): Promise<void> {
+      await manuscriptStructureService.updateStructurePositions(payload);
+    },
+
+    async refreshHierarchy(excludedIds: Set<string> = new Set()): Promise<void> {
+      const mode = store.mode();
+      const id = store.activeEntityId();
+      if (!mode || !id) return;
+      const hierarchy = await manuscriptStructureService.getBookHierarchy(mode, id);
+      workspaceBookStore.setBookHierarchy(
+        hierarchy
+          .filter(act => !excludedIds.has(act.id))
+          .map(act => ({
+            ...act,
+            chapters: (act.chapters ?? [])
+              .filter(chapter => !excludedIds.has(chapter.id))
+              .map(chapter => ({
+                ...chapter,
+                scenes: (chapter.scenes ?? []).filter(scene => !excludedIds.has(scene.id)),
+              })),
+          })),
+      );
+    },
+
 
     // -------------------------------------------------------------------------
     // Logical Delete Methods
@@ -637,6 +752,7 @@ export const ManuscriptStore = signalStore(
       const editor = store.editor();
       if (!editor) return;
 
+      cancelSelectionEdits('act', id);
       deleteNodeRangeInDoc({ editor, targetType: ACT_HEADER_NODE, id, stopTypes: [ACT_HEADER_NODE] });
       resetLastRouteForRemovedEntity('act', id);
     },
@@ -645,6 +761,7 @@ export const ManuscriptStore = signalStore(
       const editor = store.editor();
       if (!editor) return;
 
+      cancelSelectionEdits('chapter', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: CHAPTER_HEADER_NODE,
@@ -658,6 +775,7 @@ export const ManuscriptStore = signalStore(
       const editor = store.editor();
       if (!editor) return;
 
+      cancelSelectionEdits('scene', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: SCENE_SUMMARY_NODE,
@@ -672,6 +790,7 @@ export const ManuscriptStore = signalStore(
       if (!editor) return;
 
       await manuscriptStructureService.archiveAct(id);
+      cancelSelectionEdits('act', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: ACT_HEADER_NODE,
@@ -687,6 +806,7 @@ export const ManuscriptStore = signalStore(
       if (!editor) return;
 
       await manuscriptStructureService.archiveChapter(id);
+      cancelSelectionEdits('chapter', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: CHAPTER_HEADER_NODE,
@@ -702,6 +822,7 @@ export const ManuscriptStore = signalStore(
       if (!editor) return;
 
       await manuscriptStructureService.archiveScene(id);
+      cancelSelectionEdits('scene', id);
       deleteNodeRangeInDoc({
         editor,
         targetType: SCENE_SUMMARY_NODE,

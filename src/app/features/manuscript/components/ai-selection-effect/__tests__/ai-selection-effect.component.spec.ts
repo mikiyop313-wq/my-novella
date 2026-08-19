@@ -1,291 +1,164 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { Editor } from '@tiptap/core';
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import { TextSelection } from '@tiptap/pm/state';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AiStreamService } from '../../../../../core/services/ai-stream.service';
 import { WorkspaceStore } from '../../../../workspace/workspace.store';
-import { ManuscriptStructureService } from '../../../../workspace/services/manuscript-structure.service';
-import { CodexContextTrieService } from '../../../../codex/services/codex-context-trie.service';
-import { CodexService } from '../../../../codex/services/codex.service';
+import {
+  AiSelectionEditService,
+  type AiSelectionEditSession,
+} from '../../../helpers/ai/ai-selection-edit.service';
 import { ManuscriptStore } from '../../../store/manuscript.store';
-import { AiStreamEditorService } from '../../../helpers/ai/ai-stream-editor.service';
 import { AiSelectionEffectComponent } from '../ai-selection-effect.component';
 
 describe('AiSelectionEffectComponent', () => {
-  let component: AiSelectionEffectComponent;
   let fixture: ComponentFixture<AiSelectionEffectComponent>;
-  let editor: ReturnType<typeof createEditor>;
-  let rangeRect: DOMRect;
-  let editorViewportRect: DOMRect;
-  let createRangeSpy: ReturnType<typeof vi.spyOn>;
+  let component: AiSelectionEffectComponent;
+  let editor: Editor;
+  let session: AiSelectionEditSession | null;
+  let sessions: ReturnType<typeof signal<readonly AiSelectionEditSession[]>>;
+  let startEdit: ReturnType<typeof vi.fn>;
+  let cancel: ReturnType<typeof vi.fn>;
+  let confirm: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    vi.useFakeTimers();
-    editor = createEditor();
-    rangeRect = createRect(40, 100, 220, 48);
-    editorViewportRect = createRect(0, 0, 1024, 768);
-    vi.spyOn(editor.editorViewport, 'getBoundingClientRect')
-      .mockImplementation(() => editorViewportRect);
-    createRangeSpy = vi.spyOn(document, 'createRange').mockImplementation(() => ({
-      setStart: vi.fn(),
-      setEnd: vi.fn(),
-      getBoundingClientRect: () => rangeRect,
-    }) as unknown as Range);
+    session = null;
+    editor = new Editor({
+      extensions: [StarterKit],
+      content: '<p>Selected manuscript text</p>',
+    });
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1, 9)));
+    const viewport = document.createElement('div');
+    viewport.className = 'editor-content-wrapper';
+    editor.view.dom.parentElement?.removeChild(editor.view.dom);
+    viewport.appendChild(editor.view.dom);
+    document.body.appendChild(viewport);
+
+    sessions = signal<readonly AiSelectionEditSession[]>([]);
+    startEdit = vi.fn(() => {
+      session = createSession(editor);
+      sessions.set([session]);
+      return session.id;
+    });
+    cancel = vi.fn(async () => {
+      session = null;
+      sessions.set([]);
+    });
+    confirm = vi.fn(() => true);
 
     await TestBed.configureTestingModule({
       imports: [AiSelectionEffectComponent],
       providers: [
-        { provide: ManuscriptStore, useValue: { editor: signal(editor.api) } },
+        { provide: ManuscriptStore, useValue: { editor: signal(editor) } },
         {
           provide: WorkspaceStore,
           useValue: { bookId: signal('book-1'), bookTitle: signal('Book One') },
         },
         {
-          provide: CodexContextTrieService,
+          provide: AiSelectionEditService,
           useValue: {
-            trie: signal({}), isLoading: signal(false), error: signal(null), findMatches: vi.fn(() => []),
+            sessions,
+            startEdit,
+            cancel,
+            confirm,
+            toggleComparison: vi.fn(() => true),
+            getSession: vi.fn(() => session),
+            mapAttachedSelection: vi.fn(),
+            isInternalUpdate: vi.fn(() => false),
           },
-        },
-        { provide: CodexService, useValue: { getEntry: vi.fn() } },
-        { provide: ManuscriptStructureService, useValue: { getOutline: vi.fn() } },
-        {
-          provide: AiStreamEditorService,
-          useValue: {
-            acquireSceneGeneration: vi.fn(() => true),
-            releaseSceneGeneration: vi.fn(),
-          },
-        },
-        {
-          provide: AiStreamService,
-          useValue: { streamText: vi.fn(() => new Promise(() => undefined)), stopStream: vi.fn() },
         },
       ],
     }).compileComponents();
-
     fixture = TestBed.createComponent(AiSelectionEffectComponent);
     component = fixture.componentInstance;
+    vi.spyOn(component as any, 'updatePosition').mockReturnValue(true);
     fixture.detectChanges();
   });
 
   afterEach(() => {
     fixture.destroy();
-    createRangeSpy.mockRestore();
-    vi.useRealTimers();
+    editor.view.dom.closest('.editor-content-wrapper')?.remove();
+    editor.destroy();
     TestBed.resetTestingModule();
   });
 
-  it('starts the visual workflow for a valid selection', () => {
-    expect(startEdit(component)).toBe(true);
-    fixture.detectChanges();
+  it('delegates creation while retaining only the visual session ID', () => {
+    expect(component.startEdit({
+      category: 'rephrase',
+      instruction: 'Rephrase the marked passage.',
+      actionLabel: 'Rephrase',
+    })).toBe(true);
 
+    expect(startEdit).toHaveBeenCalledWith(expect.objectContaining({
+      editor,
+      bookId: 'book-1',
+    }));
+    expect(component.sessionId).toBe('selection-1');
     expect(component.state()).toBe('drawing');
-    expect(component.bounds()).toEqual({
-      top: 90,
-      left: 30,
-      width: 240,
-      height: 68,
+  });
+
+  it('renders review controls from service-owned ready state', () => {
+    component.startEdit({
+      category: 'rephrase',
+      instruction: 'Rephrase the marked passage.',
+      actionLabel: 'Rephrase',
     });
-    expect(editor.registerPlugin).toHaveBeenCalledOnce();
-    expect(fixture.nativeElement.querySelector('.ai-selection-effect.is-drawing')).not.toBeNull();
-    expect(editor.dispatch).not.toHaveBeenCalled();
-  });
-
-  it('clears the native text highlight when generation starts', () => {
-    const removeAllRanges = vi.fn();
-    const getSelectionSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
-      removeAllRanges,
-    } as unknown as Selection);
-
-    startEdit(component);
-
-    expect(removeAllRanges).toHaveBeenCalledOnce();
-    getSelectionSpy.mockRestore();
-  });
-
-  it.each(['cancel', 'confirm'] as const)('%s dismisses the effect without changing text', action => {
-    startEdit(component);
-    vi.advanceTimersByTime(600);
-    component[action]();
+    session!.state.set('ready');
+    session!.comparisonSegments.set([{ kind: 'added', text: 'replacement' }]);
+    component.bounds.set({ top: 20, left: 30, width: 200, height: 60 });
     fixture.detectChanges();
 
-    expect(component.state()).toBe('idle');
-    expect(component.bounds()).toBeNull();
-    expect(fixture.nativeElement.querySelector('.ai-selection-effect')).toBeNull();
-    expect(editor.unregisterPlugin).toHaveBeenCalledOnce();
-    expect(editor.dispatch).not.toHaveBeenCalled();
-  });
-
-  it('stays active when the editor selection changes', () => {
-    startEdit(component);
-    editor.selection.from = 3;
-    editor.selection.to = 7;
-
-    editor.emit('selectionUpdate');
-    fixture.detectChanges();
-
-    expect(component.state()).toBe('drawing');
-    expect(component.bounds()).not.toBeNull();
-  });
-
-  it('keeps ready actions visible when the user clicks outside the selection', () => {
-    startEdit(component);
-    vi.advanceTimersByTime(600);
-    component.state.set('ready');
-    editor.selection.empty = true;
-    editor.selection.from = 20;
-    editor.selection.to = 20;
-
-    editor.emit('selectionUpdate');
-    fixture.detectChanges();
-
-    expect(component.state()).toBe('ready');
-    expect(component.bounds()).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.cancel-button')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.compare-button')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.confirm-button')).not.toBeNull();
+    expect(component.frameHeight()).toBe(108);
   });
 
-  it('stays active when the editor document changes', () => {
-    startEdit(component);
-
-    editor.emit('update');
-    fixture.detectChanges();
-
-    expect(component.state()).toBe('drawing');
-    expect(component.bounds()).not.toBeNull();
-    expect(editor.dispatch).not.toHaveBeenCalled();
-  });
-
-  it('repositions the frame on scroll while the selection remains unchanged', () => {
-    startEdit(component);
-    rangeRect = createRect(70, 140, 180, 36);
-
-    window.dispatchEvent(new Event('scroll'));
-    fixture.detectChanges();
-
-    expect(component.bounds()).toEqual({
-      top: 130,
-      left: 60,
-      width: 200,
-      height: 56,
+  it('delegates cancellation and emits dismissal', async () => {
+    component.startEdit({
+      category: 'expand',
+      instruction: 'Expand the marked passage.',
+      actionLabel: 'Expand',
     });
+    const dismissed = vi.fn();
+    component.dismissed.subscribe(dismissed);
+
+    await component.cancel();
+
+    expect(cancel).toHaveBeenCalledWith('selection-1');
+    expect(dismissed).toHaveBeenCalledOnce();
+    expect(component.state()).toBe('idle');
   });
 
-  it('clips the frame to the visible manuscript viewport', () => {
-    editorViewportRect = createRect(20, 120, 600, 400);
-    startEdit(component);
-    fixture.detectChanges();
-
-    const effect = fixture.nativeElement.querySelector('.ai-selection-effect') as HTMLElement;
-    expect(effect.style.clipPath).toBe('inset(30px 0px 0px 0px)');
-  });
-
-  it('rejects repeated starts and invalid selections', () => {
-    expect(startEdit(component)).toBe(true);
-    const initialBounds = component.bounds();
-    rangeRect = createRect(200, 300, 100, 20);
-
-    expect(startEdit(component)).toBe(false);
-    expect(component.bounds()).toEqual(initialBounds);
-
-    component.cancel();
-    editor.selection.empty = true;
-    editor.selection.from = 5;
-    editor.selection.to = 5;
-
-    expect(startEdit(component)).toBe(false);
-    expect(component.state()).toBe('idle');
-    expect(component.bounds()).toBeNull();
-  });
-
-  it('removes editor listeners and active timers when destroyed', () => {
-    startEdit(component);
-    fixture.destroy();
-
-    expect(editor.off).toHaveBeenCalledWith('selectionUpdate', expect.any(Function));
-    expect(editor.off).toHaveBeenCalledWith('update', expect.any(Function));
-    expect(component.state()).toBe('idle');
-
-    vi.advanceTimersByTime(5_000);
-    expect(component.state()).toBe('idle');
+  it('delegates confirmation without owning the replacement transaction', () => {
+    component.startEdit({
+      category: 'shorten',
+      instruction: 'Shorten the marked passage.',
+      actionLabel: 'Shorten',
+    });
+    component.confirm();
+    expect(confirm).toHaveBeenCalledWith('selection-1');
   });
 });
 
-function createEditor() {
-  const handlers = new Map<string, () => void>();
-  const selection = { from: 3, to: 16, empty: false };
-  const textNode = document.createTextNode('Selected manuscript text');
-  const dispatch = vi.fn();
-  const registerPlugin = vi.fn();
-  const unregisterPlugin = vi.fn();
-  const editorViewport = document.createElement('div');
-  editorViewport.className = 'editor-content-wrapper';
-  const editorDom = document.createElement('div');
-  editorViewport.append(editorDom);
-  const on = vi.fn((event: string, handler: () => void) => handlers.set(event, handler));
-  const off = vi.fn((event: string) => handlers.delete(event));
-  const doc = {
-    content: { size: 27 },
-    forEach: vi.fn((callback: (node: any, offset: number) => void) => {
-      callback({
-        type: { name: 'sceneSummary' },
-        attrs: { id: 'scene-1', title: 'Test Scene' },
-        nodeSize: 2,
-      }, 0);
-      callback({ type: { name: 'paragraph' }, attrs: {}, nodeSize: 25 }, 2);
-    }),
-    textBetween: vi.fn(() => 'Selected text'),
-    slice: vi.fn(() => ({})),
-  };
-  const api = {
-    state: {
-      selection,
-      doc,
-    },
-    view: {
-      dom: editorDom,
-      domAtPos: vi.fn((position: number) => ({
-        node: textNode,
-        offset: position === selection.from ? 0 : textNode.textContent?.length ?? 0,
-      })),
-      dispatch,
-    },
-    on,
-    off,
-    registerPlugin,
-    unregisterPlugin,
-  } as unknown as Editor;
-
+function createSession(editor: Editor): AiSelectionEditSession {
   return {
-    api,
-    dispatch,
-    editorViewport,
-    emit: (event: string) => handlers.get(event)?.(),
-    off,
-    registerPlugin,
-    selection,
-    unregisterPlugin,
-  };
-}
-
-function startEdit(component: AiSelectionEffectComponent): boolean {
-  return component.startEdit({
-    category: 'rephrase',
-    instruction: 'Rephrase the marked passage.',
-    actionLabel: 'Rephrase',
-  });
-}
-
-function createRect(left: number, top: number, width: number, height: number): DOMRect {
-  return {
-    x: left,
-    y: top,
-    left,
-    top,
-    width,
-    height,
-    right: left + width,
-    bottom: top + height,
-    toJSON: () => ({}),
+    id: 'selection-1',
+    bookId: 'book-1',
+    sceneId: 'scene-1',
+    request: {
+      category: 'rephrase',
+      instruction: 'Rephrase the marked passage.',
+      actionLabel: 'Rephrase',
+    },
+    activityLabel: 'Rephrasing prose',
+    state: signal('drawing'),
+    comparisonSegments: signal([]),
+    isComparisonVisible: signal(false),
+    generatedContent: signal(''),
+    attachedEditor: editor,
+    selection: { from: 1, to: 9 },
+    previewSelection: null,
   };
 }

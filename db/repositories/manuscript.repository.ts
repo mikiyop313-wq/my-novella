@@ -6,6 +6,8 @@ import type {
   ChapterDto,
   CreatedActStructureDto,
   CreatedChapterStructureDto,
+  CreatedStructureSplitDto,
+  CreateStructureSplitPayload,
   ManuscriptDataDto,
   ManuscriptMode,
   SceneDto,
@@ -18,6 +20,7 @@ import type {
 } from '../../shared/models/manuscript.model';
 import { withEffectiveContextInclusion } from '../../shared/utils/manuscript-context-inclusion';
 import { db } from '../index';
+import type { ActRow, ChapterRow } from '../schema';
 import {
   mapActiveManuscriptAggregate,
   mapActRow,
@@ -31,6 +34,10 @@ import {
   toSqliteBoolean,
   toSqliteTimestamp,
 } from '../core/sqlite-values';
+
+interface DeleteManuscriptOptions {
+  preservePositions?: boolean;
+}
 
 export class ManuscriptRepository {
   private async loadActiveHierarchy(bookId: string, includeProse: boolean): Promise<ActDto[]> {
@@ -166,6 +173,136 @@ export class ManuscriptRepository {
     });
   }
 
+  async createStructureSplit(payload: CreateStructureSplitPayload): Promise<CreatedStructureSplitDto> {
+    return db.transaction().execute(async (transaction) => {
+      const sourceScene = await transaction.selectFrom('scenes').selectAll()
+        .where('id', '=', payload.sourceSceneId).where('status', '=', 'active').executeTakeFirst();
+      if (!sourceScene?.chapterId) throw new Error('The source scene could not be found.');
+
+      const sourceChapter = await transaction.selectFrom('chapters').selectAll()
+        .where('id', '=', sourceScene.chapterId).where('status', '=', 'active').executeTakeFirst();
+      if (!sourceChapter?.actId) throw new Error('The source chapter could not be found.');
+
+      const sourceAct = await transaction.selectFrom('acts').selectAll()
+        .where('id', '=', sourceChapter.actId).where('status', '=', 'active').executeTakeFirst();
+      if (!sourceAct) throw new Error('The source act could not be found.');
+
+      const laterScenes = await transaction.selectFrom('scenes').selectAll()
+        .where('chapterId', '=', sourceChapter.id).where('status', '=', 'active')
+        .where('position', '>', sourceScene.position).orderBy('position').execute();
+      const beforePositions: UpdateStructurePositionsPayload = {};
+      const afterPositions: UpdateStructurePositionsPayload = {};
+
+      let createdAct: ActRow | undefined;
+      let createdChapter: ChapterRow | undefined;
+      let targetChapterId = sourceChapter.id;
+      let newScenePosition = sourceScene.position + 1;
+
+      if (payload.command === 'act') {
+        const laterActs = await transaction.selectFrom('acts').selectAll()
+          .where('bookId', '=', sourceAct.bookId).where('status', '=', 'active')
+          .where('position', '>', sourceAct.position).orderBy('position').execute();
+        const laterChapters = await transaction.selectFrom('chapters').selectAll()
+          .where('actId', '=', sourceAct.id).where('status', '=', 'active')
+          .where('position', '>', sourceChapter.position).orderBy('position').execute();
+
+        createdAct = await transaction.insertInto('acts').values({
+          id: randomUUID(), title: '', bookId: sourceAct.bookId,
+          position: sourceAct.position + 1, status: 'active', summary: null,
+        }).returningAll().executeTakeFirstOrThrow();
+        const createdActId = createdAct.id;
+        createdChapter = await transaction.insertInto('chapters').values({
+          id: randomUUID(), title: '', bookId: sourceAct.bookId, actId: createdActId,
+          position: 0, status: 'active', archiveParentTitle: null, summary: null,
+        }).returningAll().executeTakeFirstOrThrow();
+        const createdChapterId = createdChapter.id;
+        targetChapterId = createdChapterId;
+        newScenePosition = 0;
+
+        beforePositions.acts = laterActs.map(act => ({ id: act.id, bookId: act.bookId, position: act.position }));
+        beforePositions.chapters = laterChapters.map(chapter => ({ id: chapter.id, actId: sourceAct.id, position: chapter.position }));
+        beforePositions.scenes = laterScenes.map(scene => ({ id: scene.id, chapterId: sourceChapter.id, position: scene.position }));
+        afterPositions.acts = [
+          { id: createdActId, bookId: sourceAct.bookId, position: sourceAct.position + 1 },
+          ...laterActs.map(act => ({ id: act.id, bookId: act.bookId, position: act.position + 1 })),
+        ];
+        afterPositions.chapters = [
+          { id: createdChapterId, actId: createdActId, position: 0 },
+          ...laterChapters.map((chapter, position) => ({ id: chapter.id, actId: createdActId, position: position + 1 })),
+        ];
+        afterPositions.scenes = laterScenes.map((scene, position) => ({
+          id: scene.id, chapterId: createdChapterId, position: position + 1,
+        }));
+      } else if (payload.command === 'chapter') {
+        const laterChapters = await transaction.selectFrom('chapters').selectAll()
+          .where('actId', '=', sourceAct.id).where('status', '=', 'active')
+          .where('position', '>', sourceChapter.position).orderBy('position').execute();
+        createdChapter = await transaction.insertInto('chapters').values({
+          id: randomUUID(), title: '', bookId: sourceAct.bookId, actId: sourceAct.id,
+          position: sourceChapter.position + 1, status: 'active', archiveParentTitle: null, summary: null,
+        }).returningAll().executeTakeFirstOrThrow();
+        const createdChapterId = createdChapter.id;
+        targetChapterId = createdChapterId;
+        newScenePosition = 0;
+
+        beforePositions.chapters = laterChapters.map(chapter => ({ id: chapter.id, actId: sourceAct.id, position: chapter.position }));
+        beforePositions.scenes = laterScenes.map(scene => ({ id: scene.id, chapterId: sourceChapter.id, position: scene.position }));
+        afterPositions.chapters = [
+          { id: createdChapterId, actId: sourceAct.id, position: sourceChapter.position + 1 },
+          ...laterChapters.map(chapter => ({ id: chapter.id, actId: sourceAct.id, position: chapter.position + 1 })),
+        ];
+        afterPositions.scenes = laterScenes.map((scene, position) => ({
+          id: scene.id, chapterId: createdChapterId, position: position + 1,
+        }));
+      } else {
+        beforePositions.scenes = laterScenes.map(scene => ({ id: scene.id, chapterId: sourceChapter.id, position: scene.position }));
+        afterPositions.scenes = laterScenes.map(scene => ({
+          id: scene.id, chapterId: sourceChapter.id, position: scene.position + 1,
+        }));
+      }
+
+      const createdScene = await transaction.insertInto('scenes').values({
+        id: randomUUID(), title: '', bookId: sourceAct.bookId, chapterId: targetChapterId,
+        position: newScenePosition, status: 'active', archiveParentTitle: null,
+        prose: serializeSqliteJson(payload.splitProse), summary: null,
+        wordCount: payload.splitWordCount, includeInContext: 1,
+        pointOfViewOverride: null, povCharacterIdOverride: null,
+      }).returningAll().executeTakeFirstOrThrow();
+
+      afterPositions.scenes = [
+        { id: createdScene.id, chapterId: targetChapterId, position: newScenePosition },
+        ...(afterPositions.scenes ?? []),
+      ];
+
+      for (const item of afterPositions.acts ?? []) {
+        await transaction.updateTable('acts').set({ position: item.position })
+          .where('id', '=', item.id).where('status', '=', 'active').execute();
+      }
+      for (const item of afterPositions.chapters ?? []) {
+        await transaction.updateTable('chapters').set({ actId: item.actId, position: item.position })
+          .where('id', '=', item.id).where('status', '=', 'active').execute();
+      }
+      for (const item of afterPositions.scenes ?? []) {
+        await transaction.updateTable('scenes').set({ chapterId: item.chapterId, position: item.position })
+          .where('id', '=', item.id).where('status', '=', 'active').execute();
+      }
+      await transaction.updateTable('scenes').set({
+        prose: serializeSqliteJson(payload.sourceProse), wordCount: payload.sourceWordCount,
+      }).where('id', '=', sourceScene.id).execute();
+      await transaction.updateTable('books').set({ lastEditedAt: toSqliteTimestamp() })
+        .where('id', '=', sourceAct.bookId).execute();
+
+      return {
+        command: payload.command,
+        act: createdAct ? mapActRow(createdAct) : undefined,
+        chapter: createdChapter ? mapChapterRow(createdChapter) : undefined,
+        scene: mapSceneRow(createdScene),
+        beforePositions,
+        afterPositions,
+      };
+    });
+  }
+
   async updateAct(payload: UpdateActPayload): Promise<ActDto> {
     const { id, ...data } = payload;
     const updated = await db.updateTable('acts').set(data).where('id', '=', id).returningAll().executeTakeFirst();
@@ -205,7 +342,7 @@ export class ManuscriptRepository {
     await this.touchBookAfterStructureUpdate(payload);
   }
 
-  async deleteAct(id: string): Promise<void> {
+  async deleteAct(id: string, options: DeleteManuscriptOptions = {}): Promise<void> {
     const target = await db.selectFrom('acts').selectAll().where('id', '=', id).executeTakeFirst();
     if (!target) return;
     const chapterRows = await db.selectFrom('chapters').select('id').where('actId', '=', id).execute();
@@ -220,14 +357,14 @@ export class ManuscriptRepository {
       if (target.status === 'active') chapterDelete = chapterDelete.where('status', '=', 'active');
       await chapterDelete.execute();
       await transaction.deleteFrom('acts').where('id', '=', id).execute();
-      if (target.status === 'active') {
+      if (target.status === 'active' && !options.preservePositions) {
         await transaction.updateTable('acts').set({ position: sql`position - 1` }).where('bookId', '=', target.bookId).where('status', '=', 'active').where('position', '>', target.position).execute();
       }
       await transaction.updateTable('books').set({ lastEditedAt: toSqliteTimestamp() }).where('id', '=', target.bookId).execute();
     });
   }
 
-  async deleteChapter(id: string): Promise<void> {
+  async deleteChapter(id: string, options: DeleteManuscriptOptions = {}): Promise<void> {
     const target = await db.selectFrom('chapters').selectAll().where('id', '=', id).executeTakeFirst();
     if (!target) return;
     await db.transaction().execute(async (transaction) => {
@@ -235,19 +372,19 @@ export class ManuscriptRepository {
       if (target.status === 'active') sceneDelete = sceneDelete.where('status', '=', 'active');
       await sceneDelete.execute();
       await transaction.deleteFrom('chapters').where('id', '=', id).execute();
-      if (target.status === 'active' && target.actId) {
+      if (target.status === 'active' && target.actId && !options.preservePositions) {
         await transaction.updateTable('chapters').set({ position: sql`position - 1` }).where('actId', '=', target.actId).where('status', '=', 'active').where('position', '>', target.position).execute();
       }
       await transaction.updateTable('books').set({ lastEditedAt: toSqliteTimestamp() }).where('id', '=', target.bookId).execute();
     });
   }
 
-  async deleteScene(id: string): Promise<void> {
+  async deleteScene(id: string, options: DeleteManuscriptOptions = {}): Promise<void> {
     const target = await db.selectFrom('scenes').selectAll().where('id', '=', id).executeTakeFirst();
     if (!target) return;
     await db.transaction().execute(async (transaction) => {
       await transaction.deleteFrom('scenes').where('id', '=', id).execute();
-      if (target.status === 'active' && target.chapterId) {
+      if (target.status === 'active' && target.chapterId && !options.preservePositions) {
         await transaction.updateTable('scenes').set({ position: sql`position - 1` }).where('chapterId', '=', target.chapterId).where('status', '=', 'active').where('position', '>', target.position).execute();
       }
       await transaction.updateTable('books').set({ lastEditedAt: toSqliteTimestamp() }).where('id', '=', target.bookId).execute();

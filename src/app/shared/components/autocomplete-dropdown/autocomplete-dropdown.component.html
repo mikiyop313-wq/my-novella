@@ -185,6 +185,9 @@
     <span class="row-label" [class.selected]="state.checked" [style.font-family]="option.fontFamily">
       {{ option.label }}
     </span>
+    @if (option.description) {
+    <span class="row-description">{{ option.description }}</span>
+    }
     @if (option.hint) {
     <span class="row-hint">{{ option.hint }}</span>
     }

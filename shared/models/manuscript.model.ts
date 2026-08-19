@@ -139,10 +139,30 @@ export interface CreatedChapterStructureDto {
   scene: SceneDto;
 }
 
+export type ManuscriptStructureSplitCommand = 'act' | 'chapter' | 'scene';
+
+export interface CreateStructureSplitPayload {
+  command: ManuscriptStructureSplitCommand;
+  sourceSceneId: string;
+  sourceProse: TiptapJsonDoc;
+  sourceWordCount: number;
+  splitProse: TiptapJsonDoc;
+  splitWordCount: number;
+}
+
+export interface CreatedStructureSplitDto {
+  command: ManuscriptStructureSplitCommand;
+  act?: ActDto;
+  chapter?: ChapterDto;
+  scene: SceneDto;
+  beforePositions: UpdateStructurePositionsPayload;
+  afterPositions: UpdateStructurePositionsPayload;
+}
+
 // Payloads for the manuscript:delete* IPC channels
-export interface DeleteActPayload     { id: string; }
-export interface DeleteChapterPayload { id: string; }
-export interface DeleteScenePayload   { id: string; }
+export interface DeleteActPayload     { id: string; preservePositions?: boolean; }
+export interface DeleteChapterPayload { id: string; preservePositions?: boolean; }
+export interface DeleteScenePayload   { id: string; preservePositions?: boolean; }
 
 // Payloads for the manuscript:archive* IPC channels
 export interface ArchiveActPayload     { id: string; }

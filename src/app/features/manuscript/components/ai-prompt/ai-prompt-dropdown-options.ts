@@ -3,6 +3,7 @@ import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/mode
 import type { AiModel, AiModelProviderGroup } from '../../../../../../shared/models/ai.model';
 import type { AiManuscriptContextRef } from '../../../../shared/models/ai-context.model';
 import { filterHierarchyForContext } from '../../../../../../shared/utils/manuscript-context-inclusion';
+import { markdownToPlainText } from '../../../../shared/pipes/markdown-plain-text.pipe';
 import type {
   DropdownMenu,
   DropdownOption,
@@ -258,7 +259,7 @@ function buildNovelMenu(hierarchy: readonly ActDto[]): DropdownMenu<string> {
         const values = manuscriptValuesForAct(act);
         return {
           value: `branch:act:${act.id}`,
-          label: act.title || 'Untitled Act',
+          label: hierarchyLabel('Act', act.position, act.title),
           disabled: scenes.length === 0,
           selectionValues: values,
           submenu: buildActMenu(act),
@@ -277,7 +278,7 @@ function buildActMenu(act: ActDto): DropdownMenu<string> {
         const values = manuscriptValuesForChapter(chapter);
         return {
           value: `branch:chapter:${chapter.id}`,
-          label: chapter.title || 'Untitled Chapter',
+          label: hierarchyLabel('Chapter', chapter.position, chapter.title),
           disabled: scenes.length === 0,
           selectionValues: values,
           submenu: buildChapterMenu(chapter),
@@ -291,10 +292,14 @@ function buildChapterMenu(chapter: ChapterDto): DropdownMenu<string> {
   return {
     sections: [{
       key: `scenes:${chapter.id}`,
-      options: scenesForChapter(chapter).map(scene => ({
-        value: sceneValue(scene.id),
-        label: scene.title || 'Untitled Scene',
-      })),
+      options: scenesForChapter(chapter).map(scene => {
+        const description = markdownToPlainText(scene.summary);
+        return {
+          value: sceneValue(scene.id),
+          label: hierarchyLabel('Scene', scene.position, scene.title),
+          ...(description ? { description } : {}),
+        };
+      }),
     }],
   };
 }
@@ -332,6 +337,11 @@ function buildCodexCategoryOption(
       }],
     },
   };
+}
+
+function hierarchyLabel(type: 'Act' | 'Chapter' | 'Scene', position: number, title: string): string {
+  const indexLabel = `${type} ${position + 1}`;
+  return title ? `${indexLabel}: ${title}` : indexLabel;
 }
 
 export function buildModelDropdownSections(

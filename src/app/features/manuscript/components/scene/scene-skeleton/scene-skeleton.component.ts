@@ -2,6 +2,8 @@ import { Component, OnInit, inject, signal, NgZone, ElementRef, OnDestroy } from
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 import { ManuscriptStore } from '../../../store/manuscript.store';
 import { ManuscriptProseSaverService } from '../../../helpers/saving/manuscript-prose-saver.service';
+import { AiSelectionEditService } from '../../../helpers/ai/ai-selection-edit.service';
+import { WorkspaceStore } from '../../../../workspace/workspace.store';
 
 /**
  * Renders an animated skeleton placeholder for a deferred scene.
@@ -21,6 +23,8 @@ import { ManuscriptProseSaverService } from '../../../helpers/saving/manuscript-
 export class SceneSkeletonComponent extends AngularNodeViewComponent implements OnInit, OnDestroy {
   private readonly store = inject(ManuscriptStore);
   private readonly saver = inject(ManuscriptProseSaverService);
+  private readonly selectionEdits = inject(AiSelectionEditService);
+  private readonly workspaceStore = inject(WorkspaceStore);
   private readonly ngZone = inject(NgZone);
   private readonly el = inject(ElementRef<HTMLElement>);
 
@@ -51,6 +55,8 @@ export class SceneSkeletonComponent extends AngularNodeViewComponent implements 
               const editor = this.store.editor();
               if (editor) {
                 this.saver.seedCleanSnapshot(this.sceneId(), editor);
+                const bookId = this.workspaceStore.bookId();
+                if (bookId) this.selectionEdits.attachEditor(editor, bookId);
               }
             });
             // Once triggered, disconnect — the node will be replaced anyway.

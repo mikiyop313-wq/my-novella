@@ -44,15 +44,6 @@
     padding: 0;
   }
 
-  .cm-content::selection,
-  .cm-content *::selection {
-    background-color: color-mix(
-      in srgb,
-      var(--color-btn-primary-bg, var(--color-text-primary)) 24%,
-      transparent
-    );
-  }
-
   .cm-cursor {
     border-left-color: var(--color-text-primary);
   }
