@@ -12,7 +12,7 @@ export interface SlashCommandMenuAnchor {
   bottom: number;
 }
 
-interface SlashCommandRange {
+export interface SlashCommandRange {
   triggerFrom: number;
   triggerTo: number;
   blockFrom: number;
@@ -100,6 +100,15 @@ export function selectSlashCommand(editor: Editor, command: SlashCommand): boole
   editor.view.dispatch(transaction.setMeta(DISMISS_SLASH_MENU_META, true));
   editor.commands.focus();
   return true;
+}
+
+export function getSlashCommandRange(editor: Editor): SlashCommandRange | null {
+  return slashCommandMenuKey.getState(editor.state) ?? null;
+}
+
+export function completeStructureSlashCommand(editor: Editor, transaction: Transaction): void {
+  editor.view.dispatch(transaction.setMeta(DISMISS_SLASH_MENU_META, true));
+  editor.commands.focus();
 }
 
 export function dismissSlashCommandMenu(editor: Editor): boolean {

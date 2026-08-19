@@ -147,6 +147,84 @@ describe('manuscript archive repositories', () => {
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM scenes').get()).toMatchObject({ count: 0 });
   });
 
+  it('splits a scene and shifts its later siblings', async () => {
+    insertAct(sqlite, 'act-1', 'Act', 'active');
+    insertChapter(sqlite, 'chapter-1', 'Chapter', 'act-1', 'active');
+    insertScene(sqlite, 'scene-1', 'First', 'chapter-1', 'active');
+    insertScene(sqlite, 'scene-2', 'Second', 'chapter-1', 'active');
+    sqlite.prepare('UPDATE scenes SET position = 1 WHERE id = ?').run('scene-2');
+
+    const created = await repository.createStructureSplit(splitPayload('scene'));
+
+    expect(created.scene).toMatchObject({ chapterId: 'chapter-1', position: 1 });
+    expect(row(sqlite, 'scenes', 'scene-2')).toMatchObject({ chapter_id: 'chapter-1', position: 2 });
+    expect(row(sqlite, 'scenes', 'scene-1')).toMatchObject({ word_count: 2 });
+    expect(JSON.parse(row(sqlite, 'scenes', created.scene.id)?.['prose'] as string))
+      .toEqual(splitPayload('scene').splitProse);
+  });
+
+  it('moves later scenes into a chapter created at the split boundary', async () => {
+    insertAct(sqlite, 'act-1', 'Act', 'active');
+    insertChapter(sqlite, 'chapter-1', 'First', 'act-1', 'active');
+    insertChapter(sqlite, 'chapter-2', 'Second', 'act-1', 'active');
+    sqlite.prepare('UPDATE chapters SET position = 1 WHERE id = ?').run('chapter-2');
+    insertScene(sqlite, 'scene-1', 'First', 'chapter-1', 'active');
+    insertScene(sqlite, 'scene-2', 'Second', 'chapter-1', 'active');
+    sqlite.prepare('UPDATE scenes SET position = 1 WHERE id = ?').run('scene-2');
+
+    const created = await repository.createStructureSplit(splitPayload('chapter'));
+
+    expect(created.chapter).toMatchObject({ actId: 'act-1', position: 1 });
+    expect(row(sqlite, 'scenes', 'scene-2')).toMatchObject({
+      chapter_id: created.chapter!.id,
+      position: 1,
+    });
+    expect(row(sqlite, 'chapters', 'chapter-2')).toMatchObject({ act_id: 'act-1', position: 2 });
+  });
+
+  it('moves later scenes and chapters into an act created at the split boundary', async () => {
+    insertAct(sqlite, 'act-1', 'First Act', 'active');
+    insertAct(sqlite, 'act-2', 'Second Act', 'active');
+    sqlite.prepare('UPDATE acts SET position = 1 WHERE id = ?').run('act-2');
+    insertChapter(sqlite, 'chapter-1', 'First', 'act-1', 'active');
+    insertChapter(sqlite, 'chapter-2', 'Second', 'act-1', 'active');
+    sqlite.prepare('UPDATE chapters SET position = 1 WHERE id = ?').run('chapter-2');
+    insertScene(sqlite, 'scene-1', 'First', 'chapter-1', 'active');
+    insertScene(sqlite, 'scene-2', 'Second', 'chapter-1', 'active');
+    sqlite.prepare('UPDATE scenes SET position = 1 WHERE id = ?').run('scene-2');
+
+    const created = await repository.createStructureSplit(splitPayload('act'));
+
+    expect(created.act).toMatchObject({ bookId: 'book-1', position: 1 });
+    expect(row(sqlite, 'acts', 'act-2')).toMatchObject({ position: 2 });
+    expect(row(sqlite, 'chapters', 'chapter-2')).toMatchObject({ act_id: created.act!.id, position: 1 });
+    expect(row(sqlite, 'scenes', 'scene-2')).toMatchObject({
+      chapter_id: created.chapter!.id,
+      position: 1,
+    });
+  });
+
+  it('rolls back reparenting when a structure split cannot create its scene', async () => {
+    insertAct(sqlite, 'act-1', 'Act', 'active');
+    insertChapter(sqlite, 'chapter-1', 'Chapter', 'act-1', 'active');
+    insertScene(sqlite, 'scene-1', 'First', 'chapter-1', 'active');
+    insertScene(sqlite, 'scene-2', 'Second', 'chapter-1', 'active');
+    sqlite.prepare('UPDATE scenes SET position = 1 WHERE id = ?').run('scene-2');
+    sqlite.exec(`
+      CREATE TRIGGER fail_scene_insert
+      BEFORE INSERT ON scenes
+      BEGIN
+        SELECT RAISE(ABORT, 'scene insert failed');
+      END;
+    `);
+
+    await expect(repository.createStructureSplit(splitPayload('chapter')))
+      .rejects.toThrow('scene insert failed');
+
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM chapters').get()).toMatchObject({ count: 1 });
+    expect(row(sqlite, 'scenes', 'scene-2')).toMatchObject({ chapter_id: 'chapter-1', position: 1 });
+  });
+
   it('deletes active descendants while detaching archived descendants from an active act', async () => {
     insertAct(sqlite, 'act-1', 'Active Act', 'active');
     insertChapter(sqlite, 'chapter-active', 'Active Chapter', 'act-1', 'active');
@@ -573,4 +651,21 @@ function row(
   return sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) as
     | Record<string, unknown>
     | undefined;
+}
+
+function splitPayload(command: 'act' | 'chapter' | 'scene') {
+  return {
+    command,
+    sourceSceneId: 'scene-1',
+    sourceProse: {
+      type: 'doc' as const,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Before split' }] }],
+    },
+    sourceWordCount: 2,
+    splitProse: {
+      type: 'doc' as const,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'After split' }] }],
+    },
+    splitWordCount: 2,
+  };
 }

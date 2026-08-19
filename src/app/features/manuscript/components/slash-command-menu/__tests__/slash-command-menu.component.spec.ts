@@ -62,4 +62,17 @@ describe('SlashCommandMenuComponent', () => {
 
     expect(dismissed).toHaveBeenCalledOnce();
   });
+
+  it('hides the structure section when only AI is available', () => {
+    fixture.componentRef.setInput('items', [{
+      command: 'ai',
+      title: 'AI Prose Generation',
+      description: 'Generate or continue prose with AI.',
+    }]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#slash-command-ai')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#structure-command-heading')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.section-divider')).toBeNull();
+  });
 });

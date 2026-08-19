@@ -3,6 +3,9 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { Component, HostListener, Injector, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
+import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { closeHistory } from '@tiptap/pm/history';
+import { TextSelection } from '@tiptap/pm/state';
 import { Markdown } from '@tiptap/markdown';
 import Placeholder from '@tiptap/extension-placeholder';
 import StarterKit from '@tiptap/starter-kit';
@@ -14,7 +17,13 @@ import {
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { ElectronService } from '../../core/services/electron.service';
 import { ThemeService } from '../../core/services/theme.service';
-import { ManuscriptMode } from '../../../../shared/models/manuscript.model';
+import {
+  type CreateStructureSplitPayload,
+  type CreatedStructureSplitDto,
+  ManuscriptMode,
+  type ManuscriptStructureSplitCommand,
+  type TiptapJsonDoc,
+} from '../../../../shared/models/manuscript.model';
 import { AiGeneratedBlockExtension } from './components/ai-generated-block/ai-generated-block.extension';
 import { AiPromptExtension } from './components/ai-prompt/ai-node-extension';
 import { EditorBubbleMenuComponent } from './components/editor-bubble-menu/editor-bubble-menu.component';
@@ -31,9 +40,11 @@ import { ManuscriptSearchComponent } from './components/manuscript-search/manusc
 import {
   SLASH_COMMAND_MENU_ITEMS,
   SlashCommandMenuComponent,
+  type SlashCommandMenuItem,
   type SlashCommandMenuPosition,
 } from './components/slash-command-menu/slash-command-menu.component';
 import {
+  ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META,
   isPositionInsideSceneProse,
   ManuscriptEditingGuardExtension,
 } from './extensions/manuscript-editing-guard.extension';
@@ -41,10 +52,13 @@ import { UniqueIdExtension } from './extensions/unique-id.extension';
 import { ManuscriptSearchExtension } from './extensions/manuscript-search.extension';
 import {
   dismissSlashCommandMenu,
+  completeStructureSlashCommand,
+  getSlashCommandRange,
   selectSlashCommand,
   SlashCommandMenuExtension,
   type SlashCommand,
   type SlashCommandMenuAnchor,
+  type SlashCommandRange,
 } from './extensions/slash-command-menu.extension';
 import {
   buildEditorContentLazy,
@@ -127,6 +141,19 @@ export class Manuscript implements OnInit, OnDestroy {
   private generationFocusTimeout: number | null = null;
   readonly slashCommandMenuPosition = signal<SlashCommandMenuPosition | null>(null);
   readonly slashCommandMenuSelectedIndex = signal(0);
+  readonly slashCommandCreationPending = signal(false);
+
+  readonly slashCommandMenuItems = computed<readonly SlashCommandMenuItem[]>(() => {
+    const mode = this.store.mode();
+    const allowed = mode === 'book'
+      ? new Set<SlashCommand>(['ai', 'act', 'chapter', 'scene'])
+      : mode === 'act'
+        ? new Set<SlashCommand>(['ai', 'chapter', 'scene'])
+        : mode === 'chapter'
+          ? new Set<SlashCommand>(['ai', 'scene'])
+          : new Set<SlashCommand>(['ai']);
+    return SLASH_COMMAND_MENU_ITEMS.filter(item => allowed.has(item.command));
+  });
 
   showCreateSceneHint = computed(() => this.hasLoadedContent() && !this.hasSceneNodes());
   canInsertChapter = computed(() => this.hasActNodes());
@@ -222,6 +249,7 @@ export class Manuscript implements OnInit, OnDestroy {
         // Route changes reuse this component, so flush pending prose and vector
         // updates before replacing the editor document.
         await this.saver.flushDirtySections();
+        await this.saver.flushStructuralChanges();
         await this.saver.flushParagraphVectorChanges();
 
         const mode = params['mode'] as ManuscriptMode;
@@ -322,7 +350,12 @@ export class Manuscript implements OnInit, OnDestroy {
 
   selectSlashCommand(command: SlashCommand): void {
     if (!this.editor) return;
-    selectSlashCommand(this.editor, command);
+    if (command === 'ai') {
+      selectSlashCommand(this.editor, command);
+      return;
+    }
+    if (!this.slashCommandMenuItems().some(item => item.command === command)) return;
+    void this.createStructureFromSlash(command);
   }
 
   dismissSlashCommandMenu(): void {
@@ -336,13 +369,108 @@ export class Manuscript implements OnInit, OnDestroy {
   }
 
   private navigateSlashCommandMenu(direction: 1 | -1): void {
-    const itemCount = SLASH_COMMAND_MENU_ITEMS.length;
+    const itemCount = this.slashCommandMenuItems().length;
     this.slashCommandMenuSelectedIndex.update(index => (index + direction + itemCount) % itemCount);
   }
 
   private selectActiveSlashCommand(): void {
-    const item = SLASH_COMMAND_MENU_ITEMS[this.slashCommandMenuSelectedIndex()];
+    const item = this.slashCommandMenuItems()[this.slashCommandMenuSelectedIndex()];
     if (item) this.selectSlashCommand(item.command);
+  }
+
+  private async createStructureFromSlash(command: ManuscriptStructureSplitCommand): Promise<void> {
+    const editor = this.editor;
+    if (!editor || this.slashCommandCreationPending()) return;
+    const range = getSlashCommandRange(editor);
+    if (!range) return;
+
+    const context = buildStructureSplitContext(editor, range);
+    if (!context) return;
+
+    this.slashCommandCreationPending.set(true);
+    editor.setEditable(false);
+    try {
+      const created = await this.store.createStructureSplit({
+        command,
+        sourceSceneId: context.sourceSceneId,
+        sourceProse: toProseDocument(context.sourceNodes),
+        sourceWordCount: countNodeWords(context.sourceNodes),
+        splitProse: toProseDocument(context.splitNodes),
+        splitWordCount: countNodeWords(context.splitNodes),
+      } satisfies CreateStructureSplitPayload);
+      this.applyStructureSplit({ editor, range, context, created });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Failed to create ${command}.`;
+      this.toastService.error(message, 'Manuscript');
+    } finally {
+      editor.setEditable(true);
+      this.slashCommandCreationPending.set(false);
+    }
+  }
+
+  private applyStructureSplit({
+    editor,
+    range,
+    context,
+    created,
+  }: {
+    editor: Editor;
+    range: SlashCommandRange;
+    context: StructureSplitContext;
+    created: CreatedStructureSplitDto;
+  }): void {
+    this.saver.registerStructureSplit(created);
+    const insertedNodes: ProseMirrorNode[] = [];
+    if (context.sourceWasEmpty) insertedNodes.push(editor.schema.nodes['paragraph'].create());
+    if (created.act) {
+      insertedNodes.push(editor.schema.nodes['actHeader'].create({
+        id: created.act.id, bookId: created.act.bookId,
+        title: created.act.title, position: created.act.position,
+      }));
+    }
+    if (created.chapter) {
+      insertedNodes.push(editor.schema.nodes['chapterHeader'].create({
+        id: created.chapter.id, actId: created.chapter.actId,
+        title: created.chapter.title, position: created.chapter.position,
+      }));
+    }
+    insertedNodes.push(editor.schema.nodes['sceneSummary'].create({
+      id: created.scene.id, chapterId: created.scene.chapterId,
+      title: created.scene.title, summary: created.scene.summary, position: created.scene.position,
+    }));
+    if (context.splitWasEmpty) insertedNodes.push(editor.schema.nodes['paragraph'].create());
+
+    let transaction = editor.state.tr.replaceWith(
+      range.blockFrom,
+      range.blockTo,
+      Fragment.fromArray(insertedNodes),
+    );
+    transaction = closeHistory(transaction);
+    transaction.setMeta(ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META, true);
+
+    const actUpdates = new Map((created.afterPositions.acts ?? []).map(item => [item.id, item]));
+    const chapterUpdates = new Map((created.afterPositions.chapters ?? []).map(item => [item.id, item]));
+    const sceneUpdates = new Map((created.afterPositions.scenes ?? []).map(item => [item.id, item]));
+    let newScenePosition: number | null = null;
+    transaction.doc.forEach((node, offset) => {
+      const id = node.attrs['id'] as string | undefined;
+      const actUpdate = id ? actUpdates.get(id) : undefined;
+      const chapterUpdate = id ? chapterUpdates.get(id) : undefined;
+      const sceneUpdate = id ? sceneUpdates.get(id) : undefined;
+      const attrs = actUpdate
+        ? { ...node.attrs, bookId: actUpdate.bookId, position: actUpdate.position }
+        : chapterUpdate
+          ? { ...node.attrs, actId: chapterUpdate.actId, position: chapterUpdate.position }
+          : sceneUpdate
+            ? { ...node.attrs, chapterId: sceneUpdate.chapterId, position: sceneUpdate.position }
+            : null;
+      if (attrs) transaction = transaction.setNodeMarkup(offset, undefined, attrs);
+      if (id === created.scene.id) newScenePosition = offset + node.nodeSize;
+    });
+    if (newScenePosition !== null) {
+      transaction.setSelection(TextSelection.near(transaction.doc.resolve(newScenePosition)));
+    }
+    completeStructureSlashCommand(editor, transaction);
   }
 
   /**
@@ -869,4 +997,62 @@ function positionSlashCommandMenu(anchor: SlashCommandMenuAnchor): SlashCommandM
   );
 
   return { left, top };
+}
+
+interface StructureSplitContext {
+  sourceSceneId: string;
+  sourceNodes: ProseMirrorNode[];
+  splitNodes: ProseMirrorNode[];
+  sourceWasEmpty: boolean;
+  splitWasEmpty: boolean;
+}
+
+function buildStructureSplitContext(
+  editor: Editor,
+  range: SlashCommandRange,
+): StructureSplitContext | null {
+  let sourceSceneId: string | null = null;
+  let sourceSceneProseStart = -1;
+  let splitBoundary = editor.state.doc.content.size;
+  const sourceNodes: ProseMirrorNode[] = [];
+  const splitNodes: ProseMirrorNode[] = [];
+
+  editor.state.doc.forEach((node, offset) => {
+    if (node.type.name === 'sceneSummary' && offset < range.blockFrom) {
+      sourceSceneId = node.attrs['id'] as string;
+      sourceSceneProseStart = offset + node.nodeSize;
+    }
+    const isHeader = node.type.name === 'actHeader'
+      || node.type.name === 'chapterHeader'
+      || node.type.name === 'sceneSummary';
+    if (offset >= range.blockTo && isHeader && splitBoundary === editor.state.doc.content.size) {
+      splitBoundary = offset;
+    }
+  });
+
+  if (!sourceSceneId || sourceSceneProseStart < 0) return null;
+
+  editor.state.doc.forEach((node, offset) => {
+    if (offset >= sourceSceneProseStart && offset < range.blockFrom) sourceNodes.push(node);
+    if (offset >= range.blockTo && offset < splitBoundary) splitNodes.push(node);
+  });
+
+  const sourceWasEmpty = sourceNodes.length === 0;
+  const splitWasEmpty = splitNodes.length === 0;
+  return {
+    sourceSceneId,
+    sourceNodes: sourceWasEmpty ? [editor.schema.nodes['paragraph'].create()] : sourceNodes,
+    splitNodes: splitWasEmpty ? [editor.schema.nodes['paragraph'].create()] : splitNodes,
+    sourceWasEmpty,
+    splitWasEmpty,
+  };
+}
+
+function toProseDocument(nodes: ProseMirrorNode[]): TiptapJsonDoc {
+  return { type: 'doc', content: nodes.map(node => node.toJSON()) } as TiptapJsonDoc;
+}
+
+function countNodeWords(nodes: ProseMirrorNode[]): number {
+  const text = nodes.map(node => node.textContent).join(' ').trim();
+  return text ? text.split(/\s+/).length : 0;
 }

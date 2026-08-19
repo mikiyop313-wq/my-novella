@@ -17,18 +17,44 @@ export class ManuscriptStructuralDeleteQueueService {
 
   private readonly manuscriptStructureService = inject(ManuscriptStructureService);
 
-  private pendingDeletes = new Map<string, ManuscriptHeaderNodeType>();
+  private pendingDeletes = new Map<string, {
+    type: ManuscriptHeaderNodeType;
+    parentId: string | null;
+    preservePositions: boolean;
+  }>();
+  private splitRootIds = new Set<string>();
+
+  registerSplitRoot(id: string): void {
+    this.splitRootIds.add(id);
+  }
+
+  pendingDeleteIds(): Set<string> {
+    return new Set(this.pendingDeletes.keys());
+  }
 
   /**
    * When structural nodes disappear from the document, cache their IDs for
    * deferred deletion instead of hitting the DB immediately.
    */
   cacheDeletedSections(transaction: any): void {
-    const beforeIds = new Map<string, ManuscriptHeaderNodeType>();
+    const beforeIds = new Map<string, {
+      type: ManuscriptHeaderNodeType;
+      parentId: string | null;
+      preservePositions: boolean;
+    }>();
     transaction.before.forEach((node: any) => {
       const type = node.type.name;
       if (isHeaderNodeType(type) && node.attrs['id']) {
-        beforeIds.set(node.attrs['id'], type);
+        const parentId = type === CHAPTER_HEADER_NODE_TYPE
+          ? node.attrs['actId'] ?? null
+          : type === SCENE_HEADER_NODE_TYPE
+            ? node.attrs['chapterId'] ?? null
+            : null;
+        beforeIds.set(node.attrs['id'], {
+          type,
+          parentId,
+          preservePositions: this.splitRootIds.has(node.attrs['id']),
+        });
       }
     });
 
@@ -40,9 +66,9 @@ export class ManuscriptStructuralDeleteQueueService {
       }
     });
 
-    beforeIds.forEach((type, id) => {
+    beforeIds.forEach((entry, id) => {
       if (!afterIds.has(id)) {
-        this.pendingDeletes.set(id, type);
+        this.pendingDeletes.set(id, entry);
       }
     });
   }
@@ -67,14 +93,17 @@ export class ManuscriptStructuralDeleteQueueService {
     if (this.pendingDeletes.size === 0) return;
 
     const promises: Promise<void>[] = [];
-    this.pendingDeletes.forEach((type, id) => {
+    this.pendingDeletes.forEach(({ type, parentId, preservePositions }, id) => {
+      const parent = parentId ? this.pendingDeletes.get(parentId) : undefined;
+      if (parent?.type === ACT_HEADER_NODE_TYPE || parent?.type === CHAPTER_HEADER_NODE_TYPE) return;
       if (type === ACT_HEADER_NODE_TYPE) {
-        promises.push(this.manuscriptStructureService.deleteAct(id));
+        promises.push(this.manuscriptStructureService.deleteAct(id, { preservePositions }));
       } else if (type === CHAPTER_HEADER_NODE_TYPE) {
-        promises.push(this.manuscriptStructureService.deleteChapter(id));
+        promises.push(this.manuscriptStructureService.deleteChapter(id, { preservePositions }));
       } else if (type === SCENE_HEADER_NODE_TYPE) {
-        promises.push(this.manuscriptStructureService.deleteScene(id));
+        promises.push(this.manuscriptStructureService.deleteScene(id, { preservePositions }));
       }
+      this.splitRootIds.delete(id);
     });
 
     this.pendingDeletes.clear();

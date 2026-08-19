@@ -15,6 +15,7 @@ import { ManuscriptProseSaverService } from './helpers/saving/manuscript-prose-s
 import { ManuscriptParagraphVectorSyncService } from './helpers/saving/manuscript-paragraph-vector-sync.service';
 import { AiSelectionEditService } from './helpers/ai/ai-selection-edit.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { getSlashCommandRange } from './extensions/slash-command-menu.extension';
 
 const electronInvoke = vi.fn<(channel: string, payload?: unknown) => Promise<unknown>>();
 import { WorkspaceBookStore } from '../workspace/workspace-book.store';
@@ -328,6 +329,96 @@ describe('Manuscript', () => {
     editor.view.dispatch(tr);
 
     expect(component.canInsertScene()).toBe(true);
+  });
+
+  it('filters slash commands to structures contained by the active scope', () => {
+    const commandsFor = (mode: 'book' | 'act' | 'chapter' | 'scene') => {
+      component.store.setRouteParams(mode, `${mode}-1`);
+      return component.slashCommandMenuItems().map(item => item.command);
+    };
+
+    expect(commandsFor('book')).toEqual(['ai', 'act', 'chapter', 'scene']);
+    expect(commandsFor('act')).toEqual(['ai', 'chapter', 'scene']);
+    expect(commandsFor('chapter')).toEqual(['ai', 'scene']);
+    expect(commandsFor('scene')).toEqual(['ai']);
+  });
+
+  it('splits prose into a new chapter and moves following scenes with undo support', async () => {
+    const editor = component.editor!;
+    component.store.setRouteParams('book', 'book-1');
+    editor.chain().command(({ tr }) => {
+      tr.setMeta('skipSaver', true);
+      return true;
+    }).setContent({
+      type: 'doc',
+      content: [
+        { type: 'actHeader', attrs: { id: 'act-1', bookId: 'book-1', position: 0 } },
+        { type: 'chapterHeader', attrs: { id: 'chapter-1', actId: 'act-1', position: 0 } },
+        { type: 'sceneSummary', attrs: { id: 'scene-1', chapterId: 'chapter-1', position: 0 } },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '/' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
+        { type: 'sceneSummary', attrs: { id: 'scene-2', chapterId: 'chapter-1', position: 1 } },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Second scene' }] },
+      ],
+    }).run();
+    editor.view.coordsAtPos = vi.fn(() => ({ left: 100, right: 100, top: 40, bottom: 60 }));
+    let slashSelection = 0;
+    editor.state.doc.forEach((node, offset) => {
+      if (node.textContent === '/') slashSelection = offset + 2;
+    });
+    editor.commands.setTextSelection(slashSelection);
+    expect(getSlashCommandRange(editor)).not.toBeNull();
+
+    electronInvoke.mockImplementation(async (channel: string, payload?: any) => {
+      if (channel === 'manuscript:createStructureSplit') {
+        expect(payload.sourceProse.content.map((node: any) => node.content?.[0]?.text))
+          .toEqual(['Before']);
+        expect(payload.splitProse.content.map((node: any) => node.content?.[0]?.text))
+          .toEqual(['After']);
+        return {
+          command: 'chapter',
+          chapter: { id: 'chapter-new', title: '', actId: 'act-1', position: 1, status: 'active', summary: null },
+          scene: {
+            id: 'scene-new', title: '', chapterId: 'chapter-new', position: 0,
+            status: 'active', prose: null, summary: null, wordCount: 1,
+            pointOfViewOverride: null, povCharacterIdOverride: null,
+          },
+          beforePositions: {
+            scenes: [{ id: 'scene-2', chapterId: 'chapter-1', position: 1 }],
+          },
+          afterPositions: {
+            chapters: [{ id: 'chapter-new', actId: 'act-1', position: 1 }],
+            scenes: [
+              { id: 'scene-new', chapterId: 'chapter-new', position: 0 },
+              { id: 'scene-2', chapterId: 'chapter-new', position: 1 },
+            ],
+          },
+        };
+      }
+      if (channel === 'manuscript:getBookHierarchy') return [];
+      return undefined;
+    });
+
+    component.selectSlashCommand('chapter');
+    await vi.waitFor(() => expect(electronInvoke).toHaveBeenCalledWith(
+      'manuscript:createStructureSplit',
+      expect.objectContaining({ command: 'chapter', sourceSceneId: 'scene-1' }),
+    ));
+    await vi.waitFor(() => expect(editor.getJSON().content?.some(node => (
+      node.type === 'chapterHeader' && node.attrs?.['id'] === 'chapter-new'
+    ))).toBe(true));
+
+    const movedScene = editor.getJSON().content?.find(node => node.attrs?.['id'] === 'scene-2');
+    expect(movedScene?.attrs).toMatchObject({ chapterId: 'chapter-new', position: 1 });
+    expect(editor.commands.undo()).toBe(true);
+    const restoredScene = editor.getJSON().content?.find(node => node.attrs?.['id'] === 'scene-2');
+    expect(restoredScene?.attrs).toMatchObject({ chapterId: 'chapter-1', position: 1 });
+    expect(editor.getText()).toContain('/');
+    const saver = TestBed.inject(ManuscriptProseSaverService);
+    await saver.flushDirtySections();
+    await saver.flushStructuralChanges();
+    await saver.flushParagraphVectorChanges();
   });
 
   it('renders pending, active, and updated indexing states', async () => {

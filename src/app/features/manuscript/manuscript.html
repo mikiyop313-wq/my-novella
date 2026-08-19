@@ -408,7 +408,8 @@
     </div>
 
     @if (slashCommandMenuPosition(); as menuPosition) {
-    <app-slash-command-menu [position]="menuPosition" [selectedIndex]="slashCommandMenuSelectedIndex()"
+    <app-slash-command-menu [position]="menuPosition" [items]="slashCommandMenuItems()"
+      [selectedIndex]="slashCommandMenuSelectedIndex()"
       (commandSelected)="selectSlashCommand($event)" (dismissed)="dismissSlashCommandMenu()" />
     }
 

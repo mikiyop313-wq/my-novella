@@ -3,7 +3,7 @@ import { archivedManuscriptRepository } from '../../../db/repositories/archived-
 import { manuscriptRepository } from '../../../db/repositories/manuscript.repository';
 import {
     ArchiveActPayload, ArchiveChapterPayload, ArchiveScenePayload,
-    CreateActPayload, CreateChapterPayload, CreateScenePayload,
+    CreateActPayload, CreateChapterPayload, CreateScenePayload, CreateStructureSplitPayload,
     DeleteActPayload, DeleteChapterPayload, DeleteScenePayload,
     GetArchiveOverviewPayload,
     RestoreActPayload, RestoreChapterPayload, RestoreScenePayload,
@@ -85,6 +85,15 @@ export function setupManuscriptHandlers() {
         }
     });
 
+    ipcMain.handle('manuscript:createStructureSplit', async (_, payload: CreateStructureSplitPayload) => {
+        try {
+            return await manuscriptRepository.createStructureSplit(payload);
+        } catch (error) {
+            console.error('Failed to create structure split:', error);
+            throw error;
+        }
+    });
+
     ipcMain.handle('manuscript:updateAct', async (_, payload: UpdateActPayload) => {
         try {
             return await manuscriptRepository.updateAct(payload);
@@ -130,27 +139,27 @@ export function setupManuscriptHandlers() {
         }
     });
 
-    ipcMain.handle('manuscript:deleteAct', async (_, { id }: DeleteActPayload) => {
+    ipcMain.handle('manuscript:deleteAct', async (_, { id, preservePositions }: DeleteActPayload) => {
         try {
-            await manuscriptRepository.deleteAct(id);
+            await manuscriptRepository.deleteAct(id, { preservePositions });
         } catch (error) {
             console.error('Failed to delete act:', error);
             throw error;
         }
     });
 
-    ipcMain.handle('manuscript:deleteChapter', async (_, { id }: DeleteChapterPayload) => {
+    ipcMain.handle('manuscript:deleteChapter', async (_, { id, preservePositions }: DeleteChapterPayload) => {
         try {
-            await manuscriptRepository.deleteChapter(id);
+            await manuscriptRepository.deleteChapter(id, { preservePositions });
         } catch (error) {
             console.error('Failed to delete chapter:', error);
             throw error;
         }
     });
 
-    ipcMain.handle('manuscript:deleteScene', async (_, { id }: DeleteScenePayload) => {
+    ipcMain.handle('manuscript:deleteScene', async (_, { id, preservePositions }: DeleteScenePayload) => {
         try {
-            await manuscriptRepository.deleteScene(id);
+            await manuscriptRepository.deleteScene(id, { preservePositions });
         } catch (error) {
             console.error('Failed to delete scene:', error);
             throw error;

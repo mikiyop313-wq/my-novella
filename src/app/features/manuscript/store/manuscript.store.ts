@@ -9,6 +9,8 @@ import { ManuscriptStructureService } from '../../workspace/services/manuscript-
 import {
   ActDto,
   ChapterDto,
+  CreatedStructureSplitDto,
+  CreateStructureSplitPayload,
   ManuscriptMode,
   ManuscriptModeDto,
   SceneDto,
@@ -16,6 +18,7 @@ import {
   UpdateActPayload,
   UpdateChapterPayload,
   UpdateScenePayload,
+  UpdateStructurePositionsPayload,
 } from '../../../../../shared/models/manuscript.model';
 import { buildScenePatch } from '../helpers/content/manuscript-content.utils';
 import { ALLOW_MANUSCRIPT_STRUCTURE_CHANGE_META } from '../extensions/manuscript-editing-guard.extension';
@@ -698,6 +701,46 @@ export const ManuscriptStore = signalStore(
         { type: 'paragraph' },
       ], { updateSelection: true }).run();
       workspaceBookStore.addScene(scene);
+    },
+
+    async createStructureSplit(payload: CreateStructureSplitPayload): Promise<CreatedStructureSplitDto> {
+      const initialMode = store.mode();
+      const initialEntityId = store.activeEntityId();
+      if (!initialMode || !initialEntityId) throw new Error('No manuscript scope is active.');
+
+      const created = await manuscriptStructureService.createStructureSplit(payload);
+      if (store.mode() !== initialMode || store.activeEntityId() !== initialEntityId) {
+        throw new Error('The manuscript view changed before creation completed.');
+      }
+
+      void workspaceBookStore.loadBookHierarchy(initialMode, initialEntityId).catch(error => {
+        console.error('Failed to refresh hierarchy after structure split:', error);
+      });
+      return created;
+    },
+
+    async syncStructurePositions(payload: UpdateStructurePositionsPayload): Promise<void> {
+      await manuscriptStructureService.updateStructurePositions(payload);
+    },
+
+    async refreshHierarchy(excludedIds: Set<string> = new Set()): Promise<void> {
+      const mode = store.mode();
+      const id = store.activeEntityId();
+      if (!mode || !id) return;
+      const hierarchy = await manuscriptStructureService.getBookHierarchy(mode, id);
+      workspaceBookStore.setBookHierarchy(
+        hierarchy
+          .filter(act => !excludedIds.has(act.id))
+          .map(act => ({
+            ...act,
+            chapters: (act.chapters ?? [])
+              .filter(chapter => !excludedIds.has(chapter.id))
+              .map(chapter => ({
+                ...chapter,
+                scenes: (chapter.scenes ?? []).filter(scene => !excludedIds.has(scene.id)),
+              })),
+          })),
+      );
     },
 
 

@@ -1,4 +1,4 @@
-import { Component, ElementRef, HostListener, input, output } from '@angular/core';
+import { Component, ElementRef, HostListener, computed, input, output } from '@angular/core';
 
 import type { SlashCommand } from '../../extensions/slash-command-menu.extension';
 
@@ -49,10 +49,12 @@ export const SLASH_COMMAND_MENU_ITEMS: readonly SlashCommandMenuItem[] = [
 export class SlashCommandMenuComponent {
   readonly position = input.required<SlashCommandMenuPosition>();
   readonly selectedIndex = input.required<number>();
+  readonly items = input<readonly SlashCommandMenuItem[]>(SLASH_COMMAND_MENU_ITEMS);
   readonly commandSelected = output<SlashCommand>();
   readonly dismissed = output<void>();
 
-  readonly items = SLASH_COMMAND_MENU_ITEMS;
+  readonly aiItem = computed(() => this.items().find(item => item.command === 'ai'));
+  readonly structureItems = computed(() => this.items().filter(item => item.command !== 'ai'));
 
   constructor(private readonly elementRef: ElementRef<HTMLElement>) {}
 
