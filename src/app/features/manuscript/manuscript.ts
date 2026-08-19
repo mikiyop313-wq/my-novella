@@ -29,11 +29,23 @@ import { SceneSkeletonExtension } from './components/scene/scene-skeleton/scene-
 import { SceneSummaryExtension } from './components/scene/scene-summary/scene-summary.extension';
 import { ManuscriptSearchComponent } from './components/manuscript-search/manuscript-search.component';
 import {
+  SLASH_COMMAND_MENU_ITEMS,
+  SlashCommandMenuComponent,
+  type SlashCommandMenuPosition,
+} from './components/slash-command-menu/slash-command-menu.component';
+import {
   isPositionInsideSceneProse,
   ManuscriptEditingGuardExtension,
 } from './extensions/manuscript-editing-guard.extension';
 import { UniqueIdExtension } from './extensions/unique-id.extension';
 import { ManuscriptSearchExtension } from './extensions/manuscript-search.extension';
+import {
+  dismissSlashCommandMenu,
+  selectSlashCommand,
+  SlashCommandMenuExtension,
+  type SlashCommand,
+  type SlashCommandMenuAnchor,
+} from './extensions/slash-command-menu.extension';
 import {
   buildEditorContentLazy,
   extractManuscriptHierarchyById,
@@ -65,6 +77,7 @@ import { ManuscriptSearchService } from './helpers/search/manuscript-search.serv
     CodexContextHighlightDirective,
     MarkdownPlainTextPipe,
     ManuscriptSearchComponent,
+    SlashCommandMenuComponent,
   ],
   templateUrl: './manuscript.html',
   styleUrl: './manuscript.scss',
@@ -112,6 +125,8 @@ export class Manuscript implements OnInit, OnDestroy {
   private isNavigatingAfterRemoval = false;
   private pendingGenerationFocus: ProseGenerationFocusRequest | null = null;
   private generationFocusTimeout: number | null = null;
+  readonly slashCommandMenuPosition = signal<SlashCommandMenuPosition | null>(null);
+  readonly slashCommandMenuSelectedIndex = signal(0);
 
   showCreateSceneHint = computed(() => this.hasLoadedContent() && !this.hasSceneNodes());
   canInsertChapter = computed(() => this.hasActNodes());
@@ -267,11 +282,17 @@ export class Manuscript implements OnInit, OnDestroy {
         Markdown,
         Placeholder.configure({
           placeholder: ({ editor, pos }) => isPositionInsideSceneProse(editor.state.doc, pos)
-            ? 'Start writing or type /ai for AI assistant...'
+            ? 'Start writing or type / for commands...'
             : '',
           emptyEditorClass: 'is-editor-empty',
         }),
 
+        SlashCommandMenuExtension.configure({
+          onOpen: anchor => this.openSlashCommandMenu(anchor),
+          onClose: () => this.slashCommandMenuPosition.set(null),
+          onNavigate: direction => this.navigateSlashCommandMenu(direction),
+          onSelect: () => this.selectActiveSlashCommand(),
+        }),
         AiPromptExtension(this.injector),
         AiGeneratedBlockExtension(this.injector),
         ActHeaderExtension(this.injector),
@@ -297,6 +318,31 @@ export class Manuscript implements OnInit, OnDestroy {
         }
       },
     });
+  }
+
+  selectSlashCommand(command: SlashCommand): void {
+    if (!this.editor) return;
+    selectSlashCommand(this.editor, command);
+  }
+
+  dismissSlashCommandMenu(): void {
+    if (!this.editor) return;
+    dismissSlashCommandMenu(this.editor);
+  }
+
+  private openSlashCommandMenu(anchor: SlashCommandMenuAnchor): void {
+    if (!this.slashCommandMenuPosition()) this.slashCommandMenuSelectedIndex.set(0);
+    this.slashCommandMenuPosition.set(positionSlashCommandMenu(anchor));
+  }
+
+  private navigateSlashCommandMenu(direction: 1 | -1): void {
+    const itemCount = SLASH_COMMAND_MENU_ITEMS.length;
+    this.slashCommandMenuSelectedIndex.update(index => (index + direction + itemCount) % itemCount);
+  }
+
+  private selectActiveSlashCommand(): void {
+    const item = SLASH_COMMAND_MENU_ITEMS[this.slashCommandMenuSelectedIndex()];
+    if (item) this.selectSlashCommand(item.command);
   }
 
   /**
@@ -806,4 +852,21 @@ export class Manuscript implements OnInit, OnDestroy {
       this.store.bookHierarchy()[0]?.bookId ||
       this.store.bookId();
   }
+}
+
+function positionSlashCommandMenu(anchor: SlashCommandMenuAnchor): SlashCommandMenuPosition {
+  const viewportPadding = 12;
+  const menuGap = 8;
+  const menuWidth = Math.min(370, window.innerWidth - viewportPadding * 2);
+  const menuHeight = 360;
+  const preferredTop = anchor.bottom + menuGap;
+  const top = preferredTop + menuHeight <= window.innerHeight - viewportPadding
+    ? preferredTop
+    : Math.max(viewportPadding, anchor.top - menuHeight - menuGap);
+  const left = Math.min(
+    Math.max(viewportPadding, anchor.left),
+    Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+  );
+
+  return { left, top };
 }

@@ -382,7 +382,8 @@
     </app-manuscript-search>
     }
 
-    <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'">
+    <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'"
+      (scroll)="dismissSlashCommandMenu()">
       @if (store.mode() === 'scene') {
       <app-scene-header></app-scene-header>
       }
@@ -405,6 +406,11 @@
       </div>
       }
     </div>
+
+    @if (slashCommandMenuPosition(); as menuPosition) {
+    <app-slash-command-menu [position]="menuPosition" [selectedIndex]="slashCommandMenuSelectedIndex()"
+      (commandSelected)="selectSlashCommand($event)" (dismissed)="dismissSlashCommandMenu()" />
+    }
 
     <aside class="format-sidebar" [class.is-open]="store.showFormatMenu()">
       <div class="sidebar-header">
