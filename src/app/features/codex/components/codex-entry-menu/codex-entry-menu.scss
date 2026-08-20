@@ -673,27 +673,12 @@
           }
         }
 
-        textarea {
-          box-sizing: border-box;
-          width: 100%;
-          background: transparent;
-          border: none;
-          padding: 4px 0;
-          color: var(--color-text-primary);
-          font-family: inherit;
-          font-size: 0.85rem;
-          outline: none;
-          resize: vertical;
-          min-height: 50px;
-          line-height: 1.4;
+        .note-content-editor {
+          display: block;
+        }
 
-          &:focus {
-            box-shadow: none;
-          }
-
-          &::placeholder {
-            color: color-mix(in srgb, var(--color-text-secondary) 60%, transparent);
-          }
+        ::ng-deep .note-content-editor .cm-editor {
+          height: 120px;
         }
       }
 

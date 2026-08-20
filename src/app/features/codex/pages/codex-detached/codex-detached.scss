@@ -240,13 +240,23 @@
     opacity: 0.8 !important;
   }
 
-  :host ::ng-deep .form-group textarea,
-  :host ::ng-deep .notes-view textarea {
+  :host ::ng-deep .form-group textarea {
     font-size: 1rem !important;
     padding: 16px !important;
     line-height: 1.6 !important;
     border-radius: 12px !important;
     min-height: 120px !important;
+  }
+
+  :host ::ng-deep .notes-view .note-content-editor .cm-editor {
+    min-height: 120px !important;
+    border-radius: 12px !important;
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
+  }
+
+  :host ::ng-deep .notes-view .note-content-editor .cm-content {
+    padding: 16px !important;
   }
 
   :host ::ng-deep .view-description {

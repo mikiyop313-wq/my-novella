@@ -194,7 +194,13 @@
                     </svg>
                   </button>
                 </div>
-                <textarea [ngModel]="note.content" (ngModelChange)="updateNoteContent($index, $event)" placeholder="Note description..." rows="3"></textarea>
+                <app-markdown-editor
+                  class="note-content-editor"
+                  [value]="note.content"
+                  placeholder="Note description..."
+                  [ariaLabel]="'Codex note ' + ($index + 1) + ' content'"
+                  (valueChange)="updateNoteContent($index, $event)">
+                </app-markdown-editor>
               </div>
             }
           </div>

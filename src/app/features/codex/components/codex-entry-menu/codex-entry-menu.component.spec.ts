@@ -96,6 +96,64 @@ describe('CodexEntryMenuComponent', () => {
     }]);
   });
 
+  it('loads exact stored Markdown into each note editor', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [
+        createNote('First note', '# Heading\n\nA **bold** detail.'),
+        { ...createNote('Second note', '- One\n- Two'), id: 'note-2' },
+      ],
+    }));
+    await render();
+
+    component.setEntryView('Notes');
+    await render();
+
+    expect(noteMarkdownEditors().map(editor => editor.editorView()?.state.doc.toString())).toEqual([
+      '# Heading\n\nA **bold** detail.',
+      '- One\n- Two',
+    ]);
+    expect([
+      ...(fixture.nativeElement.querySelectorAll('.note-content-editor .cm-content') as NodeListOf<HTMLElement>),
+    ].map(element => element.getAttribute('aria-label'))).toEqual([
+      'Codex note 1 content',
+      'Codex note 2 content',
+    ]);
+  });
+
+  it('updates and autosaves Markdown from the correct note editor', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [
+        createNote('First note', 'First body'),
+        { ...createNote('Second note', 'Second body'), id: 'note-2' },
+      ],
+    }));
+    await render();
+    vi.useFakeTimers();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+    component.setEntryView('Notes');
+    await render();
+    const secondEditor = noteMarkdownEditors()[1]?.editorView();
+    const updatedMarkdown = 'Updated *second* body';
+
+    secondEditor?.dispatch({
+      changes: { from: 0, to: secondEditor.state.doc.length, insert: updatedMarkdown },
+      selection: EditorSelection.cursor(updatedMarkdown.length),
+    });
+    fixture.detectChanges();
+    vi.advanceTimersByTime(300);
+
+    expect(component.newEntryNotes().map(note => note.content)).toEqual([
+      'First body',
+      updatedMarkdown,
+    ]);
+    expect(updated).toHaveBeenCalledTimes(1);
+    expect(updated.mock.calls[0]?.[0].notes.map((note: { content: string }) => note.content)).toEqual([
+      'First body',
+      updatedMarkdown,
+    ]);
+  });
+
   it('shows Untitled for an empty note title without persisting the placeholder', async () => {
     fixture.componentRef.setInput('existingEntry', createEntry({
       entryNotes: [createNote('', 'Body text')],
@@ -383,6 +441,12 @@ describe('CodexEntryMenuComponent', () => {
     const debugElement = fixture.debugElement.query(By.directive(MarkdownEditorComponent));
     if (!debugElement) throw new Error('Expected shared Markdown editor');
     return debugElement.componentInstance as MarkdownEditorComponent;
+  }
+
+  function noteMarkdownEditors(): MarkdownEditorComponent[] {
+    return fixture.debugElement
+      .queryAll(By.css('.note-content-editor'))
+      .map(debugElement => debugElement.componentInstance as MarkdownEditorComponent);
   }
 });
 
