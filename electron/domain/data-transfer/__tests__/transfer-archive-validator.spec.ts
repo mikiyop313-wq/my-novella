@@ -50,6 +50,11 @@ describe('transfer archive validator', () => {
       (snapshot: any) => (snapshot.data.bookSettings[0].vectorSearchResultLimit = 21),
       '$.data.bookSettings[0].vectorSearchResultLimit',
     ],
+    [
+      'Codex note title',
+      (snapshot: any) => (snapshot.data.codexEntryNotes[0].title = null),
+      '$.data.codexEntryNotes[0].title',
+    ],
   ])('rejects an invalid %s', (_, mutate, expectedPath) => {
     const snapshot = structuredClone(completeSnapshot());
     mutate(snapshot);

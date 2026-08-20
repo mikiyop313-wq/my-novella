@@ -107,6 +107,7 @@ export function completeSnapshot(): DataExportSnapshot {
         {
           id: 'note-1',
           codexEntryId: 'codex-1',
+          title: 'Reminder',
           content: 'Note',
           createdAt: timestamp,
           lastEditedAt: timestamp,

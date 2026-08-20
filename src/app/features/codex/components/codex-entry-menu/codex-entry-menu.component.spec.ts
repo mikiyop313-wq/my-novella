@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CodexEntryDetailDto,
+  CodexEntryNoteDto,
   CodexEntryProgressionDto,
 } from '../../../../../../shared/models/codex.model';
 import type { CodexEntryMenuPayload } from '../../../../../../shared/models/codex-window.model';
@@ -67,6 +68,77 @@ describe('CodexEntryMenuComponent', () => {
 
     expect(markdownEditor().editorView()?.state.doc.toString()).toBe('Detached *draft*');
     expect(component.newEntryDescription()).toBe('Detached *draft*');
+  });
+
+  it('loads body-only and multiline note content without promoting it to the title', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [createNote('', 'First paragraph.\n\nSecond paragraph.')],
+    }));
+    await render();
+
+    expect(component.newEntryNotes()).toEqual([{
+      id: 'note-1',
+      title: '',
+      content: 'First paragraph.\n\nSecond paragraph.',
+    }]);
+  });
+
+  it('loads note titles and bodies from their separate fields', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [createNote('Existing title', 'Existing note text')],
+    }));
+    await render();
+
+    expect(component.newEntryNotes()).toEqual([{
+      id: 'note-1',
+      title: 'Existing title',
+      content: 'Existing note text',
+    }]);
+  });
+
+  it('shows Untitled for an empty note title without persisting the placeholder', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [createNote('', 'Body text')],
+    }));
+    await render();
+    vi.useFakeTimers();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+    component.setEntryView('Notes');
+    fixture.detectChanges();
+
+    const titleInput = fixture.nativeElement.querySelector('.note-header input') as HTMLInputElement;
+    expect(titleInput.placeholder).toBe('Untitled');
+    expect(titleInput.value).toBe('');
+    expect(component.newEntryNotes()[0]?.title).toBe('');
+
+    component.updateNoteContent(0, 'Updated body text');
+    vi.advanceTimersByTime(300);
+
+    expect(updated.mock.calls[0]?.[0].notes[0]).toEqual({
+      id: 'note-1',
+      title: '',
+      content: 'Updated body text',
+    });
+  });
+
+  it('discards a note only when both its title and body are empty', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry());
+    await render();
+    vi.useFakeTimers();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+
+    component.addNote();
+    component.updateNoteContent(0, 'Body text');
+    vi.advanceTimersByTime(300);
+
+    component.updateNoteTitle(0, '   ');
+    component.updateNoteContent(0, ' \n ');
+    vi.advanceTimersByTime(300);
+
+    expect(updated).toHaveBeenCalledTimes(2);
+    expect(updated.mock.calls.at(-1)?.[0].notes).toEqual([]);
   });
 
   it('keeps raw Markdown in state and autosaves it unchanged', async () => {
@@ -396,6 +468,17 @@ function createProgression(
     title,
     description: `${title} description.`,
     sceneId,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastEditedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+function createNote(title: string, content: string): CodexEntryNoteDto {
+  return {
+    id: 'note-1',
+    codexEntryId: 'codex-1',
+    title,
+    content,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
   };

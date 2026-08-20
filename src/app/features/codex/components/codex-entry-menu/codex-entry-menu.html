@@ -186,7 +186,7 @@
             @for (note of newEntryNotes(); track $index) {
               <div class="note-item">
                 <div class="note-header">
-                  <input type="text" [ngModel]="note.title" (ngModelChange)="updateNoteTitle($index, $event)" placeholder="Note Title...">
+                  <input type="text" [ngModel]="note.title" (ngModelChange)="updateNoteTitle($index, $event)" placeholder="Untitled">
                   <button class="remove-note-btn" (click)="removeNote($index)" aria-label="Remove note">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M18 6 6 18"></path>

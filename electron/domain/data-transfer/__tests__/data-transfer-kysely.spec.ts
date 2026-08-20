@@ -55,6 +55,10 @@ describe('Kysely data transfer', () => {
       includeInContext: true,
     });
     expect(snapshot.data.codexEntries[0].image).toBe('cG9ydHJhaXQ=');
+    expect(snapshot.data.codexEntryNotes[0]).toMatchObject({
+      title: 'Reminder',
+      content: 'Note',
+    });
     expect(snapshot.data.chatBranchSelections).toHaveLength(1);
     expect(snapshot.data.systemPromptPresets).toHaveLength(1);
   });

@@ -31,6 +31,7 @@ export interface CodexEntryDto {
 export interface CodexEntryNoteDto {
   id: string;
   codexEntryId: string;
+  title: string;
   content: string;
   createdAt: string;
   lastEditedAt: string;
@@ -66,10 +67,12 @@ export type UpdateCodexEntryDto = Partial<Omit<CreateCodexEntryDto, 'bookId'>>;
 
 export interface CreateCodexEntryNoteDto {
   codexEntryId: string;
+  title: string;
   content: string;
 }
 
 export interface UpdateCodexEntryNoteDto {
+  title: string;
   content: string;
 }
 

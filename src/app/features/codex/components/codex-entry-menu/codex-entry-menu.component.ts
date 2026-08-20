@@ -535,20 +535,10 @@ export class CodexEntryMenuComponent implements OnDestroy {
   }
 
   private parseNote(note: CodexEntryNoteDto): CodexEntryNoteInput {
-    const parts = note.content.split(/\r?\n\r?\n/);
-
-    if (parts.length > 1) {
-      return {
-        id: note.id,
-        title: parts[0]?.trim() ?? '',
-        content: parts.slice(1).join('\n\n').trim(),
-      };
-    }
-
     return {
       id: note.id,
-      title: note.content.trim(),
-      content: '',
+      title: note.title,
+      content: note.content,
     };
   }
 

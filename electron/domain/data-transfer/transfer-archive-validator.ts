@@ -270,9 +270,9 @@ function validateRows(data: UnknownRecord): void {
   rows(
     data,
     'codexEntryNotes',
-    ['id', 'codexEntryId', 'content', 'createdAt', 'lastEditedAt'],
+    ['id', 'codexEntryId', 'title', 'content', 'createdAt', 'lastEditedAt'],
     (row, path) => {
-      requiredStrings(row, path, ['id', 'codexEntryId', 'content']);
+      requiredStrings(row, path, ['id', 'codexEntryId', 'title', 'content']);
       isoDate(row['createdAt'], `${path}.createdAt`, true);
       isoDate(row['lastEditedAt'], `${path}.lastEditedAt`, true);
     },

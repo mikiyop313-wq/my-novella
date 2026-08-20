@@ -34,6 +34,7 @@ describe('codex aggregate mapper', () => {
     expect(detail.entryNotes.map(({ id }) => id)).toEqual(['note-2', 'note-1']);
     expect(detail.entryProgression.map(({ id }) => id))
       .toEqual(['progression-2', 'progression-1']);
+    expect(detail.entryNotes[0].title).toBe('Reminder');
     expect(detail.entryNotes[0].createdAt).toBe('1970-01-01T00:00:01.000Z');
   });
 });
@@ -59,6 +60,7 @@ function noteRow(overrides: Partial<CodexEntryNoteRow> = {}): CodexEntryNoteRow 
   return {
     id: 'note-1',
     codexEntryId: 'entry-1',
+    title: 'Reminder',
     content: 'Note',
     createdAt: 1,
     lastEditedAt: 1,

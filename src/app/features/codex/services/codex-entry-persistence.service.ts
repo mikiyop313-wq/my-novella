@@ -36,7 +36,8 @@ export class CodexEntryPersistenceService {
     await Promise.all(
       entryData.notes.map(note => this.codexService.createEntryNote({
         codexEntryId: createdEntry.id,
-        content: this.serializeNote(note),
+        title: note.title,
+        content: note.content,
       })),
     );
 
@@ -118,12 +119,6 @@ export class CodexEntryPersistenceService {
     }
   }
 
-  private serializeNote(note: CodexEntryNoteInput): string {
-    if (note.title && note.content) return `${note.title}\n\n${note.content}`;
-
-    return note.title || note.content;
-  }
-
   private async syncEntryNotes(
     entry: CodexEntryDetailDto,
     notes: CodexEntryNoteInput[],
@@ -132,22 +127,25 @@ export class CodexEntryPersistenceService {
     const incomingNoteIds = new Set<string>();
 
     for (const [index, note] of notes.entries()) {
-      const content = this.serializeNote(note);
       const existingNote = note.id
         ? existingNotesById.get(note.id)
         : entry.entryNotes[index];
 
       if (existingNote && !incomingNoteIds.has(existingNote.id)) {
         incomingNoteIds.add(existingNote.id);
-        if (existingNote.content !== content) {
-          await this.codexService.updateEntryNote(existingNote.id, { content });
+        if (existingNote.title !== note.title || existingNote.content !== note.content) {
+          await this.codexService.updateEntryNote(existingNote.id, {
+            title: note.title,
+            content: note.content,
+          });
         }
         continue;
       }
 
       await this.codexService.createEntryNote({
         codexEntryId: entry.id,
-        content,
+        title: note.title,
+        content: note.content,
       });
     }
 
