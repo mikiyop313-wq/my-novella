@@ -1,0 +1,114 @@
+<section class="notes-section" [class.is-collapsed]="!store.sidebarOpen()" cdkOverlayOrigin
+  #sectionOrigin="cdkOverlayOrigin" appElementAnimation #noteAnimation="appElementAnimation"
+  appElementAnimationEnterClass="note-entry-entering"
+  appElementAnimationLeaveClass="note-entry-leaving" [appElementAnimationDurationMs]="260"
+  [appElementAnimationUseViewTransition]="false">
+  <ng-template #noteIcon>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+      stroke-linejoin="round" aria-hidden="true">
+      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+      <path d="M14 2v6h6"></path>
+      <path d="M8 13h8"></path>
+      <path d="M8 17h6"></path>
+    </svg>
+  </ng-template>
+
+  <div class="section-body">
+    <div class="search-shell" (click)="handleSearchClick()" [style.cursor]="!store.sidebarOpen() ? 'pointer' : 'text'">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+        stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m21 21-4.3-4.3"></path>
+      </svg>
+      <input #searchInput type="search" placeholder="Search notes" aria-label="Search general notes"
+        [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)">
+    </div>
+
+    @if (filteredNotes().length > 0) {
+    <div class="note-list" aria-label="General notes">
+      @for (note of filteredNotes(); track note.id) {
+      <article class="note-card" [attr.data-general-note-id]="note.id" role="button" tabindex="0" (click)="openNote(note.id)"
+        (keydown.enter)="openNote(note.id)" (keydown.space)="openNote(note.id); $event.preventDefault()">
+        <div class="note-card-icon">
+          <ng-container *ngTemplateOutlet="noteIcon"></ng-container>
+        </div>
+        <div class="note-card-content">
+          <h3 [title]="note.title || 'Untitled'">{{ note.title || 'Untitled' }}</h3>
+          <p>{{ (note.content | markdownPlainText) || 'Empty note' }}</p>
+        </div>
+      </article>
+      }
+      <button type="button" class="add-btn list-add" (click)="createNote()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+        <span>Add Note</span>
+      </button>
+    </div>
+    } @else {
+    <div class="empty-state">
+      <div class="empty-icon">
+        <ng-container *ngTemplateOutlet="noteIcon"></ng-container>
+      </div>
+      @if (searchQuery().trim()) {
+      <h3>No notes found</h3>
+      <p>No general notes match “{{ searchQuery().trim() }}”.</p>
+      } @else {
+      <h3>No general notes yet</h3>
+      <p>Keep book-wide ideas and reminders close at hand.</p>
+      }
+      <button type="button" class="add-btn" (click)="createNote()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+        <span>Add Note</span>
+      </button>
+    </div>
+    }
+  </div>
+
+  <ng-template cdkConnectedOverlay [cdkConnectedOverlayOrigin]="sectionOrigin"
+    [cdkConnectedOverlayOpen]="selectedNote() !== null" (backdropClick)="closeNote()"
+    [cdkConnectedOverlayPositions]="[
+      { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 14, offsetY: 0 },
+      { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -14, offsetY: 0 }
+    ]" [cdkConnectedOverlayFlexibleDimensions]="true" [cdkConnectedOverlayPush]="true"
+    [cdkConnectedOverlayViewportMargin]="16" [cdkConnectedOverlayHasBackdrop]="true"
+    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop">
+    @if (selectedNote(); as note) {
+    <div class="note-editor-panel" role="dialog" aria-modal="true" aria-label="Edit general note">
+      <header class="editor-header">
+        <div>
+          <span>General Note</span>
+          <h2>{{ note.title || 'Untitled' }}</h2>
+        </div>
+        <button type="button" class="icon-btn" aria-label="Close note" (click)="closeNote()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            aria-hidden="true"><path d="m18 6-12 12"></path><path d="m6 6 12 12"></path></svg>
+        </button>
+      </header>
+      <div class="editor-body">
+        <div class="form-group">
+          <label for="general-note-title">Title</label>
+          <input id="general-note-title" type="text" placeholder="Untitled" [ngModel]="note.title"
+            (ngModelChange)="updateSelectedTitle($event)">
+        </div>
+        <div class="form-group">
+          <label>Note</label>
+          <app-markdown-editor class="note-editor" [value]="note.content" placeholder="Write a note..."
+            ariaLabel="General note content" (valueChange)="updateSelectedContent($event)">
+          </app-markdown-editor>
+        </div>
+      </div>
+      <footer class="editor-footer">
+        <span>Changes are kept for this session.</span>
+        <button type="button" class="delete-btn" (click)="deleteSelectedNote()">Delete Note</button>
+      </footer>
+    </div>
+    }
+  </ng-template>
+</section>
