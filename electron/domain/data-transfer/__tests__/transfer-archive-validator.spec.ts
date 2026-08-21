@@ -23,7 +23,7 @@ describe('transfer archive validator', () => {
   });
 
   it.each([
-    ['schema version', (snapshot: any) => (snapshot.schemaVersion = 2), '$.schemaVersion'],
+    ['schema version', (snapshot: any) => (snapshot.schemaVersion = 1), '$.schemaVersion'],
     ['timestamp', (snapshot: any) => (snapshot.exportedAt = 'yesterday'), '$.exportedAt'],
     [
       'base64',
@@ -79,12 +79,17 @@ describe('transfer archive validator', () => {
     dangling.data.codexEntryNotes[0].codexEntryId = 'missing';
     const inactiveParent = structuredClone(completeSnapshot());
     inactiveParent.data.acts[0].status = 'archived';
+    const danglingGeneralNote = structuredClone(completeSnapshot());
+    danglingGeneralNote.data.generalNotes[0].bookId = 'missing';
 
     expect(() => validateTransferArchive(dangling)).toThrow(
       '$.data.codexEntryNotes[0].codexEntryId',
     );
     expect(() => validateTransferArchive(inactiveParent)).toThrow(
       '$.data.chapters[0].actId: active chapter requires an active parent act',
+    );
+    expect(() => validateTransferArchive(danglingGeneralNote)).toThrow(
+      '$.data.generalNotes[0].bookId',
     );
   });
 

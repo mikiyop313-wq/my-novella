@@ -4,7 +4,7 @@ const timestamp = '2026-08-14T12:00:00.000Z';
 
 export function completeSnapshot(): DataExportSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: timestamp,
     scope: { type: 'book', bookId: 'book-1' },
     data: {
@@ -120,6 +120,16 @@ export function completeSnapshot(): DataExportSnapshot {
           title: 'Change',
           description: 'Changed',
           sceneId: 'scene-1',
+          createdAt: timestamp,
+          lastEditedAt: timestamp,
+        },
+      ],
+      generalNotes: [
+        {
+          id: 'general-note-1',
+          bookId: 'book-1',
+          title: 'Ideas',
+          content: 'Book-wide note',
           createdAt: timestamp,
           lastEditedAt: timestamp,
         },

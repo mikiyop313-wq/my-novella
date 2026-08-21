@@ -146,7 +146,7 @@ function populatedSnapshot(): DataExportSnapshot {
 
 function emptyLibrarySnapshot(): DataExportSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: '2026-08-14T12:00:00.000Z',
     scope: { type: 'library' },
     data: {
@@ -160,6 +160,7 @@ function emptyLibrarySnapshot(): DataExportSnapshot {
       codexEntries: [],
       codexEntryNotes: [],
       codexEntryProgression: [],
+      generalNotes: [],
       chatThreads: [],
       chatMessages: [],
       chatBranchSelections: [],

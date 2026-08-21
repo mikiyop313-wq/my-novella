@@ -24,7 +24,11 @@
         [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)">
     </div>
 
-    @if (filteredNotes().length > 0) {
+    @if (isLoading()) {
+    <div class="empty-state" aria-live="polite">
+      <h3>Loading notes...</h3>
+    </div>
+    } @else if (filteredNotes().length > 0) {
     <div class="note-list" aria-label="General notes">
       @for (note of filteredNotes(); track note.id) {
       <article class="note-card" [attr.data-general-note-id]="note.id" role="button" tabindex="0" (click)="openNote(note.id)"
@@ -105,7 +109,14 @@
         </div>
       </div>
       <footer class="editor-footer">
-        <span>Changes are kept for this session.</span>
+        <span>
+          @switch (saveStatus()) {
+            @case ('saving') { Saving... }
+            @case ('saved') { Changes saved. }
+            @case ('error') { Changes could not be saved. }
+            @default { Changes save automatically. }
+          }
+        </span>
         <button type="button" class="delete-btn" (click)="deleteSelectedNote()">Delete Note</button>
       </footer>
     </div>

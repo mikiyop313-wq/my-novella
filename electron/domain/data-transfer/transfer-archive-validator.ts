@@ -15,6 +15,7 @@ const DATA_KEYS = [
   'codexEntries',
   'codexEntryNotes',
   'codexEntryProgression',
+  'generalNotes',
   'chatThreads',
   'chatMessages',
   'chatBranchSelections',
@@ -74,7 +75,7 @@ const OPEN_ROUTER_EMBEDDING_MODELS = [
 /** Validates portable archive metadata and data before import. */
 export function validateTransferArchive(value: unknown): DataExportSnapshot {
   const snapshot = exactObject(value, '$', ['schemaVersion', 'exportedAt', 'scope', 'data']);
-  equal(snapshot['schemaVersion'], 1, '$.schemaVersion');
+  equal(snapshot['schemaVersion'], 2, '$.schemaVersion');
   isoDate(snapshot['exportedAt'], '$.exportedAt', false);
 
   const scope = record(snapshot['scope'], '$.scope');
@@ -288,6 +289,16 @@ function validateRows(data: UnknownRecord): void {
       isoDate(row['lastEditedAt'], `${path}.lastEditedAt`, true);
     },
   );
+  rows(
+    data,
+    'generalNotes',
+    ['id', 'bookId', 'title', 'content', 'createdAt', 'lastEditedAt'],
+    (row, path) => {
+      requiredStrings(row, path, ['id', 'bookId', 'title', 'content']);
+      isoDate(row['createdAt'], `${path}.createdAt`, true);
+      isoDate(row['lastEditedAt'], `${path}.lastEditedAt`, true);
+    },
+  );
 
   rows(
     data,
@@ -404,6 +415,7 @@ function validateRelationships({
   const codexEntries = typedRows(data, 'codexEntries');
   const notes = typedRows(data, 'codexEntryNotes');
   const progression = typedRows(data, 'codexEntryProgression');
+  const generalNotes = typedRows(data, 'generalNotes');
   const threads = typedRows(data, 'chatThreads');
   const messages = typedRows(data, 'chatMessages');
   const selections = typedRows(data, 'chatBranchSelections');
@@ -421,6 +433,7 @@ function validateRelationships({
   uniqueRows(codexEntries, 'codexEntries', (row) => row['id']);
   uniqueRows(notes, 'codexEntryNotes', (row) => row['id']);
   uniqueRows(progression, 'codexEntryProgression', (row) => row['id']);
+  uniqueRows(generalNotes, 'generalNotes', (row) => row['id']);
   uniqueRows(threads, 'chatThreads', (row) => row['id']);
   uniqueRows(messages, 'chatMessages', (row) => row['id']);
   uniqueRows(
@@ -518,6 +531,9 @@ function validateRelationships({
     if (progressionScene && progressionScene['bookId'] !== entry['bookId']) {
       invalid(`${path}.sceneId`, 'scene must belong to the same book as the Codex entry');
     }
+  }
+  for (const [index, row] of generalNotes.entries()) {
+    reference(bookById, row['bookId'], `$.data.generalNotes[${index}].bookId`, 'book');
   }
   for (const [index, row] of threads.entries()) {
     reference(bookById, row['bookId'], `$.data.chatThreads[${index}].bookId`, 'book');

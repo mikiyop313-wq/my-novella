@@ -13,6 +13,7 @@ import type {
   CodexEntryNoteRow,
   CodexEntryProgressionRow,
   CodexEntryRow,
+  GeneralNoteRow,
   SceneRow,
   SystemPromptPresetRow,
 } from '../../../db/schema';
@@ -32,6 +33,7 @@ import type {
   DataExportCodexEntry,
   DataExportCodexEntryNote,
   DataExportCodexEntryProgression,
+  DataExportGeneralNote,
   DataExportScene,
   DataExportSnapshot,
   DataExportSnapshotData,
@@ -54,6 +56,7 @@ interface SnapshotRows {
   codexEntries: CodexEntryRow[];
   codexEntryNotes: CodexEntryNoteRow[];
   codexEntryProgression: CodexEntryProgressionRow[];
+  generalNotes: GeneralNoteRow[];
   chatThreads: ChatThreadRow[];
   chatMessages: ChatMessageRow[];
   chatBranchSelections: ChatBranchSelectionRow[];
@@ -101,6 +104,7 @@ export class DataExportService {
     const codexIds = codexEntries.map(({ id }) => id);
     const codexEntryNotes = codexIds.length > 0 ? await transaction.selectFrom('codexEntryNotes').selectAll().where('codexEntryId', 'in', codexIds).execute() : [];
     const codexEntryProgression = codexIds.length > 0 ? await transaction.selectFrom('codexEntryProgression').selectAll().where('codexEntryId', 'in', codexIds).execute() : [];
+    const generalNotes = await transaction.selectFrom('generalNotes').selectAll().where('bookId', 'in', bookIds).execute();
     const chatThreads = await transaction.selectFrom('chatThreads').selectAll().where('bookId', 'in', bookIds).execute();
     const threadIds = chatThreads.map(({ id }) => id);
     const chatMessages = threadIds.length > 0 ? await transaction.selectFrom('chatMessages').selectAll().where('threadId', 'in', threadIds).execute() : [];
@@ -112,12 +116,12 @@ export class DataExportService {
       const builtIn = findBuiltInSystemPromptPreset(selection.presetId);
       return presetIds.has(selection.presetId) || builtIn?.category === selection.category;
     });
-    return { books, bookSettings, categories, bookTags, acts, chapters, scenes, codexEntries, codexEntryNotes, codexEntryProgression, chatThreads, chatMessages, chatBranchSelections, systemPromptPresets, activeSystemPromptPresets };
+    return { books, bookSettings, categories, bookTags, acts, chapters, scenes, codexEntries, codexEntryNotes, codexEntryProgression, generalNotes, chatThreads, chatMessages, chatBranchSelections, systemPromptPresets, activeSystemPromptPresets };
   }
 
   private createSnapshot(scope: DataExportSnapshot['scope'], rows: SnapshotRows): DataExportSnapshot {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: this.now().toISOString(),
       scope,
       data: {
@@ -131,6 +135,7 @@ export class DataExportService {
         codexEntries: rows.codexEntries.map((row) => this.serializeCodexEntry(row)).sort((left, right) => this.compare(left.bookId, right.bookId) || this.compare(left.type, right.type) || this.compare(left.name, right.name) || this.compare(left.id, right.id)),
         codexEntryNotes: this.sortByCreatedAt(rows.codexEntryNotes.map((row) => this.serializeCodexEntryNote(row)), 'codexEntryId'),
         codexEntryProgression: this.sortByCreatedAt(rows.codexEntryProgression.map((row) => this.serializeCodexEntryProgression(row)), 'codexEntryId'),
+        generalNotes: rows.generalNotes.map((row) => this.serializeGeneralNote(row)).sort((left, right) => this.compare(left.bookId, right.bookId) || this.compare((left.title || 'Untitled').toLocaleLowerCase(), (right.title || 'Untitled').toLocaleLowerCase()) || this.compare(left.createdAt ?? '', right.createdAt ?? '') || this.compare(left.id, right.id)),
         chatThreads: this.sortByCreatedAt(rows.chatThreads.map((row) => this.serializeChatThread(row)), 'bookId'),
         chatMessages: rows.chatMessages.map((row) => this.serializeChatMessage(row)).sort((left, right) => this.compare(left.threadId, right.threadId) || left.position - right.position || left.branchOrder - right.branchOrder || this.compare(left.id, right.id)),
         chatBranchSelections: [...rows.chatBranchSelections].sort((left, right) => this.compare(left.threadId, right.threadId) || this.compare(left.branchGroupId, right.branchGroupId)),
@@ -141,7 +146,7 @@ export class DataExportService {
   }
 
   private emptyRows(): SnapshotRows {
-    return { books: [], bookSettings: [], categories: [], bookTags: [], acts: [], chapters: [], scenes: [], codexEntries: [], codexEntryNotes: [], codexEntryProgression: [], chatThreads: [], chatMessages: [], chatBranchSelections: [], systemPromptPresets: [], activeSystemPromptPresets: [] };
+    return { books: [], bookSettings: [], categories: [], bookTags: [], acts: [], chapters: [], scenes: [], codexEntries: [], codexEntryNotes: [], codexEntryProgression: [], generalNotes: [], chatThreads: [], chatMessages: [], chatBranchSelections: [], systemPromptPresets: [], activeSystemPromptPresets: [] };
   }
 
   private serializeBook(row: BookRow): DataExportBook {
@@ -170,6 +175,10 @@ export class DataExportService {
   }
 
   private serializeCodexEntryProgression(row: CodexEntryProgressionRow): DataExportCodexEntryProgression {
+    return { ...row, createdAt: this.iso(row.createdAt), lastEditedAt: this.iso(row.lastEditedAt) };
+  }
+
+  private serializeGeneralNote(row: GeneralNoteRow): DataExportGeneralNote {
     return { ...row, createdAt: this.iso(row.createdAt), lastEditedAt: this.iso(row.lastEditedAt) };
   }
 

@@ -4,7 +4,9 @@ import {
   ChangeDetectorRef,
   Component,
   ElementRef,
+  OnDestroy,
   computed,
+  effect,
   inject,
   signal,
   viewChild,
@@ -14,12 +16,20 @@ import { FormsModule } from '@angular/forms';
 import { ElementAnimationDirective } from '../../../../shared/directives/element-animation.directive';
 import { MarkdownEditorComponent } from '../../../../shared/components/markdown-editor/markdown-editor.component';
 import { MarkdownPlainTextPipe } from '../../../../shared/pipes/markdown-plain-text.pipe';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { ElectronService } from '../../../../core/services/electron.service';
+import type {
+  GeneralNoteDto,
+  UpdateGeneralNoteDto,
+} from '../../../../../../shared/models/general-note.model';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { GeneralNotesService } from '../../services/general-notes.service';
 
-interface GeneralNote {
-  id: string;
-  title: string;
-  content: string;
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+interface PendingNoteSave {
+  noteId: string;
+  data: UpdateGeneralNoteDto;
 }
 
 @Component({
@@ -36,14 +46,19 @@ interface GeneralNote {
   templateUrl: './general-notes-sidebar-section.html',
   styleUrl: './general-notes-sidebar-section.scss',
 })
-export class GeneralNotesSidebarSection {
+export class GeneralNotesSidebarSection implements OnDestroy {
   readonly store = inject(WorkspaceStore);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly notesService = inject(GeneralNotesService);
+  private readonly toastService = inject(ToastService);
+  private readonly electronService = inject(ElectronService);
 
-  readonly notes = signal<GeneralNote[]>([]);
+  readonly notes = signal<GeneralNoteDto[]>([]);
   readonly searchQuery = signal('');
   readonly selectedNoteId = signal<string | null>(null);
+  readonly isLoading = signal(false);
+  readonly saveStatus = signal<SaveStatus>('idle');
   readonly selectedNote = computed(() => {
     const selectedId = this.selectedNoteId();
     return this.notes().find(note => note.id === selectedId) ?? null;
@@ -60,7 +75,23 @@ export class GeneralNotesSidebarSection {
 
   readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
   private readonly noteAnimation = viewChild<ElementAnimationDirective>('noteAnimation');
-  private nextNoteId = 1;
+  private saveTimer: number | null = null;
+  private pendingSave: PendingNoteSave | null = null;
+  private saveInFlight: Promise<void> | null = null;
+  private loadRequestId = 0;
+  private readonly closeHandler = (): Promise<void> => this.flushPendingSave();
+
+  constructor() {
+    effect(() => {
+      void this.loadBookNotes(this.store.bookId());
+    });
+    this.electronService.onBeforeClose(this.closeHandler);
+  }
+
+  ngOnDestroy(): void {
+    this.electronService.removeBeforeCloseHandler(this.closeHandler);
+    void this.flushPendingSave();
+  }
 
   handleSearchClick(): void {
     if (!this.store.sidebarOpen()) {
@@ -73,16 +104,27 @@ export class GeneralNotesSidebarSection {
   }
 
   async createNote(): Promise<void> {
-    const note: GeneralNote = {
-      id: `general-note-${this.nextNoteId}`,
-      title: '',
-      content: '',
-    };
-    this.nextNoteId += 1;
+    const bookId = this.store.bookId();
+    if (!bookId) {
+      this.toastService.error('Open a book before creating a note.', 'Notes');
+      return;
+    }
+    await this.flushPendingSave();
+    if (this.store.bookId() !== bookId) return;
+
+    let note: GeneralNoteDto;
+    try {
+      note = await this.notesService.createNote({ bookId, title: '', content: '' });
+    } catch (error) {
+      this.showError(error, 'Failed to create note.');
+      return;
+    }
+    if (this.store.bookId() !== bookId) return;
+
     const previousNotePositions = this.captureNotePositions();
     const animation = this.noteAnimation();
     const addNote = async (): Promise<void> => {
-      this.notes.update(notes => [note, ...notes]);
+      this.notes.update(notes => this.sortNotes([...notes, note]));
       this.selectedNoteId.set(note.id);
       this.changeDetectorRef.detectChanges();
       this.findNoteElement(note.id)?.classList.add('note-entry-pending');
@@ -101,11 +143,13 @@ export class GeneralNotesSidebarSection {
     });
   }
 
-  openNote(noteId: string): void {
-    this.selectedNoteId.set(noteId);
+  async openNote(noteId: string): Promise<void> {
+    await this.flushPendingSave();
+    if (this.notes().some(note => note.id === noteId)) this.selectedNoteId.set(noteId);
   }
 
-  closeNote(): void {
+  async closeNote(): Promise<void> {
+    await this.flushPendingSave();
     this.selectedNoteId.set(null);
   }
 
@@ -121,10 +165,21 @@ export class GeneralNotesSidebarSection {
     const selectedId = this.selectedNoteId();
     if (!selectedId) return;
 
+    this.discardPendingSave(selectedId);
+    await this.saveInFlight;
+
+    try {
+      const result = await this.notesService.deleteNote(selectedId);
+      if (!result.success) throw new Error('Note not found.');
+    } catch (error) {
+      this.showError(error, 'Failed to delete note.');
+      return;
+    }
+
     const noteElement = this.findNoteElement(selectedId);
     const deleteNote = (): void => {
       this.notes.update(notes => notes.filter(note => note.id !== selectedId));
-      this.closeNote();
+      this.selectedNoteId.set(null);
       this.changeDetectorRef.detectChanges();
     };
     const animation = this.noteAnimation();
@@ -140,13 +195,111 @@ export class GeneralNotesSidebarSection {
     }
   }
 
-  private updateSelectedNote(changes: Partial<Pick<GeneralNote, 'title' | 'content'>>): void {
+  private updateSelectedNote(changes: Partial<Pick<GeneralNoteDto, 'title' | 'content'>>): void {
     const selectedId = this.selectedNoteId();
     if (!selectedId) return;
 
-    this.notes.update(notes => notes.map(note =>
+    this.notes.update(notes => this.sortNotes(notes.map(note =>
       note.id === selectedId ? { ...note, ...changes } : note,
-    ));
+    )));
+    const selectedNote = this.notes().find(note => note.id === selectedId);
+    if (selectedNote) {
+      this.pendingSave = {
+        noteId: selectedId,
+        data: { title: selectedNote.title, content: selectedNote.content },
+      };
+      this.saveStatus.set('idle');
+      if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+      this.saveTimer = window.setTimeout(() => {
+        this.saveTimer = null;
+        void this.flushPendingSave();
+      }, 300);
+    }
+  }
+
+  private async loadBookNotes(bookId: string | null): Promise<void> {
+    const requestId = ++this.loadRequestId;
+    await this.flushPendingSave();
+    if (requestId !== this.loadRequestId) return;
+
+    this.selectedNoteId.set(null);
+    this.notes.set([]);
+    this.saveStatus.set('idle');
+    this.isLoading.set(false);
+    if (!bookId) return;
+
+    this.isLoading.set(true);
+    try {
+      const notes = await this.notesService.getNotes(bookId);
+      if (requestId === this.loadRequestId) this.notes.set(this.sortNotes(notes));
+    } catch (error) {
+      if (requestId === this.loadRequestId) this.showError(error, 'Failed to load notes.');
+    } finally {
+      if (requestId === this.loadRequestId) this.isLoading.set(false);
+    }
+  }
+
+  private async flushPendingSave(): Promise<void> {
+    if (this.saveTimer !== null) {
+      window.clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (this.saveInFlight) return this.saveInFlight;
+    if (!this.pendingSave) return;
+
+    this.saveInFlight = this.savePendingChanges();
+    try {
+      await this.saveInFlight;
+    } finally {
+      this.saveInFlight = null;
+    }
+  }
+
+  private async savePendingChanges(): Promise<void> {
+    while (this.pendingSave) {
+      if (this.saveTimer !== null) {
+        window.clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      const pendingSave = this.pendingSave;
+      this.pendingSave = null;
+      this.saveStatus.set('saving');
+      try {
+        const updated = await this.notesService.updateNote(pendingSave.noteId, pendingSave.data);
+        if (!updated) throw new Error('Note not found.');
+        this.notes.update(notes => this.sortNotes(notes.map(note =>
+          note.id === updated.id
+            ? { ...note, createdAt: updated.createdAt, lastEditedAt: updated.lastEditedAt }
+            : note,
+        )));
+        this.saveStatus.set('saved');
+      } catch (error) {
+        this.saveStatus.set('error');
+        this.showError(error, 'Failed to save note.');
+      }
+    }
+  }
+
+  private discardPendingSave(noteId: string): void {
+    if (this.pendingSave?.noteId === noteId) this.pendingSave = null;
+    if (this.saveTimer !== null) {
+      window.clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+  }
+
+  private sortNotes(notes: GeneralNoteDto[]): GeneralNoteDto[] {
+    return [...notes].sort((left, right) => {
+      const leftTitle = left.title || 'Untitled';
+      const rightTitle = right.title || 'Untitled';
+      return leftTitle.localeCompare(rightTitle, undefined, { sensitivity: 'base' })
+        || left.createdAt.localeCompare(right.createdAt)
+        || left.id.localeCompare(right.id);
+    });
+  }
+
+  private showError(error: unknown, fallback: string): void {
+    this.toastService.error(error instanceof Error ? error.message : fallback, 'Notes');
   }
 
   private findNoteElement(noteId: string): HTMLElement | null {

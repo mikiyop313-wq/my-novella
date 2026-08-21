@@ -228,7 +228,7 @@ async function invokeImportHandler(): Promise<unknown> {
 
 function createSnapshot(bookTitle?: string): DataExportSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: '2026-08-14T00:00:00.000Z',
     scope: bookTitle ? { type: 'book', bookId: 'book-1' } : { type: 'library' },
     data: {
@@ -242,6 +242,7 @@ function createSnapshot(bookTitle?: string): DataExportSnapshot {
       codexEntries: [],
       codexEntryNotes: [],
       codexEntryProgression: [],
+      generalNotes: [],
       chatThreads: [],
       chatMessages: [],
       chatBranchSelections: [],
