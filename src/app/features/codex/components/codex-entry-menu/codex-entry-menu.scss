@@ -1049,6 +1049,13 @@
     gap: 10px;
     background: color-mix(in srgb, var(--color-surface) 50%, transparent);
 
+    .save-status {
+      align-self: center;
+      margin-right: auto;
+      color: var(--color-text-secondary);
+      font-size: 0.75rem;
+    }
+
     button {
       padding: 8px 14px;
       border-radius: 8px;

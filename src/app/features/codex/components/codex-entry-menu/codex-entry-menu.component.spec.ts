@@ -70,6 +70,31 @@ describe('CodexEntryMenuComponent', () => {
     expect(component.newEntryDescription()).toBe('Detached *draft*');
   });
 
+  it('shows the autosave status for an existing entry', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry());
+    await render();
+
+    expect(saveStatusText(fixture)).toBe('Changes save automatically.');
+
+    fixture.componentRef.setInput('saveStatus', 'saving');
+    await render();
+    expect(saveStatusText(fixture)).toBe('Saving...');
+
+    fixture.componentRef.setInput('saveStatus', 'saved');
+    await render();
+    expect(saveStatusText(fixture)).toBe('Changes saved.');
+
+    vi.useFakeTimers();
+    component.updateEntryName('Edited name');
+    fixture.detectChanges();
+    expect(saveStatusText(fixture)).toBe('Changes save automatically.');
+
+    fixture.componentRef.setInput('saveStatus', 'error');
+    vi.advanceTimersByTime(300);
+    fixture.detectChanges();
+    expect(saveStatusText(fixture)).toBe('Changes could not be saved.');
+  });
+
   it('loads body-only and multiline note content without promoting it to the title', async () => {
     fixture.componentRef.setInput('existingEntry', createEntry({
       entryNotes: [createNote('', 'First paragraph.\n\nSecond paragraph.')],
@@ -449,6 +474,10 @@ describe('CodexEntryMenuComponent', () => {
       .map(debugElement => debugElement.componentInstance as MarkdownEditorComponent);
   }
 });
+
+function saveStatusText(fixture: ComponentFixture<CodexEntryMenuComponent>): string {
+  return (fixture.nativeElement.querySelector('.save-status') as HTMLElement).textContent?.trim() ?? '';
+}
 
 function stubImageLoading({ width, height }: { width: number; height: number }): void {
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:selected-codex-image');

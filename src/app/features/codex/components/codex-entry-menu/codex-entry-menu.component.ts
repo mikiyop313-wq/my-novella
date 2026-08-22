@@ -48,6 +48,8 @@ type TrackingOption = {
   description: string;
 };
 
+export type CodexSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 const SELECT_SCENE_LABEL = 'Select scene...';
 const UNTITLED_SCENE_LABEL = 'Untitled Scene';
 const EXCLUDED_FROM_AI_CONTEXT_LABEL = 'Excluded from AI context';
@@ -79,6 +81,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
   readonly thumbnailUrl = input<string | null>(null);
   readonly entityDropdownOptions = input.required<DropdownOption[]>();
   readonly bookHierarchy = input<ActDto[]>([]);
+  readonly saveStatus = input<CodexSaveStatus>('idle');
 
   readonly closeMenu = output<void>();
   readonly entryCreated = output<CodexEntryMenuPayload>();
@@ -126,6 +129,9 @@ export class CodexEntryMenuComponent implements OnDestroy {
   readonly canCreateEntry = computed(() => this.newEntryName().trim().length > 0);
   readonly isEditing = computed(() => this.existingEntry() !== null);
   readonly isArchived = computed(() => this.existingEntry()?.status === 'archived');
+  readonly displayedSaveStatus = computed<CodexSaveStatus>(() =>
+    this.hasUnsavedChanges() ? 'idle' : this.saveStatus(),
+  );
   readonly menuTitle = computed(() => this.isEditing() ? 'Edit Codex Entry' : 'New Codex Entry');
   readonly displayedThumbnailUrl = computed(() =>
     this.newEntryImage() === undefined ? this.thumbnailUrl() : this.newEntryImage(),
@@ -166,6 +172,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
     return scenes;
   });
   readonly sortedProgression = computed(() => this.sortProgression(this.newEntryProgression()));
+  private readonly hasUnsavedChanges = signal(false);
 
   private autosaveTimeoutId: number | null = null;
   private appliedEntryId: string | null = null;
@@ -418,6 +425,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
   }
 
   private applyEntry(entry: CodexEntryDetailDto): void {
+    this.hasUnsavedChanges.set(false);
     this.newEntryType.set(entry.type);
     this.newEntryName.set(entry.name);
     this.newEntryAlias.set(entry.alias ?? '');
@@ -431,6 +439,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
   }
 
   private resetForCreate(type: CodexEntryType): void {
+    this.hasUnsavedChanges.set(false);
     this.newEntryType.set(type);
     this.newEntryName.set('');
     this.newEntryAlias.set('');
@@ -500,6 +509,8 @@ export class CodexEntryMenuComponent implements OnDestroy {
   private queueAutosave(): void {
     if (!this.isEditing()) return;
 
+    this.hasUnsavedChanges.set(true);
+
     if (this.autosaveTimeoutId !== null) {
       window.clearTimeout(this.autosaveTimeoutId);
     }
@@ -514,6 +525,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
     if (!this.isEditing() || !this.canCreateEntry()) return;
 
     const payloadSignature = this.getPayloadSignature();
+    this.hasUnsavedChanges.set(false);
     if (payloadSignature === this.lastAutosaveSignature) return;
 
     this.lastAutosaveSignature = payloadSignature;

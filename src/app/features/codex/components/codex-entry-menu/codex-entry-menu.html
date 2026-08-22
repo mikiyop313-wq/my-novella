@@ -298,6 +298,16 @@
   </div>
 
   <div class="menu-footer">
+    @if (isEditing()) {
+      <span class="save-status">
+        @switch (displayedSaveStatus()) {
+          @case ('saving') { Saving... }
+          @case ('saved') { Changes saved. }
+          @case ('error') { Changes could not be saved. }
+          @default { Changes save automatically. }
+        }
+      </span>
+    }
     <button class="cancel-btn" (click)="close()">Cancel</button>
     @if (!isEditing()) {
       <button class="submit-btn" [disabled]="!canCreateEntry()" (click)="submitEntry()">Create</button>

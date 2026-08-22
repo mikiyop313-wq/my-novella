@@ -25,6 +25,7 @@ export interface CodexState {
   isLoadingSelectedEntry: boolean;
   isCreatingEntry: boolean;
   isSavingEntry: boolean;
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   error: string | null;
 }
 
@@ -38,6 +39,7 @@ const initialState: CodexState = {
   isLoadingSelectedEntry: false,
   isCreatingEntry: false,
   isSavingEntry: false,
+  saveStatus: 'idle',
   error: null,
 };
 
@@ -119,7 +121,7 @@ export const CodexStore = signalStore(
       }
 
       try {
-        patchState(store, { isSavingEntry: true });
+        patchState(store, { isSavingEntry: true, saveStatus: 'saving' });
 
         await persistenceService.createEntry(bookId, entryData);
 
@@ -129,7 +131,7 @@ export const CodexStore = signalStore(
         closeCreateMenuAfterFrame();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create codex entry.';
-        patchState(store, { error: message });
+        patchState(store, { error: message, saveStatus: 'error' });
         toastService.error(message, 'Codex');
       } finally {
         patchState(store, { isSavingEntry: false });
@@ -146,7 +148,7 @@ export const CodexStore = signalStore(
       }
 
       try {
-        patchState(store, { isSavingEntry: true });
+        patchState(store, { isSavingEntry: true, saveStatus: 'saving' });
 
         const refreshedEntry = await persistenceService.updateEntry(selectedEntry, entryData);
         if (refreshedEntry && store.selectedEntry()?.id === selectedEntry.id) {
@@ -156,9 +158,10 @@ export const CodexStore = signalStore(
         patchState(store, { activeType: entryData.type });
         await loadEntries(bookId, entryData.type, store.searchQuery().trim());
         await codexContextTrie.refreshCurrentContext();
+        patchState(store, { saveStatus: 'saved' });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to update codex entry.';
-        patchState(store, { error: message });
+        patchState(store, { error: message, saveStatus: 'error' });
         toastService.error(message, 'Codex');
       } finally {
         patchState(store, { isSavingEntry: false });
@@ -192,6 +195,7 @@ export const CodexStore = signalStore(
         patchState(store, {
           isLoadingSelectedEntry: true,
           error: null,
+          saveStatus: 'idle',
         });
 
         const detail = await codexService.getEntry(entryId);
@@ -246,6 +250,7 @@ export const CodexStore = signalStore(
           isCreatingEntry: true,
           isLoadingSelectedEntry: false,
           error: null,
+          saveStatus: 'idle',
           ...(typeChanged ? { entries: [], isLoadingEntries: true } : {})
         });
       },
