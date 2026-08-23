@@ -275,6 +275,61 @@ describe('Outline', () => {
     expect(document.querySelector('.outline-inclusion-switch')?.getAttribute('aria-checked')).toBe('false');
   });
 
+  it.each([
+    ['act', '.act-header-right .btn-more', '.act-options-menu'],
+    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu'],
+    ['scene', '.scene-more', '.scene-options-menu'],
+  ])('shows UI-only export formats in the %s options menu', async (
+    _entityType,
+    triggerSelector,
+    menuSelector,
+  ) => {
+    showScene('Scene summary', 12);
+    const mutationMethods = [
+      store.createAct,
+      store.createChapter,
+      store.createScene,
+      store.updateAct,
+      store.updateChapter,
+      store.updateScene,
+      store.archiveAct,
+      store.archiveChapter,
+      store.archiveScene,
+      store.deleteAct,
+      store.deleteChapter,
+      store.deleteScene,
+      store.setContextInclusion,
+    ];
+    const mutationCallCounts = mutationMethods.map(method => method.mock.calls.length);
+
+    (fixture.nativeElement.querySelector(triggerSelector) as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const entityMenu = document.querySelector<HTMLElement>(menuSelector)!;
+    const exportTrigger = entityMenu.querySelector<HTMLButtonElement>('.export-menu-trigger')!;
+    expect(exportTrigger.textContent?.trim()).toBe('Export');
+
+    exportTrigger.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const exportMenu = document.querySelector<HTMLElement>('.export-options-menu')!;
+    const formatButtons = Array.from(exportMenu.querySelectorAll<HTMLButtonElement>('.menu-item'));
+    expect(formatButtons.map(button => button.textContent?.trim())).toEqual(['DOCX', 'PDF', 'PNG']);
+
+    formatButtons[0].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.export-options-menu')).toBeNull();
+    expect(document.querySelector(menuSelector)).toBeNull();
+    expect(electronService.invoke).not.toHaveBeenCalled();
+    mutationMethods.forEach((method, index) => {
+      expect(method.mock.calls.length).toBe(mutationCallCounts[index]);
+    });
+  });
+
   it('disables empty scene, chapter, and act inclusion switches with explanatory tooltips', async () => {
     showScene('   ', 0);
 

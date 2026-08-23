@@ -367,7 +367,7 @@
 
 <!-- Act options menu -->
 <ng-template #actOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu inclusion-options-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu act-options-menu" cdkMenu>
     <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
       [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
       [class.is-disabled]="!hasOutlineItemContextContent('act', itemId)"
@@ -393,6 +393,20 @@
       </svg>
       Edit
     </button>
+    <button class="menu-item export-menu-trigger" [cdkMenuTriggerFor]="exportOptionsMenu"
+      [cdkMenuPosition]="submenuPositions" cdkMenuItem>
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M12 3v12"></path>
+        <path d="m7 10 5 5 5-5"></path>
+        <path d="M5 21h14"></path>
+      </svg>
+      Export
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round" width="12" height="12" style="margin-left: auto; opacity: 0.6;" aria-hidden="true">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    </button>
     <button class="menu-item" cdkMenuItem (click)="archiveAct(itemId)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -417,7 +431,7 @@
 
 <!-- Chapter options menu -->
 <ng-template #chapterOptionsMenu let-itemId="itemId">
-  <div class="overlay-menu inclusion-options-menu" cdkMenu>
+  <div class="overlay-menu inclusion-options-menu chapter-options-menu" cdkMenu>
     <button class="menu-item outline-inclusion-switch" type="button" autocompleteKeepOpenMenuItem
       [class.is-active]="isOutlineItemIncluded(itemId)" [attr.aria-checked]="isOutlineItemIncluded(itemId)"
       [class.is-disabled]="!hasOutlineItemContextContent('chapter', itemId)"
@@ -442,6 +456,20 @@
         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
       </svg>
       Edit
+    </button>
+    <button class="menu-item export-menu-trigger" [cdkMenuTriggerFor]="exportOptionsMenu"
+      [cdkMenuPosition]="submenuPositions" cdkMenuItem>
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M12 3v12"></path>
+        <path d="m7 10 5 5 5-5"></path>
+        <path d="M5 21h14"></path>
+      </svg>
+      Export
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round" width="12" height="12" style="margin-left: auto; opacity: 0.6;" aria-hidden="true">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
     </button>
     <button class="menu-item" cdkMenuItem (click)="archiveChapter(itemId)">
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -486,7 +514,7 @@
     </button>
     <div class="inclusion-menu-separator" role="separator"></div>
     <button class="menu-item" [cdkMenuTriggerFor]="sceneAiMenu" [cdkMenuTriggerData]="{ itemId: itemId }"
-      [cdkMenuPosition]="sceneAiMenuPositions" (cdkMenuOpened)="prepareSceneAiMenu(itemId)" cdkMenuItem>
+      [cdkMenuPosition]="submenuPositions" (cdkMenuOpened)="prepareSceneAiMenu(itemId)" cdkMenuItem>
       <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
         <path
@@ -506,6 +534,20 @@
         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
       </svg>
       Edit
+    </button>
+    <button class="menu-item export-menu-trigger" [cdkMenuTriggerFor]="exportOptionsMenu"
+      [cdkMenuPosition]="submenuPositions" cdkMenuItem>
+      <svg class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+        <path d="M12 3v12"></path>
+        <path d="m7 10 5 5 5-5"></path>
+        <path d="M5 21h14"></path>
+      </svg>
+      Export
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round" width="12" height="12" style="margin-left: auto; opacity: 0.6;" aria-hidden="true">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
     </button>
     @if (!isSceneEmpty(itemId)) {
     <button class="menu-item" cdkMenuItem (click)="archiveScene(itemId)">
@@ -528,6 +570,14 @@
       </svg>
       Delete
     </button>
+  </div>
+</ng-template>
+
+<ng-template #exportOptionsMenu>
+  <div class="overlay-menu export-options-menu" cdkMenu>
+    <button class="menu-item" cdkMenuItem>DOCX</button>
+    <button class="menu-item" cdkMenuItem>PDF</button>
+    <button class="menu-item" cdkMenuItem>PNG</button>
   </div>
 </ng-template>
 

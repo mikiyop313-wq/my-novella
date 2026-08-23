@@ -148,7 +148,7 @@ export class Outline implements OnInit {
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
   resolvingSummaryModel = signal(false);
   private readonly activeSceneAiMenuId = signal<string | null>(null);
-  readonly sceneAiMenuPositions: ConnectedPosition[] = [
+  readonly submenuPositions: ConnectedPosition[] = [
     { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
     { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
     { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -4 },
