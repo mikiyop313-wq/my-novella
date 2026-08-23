@@ -1,12 +1,17 @@
 <aside class="workspace-sidebar-panel" [class.is-collapsed]="!store.sidebarOpen()" aria-label="Workspace sidebar">
   <div class="sidebar-header">
     <div class="header-text" [class.hidden]="!store.sidebarOpen()">
-      <span>Reference</span>
-      <div class="reference-tabs" role="tablist" aria-label="Reference section">
-        <button type="button" role="tab" [attr.aria-selected]="activeSection() === 'codex'"
-          [class.active]="activeSection() === 'codex'" (click)="selectSection('codex')">Codex</button>
-        <button type="button" role="tab" [attr.aria-selected]="activeSection() === 'notes'"
-          [class.active]="activeSection() === 'notes'" (click)="selectSection('notes')">Notes</button>
+      <span class="reference-label">Reference</span>
+      <div class="reference-tabs" [class.notes-active]="activeSection() === 'notes'" role="tablist"
+        aria-label="Reference section">
+        <button id="codex-reference-tab" type="button" role="tab" aria-controls="codex-reference-panel"
+          [attr.aria-selected]="activeSection() === 'codex'" [attr.tabindex]="activeSection() === 'codex' ? 0 : -1"
+          [class.active]="activeSection() === 'codex'" (click)="selectSection('codex')"
+          (keydown)="handleTabKeydown($event)">Codex</button>
+        <button id="notes-reference-tab" type="button" role="tab" aria-controls="notes-reference-panel"
+          [attr.aria-selected]="activeSection() === 'notes'" [attr.tabindex]="activeSection() === 'notes' ? 0 : -1"
+          [class.active]="activeSection() === 'notes'" (click)="selectSection('notes')"
+          (keydown)="handleTabKeydown($event)">Notes</button>
       </div>
     </div>
 
@@ -19,9 +24,13 @@
   </div>
 
   <div class="sidebar-sections">
-    <app-codex-sidebar-section [class.section-hidden]="activeSection() !== 'codex'"
-      [attr.aria-hidden]="activeSection() !== 'codex'"></app-codex-sidebar-section>
-    <app-general-notes-sidebar-section [class.section-hidden]="activeSection() !== 'notes'"
-      [attr.aria-hidden]="activeSection() !== 'notes'"></app-general-notes-sidebar-section>
+    <app-codex-sidebar-section id="codex-reference-panel" class="sidebar-section-panel codex-panel" role="tabpanel"
+      aria-labelledby="codex-reference-tab" [class.section-active]="activeSection() === 'codex'"
+      [class.section-hidden]="activeSection() !== 'codex'" [attr.aria-hidden]="activeSection() !== 'codex'"
+      [attr.inert]="activeSection() !== 'codex' ? '' : null"></app-codex-sidebar-section>
+    <app-general-notes-sidebar-section id="notes-reference-panel" class="sidebar-section-panel notes-panel"
+      role="tabpanel" aria-labelledby="notes-reference-tab" [class.section-active]="activeSection() === 'notes'"
+      [class.section-hidden]="activeSection() !== 'notes'" [attr.aria-hidden]="activeSection() !== 'notes'"
+      [attr.inert]="activeSection() !== 'notes' ? '' : null"></app-general-notes-sidebar-section>
   </div>
 </aside>

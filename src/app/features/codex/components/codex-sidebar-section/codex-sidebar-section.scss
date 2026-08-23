@@ -518,9 +518,11 @@
   cursor: pointer;
   transition: all 0.2s ease;
 
-  &:hover {
+  &:hover,
+  &:focus-visible {
     background: var(--color-hover-bg);
     border-color: color-mix(in srgb, var(--color-border) 80%, var(--color-text-primary));
+    outline: none;
 
     .entry-card-icon {
       background: color-mix(in srgb, var(--color-hover-bg) 60%, transparent);
@@ -611,13 +613,14 @@
 }
 
 .empty-state {
-  min-height: 170px;
+  flex: 1;
+  min-height: 180px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 18px 10px;
+  padding: 24px 18px;
   border: 1px dashed var(--color-border);
   border-radius: 8px;
   text-align: center;
@@ -638,10 +641,10 @@
 }
 
 .empty-icon {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -656,16 +659,16 @@
 
 .add-btn {
   margin-top: 4px;
-  height: 32px;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0 10px;
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  background: var(--color-background);
+  color: var(--color-text-primary);
   font: inherit;
   font-size: 0.78rem;
   font-weight: 700;

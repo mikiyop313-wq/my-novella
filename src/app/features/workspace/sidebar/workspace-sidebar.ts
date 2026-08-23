@@ -19,4 +19,22 @@ export class WorkspaceSidebar {
   selectSection(section: ReferenceSection): void {
     this.activeSection.set(section);
   }
+
+  handleTabKeydown(event: KeyboardEvent): void {
+    const targetSection = this.getSectionForNavigationKey(event.key);
+    if (!targetSection) return;
+
+    event.preventDefault();
+    this.selectSection(targetSection);
+    document.getElementById(`${targetSection}-reference-tab`)?.focus();
+  }
+
+  private getSectionForNavigationKey(key: string): ReferenceSection | null {
+    if (key === 'Home') return 'codex';
+    if (key === 'End') return 'notes';
+    if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      return this.activeSection() === 'codex' ? 'notes' : 'codex';
+    }
+    return null;
+  }
 }
