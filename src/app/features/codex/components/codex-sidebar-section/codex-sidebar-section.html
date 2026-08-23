@@ -225,6 +225,7 @@
       cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop">
       <app-codex-entry-menu [initialType]="activeType()" [entityDropdownOptions]="entityDropdownOptions"
         [existingEntry]="selectedEntry()" [thumbnailUrl]="selectedEntryImageUrl()"
+        [saveStatus]="saveStatus()"
         [bookHierarchy]="workspaceBookStore.bookHierarchy()" (closeMenu)="closeCreateMenu()"
         (entryCreated)="saveEntry($event)" (entryUpdated)="saveEntry($event)" (archiveEntry)="archiveEntry()"
         (restoreEntry)="restoreEntry()" (deleteEntry)="deleteEntry()" (detachRequested)="detachEntryWindow($event)">

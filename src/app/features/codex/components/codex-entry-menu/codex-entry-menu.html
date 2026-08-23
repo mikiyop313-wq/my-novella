@@ -186,7 +186,7 @@
             @for (note of newEntryNotes(); track $index) {
               <div class="note-item">
                 <div class="note-header">
-                  <input type="text" [ngModel]="note.title" (ngModelChange)="updateNoteTitle($index, $event)" placeholder="Note Title...">
+                  <input type="text" [ngModel]="note.title" (ngModelChange)="updateNoteTitle($index, $event)" placeholder="Untitled">
                   <button class="remove-note-btn" (click)="removeNote($index)" aria-label="Remove note">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M18 6 6 18"></path>
@@ -194,7 +194,13 @@
                     </svg>
                   </button>
                 </div>
-                <textarea [ngModel]="note.content" (ngModelChange)="updateNoteContent($index, $event)" placeholder="Note description..." rows="3"></textarea>
+                <app-markdown-editor
+                  class="note-content-editor"
+                  [value]="note.content"
+                  placeholder="Note description..."
+                  [ariaLabel]="'Codex note ' + ($index + 1) + ' content'"
+                  (valueChange)="updateNoteContent($index, $event)">
+                </app-markdown-editor>
               </div>
             }
           </div>
@@ -292,6 +298,16 @@
   </div>
 
   <div class="menu-footer">
+    @if (isEditing()) {
+      <span class="save-status">
+        @switch (displayedSaveStatus()) {
+          @case ('saving') { Saving... }
+          @case ('saved') { Changes saved. }
+          @case ('error') { Changes could not be saved. }
+          @default { Changes save automatically. }
+        }
+      </span>
+    }
     <button class="cancel-btn" (click)="close()">Cancel</button>
     @if (!isEditing()) {
       <button class="submit-btn" [disabled]="!canCreateEntry()" (click)="submitEntry()">Create</button>

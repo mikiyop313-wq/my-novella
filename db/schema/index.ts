@@ -17,6 +17,7 @@ import type {
   CodexEntryTable,
 } from './codex';
 import type { ActTable, ChapterTable, SceneTable } from './narrative';
+import type { GeneralNoteTable } from './general-note';
 import type { AppSettingsTable } from './settings';
 import type {
   ActiveSystemPromptPresetTable,
@@ -27,6 +28,7 @@ export * from './book';
 export * from './chat';
 export * from './codex';
 export * from './narrative';
+export * from './general-note';
 export * from './settings';
 export * from './system-prompt';
 
@@ -43,6 +45,7 @@ export interface DatabaseSchema {
   codexEntries: CodexEntryTable;
   codexEntryNotes: CodexEntryNoteTable;
   codexEntryProgression: CodexEntryProgressionTable;
+  generalNotes: GeneralNoteTable;
   acts: ActTable;
   chapters: ChapterTable;
   scenes: SceneTable;

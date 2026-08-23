@@ -15,6 +15,7 @@ import { DropdownOption } from '../../../../shared/components/autocomplete-dropd
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { CodexEntryMenuComponent } from '../../components/codex-entry-menu/codex-entry-menu.component';
+import { type CodexSaveStatus } from '../../components/codex-entry-menu/codex-entry-menu.component';
 import { CodexEntryPersistenceService } from '../../services/codex-entry-persistence.service';
 import { CodexContextTrieService } from '../../services/codex-context-trie.service';
 import { CodexService } from '../../services/codex.service';
@@ -59,6 +60,7 @@ export class CodexDetached implements OnInit, OnDestroy {
   readonly thumbnailUrl = signal<string | null>(null);
   readonly isLoading = signal(true);
   readonly error = signal<string | null>(null);
+  readonly saveStatus = signal<CodexSaveStatus>('idle');
 
   readonly entityDropdownOptions: DropdownOption[] = CODEX_ENTITY_OPTIONS.map(option => ({
     value: option.value,
@@ -131,6 +133,7 @@ export class CodexDetached implements OnInit, OnDestroy {
     if (!entry) return;
 
     try {
+      this.saveStatus.set('saving');
       const refreshedEntry = await this.persistenceService.updateEntry(entry, entryData);
       this.existingEntry.set(refreshedEntry);
       this.setThumbnailUrl(createCodexImageUrl(refreshedEntry.image));
@@ -143,7 +146,9 @@ export class CodexDetached implements OnInit, OnDestroy {
           }
         : session);
       this.notifyEntryChanged(refreshedEntry.id, refreshedEntry.type);
+      this.saveStatus.set('saved');
     } catch (error) {
+      this.saveStatus.set('error');
       this.showError(error, 'Failed to update codex entry.');
     }
   }

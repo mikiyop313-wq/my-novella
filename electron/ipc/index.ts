@@ -19,6 +19,7 @@ import { setupCloudEmbeddingProviderHandlers } from './library/cloud-embedding-p
 import { setupManuscriptExportHandlers } from './manuscript-export/manuscript-export';
 import { setupDataTransferHandlers } from './data-transfer/data-transfer';
 import { setupUpdateHandlers } from './update/update';
+import { setupGeneralNoteHandlers } from './notes/notes';
 import type { UpdateService } from '../domain/update/update.service';
 
 interface InitializeIpcOptions {
@@ -43,6 +44,7 @@ export function initializeIpc(options: InitializeIpcOptions): void {
     setupManuscriptExportHandlers();
     setupDataTransferHandlers();
     setupUpdateHandlers(options);
+    setupGeneralNoteHandlers();
 
     try {
         console.log('IPC handlers initialized');

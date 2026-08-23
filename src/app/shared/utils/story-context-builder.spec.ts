@@ -928,6 +928,7 @@ function createCodexEntry(): CodexEntryDetailDto {
       {
         id: 'note-1',
         codexEntryId: 'codex-1',
+        title: 'Reminder',
         content: 'Private note',
         createdAt: '2026-01-01T00:00:00.000Z',
         lastEditedAt: '2026-01-01T00:00:00.000Z',

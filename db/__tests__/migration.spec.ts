@@ -44,6 +44,15 @@ describe('Kysely baseline migration', () => {
         expect.objectContaining({ name: 'vector_search_result_limit', dflt_value: '3' }),
       ]),
     );
+
+    const codexEntryNoteColumns = sqlite
+      .prepare('PRAGMA table_info(codex_entry_notes)')
+      .all() as Array<{ name: string; dflt_value: string | null }>;
+    expect(codexEntryNoteColumns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'title', dflt_value: "''" }),
+      ]),
+    );
   });
 
   it('rolls the baseline back', async () => {

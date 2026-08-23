@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CodexEntryDetailDto,
+  CodexEntryNoteDto,
   CodexEntryProgressionDto,
 } from '../../../../../../shared/models/codex.model';
 import type { CodexEntryMenuPayload } from '../../../../../../shared/models/codex-window.model';
@@ -67,6 +68,160 @@ describe('CodexEntryMenuComponent', () => {
 
     expect(markdownEditor().editorView()?.state.doc.toString()).toBe('Detached *draft*');
     expect(component.newEntryDescription()).toBe('Detached *draft*');
+  });
+
+  it('shows the autosave status for an existing entry', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry());
+    await render();
+
+    expect(saveStatusText(fixture)).toBe('Changes save automatically.');
+
+    fixture.componentRef.setInput('saveStatus', 'saving');
+    await render();
+    expect(saveStatusText(fixture)).toBe('Saving...');
+
+    fixture.componentRef.setInput('saveStatus', 'saved');
+    await render();
+    expect(saveStatusText(fixture)).toBe('Changes saved.');
+
+    vi.useFakeTimers();
+    component.updateEntryName('Edited name');
+    fixture.detectChanges();
+    expect(saveStatusText(fixture)).toBe('Changes save automatically.');
+
+    fixture.componentRef.setInput('saveStatus', 'error');
+    vi.advanceTimersByTime(300);
+    fixture.detectChanges();
+    expect(saveStatusText(fixture)).toBe('Changes could not be saved.');
+  });
+
+  it('loads body-only and multiline note content without promoting it to the title', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [createNote('', 'First paragraph.\n\nSecond paragraph.')],
+    }));
+    await render();
+
+    expect(component.newEntryNotes()).toEqual([{
+      id: 'note-1',
+      title: '',
+      content: 'First paragraph.\n\nSecond paragraph.',
+    }]);
+  });
+
+  it('loads note titles and bodies from their separate fields', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [createNote('Existing title', 'Existing note text')],
+    }));
+    await render();
+
+    expect(component.newEntryNotes()).toEqual([{
+      id: 'note-1',
+      title: 'Existing title',
+      content: 'Existing note text',
+    }]);
+  });
+
+  it('loads exact stored Markdown into each note editor', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [
+        createNote('First note', '# Heading\n\nA **bold** detail.'),
+        { ...createNote('Second note', '- One\n- Two'), id: 'note-2' },
+      ],
+    }));
+    await render();
+
+    component.setEntryView('Notes');
+    await render();
+
+    expect(noteMarkdownEditors().map(editor => editor.editorView()?.state.doc.toString())).toEqual([
+      '# Heading\n\nA **bold** detail.',
+      '- One\n- Two',
+    ]);
+    expect([
+      ...(fixture.nativeElement.querySelectorAll('.note-content-editor .cm-content') as NodeListOf<HTMLElement>),
+    ].map(element => element.getAttribute('aria-label'))).toEqual([
+      'Codex note 1 content',
+      'Codex note 2 content',
+    ]);
+  });
+
+  it('updates and autosaves Markdown from the correct note editor', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [
+        createNote('First note', 'First body'),
+        { ...createNote('Second note', 'Second body'), id: 'note-2' },
+      ],
+    }));
+    await render();
+    vi.useFakeTimers();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+    component.setEntryView('Notes');
+    await render();
+    const secondEditor = noteMarkdownEditors()[1]?.editorView();
+    const updatedMarkdown = 'Updated *second* body';
+
+    secondEditor?.dispatch({
+      changes: { from: 0, to: secondEditor.state.doc.length, insert: updatedMarkdown },
+      selection: EditorSelection.cursor(updatedMarkdown.length),
+    });
+    fixture.detectChanges();
+    vi.advanceTimersByTime(300);
+
+    expect(component.newEntryNotes().map(note => note.content)).toEqual([
+      'First body',
+      updatedMarkdown,
+    ]);
+    expect(updated).toHaveBeenCalledTimes(1);
+    expect(updated.mock.calls[0]?.[0].notes.map((note: { content: string }) => note.content)).toEqual([
+      'First body',
+      updatedMarkdown,
+    ]);
+  });
+
+  it('shows Untitled for an empty note title without persisting the placeholder', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [createNote('', 'Body text')],
+    }));
+    await render();
+    vi.useFakeTimers();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+    component.setEntryView('Notes');
+    fixture.detectChanges();
+
+    const titleInput = fixture.nativeElement.querySelector('.note-header input') as HTMLInputElement;
+    expect(titleInput.placeholder).toBe('Untitled');
+    expect(titleInput.value).toBe('');
+    expect(component.newEntryNotes()[0]?.title).toBe('');
+
+    component.updateNoteContent(0, 'Updated body text');
+    vi.advanceTimersByTime(300);
+
+    expect(updated.mock.calls[0]?.[0].notes[0]).toEqual({
+      id: 'note-1',
+      title: '',
+      content: 'Updated body text',
+    });
+  });
+
+  it('discards a note only when both its title and body are empty', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry());
+    await render();
+    vi.useFakeTimers();
+    const updated = vi.fn();
+    component.entryUpdated.subscribe(updated);
+
+    component.addNote();
+    component.updateNoteContent(0, 'Body text');
+    vi.advanceTimersByTime(300);
+
+    component.updateNoteTitle(0, '   ');
+    component.updateNoteContent(0, ' \n ');
+    vi.advanceTimersByTime(300);
+
+    expect(updated).toHaveBeenCalledTimes(2);
+    expect(updated.mock.calls.at(-1)?.[0].notes).toEqual([]);
   });
 
   it('keeps raw Markdown in state and autosaves it unchanged', async () => {
@@ -312,7 +467,17 @@ describe('CodexEntryMenuComponent', () => {
     if (!debugElement) throw new Error('Expected shared Markdown editor');
     return debugElement.componentInstance as MarkdownEditorComponent;
   }
+
+  function noteMarkdownEditors(): MarkdownEditorComponent[] {
+    return fixture.debugElement
+      .queryAll(By.css('.note-content-editor'))
+      .map(debugElement => debugElement.componentInstance as MarkdownEditorComponent);
+  }
 });
+
+function saveStatusText(fixture: ComponentFixture<CodexEntryMenuComponent>): string {
+  return (fixture.nativeElement.querySelector('.save-status') as HTMLElement).textContent?.trim() ?? '';
+}
 
 function stubImageLoading({ width, height }: { width: number; height: number }): void {
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:selected-codex-image');
@@ -396,6 +561,17 @@ function createProgression(
     title,
     description: `${title} description.`,
     sceneId,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastEditedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+function createNote(title: string, content: string): CodexEntryNoteDto {
+  return {
+    id: 'note-1',
+    codexEntryId: 'codex-1',
+    title,
+    content,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastEditedAt: '2026-01-01T00:00:00.000Z',
   };

@@ -12,6 +12,7 @@ import type {
   CodexEntryNoteRow,
   CodexEntryProgressionRow,
   CodexEntryRow,
+  GeneralNoteRow,
   SceneRow,
   SystemPromptPresetRow,
 } from '../../../db/schema';
@@ -54,6 +55,7 @@ export type DataExportCodexEntry = WithIsoDates<Omit<CodexEntryRow, 'image'>> & 
 };
 export type DataExportCodexEntryNote = WithIsoDates<CodexEntryNoteRow>;
 export type DataExportCodexEntryProgression = WithIsoDates<CodexEntryProgressionRow>;
+export type DataExportGeneralNote = WithIsoDates<GeneralNoteRow>;
 export type DataExportChatThread = WithIsoDates<ChatThreadRow>;
 export type DataExportChatMessage = WithIsoDates<ChatMessageRow>;
 export type DataExportChatBranchSelection = ChatBranchSelectionRow;
@@ -77,6 +79,7 @@ export interface DataExportSnapshotData {
   codexEntries: DataExportCodexEntry[];
   codexEntryNotes: DataExportCodexEntryNote[];
   codexEntryProgression: DataExportCodexEntryProgression[];
+  generalNotes: DataExportGeneralNote[];
   chatThreads: DataExportChatThread[];
   chatMessages: DataExportChatMessage[];
   chatBranchSelections: DataExportChatBranchSelection[];
@@ -87,7 +90,7 @@ export interface DataExportSnapshotData {
 export type DataExportScope = { type: 'book'; bookId: string } | { type: 'library' };
 
 export interface DataExportSnapshot {
-  schemaVersion: 1;
+  schemaVersion: 2;
   exportedAt: string;
   scope: DataExportScope;
   data: DataExportSnapshotData;

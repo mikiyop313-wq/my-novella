@@ -71,6 +71,7 @@ export class CodexSidebarSection {
   readonly isLoadingSelectedEntry = this.codexStore.isLoadingSelectedEntry;
   readonly isCreatingEntry = this.codexStore.isCreatingEntry;
   readonly isSavingEntry = this.codexStore.isSavingEntry;
+  readonly saveStatus = this.codexStore.saveStatus;
   readonly error = this.codexStore.error;
   readonly entryImageUrls = signal<Record<string, string>>({});
   readonly selectedEntryImageUrl = signal<string | null>(null);

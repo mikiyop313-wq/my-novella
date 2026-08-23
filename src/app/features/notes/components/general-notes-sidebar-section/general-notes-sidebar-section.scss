@@ -1,0 +1,519 @@
+@keyframes fadeUpCollapse {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:host {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.notes-section {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-background) 36%, var(--color-surface));
+
+  &.is-collapsed {
+    border-color: transparent;
+    background: transparent;
+
+    .section-body {
+      padding: 0;
+    }
+
+    .search-shell {
+      justify-content: center;
+      margin-top: 0;
+      padding: 0;
+      border-color: transparent;
+      background: transparent;
+
+      input {
+        display: none;
+      }
+    }
+
+    .note-list {
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    .note-card {
+      height: 48px;
+      justify-content: center;
+      padding: 0;
+      gap: 0;
+      border-color: transparent;
+      background: transparent;
+      opacity: 0;
+      animation: fadeUpCollapse 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+
+      @for $i from 1 through 20 {
+        &:nth-child(#{$i}) {
+          animation-delay: #{$i * 0.04}s;
+        }
+      }
+
+      .note-card-icon {
+        flex-basis: 40px;
+        height: 40px;
+        margin: 0;
+        border-color: transparent;
+      }
+
+      .note-card-content {
+        display: none;
+      }
+    }
+
+    .empty-state {
+      min-height: 0;
+      padding: 0;
+      border-color: transparent;
+
+      h3,
+      p,
+      .empty-icon {
+        display: none;
+      }
+    }
+
+    .add-btn {
+      height: 40px;
+      justify-content: center;
+      padding: 0;
+      border-color: transparent;
+      background: transparent;
+
+      span {
+        display: none;
+      }
+
+      &.list-add {
+        opacity: 0;
+        animation: fadeUpCollapse 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+    }
+  }
+}
+
+.section-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px 14px;
+}
+
+.search-shell {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  margin-top: 16px;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  &:focus-within {
+    border-color: color-mix(in srgb, var(--color-border) 80%, var(--color-text-primary));
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+    transform: scale(1.01);
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+  }
+
+  input {
+    min-width: 0;
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 0.84rem;
+
+    &::placeholder {
+      color: var(--color-text-secondary);
+    }
+  }
+}
+
+.note-list {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+  margin-right: -6px;
+  padding-right: 8px;
+  padding-bottom: 8px;
+  overflow-y: auto;
+}
+
+.note-card {
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
+  height: 88px;
+  gap: 12px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover,
+  &:focus-visible {
+    border-color: color-mix(in srgb, var(--color-text-secondary) 45%, var(--color-border));
+    background: var(--color-hover-bg);
+    outline: none;
+  }
+}
+
+.note-card-icon,
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.note-card-icon {
+  box-sizing: border-box;
+  flex: 0 0 66px;
+  height: 66px;
+  margin: 10px 0 10px 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-hover-bg) 30%, transparent);
+
+  svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.note-card-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  padding: 10px 12px 10px 0;
+
+  h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  p {
+    display: -webkit-box;
+    margin: 4px 0 0;
+    max-height: calc(2 * 1.35em);
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: 0.74rem;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex: 1;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 24px 18px;
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+
+  .empty-icon {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-background);
+  }
+
+  h3 {
+    margin: 0 0 7px;
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+  }
+
+  p {
+    max-width: 210px;
+    margin: 0 0 18px;
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+}
+
+.add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 36px;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--color-hover-bg);
+    border-color: color-mix(in srgb, var(--color-border) 80%, var(--color-text-primary));
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &.list-add {
+    width: 100%;
+  }
+}
+
+.note-editor-panel {
+  display: flex;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background);
+  box-shadow: var(--color-shadow);
+  animation: menuFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 50%, transparent);
+
+  div {
+    min-width: 0;
+  }
+
+  span {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--color-text-secondary);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.icon-btn {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-hover-bg);
+    color: var(--color-text-primary);
+  }
+
+  svg {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+.editor-body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  overflow-y: auto;
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    label {
+      color: var(--color-text-secondary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    input {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      outline: none;
+      background: var(--color-surface);
+      color: var(--color-text-primary);
+      font-family: inherit;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+
+      &:focus {
+        border-color: var(--color-text-primary);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-text-primary) 15%, transparent);
+      }
+
+      &::placeholder {
+        color: color-mix(in srgb, var(--color-text-secondary) 60%, transparent);
+      }
+    }
+  }
+}
+
+:host ::ng-deep .note-editor .cm-editor {
+  height: min(380px, calc(100vh - 270px));
+  min-height: 220px;
+  background: var(--color-surface);
+}
+
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+  }
+}
+
+.delete-btn {
+  flex-shrink: 0;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-danger);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  }
+}
+
+.note-card.note-entry-entering {
+  animation: note-entry-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.note-card.note-entry-pending {
+  visibility: hidden;
+}
+
+.note-card.note-entry-leaving {
+  height: 0;
+  border-width: 0;
+  pointer-events: none;
+  transform: translateY(-24px);
+}
+
+@keyframes note-entry-enter {
+  from {
+    transform: translateY(24px);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}

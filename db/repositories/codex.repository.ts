@@ -190,13 +190,13 @@ export class CodexRepository {
   async createEntryNote(data: CreateCodexEntryNoteDto): Promise<CodexEntryNoteDto> {
     await this.ensureEntryExists(data.codexEntryId);
     const timestamp = toSqliteTimestamp();
-    const created = await db.insertInto('codexEntryNotes').values({ id: randomUUID(), codexEntryId: data.codexEntryId, content: data.content, createdAt: timestamp, lastEditedAt: timestamp }).returningAll().executeTakeFirstOrThrow();
+    const created = await db.insertInto('codexEntryNotes').values({ id: randomUUID(), codexEntryId: data.codexEntryId, title: data.title, content: data.content, createdAt: timestamp, lastEditedAt: timestamp }).returningAll().executeTakeFirstOrThrow();
     await this.touchEntryLastEdited(created.codexEntryId);
     return mapCodexEntryNoteRow(created);
   }
 
   async updateEntryNote(id: string, data: UpdateCodexEntryNoteDto): Promise<CodexEntryNoteDto | undefined> {
-    const updated = await db.updateTable('codexEntryNotes').set({ content: data.content, lastEditedAt: toSqliteTimestamp() }).where('id', '=', id).returningAll().executeTakeFirst();
+    const updated = await db.updateTable('codexEntryNotes').set({ title: data.title, content: data.content, lastEditedAt: toSqliteTimestamp() }).where('id', '=', id).returningAll().executeTakeFirst();
     if (updated) await this.touchEntryLastEdited(updated.codexEntryId);
     return updated ? mapCodexEntryNoteRow(updated) : undefined;
   }

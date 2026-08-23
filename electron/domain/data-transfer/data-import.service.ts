@@ -23,6 +23,7 @@ interface ImportIdMaps {
   codexEntries: Map<string, string>;
   codexEntryNotes: Map<string, string>;
   codexEntryProgression: Map<string, string>;
+  generalNotes: Map<string, string>;
   chatThreads: Map<string, string>;
   chatMessages: Map<string, string>;
   chatBranchGroups: Map<string, string>;
@@ -48,6 +49,7 @@ export class DataImportService {
       await this.importBookTags(transaction, snapshot.data, ids, categoryIds);
       await this.importNarrative(transaction, snapshot.data, ids);
       await this.importCodex(transaction, snapshot.data, ids);
+      await this.importGeneralNotes(transaction, snapshot.data, ids);
       await this.importChats(transaction, snapshot.data, ids);
       await this.importSystemPrompts(transaction, snapshot.data, ids);
       return { importedBookIds: snapshot.data.books.map((book) => mappedId(ids.books, book.id)) };
@@ -63,6 +65,7 @@ export class DataImportService {
       codexEntries: this.mapNewIds(data.codexEntries),
       codexEntryNotes: this.mapNewIds(data.codexEntryNotes),
       codexEntryProgression: this.mapNewIds(data.codexEntryProgression),
+      generalNotes: this.mapNewIds(data.generalNotes),
       chatThreads: this.mapNewIds(data.chatThreads),
       chatMessages: this.mapNewIds(data.chatMessages),
       chatBranchGroups: this.mapBranchGroupIds(data),
@@ -168,6 +171,18 @@ export class DataImportService {
     }
     for (const selection of data.chatBranchSelections) {
       await transaction.insertInto('chatBranchSelections').values({ ...selection, threadId: mappedId(ids.chatThreads, selection.threadId), branchGroupId: mappedId(ids.chatBranchGroups, branchGroupIdentity(selection)), selectedMessageId: mappedId(ids.chatMessages, selection.selectedMessageId) }).execute();
+    }
+  }
+
+  private async importGeneralNotes(transaction: DatabaseTransaction, data: DataExportSnapshotData, ids: ImportIdMaps): Promise<void> {
+    for (const note of data.generalNotes) {
+      await transaction.insertInto('generalNotes').values({
+        ...note,
+        id: mappedId(ids.generalNotes, note.id),
+        bookId: mappedId(ids.books, note.bookId),
+        createdAt: decodeDate(note.createdAt),
+        lastEditedAt: decodeDate(note.lastEditedAt),
+      }).execute();
     }
   }
 

@@ -13,7 +13,8 @@
 
   &.is-collapsed {
     .sidebar-header {
-      padding: 12px 0;
+      min-height: 56px;
+      padding: 10px 0;
       justify-content: center;
       
       .header-text {
@@ -28,8 +29,9 @@
 }
 
 .sidebar-header {
-  min-height: 58px;
-  padding: 12px 14px 12px 16px;
+  box-sizing: border-box;
+  min-height: 72px;
+  padding: 10px 12px 10px 16px;
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
@@ -39,6 +41,10 @@
   .header-text {
     flex: 1;
     min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
     transition: opacity 0.2s ease, width 0.2s ease;
     opacity: 1;
 
@@ -46,25 +52,72 @@
       opacity: 0;
       width: 0;
       overflow: hidden;
-      display: none; // Wait, if it has a transition we shouldn't use display: none immediately, or we can just hide it based on parent.
+      display: none;
     }
   }
 
-  span {
+  .reference-label {
     display: block;
-    margin-bottom: 2px;
-    font-size: 0.66rem;
+    font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    line-height: 1;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
     color: var(--color-text-secondary);
   }
 
-  h2 {
-    margin: 0;
-    font-size: 1rem;
-    line-height: 1.2;
-    color: var(--color-text-primary);
+  .reference-tabs {
+    position: relative;
+    display: grid;
+    width: 158px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+
+    &::after {
+      content: '';
+      position: absolute;
+      right: 50%;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--color-text-primary);
+      transform: translateX(0);
+      transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    &.notes-active::after {
+      transform: translateX(100%);
+    }
+
+    button {
+      min-width: 0;
+      padding: 3px 6px 7px;
+      border: none;
+      border-radius: 5px 5px 0 0;
+      background: transparent;
+      color: var(--color-text-secondary);
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      transition: background-color 160ms ease, color 160ms ease;
+
+      &:hover {
+        background: color-mix(in srgb, var(--color-hover-bg) 72%, transparent);
+        color: var(--color-text-primary);
+      }
+
+      &.active {
+        color: var(--color-text-primary);
+      }
+
+      &:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--color-text-primary) 45%, transparent);
+        outline-offset: 2px;
+      }
+    }
   }
 }
 
@@ -97,7 +150,40 @@
   flex: 1;
   overflow-y: hidden;
   padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+
+  .sidebar-section-panel {
+    grid-area: 1 / 1;
+    min-width: 0;
+    min-height: 0;
+    opacity: 1;
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+      opacity 180ms ease,
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 0s;
+  }
+
+  .section-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition-delay: 0s, 0s, 220ms;
+  }
+
+  .codex-panel.section-hidden {
+    transform: translateX(-8px);
+  }
+
+  .notes-panel.section-hidden {
+    transform: translateX(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-header .reference-tabs::after,
+  .sidebar-sections .sidebar-section-panel {
+    transition: none;
+  }
 }

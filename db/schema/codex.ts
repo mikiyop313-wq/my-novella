@@ -24,6 +24,7 @@ export interface CodexEntryTable {
 export interface CodexEntryNoteTable {
   id: string;
   codexEntryId: string;
+  title: Generated<string>;
   content: string;
   createdAt: Generated<SqliteTimestamp | null>;
   lastEditedAt: Generated<SqliteTimestamp | null>;

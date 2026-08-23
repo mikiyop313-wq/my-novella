@@ -21,6 +21,7 @@ describe('CodexStore', () => {
   };
   let persistenceService: {
     createEntry: ReturnType<typeof vi.fn>;
+    updateEntry: ReturnType<typeof vi.fn>;
     deleteEntry: ReturnType<typeof vi.fn>;
   };
   let codexContextTrie: { refreshCurrentContext: ReturnType<typeof vi.fn> };
@@ -34,6 +35,7 @@ describe('CodexStore', () => {
     };
     persistenceService = {
       createEntry: vi.fn(),
+      updateEntry: vi.fn(),
       deleteEntry: vi.fn(),
     };
     codexContextTrie = { refreshCurrentContext: vi.fn() };
@@ -129,6 +131,20 @@ describe('CodexStore', () => {
     expect(store.isCreatingEntry()).toBe(true);
     expect(store.isLoadingSelectedEntry()).toBe(false);
     expect(store.error()).toBeNull();
+  });
+
+  it('reports when changes to an existing entry have been saved', async () => {
+    const detail = createEntryDetail();
+    const updatedDetail = createEntryDetail({ name: 'Updated entry' });
+    codexService.getEntry.mockResolvedValueOnce(detail);
+    persistenceService.updateEntry.mockResolvedValueOnce(updatedDetail);
+    codexService.getEntries.mockResolvedValueOnce([]);
+    codexContextTrie.refreshCurrentContext.mockResolvedValueOnce(undefined);
+    await store.openEntryById(detail.id);
+
+    await store.saveEntry('book-1', createEntryPayload({ name: 'Updated entry' }));
+
+    expect(store.saveStatus()).toBe('saved');
   });
 
   it('keeps openEntry as an entry-object compatibility wrapper', async () => {

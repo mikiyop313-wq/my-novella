@@ -18,7 +18,7 @@ describe('Kysely data transfer', () => {
     database = undefined;
   });
 
-  it('imports and exports a complete schema-version-1 graph', async () => {
+  it('imports and exports a complete schema-version-2 graph', async () => {
     database = createDatabaseClient(new Database(':memory:'));
     await migrateDatabase(database);
     await database.insertInto('language').values({ languageName: 'english' }).execute();
@@ -35,7 +35,7 @@ describe('Kysely data transfer', () => {
     });
     const snapshot = await exporter.createBookExport(imported.importedBookIds[0]);
 
-    expect(snapshot.schemaVersion).toBe(1);
+    expect(snapshot.schemaVersion).toBe(2);
     expect(snapshot.data.books[0]).toMatchObject({
       id: 'imported-1',
       coverImage: 'Y292ZXI=',
@@ -55,6 +55,14 @@ describe('Kysely data transfer', () => {
       includeInContext: true,
     });
     expect(snapshot.data.codexEntries[0].image).toBe('cG9ydHJhaXQ=');
+    expect(snapshot.data.codexEntryNotes[0]).toMatchObject({
+      title: 'Reminder',
+      content: 'Note',
+    });
+    expect(snapshot.data.generalNotes[0]).toMatchObject({
+      title: 'Ideas',
+      content: 'Book-wide note',
+    });
     expect(snapshot.data.chatBranchSelections).toHaveLength(1);
     expect(snapshot.data.systemPromptPresets).toHaveLength(1);
   });
