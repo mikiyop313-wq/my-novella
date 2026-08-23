@@ -1,5 +1,9 @@
 import { BrowserWindow } from 'electron';
 
+import type {
+  ManuscriptPngExportOptions,
+  ManuscriptPngExportTheme,
+} from '../../../../shared/models/manuscript-export.model';
 import type { TiptapMark, TiptapNode } from '../../../../shared/models/manuscript.model';
 import type {
   ManuscriptExportAct,
@@ -9,11 +13,37 @@ import type {
   ManuscriptExportScene,
 } from '../models';
 
-const CAPTURE_WIDTH = 1200;
 const INITIAL_CAPTURE_HEIGHT = 800;
 const MAX_CAPTURE_HEIGHT = 32767;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 24;
+const MIN_CAPTURE_WIDTH = 320;
+const MAX_CAPTURE_WIDTH = 4096;
 const IGNORED_NODE_TYPES = new Set(['aiPrompt', 'aiGeneratedBlock']);
 const MAX_HEADING_LEVEL = 6;
+
+const DEFAULT_PNG_OPTIONS: ResolvedPngExportOptions = {
+  fontSize: 16,
+  theme: 'dark',
+  width: 700,
+};
+
+const THEME_COLORS: Record<ManuscriptPngExportTheme, PngThemeColors> = {
+  light: {
+    background: '#fafafa',
+    text: '#171717',
+    surface: '#ffffff',
+    secondaryText: '#737373',
+    border: 'rgba(0, 0, 0, 0.08)',
+  },
+  dark: {
+    background: '#121212',
+    text: '#fdf8f5',
+    surface: '#202020',
+    secondaryText: '#bbaaaa',
+    border: 'rgba(255, 255, 255, 0.08)',
+  },
+};
 
 interface RenderContext {
   sceneId: string;
@@ -24,17 +54,38 @@ interface CaptureDimensions {
   height: number;
 }
 
+interface ExportManuscriptToPngInput {
+  manuscript: ManuscriptExportDocument;
+  options?: ManuscriptPngExportOptions;
+}
+
+interface ResolvedPngExportOptions {
+  fontSize: number;
+  theme: ManuscriptPngExportTheme;
+  width: number;
+}
+
+interface PngThemeColors {
+  background: string;
+  text: string;
+  surface: string;
+  secondaryText: string;
+  border: string;
+}
+
 /** Converts normalized manuscript content into one full-height PNG image. */
 export async function exportManuscriptToPng(
-  manuscript: ManuscriptExportDocument,
+  { manuscript, options }: ExportManuscriptToPngInput,
 ): Promise<Buffer> {
-  const html = buildHtmlDocument(manuscript);
+  const resolvedOptions = resolvePngOptions(options);
+  const colors = THEME_COLORS[resolvedOptions.theme];
+  const html = buildHtmlDocument(manuscript, resolvedOptions, colors);
   const window = new BrowserWindow({
     show: false,
-    width: CAPTURE_WIDTH,
+    width: resolvedOptions.width,
     height: INITIAL_CAPTURE_HEIGHT,
     useContentSize: true,
-    backgroundColor: '#121212',
+    backgroundColor: colors.background,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -44,7 +95,7 @@ export async function exportManuscriptToPng(
 
   try {
     await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    const dimensions = await measureCaptureDimensions(window);
+    const dimensions = await measureCaptureDimensions(window, resolvedOptions.width);
     window.setContentSize(dimensions.width, dimensions.height);
 
     const [actualWidth, actualHeight] = window.getContentSize();
@@ -72,7 +123,70 @@ export async function exportManuscriptToPng(
   }
 }
 
-async function measureCaptureDimensions(window: BrowserWindow): Promise<CaptureDimensions> {
+function resolvePngOptions(
+  options: ManuscriptPngExportOptions | undefined,
+): ResolvedPngExportOptions {
+  if (options === undefined) {
+    return DEFAULT_PNG_OPTIONS;
+  }
+
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+    throw new Error('PNG export options must be an object.');
+  }
+
+  const fontSize = resolveIntegerOption({
+    value: options.fontSize,
+    defaultValue: DEFAULT_PNG_OPTIONS.fontSize,
+    minimum: MIN_FONT_SIZE,
+    maximum: MAX_FONT_SIZE,
+    errorMessage: `PNG export font size must be an integer between ${MIN_FONT_SIZE} and ${MAX_FONT_SIZE} pixels.`,
+  });
+  const width = resolveIntegerOption({
+    value: options.width,
+    defaultValue: DEFAULT_PNG_OPTIONS.width,
+    minimum: MIN_CAPTURE_WIDTH,
+    maximum: MAX_CAPTURE_WIDTH,
+    errorMessage: `PNG export width must be an integer between ${MIN_CAPTURE_WIDTH} and ${MAX_CAPTURE_WIDTH} pixels.`,
+  });
+  const theme = options.theme ?? DEFAULT_PNG_OPTIONS.theme;
+
+  if (theme !== 'light' && theme !== 'dark') {
+    throw new Error('PNG export theme must be either "light" or "dark".');
+  }
+
+  return { fontSize, theme, width };
+}
+
+interface ResolveIntegerOptionInput {
+  value: number | undefined;
+  defaultValue: number;
+  minimum: number;
+  maximum: number;
+  errorMessage: string;
+}
+
+function resolveIntegerOption({
+  value,
+  defaultValue,
+  minimum,
+  maximum,
+  errorMessage,
+}: ResolveIntegerOptionInput): number {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
+}
+
+async function measureCaptureDimensions(
+  window: BrowserWindow,
+  width: number,
+): Promise<CaptureDimensions> {
   const measuredHeight: unknown = await window.webContents.executeJavaScript(`
     Math.ceil(Math.max(
       document.documentElement.scrollHeight,
@@ -92,10 +206,14 @@ async function measureCaptureDimensions(window: BrowserWindow): Promise<CaptureD
     );
   }
 
-  return { width: CAPTURE_WIDTH, height: measuredHeight as number };
+  return { width, height: measuredHeight as number };
 }
 
-function buildHtmlDocument(manuscript: ManuscriptExportDocument): string {
+function buildHtmlDocument(
+  manuscript: ManuscriptExportDocument,
+  options: ResolvedPngExportOptions,
+  colors: PngThemeColors,
+): string {
   const context: RenderContext = { sceneId: '' };
   const title = manuscript.target.mode === 'book'
     ? renderBookTitle(manuscript.book.title, manuscript.book.author)
@@ -109,7 +227,7 @@ function buildHtmlDocument(manuscript: ManuscriptExportDocument): string {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
   <meta name="author" content="${escapeAttribute(manuscript.book.author)}">
   <title>${escapeHtml(manuscript.book.title)}</title>
-  <style>${CAPTURE_STYLES}</style>
+  <style>${captureStyles(options, colors)}</style>
 </head>
 <body>
   <main class="export-root">${title}${content}</main>
@@ -307,33 +425,37 @@ function unsupportedNodeError(nodeType: string, sceneId: string): Error {
   return new Error(`Unsupported Tiptap node "${nodeType}" in scene "${sceneId}".`);
 }
 
-const CAPTURE_STYLES = `
+function captureStyles(
+  options: ResolvedPngExportOptions,
+  colors: PngThemeColors,
+): string {
+  return `
 * {
   box-sizing: border-box;
 }
 
 html,
 body {
-  width: ${CAPTURE_WIDTH}px;
+  width: ${options.width}px;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #121212;
+  background: ${colors.background};
 }
 
 body {
-  color: #fdf8f5;
+  color: ${colors.text};
   font-family: "Times New Roman", serif;
-  font-size: 18px;
+  font-size: ${options.fontSize}px;
   line-height: 2;
 }
 
 a {
-  color: #fdf8f5;
+  color: ${colors.text};
 }
 
 .export-root {
-  width: 816px;
+  width: 68%;
   min-height: 1px;
   margin: 0 auto;
   padding: 96px 0;
@@ -346,13 +468,13 @@ a {
 
 .book-title h1 {
   margin: 0 0 24px;
-  font-size: 36px;
+  font-size: 2em;
   line-height: 1.2;
 }
 
 .book-title p {
   margin: 0;
-  color: #bbaaaa;
+  color: ${colors.secondaryText};
   text-indent: 0;
 }
 
@@ -372,13 +494,13 @@ a {
 .act-number,
 .act-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 1.5556em;
   line-height: 1.3;
 }
 
 .act-title {
   margin-top: 12px;
-  color: #bbaaaa;
+  color: ${colors.secondaryText};
 }
 
 .chapter {
@@ -387,14 +509,14 @@ a {
 
 .chapter-heading {
   margin: 0 0 48px;
-  font-size: 26px;
+  font-size: 1.4444em;
   line-height: 1.3;
 }
 
 .scene-heading {
   margin: 48px 0 24px;
-  color: #bbaaaa;
-  font-size: 20px;
+  color: ${colors.secondaryText};
+  font-size: 1.1111em;
   line-height: 1.4;
 }
 
@@ -414,12 +536,12 @@ a {
   text-indent: 0;
 }
 
-h1.prose-heading { font-size: 30px; }
-h2.prose-heading { font-size: 28px; }
-h3.prose-heading { font-size: 26px; }
-h4.prose-heading { font-size: 24px; }
-h5.prose-heading { font-size: 22px; }
-h6.prose-heading { font-size: 20px; }
+h1.prose-heading { font-size: 1.6667em; }
+h2.prose-heading { font-size: 1.5556em; }
+h3.prose-heading { font-size: 1.4444em; }
+h4.prose-heading { font-size: 1.3333em; }
+h5.prose-heading { font-size: 1.2222em; }
+h6.prose-heading { font-size: 1.1111em; }
 
 ul,
 ol {
@@ -433,7 +555,7 @@ li > p {
 
 blockquote {
   margin: 24px 48px;
-  color: #bbaaaa;
+  color: ${colors.secondaryText};
   font-style: italic;
 }
 
@@ -446,9 +568,9 @@ pre {
   margin: 24px;
   padding: 20px;
   border-radius: 8px;
-  background: #202020;
+  background: ${colors.surface};
   font-family: "Courier New", monospace;
-  font-size: 15px;
+  font-size: 0.8333em;
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -456,7 +578,7 @@ pre {
 code {
   padding: 2px 4px;
   border-radius: 4px;
-  background: #202020;
+  background: ${colors.surface};
   font-family: "Courier New", monospace;
 }
 
@@ -467,6 +589,7 @@ pre code {
 hr {
   margin: 36px 0;
   border: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid ${colors.border};
 }
 `;
+}

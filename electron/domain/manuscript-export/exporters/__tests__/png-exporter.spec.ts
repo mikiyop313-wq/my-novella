@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { ManuscriptPngExportOptions } from '../../../../../shared/models/manuscript-export.model';
 import type { TiptapJsonDoc, TiptapNode } from '../../../../../shared/models/manuscript.model';
 import type {
   ManuscriptExportAct,
@@ -64,7 +65,7 @@ describe('exportManuscriptToPng', () => {
     electronMocks.loadURL.mockReset().mockResolvedValue(undefined);
     electronMocks.executeJavaScript.mockReset().mockResolvedValue(900);
     electronMocks.setContentSize.mockReset();
-    electronMocks.getContentSize.mockReset().mockReturnValue([1200, 900]);
+    electronMocks.getContentSize.mockReset().mockReturnValue([700, 900]);
     electronMocks.capturePage.mockReset().mockResolvedValue(electronMocks.image);
     electronMocks.isEmpty.mockReset().mockReturnValue(false);
     electronMocks.toPNG.mockReset().mockReturnValue(Buffer.from('png-test'));
@@ -72,14 +73,14 @@ describe('exportManuscriptToPng', () => {
     electronMocks.isDestroyed.mockReset().mockReturnValue(false);
   });
 
-  it('renders a dark themed book and captures one fixed-width full-height PNG', async () => {
-    const result = await exportManuscriptToPng(createBookDocument([createAct()]));
+  it('renders a book with the default PNG options', async () => {
+    const result = await exportManuscriptToPng({ manuscript: createBookDocument([createAct()]) });
     const html = loadedHtml();
 
     expect(result.toString()).toBe('png-test');
     expect(electronMocks.BrowserWindow).toHaveBeenCalledWith({
       show: false,
-      width: 1200,
+      width: 700,
       height: 800,
       useContentSize: true,
       backgroundColor: '#121212',
@@ -93,29 +94,96 @@ describe('exportManuscriptToPng', () => {
     expect(html).toContain('color: #fdf8f5');
     expect(html).toContain('background: #202020');
     expect(html).toContain('color: #bbaaaa');
-    expect(html).toContain('width: 1200px');
+    expect(html).toContain('width: 700px');
+    expect(html).toContain('font-size: 16px');
+    expect(html).toContain('width: 68%');
+    expect(html).toContain('font-size: 2em');
     expect(html).toContain('<header class="book-title">');
     expect(html).toContain('<h1>A Tale &amp; More</h1>');
     expect(html).toContain('<p>by A. Writer</p>');
     expect(html.indexOf('ACT 1')).toBeLessThan(html.indexOf('Chapter 2'));
     expect(html.indexOf('Chapter 2')).toBeLessThan(html.indexOf('Scene 3'));
-    expect(electronMocks.setContentSize).toHaveBeenCalledWith(1200, 900);
+    expect(electronMocks.setContentSize).toHaveBeenCalledWith(700, 900);
     expect(electronMocks.capturePage).toHaveBeenCalledWith({
       x: 0,
       y: 0,
-      width: 1200,
+      width: 700,
       height: 900,
     });
     expect(electronMocks.toPNG).toHaveBeenCalledOnce();
     expect(electronMocks.destroy).toHaveBeenCalledOnce();
   });
 
+  it('renders custom light theme, font size, and final image width', async () => {
+    electronMocks.getContentSize.mockReturnValue([1024, 900]);
+
+    await exportManuscriptToPng({
+      manuscript: createBookDocument([]),
+      options: { fontSize: 22, theme: 'light', width: 1024 },
+    });
+
+    const html = loadedHtml();
+    expect(electronMocks.BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
+      width: 1024,
+      backgroundColor: '#fafafa',
+    }));
+    expect(html).toContain('width: 1024px');
+    expect(html).toContain('font-size: 22px');
+    expect(html).toContain('background: #fafafa');
+    expect(html).toContain('color: #171717');
+    expect(html).toContain('background: #ffffff');
+    expect(html).toContain('color: #737373');
+    expect(html).toContain('border-top: 1px solid rgba(0, 0, 0, 0.08)');
+    expect(electronMocks.capturePage).toHaveBeenCalledWith({
+      x: 0,
+      y: 0,
+      width: 1024,
+      height: 900,
+    });
+  });
+
+  it('uses defaults for omitted PNG options', async () => {
+    await exportManuscriptToPng({
+      manuscript: createBookDocument([]),
+      options: { fontSize: 20 },
+    });
+
+    const html = loadedHtml();
+    expect(electronMocks.BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
+      width: 700,
+      backgroundColor: '#121212',
+    }));
+    expect(html).toContain('font-size: 20px');
+  });
+
+  it.each([
+    [{ fontSize: 7 }, 'PNG export font size must be an integer between 8 and 24 pixels.'],
+    [{ fontSize: 25 }, 'PNG export font size must be an integer between 8 and 24 pixels.'],
+    [{ fontSize: 12.5 }, 'PNG export font size must be an integer between 8 and 24 pixels.'],
+    [{ fontSize: '16' }, 'PNG export font size must be an integer between 8 and 24 pixels.'],
+    [{ width: 319 }, 'PNG export width must be an integer between 320 and 4096 pixels.'],
+    [{ width: 4097 }, 'PNG export width must be an integer between 320 and 4096 pixels.'],
+    [{ width: 700.5 }, 'PNG export width must be an integer between 320 and 4096 pixels.'],
+    [{ width: '700' }, 'PNG export width must be an integer between 320 and 4096 pixels.'],
+    [{ theme: 'sepia' }, 'PNG export theme must be either "light" or "dark".'],
+  ] as Array<[Record<string, unknown>, string]>)(
+    'rejects invalid PNG options before creating a render window: %s',
+    async (options, message) => {
+      await expect(exportManuscriptToPng({
+        manuscript: createBookDocument([]),
+        options: options as ManuscriptPngExportOptions,
+      })).rejects.toThrow(message);
+
+      expect(electronMocks.BrowserWindow).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['act', createAct(), 'ACT 1'],
     ['chapter', createChapter(), 'Chapter 2'],
     ['scene', createScene(), 'Scene 3'],
   ] as const)('starts a partial %s export at the selected node', async (mode, node, label) => {
-    await exportManuscriptToPng(createDocument(mode, [node]));
+    await exportManuscriptToPng({ manuscript: createDocument(mode, [node]) });
 
     const html = loadedHtml();
     expect(html).not.toContain('class="book-title"');
@@ -172,7 +240,9 @@ describe('exportManuscriptToPng', () => {
       ],
     };
 
-    await exportManuscriptToPng(createDocument('scene', [createScene(prose)]));
+    await exportManuscriptToPng({
+      manuscript: createDocument('scene', [createScene(prose)]),
+    });
     const html = loadedHtml();
 
     expect(html).toContain('<u><s><em><strong>bold &amp; &lt;Unicode: ășț&gt;</strong></em></s></u>');
@@ -214,7 +284,7 @@ describe('exportManuscriptToPng', () => {
     async (node, message) => {
       const document = createDocument('scene', [createScene({ type: 'doc', content: [node] })]);
 
-      await expect(exportManuscriptToPng(document)).rejects.toThrow(message);
+      await expect(exportManuscriptToPng({ manuscript: document })).rejects.toThrow(message);
       expect(electronMocks.BrowserWindow).not.toHaveBeenCalled();
     },
   );
@@ -226,16 +296,18 @@ describe('exportManuscriptToPng', () => {
   ])('rejects an invalid measured height of %s', async (height, message) => {
     electronMocks.executeJavaScript.mockResolvedValue(height);
 
-    await expect(exportManuscriptToPng(createBookDocument([]))).rejects.toThrow(message);
+    await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
+      message,
+    );
     expect(electronMocks.capturePage).not.toHaveBeenCalled();
     expect(electronMocks.destroy).toHaveBeenCalledOnce();
   });
 
   it('rejects a capture surface that Electron cannot size exactly', async () => {
-    electronMocks.getContentSize.mockReturnValue([1200, 899]);
+    electronMocks.getContentSize.mockReturnValue([700, 899]);
 
-    await expect(exportManuscriptToPng(createBookDocument([]))).rejects.toThrow(
-      'PNG export could not create the required 1200x900 capture surface.',
+    await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
+      'PNG export could not create the required 700x900 capture surface.',
     );
     expect(electronMocks.capturePage).not.toHaveBeenCalled();
   });
@@ -243,7 +315,7 @@ describe('exportManuscriptToPng', () => {
   it('rejects an empty image returned by Electron', async () => {
     electronMocks.isEmpty.mockReturnValue(true);
 
-    await expect(exportManuscriptToPng(createBookDocument([]))).rejects.toThrow(
+    await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
       'PNG export produced an empty image.',
     );
     expect(electronMocks.toPNG).not.toHaveBeenCalled();
@@ -263,7 +335,9 @@ describe('exportManuscriptToPng', () => {
         electronMocks.capturePage.mockRejectedValue(error);
       }
 
-      await expect(exportManuscriptToPng(createBookDocument([]))).rejects.toThrow(`${stage} failed`);
+      await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
+        `${stage} failed`,
+      );
       expect(electronMocks.destroy).toHaveBeenCalledOnce();
     },
   );
@@ -271,7 +345,7 @@ describe('exportManuscriptToPng', () => {
   it('does not destroy a window that Electron already destroyed', async () => {
     electronMocks.isDestroyed.mockReturnValue(true);
 
-    await exportManuscriptToPng(createBookDocument([]));
+    await exportManuscriptToPng({ manuscript: createBookDocument([]) });
 
     expect(electronMocks.destroy).not.toHaveBeenCalled();
   });

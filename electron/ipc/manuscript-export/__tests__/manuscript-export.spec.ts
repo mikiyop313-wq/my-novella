@@ -110,12 +110,35 @@ describe('manuscript export IPC handler', () => {
       defaultPath: `A_B_C_D_.${format}`,
       filters: [{ name: filterName, extensions: [format] }],
     });
-    expect(exporters[format]).toHaveBeenCalledWith(manuscript);
+    if (format === 'png') {
+      expect(exporters[format]).toHaveBeenCalledWith({ manuscript, options: undefined });
+    } else {
+      expect(exporters[format]).toHaveBeenCalledWith(manuscript);
+    }
     Object.entries(exporters)
       .filter(([exportFormat]) => exportFormat !== format)
       .forEach(([, exporter]) => expect(exporter).not.toHaveBeenCalled());
     expect(mocks.writeFile).toHaveBeenCalledWith(filePath, file);
     expect(result).toEqual({ status: 'saved', filePath });
+  });
+
+  it('forwards PNG options to the PNG exporter', async () => {
+    const request: SaveManuscriptExportRequest = {
+      mode: 'book',
+      id: 'book-1',
+      format: 'png',
+      pngOptions: { fontSize: 22, theme: 'light', width: 1024 },
+    };
+
+    await invokeHandler(request);
+
+    expect(mocks.exportPng).toHaveBeenCalledWith({
+      manuscript,
+      options: request.pngOptions,
+    });
+    expect(mocks.exportDocx).not.toHaveBeenCalled();
+    expect(mocks.exportEpub).not.toHaveBeenCalled();
+    expect(mocks.exportPdf).not.toHaveBeenCalled();
   });
 
   it('returns cancelled without generating or writing a file', async () => {

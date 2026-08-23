@@ -17,29 +17,37 @@ import type {
 interface ExportFormatConfiguration {
   extension: ManuscriptExportFormat;
   filterName: string;
-  generate: (manuscript: ManuscriptExportDocument) => Promise<Buffer>;
+  generate: (input: GenerateExportInput) => Promise<Buffer>;
+}
+
+interface GenerateExportInput {
+  manuscript: ManuscriptExportDocument;
+  request: SaveManuscriptExportRequest;
 }
 
 const EXPORT_FORMATS: Record<ManuscriptExportFormat, ExportFormatConfiguration> = {
   docx: {
     extension: 'docx',
     filterName: 'Word document',
-    generate: exportManuscriptToDocx,
+    generate: ({ manuscript }) => exportManuscriptToDocx(manuscript),
   },
   epub: {
     extension: 'epub',
     filterName: 'EPUB book',
-    generate: exportManuscriptToEpub,
+    generate: ({ manuscript }) => exportManuscriptToEpub(manuscript),
   },
   pdf: {
     extension: 'pdf',
     filterName: 'PDF document',
-    generate: exportManuscriptToPdf,
+    generate: ({ manuscript }) => exportManuscriptToPdf(manuscript),
   },
   png: {
     extension: 'png',
     filterName: 'PNG image',
-    generate: exportManuscriptToPng,
+    generate: ({ manuscript, request }) => exportManuscriptToPng({
+      manuscript,
+      options: request.pngOptions,
+    }),
   },
 };
 
@@ -61,7 +69,7 @@ export function setupManuscriptExportHandlers(): void {
           return { status: 'cancelled' };
         }
 
-        const file = await format.generate(manuscript);
+        const file = await format.generate({ manuscript, request });
         await writeFile(saveResult.filePath, file);
 
         return { status: 'saved', filePath: saveResult.filePath };
