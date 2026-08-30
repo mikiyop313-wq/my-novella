@@ -37,7 +37,7 @@ describe('ManuscriptSearchService', () => {
 
     expect(service.matches()).toHaveLength(2);
     expect(service.currentMatchNumber()).toBe(1);
-    expect(editor.view.dom.querySelectorAll('.manuscript-search-match')).toHaveLength(2);
+    expect(editor.view.dom.querySelectorAll('.search-match')).toHaveLength(2);
 
     service.select(1);
     expect(service.currentMatchNumber()).toBe(2);
@@ -47,7 +47,7 @@ describe('ManuscriptSearchService', () => {
     service.close();
     expect(service.open()).toBe(false);
     expect(service.query()).toBe('');
-    expect(editor.view.dom.querySelectorAll('.manuscript-search-match')).toHaveLength(0);
+    expect(editor.view.dom.querySelectorAll('.search-match')).toHaveLength(0);
   });
 
   it('loads and searches the whole manuscript through the existing IPC channel', async () => {

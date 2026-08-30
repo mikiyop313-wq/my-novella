@@ -206,7 +206,7 @@ describe('Manuscript', () => {
     await new Promise<void>(resolve => queueMicrotask(resolve));
 
     const input = fixture.nativeElement.querySelector(
-      'app-manuscript-search input',
+      'app-search input',
     ) as HTMLInputElement;
     expect(shortcut.defaultPrevented).toBe(true);
     expect(input).toBeTruthy();
@@ -219,7 +219,7 @@ describe('Manuscript', () => {
 
     expect(component.search.open()).toBe(false);
     expect(component.search.query()).toBe('');
-    expect(fixture.nativeElement.querySelector('app-manuscript-search')).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-search')).toBeNull();
   });
 
   it('toggles manuscript search off when Ctrl+F is pressed again', async () => {

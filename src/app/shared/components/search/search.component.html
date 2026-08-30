@@ -1,0 +1,80 @@
+<section class="search-widget" role="search" [attr.aria-label]="regionLabel()">
+  <div class="search-widget__search-row">
+    <input
+      #searchInput
+      type="text"
+      autocomplete="off"
+      spellcheck="false"
+      [attr.aria-label]="inputLabel()"
+      [placeholder]="placeholder()"
+      [value]="query()"
+      (input)="onInput($event)"
+      (keydown)="onInputKeydown($event)"
+    >
+
+    <span class="search-widget__match-count" aria-live="polite">
+      @if (loading()) { &hellip; } @else { {{ currentMatch() }}/{{ totalMatches() }} }
+    </span>
+
+    <button
+      type="button"
+      class="search-widget__icon-button"
+      title="Previous match (Shift+Enter)"
+      aria-label="Previous match"
+      [disabled]="totalMatches() === 0 || loading()"
+      (click)="previous.emit()"
+    >&uarr;</button>
+    <button
+      type="button"
+      class="search-widget__icon-button"
+      title="Next match (Enter)"
+      aria-label="Next match"
+      [disabled]="totalMatches() === 0 || loading()"
+      (click)="next.emit()"
+    >&darr;</button>
+    <button
+      type="button"
+      class="search-widget__icon-button search-widget__close-button"
+      title="Close (Escape)"
+      aria-label="Close search"
+      (click)="closed.emit()"
+    >&times;</button>
+  </div>
+
+  <div class="search-widget__option-row">
+    @if (scopeLabel(); as label) {
+      <button
+        type="button"
+        class="search-widget__scope-button"
+        [class.active]="scopeSelected()"
+        [attr.aria-pressed]="scopeSelected()"
+        (click)="scopeSelectedChange.emit(!scopeSelected())"
+      >{{ label }}</button>
+    }
+    <button
+      type="button"
+      class="search-widget__option-button"
+      title="Match case"
+      aria-label="Match case"
+      [class.active]="matchCase()"
+      [attr.aria-pressed]="matchCase()"
+      (click)="matchCaseChange.emit(!matchCase())"
+    >Aa</button>
+    <button
+      type="button"
+      class="search-widget__option-button"
+      title="Match whole word"
+      aria-label="Match whole word"
+      [class.active]="wholeWord()"
+      [attr.aria-pressed]="wholeWord()"
+      (click)="wholeWordChange.emit(!wholeWord())"
+    >Word</button>
+  </div>
+
+  @if (error()) {
+    <div class="search-widget__error" role="alert">
+      <span>{{ error() }}</span>
+      <button type="button" (click)="retry.emit()">Retry</button>
+    </div>
+  }
+</section>

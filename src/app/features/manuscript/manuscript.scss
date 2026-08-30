@@ -469,50 +469,6 @@
   right: 316px;
 }
 
-.search-slide-enter {
-  animation: manuscript-search-slide-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.search-slide-leave {
-  pointer-events: none;
-  animation: manuscript-search-slide-out 150ms ease-in forwards;
-}
-
-@keyframes manuscript-search-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(28px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes manuscript-search-slide-out {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  to {
-    opacity: 0;
-    transform: translateX(28px);
-  }
-}
-
-::ng-deep .manuscript-search-match {
-  border-radius: 2px;
-  background: var(--color-search-match-bg);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-search-match-bg) 72%, transparent);
-}
-
-::ng-deep .manuscript-search-match-active {
-  background: var(--color-search-match-active-bg);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-text-primary) 32%, transparent);
-}
-
 .editor-content-wrapper {
   flex: 1;
   overflow-y: auto;
@@ -931,11 +887,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .search-slide-enter,
-  .search-slide-leave {
-    animation-duration: 1ms;
-  }
-
   ::ng-deep .tiptap .ai-selection-generating {
     color: var(--color-btn-primary-bg);
     background: none;

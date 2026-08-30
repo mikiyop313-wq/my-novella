@@ -74,8 +74,8 @@ function createDecorations(
 ): DecorationSet {
   const decorations = state.ranges.map(range => Decoration.inline(range.from, range.to, {
     class: sameRange(range, state.activeRange)
-      ? 'manuscript-search-match manuscript-search-match-active'
-      : 'manuscript-search-match',
+      ? 'search-match search-match-active'
+      : 'search-match',
   }));
 
   return DecorationSet.create(doc, decorations);
