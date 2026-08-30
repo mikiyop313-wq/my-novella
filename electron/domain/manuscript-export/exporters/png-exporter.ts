@@ -1,8 +1,15 @@
 import { BrowserWindow } from 'electron';
+import sharp from 'sharp';
 
 import type {
   ManuscriptPngExportOptions,
   ManuscriptPngExportTheme,
+} from '../../../../shared/models/manuscript-export.model';
+import {
+  MANUSCRIPT_PNG_EXPORT_DEFAULTS,
+  MANUSCRIPT_PNG_EXPORT_LIMITS,
+  MANUSCRIPT_PNG_EXPORT_SCALE,
+  MANUSCRIPT_PNG_EXPORT_THEME_COLORS,
 } from '../../../../shared/models/manuscript-export.model';
 import type { TiptapMark, TiptapNode } from '../../../../shared/models/manuscript.model';
 import type {
@@ -14,36 +21,14 @@ import type {
 } from '../models';
 
 const INITIAL_CAPTURE_HEIGHT = 800;
-const MAX_CAPTURE_HEIGHT = 32767;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 24;
-const MIN_CAPTURE_WIDTH = 320;
-const MAX_CAPTURE_WIDTH = 4096;
+const MAX_CAPTURE_TILE_HEIGHT = INITIAL_CAPTURE_HEIGHT;
+const MAX_OUTPUT_PIXELS = 268402689;
 const IGNORED_NODE_TYPES = new Set(['aiPrompt', 'aiGeneratedBlock']);
 const MAX_HEADING_LEVEL = 6;
 
-const DEFAULT_PNG_OPTIONS: ResolvedPngExportOptions = {
-  fontSize: 16,
-  theme: 'dark',
-  width: 700,
-};
+const DEFAULT_PNG_OPTIONS: ResolvedPngExportOptions = MANUSCRIPT_PNG_EXPORT_DEFAULTS;
 
-const THEME_COLORS: Record<ManuscriptPngExportTheme, PngThemeColors> = {
-  light: {
-    background: '#fafafa',
-    text: '#171717',
-    surface: '#ffffff',
-    secondaryText: '#737373',
-    border: 'rgba(0, 0, 0, 0.08)',
-  },
-  dark: {
-    background: '#121212',
-    text: '#fdf8f5',
-    surface: '#202020',
-    secondaryText: '#bbaaaa',
-    border: 'rgba(255, 255, 255, 0.08)',
-  },
-};
+const THEME_COLORS = MANUSCRIPT_PNG_EXPORT_THEME_COLORS;
 
 interface RenderContext {
   sceneId: string;
@@ -52,6 +37,11 @@ interface RenderContext {
 interface CaptureDimensions {
   width: number;
   height: number;
+}
+
+interface CaptureTile {
+  buffer: Buffer;
+  top: number;
 }
 
 interface ExportManuscriptToPngInput {
@@ -65,15 +55,9 @@ interface ResolvedPngExportOptions {
   width: number;
 }
 
-interface PngThemeColors {
-  background: string;
-  text: string;
-  surface: string;
-  secondaryText: string;
-  border: string;
-}
+type PngThemeColors = (typeof MANUSCRIPT_PNG_EXPORT_THEME_COLORS)[ManuscriptPngExportTheme];
 
-/** Converts normalized manuscript content into one full-height PNG image. */
+/** Converts normalized manuscript content into one full-height, 2x PNG image. */
 export async function exportManuscriptToPng(
   { manuscript, options }: ExportManuscriptToPngInput,
 ): Promise<Buffer> {
@@ -82,7 +66,7 @@ export async function exportManuscriptToPng(
   const html = buildHtmlDocument(manuscript, resolvedOptions, colors);
   const window = new BrowserWindow({
     show: false,
-    width: resolvedOptions.width,
+    width: resolvedOptions.width * MANUSCRIPT_PNG_EXPORT_SCALE,
     height: INITIAL_CAPTURE_HEIGHT,
     useContentSize: true,
     backgroundColor: colors.background,
@@ -95,32 +79,126 @@ export async function exportManuscriptToPng(
 
   try {
     await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    const dimensions = await measureCaptureDimensions(window, resolvedOptions.width);
-    window.setContentSize(dimensions.width, dimensions.height);
-
-    const [actualWidth, actualHeight] = window.getContentSize();
-    if (actualWidth !== dimensions.width || actualHeight !== dimensions.height) {
-      throw new Error(
-        `PNG export could not create the required ${dimensions.width}x${dimensions.height} capture surface.`,
-      );
-    }
-
-    const image = await window.webContents.capturePage({
-      x: 0,
-      y: 0,
-      width: dimensions.width,
-      height: dimensions.height,
-    });
-    if (image.isEmpty()) {
-      throw new Error('PNG export produced an empty image.');
-    }
-
-    return image.toPNG();
+    const dimensions = await measureCaptureDimensions(
+      window,
+      resolvedOptions.width * MANUSCRIPT_PNG_EXPORT_SCALE,
+    );
+    validateOutputSize(dimensions);
+    const tiles = await captureTiles(window, dimensions);
+    return stitchCaptureTiles(tiles, dimensions, colors.background);
   } finally {
     if (!window.isDestroyed()) {
       window.destroy();
     }
   }
+}
+
+function validateOutputSize(dimensions: CaptureDimensions): void {
+  const outputPixels = dimensions.width * dimensions.height;
+
+  if (!Number.isSafeInteger(outputPixels) || outputPixels > MAX_OUTPUT_PIXELS) {
+    throw new Error(
+      `PNG export size ${dimensions.width}x${dimensions.height}px exceeds the ${MAX_OUTPUT_PIXELS.toLocaleString('en-US')}-pixel safety limit.`,
+    );
+  }
+}
+
+async function captureTiles(
+  window: BrowserWindow,
+  dimensions: CaptureDimensions,
+): Promise<CaptureTile[]> {
+  const tiles: CaptureTile[] = [];
+  let captureTop = 0;
+
+  while (captureTop < dimensions.height) {
+    const captureHeight = Math.min(
+      MAX_CAPTURE_TILE_HEIGHT,
+      dimensions.height - captureTop,
+    );
+    resizeCaptureSurface(window, { width: dimensions.width, height: captureHeight });
+    await scrollCaptureSurface(window, captureTop);
+    const buffer = await captureTile(window, {
+      width: dimensions.width,
+      height: captureHeight,
+    });
+    tiles.push({ buffer, top: captureTop });
+    captureTop += captureHeight;
+  }
+
+  return tiles;
+}
+
+function resizeCaptureSurface(window: BrowserWindow, dimensions: CaptureDimensions): void {
+  window.setContentSize(dimensions.width, dimensions.height);
+  const [actualWidth, actualHeight] = window.getContentSize();
+
+  if (actualWidth !== dimensions.width || actualHeight !== dimensions.height) {
+    throw new Error(
+      `PNG export could not create the required ${dimensions.width}x${dimensions.height} capture surface.`,
+    );
+  }
+}
+
+async function scrollCaptureSurface(window: BrowserWindow, logicalTop: number): Promise<void> {
+  const actualTop: unknown = await window.webContents.executeJavaScript(`
+    new Promise((resolve) => {
+      window.scrollTo(0, ${logicalTop});
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.scrollY)));
+    })
+  `);
+
+  if (actualTop !== logicalTop) {
+    throw new Error(
+      `PNG export could not scroll to the required ${logicalTop}px capture offset.`,
+    );
+  }
+}
+
+async function captureTile(
+  window: BrowserWindow,
+  dimensions: CaptureDimensions,
+): Promise<Buffer> {
+  const image = await window.webContents.capturePage({
+    x: 0,
+    y: 0,
+    width: dimensions.width,
+    height: dimensions.height,
+  });
+  if (image.isEmpty()) {
+    throw new Error('PNG export produced an empty image tile.');
+  }
+
+  const buffer = image.toPNG();
+  const metadata = await sharp(buffer).metadata();
+  if (metadata.width !== dimensions.width || metadata.height !== dimensions.height) {
+    throw new Error(
+      `PNG export produced an invalid ${String(metadata.width)}x${String(metadata.height)}px image tile; expected ${dimensions.width}x${dimensions.height}px.`,
+    );
+  }
+
+  return buffer;
+}
+
+async function stitchCaptureTiles(
+  tiles: CaptureTile[],
+  dimensions: CaptureDimensions,
+  background: string,
+): Promise<Buffer> {
+  if (tiles.length === 1) {
+    return tiles[0].buffer;
+  }
+
+  return sharp({
+    create: {
+      width: dimensions.width,
+      height: dimensions.height,
+      channels: 4,
+      background,
+    },
+  })
+    .composite(tiles.map((tile) => ({ input: tile.buffer, left: 0, top: tile.top })))
+    .png()
+    .toBuffer();
 }
 
 function resolvePngOptions(
@@ -137,16 +215,16 @@ function resolvePngOptions(
   const fontSize = resolveIntegerOption({
     value: options.fontSize,
     defaultValue: DEFAULT_PNG_OPTIONS.fontSize,
-    minimum: MIN_FONT_SIZE,
-    maximum: MAX_FONT_SIZE,
-    errorMessage: `PNG export font size must be an integer between ${MIN_FONT_SIZE} and ${MAX_FONT_SIZE} pixels.`,
+    minimum: MANUSCRIPT_PNG_EXPORT_LIMITS.fontSize.minimum,
+    maximum: MANUSCRIPT_PNG_EXPORT_LIMITS.fontSize.maximum,
+    errorMessage: `PNG export font size must be an integer between ${MANUSCRIPT_PNG_EXPORT_LIMITS.fontSize.minimum} and ${MANUSCRIPT_PNG_EXPORT_LIMITS.fontSize.maximum} pixels.`,
   });
   const width = resolveIntegerOption({
     value: options.width,
     defaultValue: DEFAULT_PNG_OPTIONS.width,
-    minimum: MIN_CAPTURE_WIDTH,
-    maximum: MAX_CAPTURE_WIDTH,
-    errorMessage: `PNG export width must be an integer between ${MIN_CAPTURE_WIDTH} and ${MAX_CAPTURE_WIDTH} pixels.`,
+    minimum: MANUSCRIPT_PNG_EXPORT_LIMITS.width.minimum,
+    maximum: MANUSCRIPT_PNG_EXPORT_LIMITS.width.maximum,
+    errorMessage: `PNG export width must be an integer between ${MANUSCRIPT_PNG_EXPORT_LIMITS.width.minimum} and ${MANUSCRIPT_PNG_EXPORT_LIMITS.width.maximum} pixels.`,
   });
   const theme = options.theme ?? DEFAULT_PNG_OPTIONS.theme;
 
@@ -196,14 +274,8 @@ async function measureCaptureDimensions(
     ))
   `);
 
-  if (!Number.isInteger(measuredHeight) || (measuredHeight as number) < 1) {
+  if (!Number.isSafeInteger(measuredHeight) || (measuredHeight as number) < 1) {
     throw new Error('PNG export could not determine a valid manuscript height.');
-  }
-
-  if ((measuredHeight as number) > MAX_CAPTURE_HEIGHT) {
-    throw new Error(
-      `PNG export height ${(measuredHeight as number)}px exceeds the single-image limit of ${MAX_CAPTURE_HEIGHT}px.`,
-    );
   }
 
   return { width, height: measuredHeight as number };
@@ -214,11 +286,7 @@ function buildHtmlDocument(
   options: ResolvedPngExportOptions,
   colors: PngThemeColors,
 ): string {
-  const context: RenderContext = { sceneId: '' };
-  const title = manuscript.target.mode === 'book'
-    ? renderBookTitle(manuscript.book.title, manuscript.book.author)
-    : '';
-  const content = manuscript.nodes.map((node) => renderStructureNode(node, context)).join('');
+  const content = renderManuscriptExportContent(manuscript);
 
   return `<!doctype html>
 <html lang="en">
@@ -230,7 +298,7 @@ function buildHtmlDocument(
   <style>${captureStyles(options, colors)}</style>
 </head>
 <body>
-  <main class="export-root">${title}${content}</main>
+  <main class="export-root export-mode-${manuscript.target.mode}">${content}</main>
 </body>
 </html>`;
 }
@@ -425,6 +493,17 @@ function unsupportedNodeError(nodeType: string, sceneId: string): Error {
   return new Error(`Unsupported Tiptap node "${nodeType}" in scene "${sceneId}".`);
 }
 
+/** Builds escaped manuscript markup shared by PNG capture and the renderer preview. */
+export function renderManuscriptExportContent(manuscript: ManuscriptExportDocument): string {
+  const context: RenderContext = { sceneId: '' };
+  const title = manuscript.target.mode === 'book'
+    ? renderBookTitle(manuscript.book.title, manuscript.book.author)
+    : '';
+  const content = manuscript.nodes.map((node) => renderStructureNode(node, context)).join('');
+
+  return `${title}${content}`;
+}
+
 function captureStyles(
   options: ResolvedPngExportOptions,
   colors: PngThemeColors,
@@ -436,14 +515,24 @@ function captureStyles(
 
 html,
 body {
-  width: ${options.width}px;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
   background: ${colors.background};
 }
 
+html {
+  width: ${options.width * MANUSCRIPT_PNG_EXPORT_SCALE}px;
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}
+
 body {
+  width: ${options.width}px;
+  zoom: ${MANUSCRIPT_PNG_EXPORT_SCALE};
   color: ${colors.text};
   font-family: "Times New Roman", serif;
   font-size: ${options.fontSize}px;
@@ -462,13 +551,13 @@ a {
 }
 
 .book-title {
-  padding: 160px 0 224px;
+  padding: 80px 0 112px;
   text-align: center;
 }
 
 .book-title h1 {
   margin: 0 0 24px;
-  font-size: 2em;
+  font-size: 2.5em;
   line-height: 1.2;
 }
 
@@ -479,7 +568,7 @@ a {
 }
 
 .act {
-  padding: 96px 0 64px;
+  padding: 48px 0 32px;
   text-align: center;
 }
 
@@ -494,7 +583,7 @@ a {
 .act-number,
 .act-title {
   margin: 0;
-  font-size: 1.5556em;
+  font-size: 2em;
   line-height: 1.3;
 }
 
@@ -504,20 +593,45 @@ a {
 }
 
 .chapter {
-  padding-top: 72px;
+  padding-top: 36px;
 }
 
 .chapter-heading {
-  margin: 0 0 48px;
-  font-size: 1.4444em;
+  margin: 0 0 24px;
+  font-size: 1.75em;
   line-height: 1.3;
 }
 
 .scene-heading {
-  margin: 48px 0 24px;
+  margin: 24px 0 12px;
   color: ${colors.secondaryText};
   font-size: 1.1111em;
   line-height: 1.4;
+}
+
+.export-root.export-mode-act > .act:first-child > .act-number,
+.export-root.export-mode-act > .act:first-child > .act-title {
+  font-size: 2.5em;
+}
+
+.export-root.export-mode-act > .chapter > .chapter-heading {
+  font-size: 2em;
+}
+
+.export-root.export-mode-act > .chapter > .scene > .scene-heading {
+  font-size: 1.75em;
+}
+
+.export-root.export-mode-chapter > .chapter:first-child > .chapter-heading {
+  font-size: 2.5em;
+}
+
+.export-root.export-mode-chapter > .chapter:first-child > .scene > .scene-heading {
+  font-size: 2em;
+}
+
+.export-root.export-mode-scene > .scene:first-child > .scene-heading {
+  font-size: 2.5em;
 }
 
 .export-root > .scene:first-child > .scene-heading {

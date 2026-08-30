@@ -23,6 +23,10 @@ import { AiGenerationSessionService } from '../../core/services/ai-generation-se
 import { ElectronService } from '../../core/services/electron.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import {
+  PngExportPreviewModalComponent,
+  type PngExportPreviewTarget,
+} from '../../shared/components/png-export-preview-modal/png-export-preview-modal.component';
 import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
 import {
@@ -112,6 +116,7 @@ const transferBetween = <T>(
     ElementAnimationDirective,
     MarkdownComponent,
     MarkdownEditorComponent,
+    PngExportPreviewModalComponent,
     AutocompleteKeepOpenMenuItemDirective,
     CodexContextHighlightDirective,
   ],
@@ -147,6 +152,7 @@ export class Outline implements OnInit {
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
   resolvingSummaryModel = signal(false);
+  pngExportPreviewTarget = signal<PngExportPreviewTarget | null>(null);
   private readonly activeSceneAiMenuId = signal<string | null>(null);
   readonly submenuPositions: ConnectedPosition[] = [
     { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
@@ -349,6 +355,18 @@ export class Outline implements OnInit {
     if (!bookId) return;
 
     this.router.navigate(['/workspace', bookId, 'manuscript', mode, id]);
+  }
+
+  openPngExportPreview(mode: PngExportPreviewTarget['mode'], id: string): void {
+    this.pngExportPreviewTarget.set({ mode, id });
+  }
+
+  closePngExportPreview(): void {
+    this.pngExportPreviewTarget.set(null);
+  }
+
+  onPngExported(): void {
+    this.toastService.success('The PNG manuscript image was exported.');
   }
 
   // ---------------------------------------------------------------------------

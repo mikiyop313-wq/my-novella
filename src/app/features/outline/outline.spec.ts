@@ -279,7 +279,7 @@ describe('Outline', () => {
     ['act', '.act-header-right .btn-more', '.act-options-menu'],
     ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu'],
     ['scene', '.scene-more', '.scene-options-menu'],
-  ])('shows UI-only export formats in the %s options menu', async (
+  ])('shows export formats in the %s options menu without invoking DOCX from this scope', async (
     _entityType,
     triggerSelector,
     menuSelector,
@@ -327,6 +327,45 @@ describe('Outline', () => {
     expect(electronService.invoke).not.toHaveBeenCalled();
     mutationMethods.forEach((method, index) => {
       expect(method.mock.calls.length).toBe(mutationCallCounts[index]);
+    });
+  });
+
+  it.each([
+    ['act', '.act-header-right .btn-more', '.act-options-menu', 'act-1'],
+    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu', 'chapter-1'],
+    ['scene', '.scene-more', '.scene-options-menu', 'scene-1'],
+  ] as const)('opens PNG preview for the selected %s', async (
+    mode,
+    triggerSelector,
+    menuSelector,
+    itemId,
+  ) => {
+    showScene('Scene summary', 12);
+    electronService.invoke.mockResolvedValueOnce({
+      html: '<section class="scene"><p>Scene prose.</p></section>',
+    });
+
+    (fixture.nativeElement.querySelector(triggerSelector) as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const exportTrigger = document.querySelector<HTMLElement>(menuSelector)!
+      .querySelector<HTMLButtonElement>('.export-menu-trigger')!;
+    exportTrigger.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pngButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.export-options-menu .menu-item'),
+    ).find(button => button.textContent?.trim() === 'PNG')!;
+    pngButton.click();
+    fixture.detectChanges();
+
+    expect(component.pngExportPreviewTarget()).toEqual({ mode, id: itemId });
+    expect(document.querySelector('.png-preview-modal')).not.toBeNull();
+    expect(electronService.invoke).toHaveBeenCalledWith('manuscript-export:preview-content', {
+      mode,
+      id: itemId,
     });
   });
 

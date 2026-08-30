@@ -29,6 +29,10 @@ import {
   AutocompleteDropdownComponent,
   DropdownOption,
 } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import {
+  PngExportPreviewModalComponent,
+  type PngExportPreviewTarget,
+} from '../../../../shared/components/png-export-preview-modal/png-export-preview-modal.component';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 import { CodexService } from '../../../codex/services/codex.service';
@@ -73,6 +77,7 @@ type SettingsView = 'book' | 'general';
     ArchiveSettingsComponent,
     AutocompleteDropdownComponent,
     BookVectorSettingsComponent,
+    PngExportPreviewModalComponent,
     SystemPromptSettingsComponent,
     UpdateSettingsComponent,
     VectorConfigurationSettingsComponent,
@@ -116,6 +121,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   readonly isSaving = signal(false);
   readonly isLifecycleActionPending = signal(false);
   readonly isExportPending = signal(false);
+  readonly pngExportPreviewTarget = signal<PngExportPreviewTarget | null>(null);
   readonly validationError = signal<string | null>(null);
   readonly characters = signal<DropdownOption[]>([]);
 
@@ -310,6 +316,11 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     const bookId = this.activeBookId();
     if (!bookId || this.isExportPending()) return;
 
+    if (format === 'png') {
+      this.pngExportPreviewTarget.set({ mode: 'book', id: bookId });
+      return;
+    }
+
     this.isExportPending.set(true);
     try {
       const result = (await this.electronService.invoke('manuscript-export:save', {
@@ -329,6 +340,14 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
     } finally {
       this.isExportPending.set(false);
     }
+  }
+
+  closePngExportPreview(): void {
+    this.pngExportPreviewTarget.set(null);
+  }
+
+  onPngExported(): void {
+    this.toastService.success('The PNG manuscript image was exported.');
   }
 
   async exportBookArchive(): Promise<void> {

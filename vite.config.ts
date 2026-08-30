@@ -24,6 +24,7 @@ export default defineConfig({
                 '@lancedb/lancedb',
                 '@xenova/transformers',
                 'onnxruntime-node',
+                'sharp',
               ],
             },
           },

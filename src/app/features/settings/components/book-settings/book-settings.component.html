@@ -1539,3 +1539,11 @@
     }
   </main>
 </div>
+
+@if (pngExportPreviewTarget(); as target) {
+  <app-png-export-preview-modal
+    [target]="target"
+    (closed)="closePngExportPreview()"
+    (exported)="onPngExported()"
+  ></app-png-export-preview-modal>
+}

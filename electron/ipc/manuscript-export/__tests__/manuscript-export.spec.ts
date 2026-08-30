@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ManuscriptExportDocument } from '../../../domain/manuscript-export/models';
 import type {
+  ManuscriptPngPreviewContentRequest,
   ManuscriptExportFormat,
   SaveManuscriptExportRequest,
 } from '../../../../shared/models/manuscript-export.model';
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   exportEpub: vi.fn(),
   exportPdf: vi.fn(),
   exportPng: vi.fn(),
+  renderPngContent: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -46,6 +48,7 @@ vi.mock('../../../domain/manuscript-export/exporters/pdf-exporter', () => ({
 
 vi.mock('../../../domain/manuscript-export/exporters/png-exporter', () => ({
   exportManuscriptToPng: mocks.exportPng,
+  renderManuscriptExportContent: mocks.renderPngContent,
 }));
 
 import { setupManuscriptExportHandlers } from '../manuscript-export';
@@ -82,14 +85,32 @@ describe('manuscript export IPC handler', () => {
     mocks.prepareExport.mockResolvedValue(manuscript);
     mocks.showSaveDialog.mockResolvedValue({ canceled: false, filePath: 'C:\\Exports\\novel' });
     mocks.writeFile.mockResolvedValue(undefined);
+    mocks.renderPngContent.mockReturnValue('<section class="chapter">Preview</section>');
     Object.values(exporters).forEach((exporter) => {
       exporter.mockResolvedValue(Buffer.from('exported manuscript'));
     });
     setupManuscriptExportHandlers();
   });
 
-  it('registers the save handler', () => {
+  it('registers the save and PNG preview handlers', () => {
     expect(mocks.handlers.has('manuscript-export:save')).toBe(true);
+    expect(mocks.handlers.has('manuscript-export:preview-content')).toBe(true);
+  });
+
+  it('returns escaped preview content without generating PNG bytes or opening a save dialog', async () => {
+    const request: ManuscriptPngPreviewContentRequest = {
+      mode: 'chapter',
+      id: 'chapter-1',
+    };
+
+    const result = await invokePreviewHandler(request);
+
+    expect(mocks.prepareExport).toHaveBeenCalledWith(request);
+    expect(mocks.renderPngContent).toHaveBeenCalledWith(manuscript);
+    expect(result).toEqual({ html: '<section class="chapter">Preview</section>' });
+    expect(mocks.exportPng).not.toHaveBeenCalled();
+    expect(mocks.showSaveDialog).not.toHaveBeenCalled();
+    expect(mocks.writeFile).not.toHaveBeenCalled();
   });
 
   it.each(formatCases)('saves a %s export with the matching exporter and dialog filter', async (
@@ -192,6 +213,15 @@ async function invokeHandler(request: SaveManuscriptExportRequest): Promise<unkn
   const handler = mocks.handlers.get('manuscript-export:save');
   if (!handler) {
     throw new Error('Manuscript export IPC handler was not registered.');
+  }
+
+  return await handler({}, request);
+}
+
+async function invokePreviewHandler(request: ManuscriptPngPreviewContentRequest): Promise<unknown> {
+  const handler = mocks.handlers.get('manuscript-export:preview-content');
+  if (!handler) {
+    throw new Error('Manuscript PNG preview IPC handler was not registered.');
   }
 
   return await handler({}, request);

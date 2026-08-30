@@ -5,11 +5,16 @@ import { dialog, ipcMain } from 'electron';
 import { exportManuscriptToDocx } from '../../domain/manuscript-export/exporters/docx-exporter';
 import { exportManuscriptToEpub } from '../../domain/manuscript-export/exporters/epub-exporter';
 import { exportManuscriptToPdf } from '../../domain/manuscript-export/exporters/pdf-exporter';
-import { exportManuscriptToPng } from '../../domain/manuscript-export/exporters/png-exporter';
+import {
+  exportManuscriptToPng,
+  renderManuscriptExportContent,
+} from '../../domain/manuscript-export/exporters/png-exporter';
 import { manuscriptExportService } from '../../domain/manuscript-export/manuscript-export.service';
 import type { ManuscriptExportDocument } from '../../domain/manuscript-export/models';
 import type {
   ManuscriptExportFormat,
+  ManuscriptPngPreviewContentRequest,
+  ManuscriptPngPreviewContentResult,
   SaveManuscriptExportRequest,
   SaveManuscriptExportResult,
 } from '../../../shared/models/manuscript-export.model';
@@ -53,6 +58,22 @@ const EXPORT_FORMATS: Record<ManuscriptExportFormat, ExportFormatConfiguration> 
 
 /** Registers IPC handlers for readable manuscript export operations. */
 export function setupManuscriptExportHandlers(): void {
+  ipcMain.handle(
+    'manuscript-export:preview-content',
+    async (
+      _,
+      request: ManuscriptPngPreviewContentRequest,
+    ): Promise<ManuscriptPngPreviewContentResult> => {
+      try {
+        const manuscript = await manuscriptExportService.prepareExport(request);
+        return { html: renderManuscriptExportContent(manuscript) };
+      } catch (error) {
+        console.error('Failed to prepare PNG manuscript preview content:', error);
+        throw error;
+      }
+    },
+  );
+
   ipcMain.handle(
     'manuscript-export:save',
     async (_, request: SaveManuscriptExportRequest): Promise<SaveManuscriptExportResult> => {

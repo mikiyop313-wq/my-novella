@@ -48,9 +48,26 @@ const electronMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('electron', () => ({ BrowserWindow: electronMocks.BrowserWindow }));
+const sharpMocks = vi.hoisted(() => {
+  const metadata = vi.fn();
+  const composite = vi.fn();
+  const png = vi.fn();
+  const toBuffer = vi.fn();
+  const stitchPipeline = { composite, png, toBuffer };
+  composite.mockReturnValue(stitchPipeline);
+  png.mockReturnValue(stitchPipeline);
 
-import { exportManuscriptToPng } from '../png-exporter';
+  const sharp = vi.fn((input: unknown) => Buffer.isBuffer(input)
+    ? { metadata }
+    : stitchPipeline);
+
+  return { composite, metadata, png, sharp, toBuffer };
+});
+
+vi.mock('electron', () => ({ BrowserWindow: electronMocks.BrowserWindow }));
+vi.mock('sharp', () => ({ default: sharpMocks.sharp }));
+
+import { exportManuscriptToPng, renderManuscriptExportContent } from '../png-exporter';
 
 const book: ManuscriptExportBook = {
   id: 'book-1',
@@ -63,24 +80,46 @@ describe('exportManuscriptToPng', () => {
   beforeEach(() => {
     electronMocks.BrowserWindow.mockClear();
     electronMocks.loadURL.mockReset().mockResolvedValue(undefined);
-    electronMocks.executeJavaScript.mockReset().mockResolvedValue(900);
+    electronMocks.executeJavaScript.mockReset().mockImplementation((script: string) => {
+      if (script.includes('scrollHeight')) return Promise.resolve(600);
+      const offset = /window\.scrollTo\(0, (\d+)\)/.exec(script)?.[1];
+      return Promise.resolve(Number(offset));
+    });
     electronMocks.setContentSize.mockReset();
-    electronMocks.getContentSize.mockReset().mockReturnValue([700, 900]);
+    electronMocks.getContentSize.mockReset().mockImplementation(() => {
+      return electronMocks.setContentSize.mock.calls.at(-1) ?? [1400, 800];
+    });
     electronMocks.capturePage.mockReset().mockResolvedValue(electronMocks.image);
     electronMocks.isEmpty.mockReset().mockReturnValue(false);
     electronMocks.toPNG.mockReset().mockReturnValue(Buffer.from('png-test'));
     electronMocks.destroy.mockReset();
     electronMocks.isDestroyed.mockReset().mockReturnValue(false);
+    sharpMocks.sharp.mockClear();
+    sharpMocks.metadata.mockReset().mockImplementation(() => {
+      const dimensions = electronMocks.capturePage.mock.calls.at(-1)?.[0];
+      return Promise.resolve({
+        width: dimensions.width,
+        height: dimensions.height,
+      });
+    });
+    sharpMocks.composite.mockClear();
+    sharpMocks.png.mockClear();
+    sharpMocks.toBuffer.mockReset().mockResolvedValue(Buffer.from('stitched-png'));
   });
 
   it('renders a book with the default PNG options', async () => {
+    electronMocks.executeJavaScript.mockImplementation((script: string) => {
+      if (script.includes('scrollHeight')) return Promise.resolve(1800);
+      const offset = /window\.scrollTo\(0, (\d+)\)/.exec(script)?.[1];
+      return Promise.resolve(Number(offset));
+    });
     const result = await exportManuscriptToPng({ manuscript: createBookDocument([createAct()]) });
     const html = loadedHtml();
 
-    expect(result.toString()).toBe('png-test');
+    expect(result.toString()).toBe('stitched-png');
     expect(electronMocks.BrowserWindow).toHaveBeenCalledWith({
       show: false,
-      width: 700,
+      width: 1400,
       height: 800,
       useContentSize: true,
       backgroundColor: '#121212',
@@ -95,27 +134,48 @@ describe('exportManuscriptToPng', () => {
     expect(html).toContain('background: #202020');
     expect(html).toContain('color: #bbaaaa');
     expect(html).toContain('width: 700px');
+    expect(html).toContain('width: 1400px');
+    expect(html).toContain('zoom: 2');
     expect(html).toContain('font-size: 16px');
     expect(html).toContain('width: 68%');
-    expect(html).toContain('font-size: 2em');
+    expect(html).toMatch(/\.book-title h1\s*{[^}]*font-size: 2\.5em/s);
+    expect(html).toMatch(/\.act-number,\s*\.act-title\s*{[^}]*font-size: 2em/s);
+    expect(html).toMatch(/\.chapter-heading\s*{[^}]*font-size: 1\.75em/s);
+    expect(html).toMatch(/\.book-title\s*{[^}]*padding: 80px 0 112px/s);
+    expect(html).toMatch(/\.act\s*{[^}]*padding: 48px 0 32px/s);
+    expect(html).toMatch(/\.chapter\s*{[^}]*padding-top: 36px/s);
+    expect(html).toMatch(/\.chapter-heading\s*{[^}]*margin: 0 0 24px/s);
+    expect(html).toMatch(/\.scene-heading\s*{[^}]*margin: 24px 0 12px/s);
     expect(html).toContain('<header class="book-title">');
     expect(html).toContain('<h1>A Tale &amp; More</h1>');
     expect(html).toContain('<p>by A. Writer</p>');
     expect(html.indexOf('ACT 1')).toBeLessThan(html.indexOf('Chapter 2'));
     expect(html.indexOf('Chapter 2')).toBeLessThan(html.indexOf('Scene 3'));
-    expect(electronMocks.setContentSize).toHaveBeenCalledWith(700, 900);
-    expect(electronMocks.capturePage).toHaveBeenCalledWith({
-      x: 0,
-      y: 0,
-      width: 700,
-      height: 900,
-    });
-    expect(electronMocks.toPNG).toHaveBeenCalledOnce();
+    expect(electronMocks.setContentSize.mock.calls).toEqual([
+      [1400, 800],
+      [1400, 800],
+      [1400, 200],
+    ]);
+    expect(electronMocks.capturePage).toHaveBeenCalledTimes(3);
+    expect(electronMocks.toPNG).toHaveBeenCalledWith();
+    expect(sharpMocks.metadata).toHaveBeenCalledTimes(3);
     expect(electronMocks.destroy).toHaveBeenCalledOnce();
   });
 
+  it('builds escaped preview markup without creating a BrowserWindow', () => {
+    const manuscript = createDocument('scene', [
+      createScene({ type: 'doc', content: [paragraphNode('<Actual prose>')] }),
+    ]);
+
+    const html = renderManuscriptExportContent(manuscript);
+
+    expect(html).toContain('Scene 3 — Scene title');
+    expect(html).toContain('<p>&lt;Actual prose&gt;</p>');
+    expect(electronMocks.BrowserWindow).not.toHaveBeenCalled();
+  });
+
   it('renders custom light theme, font size, and final image width', async () => {
-    electronMocks.getContentSize.mockReturnValue([1024, 900]);
+    electronMocks.getContentSize.mockReturnValue([2048, 600]);
 
     await exportManuscriptToPng({
       manuscript: createBookDocument([]),
@@ -124,7 +184,7 @@ describe('exportManuscriptToPng', () => {
 
     const html = loadedHtml();
     expect(electronMocks.BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
-      width: 1024,
+      width: 2048,
       backgroundColor: '#fafafa',
     }));
     expect(html).toContain('width: 1024px');
@@ -137,8 +197,8 @@ describe('exportManuscriptToPng', () => {
     expect(electronMocks.capturePage).toHaveBeenCalledWith({
       x: 0,
       y: 0,
-      width: 1024,
-      height: 900,
+      width: 2048,
+      height: 600,
     });
   });
 
@@ -150,7 +210,7 @@ describe('exportManuscriptToPng', () => {
 
     const html = loadedHtml();
     expect(electronMocks.BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
-      width: 700,
+      width: 1400,
       backgroundColor: '#121212',
     }));
     expect(html).toContain('font-size: 20px');
@@ -187,7 +247,32 @@ describe('exportManuscriptToPng', () => {
 
     const html = loadedHtml();
     expect(html).not.toContain('class="book-title"');
+    expect(html).toContain(`class="export-root export-mode-${mode}"`);
     expect(html).toContain(label);
+  });
+
+  it('promotes the complete heading hierarchy for partial exports', async () => {
+    await exportManuscriptToPng({ manuscript: createDocument('act', [createAct()]) });
+
+    const html = loadedHtml();
+    expect(html).toMatch(
+      /\.export-root\.export-mode-act > \.act:first-child > \.act-number,[^}]*font-size: 2\.5em/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-act > \.chapter > \.chapter-heading\s*{[^}]*font-size: 2em/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-act > \.chapter > \.scene > \.scene-heading\s*{[^}]*font-size: 1\.75em/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-chapter > \.chapter:first-child > \.chapter-heading\s*{[^}]*font-size: 2\.5em/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-chapter > \.chapter:first-child > \.scene > \.scene-heading\s*{[^}]*font-size: 2em/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-scene > \.scene:first-child > \.scene-heading\s*{[^}]*font-size: 2\.5em/s,
+    );
   });
 
   it('preserves supported prose and omits AI workflow nodes', async () => {
@@ -292,8 +377,8 @@ describe('exportManuscriptToPng', () => {
   it.each([
     [0, 'PNG export could not determine a valid manuscript height.'],
     [1.5, 'PNG export could not determine a valid manuscript height.'],
-    [32768, 'PNG export height 32768px exceeds the single-image limit of 32767px.'],
-  ])('rejects an invalid measured height of %s', async (height, message) => {
+    [Number.MAX_SAFE_INTEGER, 'PNG export size 1400x9007199254740991px exceeds'],
+  ])('rejects an invalid or unsafe measured height of %s', async (height, message) => {
     electronMocks.executeJavaScript.mockResolvedValue(height);
 
     await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
@@ -303,11 +388,50 @@ describe('exportManuscriptToPng', () => {
     expect(electronMocks.destroy).toHaveBeenCalledOnce();
   });
 
-  it('rejects a capture surface that Electron cannot size exactly', async () => {
-    electronMocks.getContentSize.mockReturnValue([700, 899]);
+  it('captures and stitches a long manuscript in ordered 2x tiles', async () => {
+    electronMocks.executeJavaScript.mockImplementation((script: string) => {
+      if (script.includes('scrollHeight')) return Promise.resolve(1800);
+      const offset = /window\.scrollTo\(0, (\d+)\)/.exec(script)?.[1];
+      return Promise.resolve(Number(offset));
+    });
+
+    const result = await exportManuscriptToPng({ manuscript: createBookDocument([]) });
+
+    expect(result.toString()).toBe('stitched-png');
+    expect(electronMocks.setContentSize.mock.calls).toEqual([
+      [1400, 800],
+      [1400, 800],
+      [1400, 200],
+    ]);
+    expect(electronMocks.capturePage.mock.calls.map(([dimensions]) => dimensions)).toEqual([
+      { x: 0, y: 0, width: 1400, height: 800 },
+      { x: 0, y: 0, width: 1400, height: 800 },
+      { x: 0, y: 0, width: 1400, height: 200 },
+    ]);
+    expect(sharpMocks.sharp).toHaveBeenLastCalledWith({
+      create: { width: 1400, height: 1800, channels: 4, background: '#121212' },
+    });
+    expect(sharpMocks.composite).toHaveBeenCalledWith([
+      { input: expect.any(Buffer), left: 0, top: 0 },
+      { input: expect.any(Buffer), left: 0, top: 800 },
+      { input: expect.any(Buffer), left: 0, top: 1600 },
+    ]);
+  });
+
+  it('rejects an output above the 268,402,689-pixel safety limit', async () => {
+    electronMocks.executeJavaScript.mockResolvedValue(191717);
 
     await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
-      'PNG export could not create the required 700x900 capture surface.',
+      'PNG export size 1400x191717px exceeds the 268,402,689-pixel safety limit.',
+    );
+    expect(electronMocks.capturePage).not.toHaveBeenCalled();
+  });
+
+  it('rejects a capture surface that Electron cannot size exactly', async () => {
+    electronMocks.getContentSize.mockReturnValue([1400, 599]);
+
+    await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
+      'PNG export could not create the required 1400x600 capture surface.',
     );
     expect(electronMocks.capturePage).not.toHaveBeenCalled();
   });
@@ -316,9 +440,45 @@ describe('exportManuscriptToPng', () => {
     electronMocks.isEmpty.mockReturnValue(true);
 
     await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
-      'PNG export produced an empty image.',
+      'PNG export produced an empty image tile.',
     );
     expect(electronMocks.toPNG).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tile captured at an unexpected 2x resolution', async () => {
+    sharpMocks.metadata.mockResolvedValue({ width: 1400, height: 599 });
+
+    await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
+      'PNG export produced an invalid 1400x599px image tile; expected 1400x600px.',
+    );
+    expect(electronMocks.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a capture offset that Electron cannot scroll to exactly', async () => {
+    electronMocks.executeJavaScript.mockImplementation((script: string) => {
+      if (script.includes('scrollHeight')) return Promise.resolve(1800);
+      return Promise.resolve(0);
+    });
+
+    await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
+      'PNG export could not scroll to the required 800px capture offset.',
+    );
+    expect(electronMocks.capturePage).toHaveBeenCalledOnce();
+    expect(electronMocks.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('destroys the render window when tile stitching fails', async () => {
+    electronMocks.executeJavaScript.mockImplementation((script: string) => {
+      if (script.includes('scrollHeight')) return Promise.resolve(1800);
+      const offset = /window\.scrollTo\(0, (\d+)\)/.exec(script)?.[1];
+      return Promise.resolve(Number(offset));
+    });
+    sharpMocks.toBuffer.mockRejectedValue(new Error('Stitching failed'));
+
+    await expect(exportManuscriptToPng({ manuscript: createBookDocument([]) })).rejects.toThrow(
+      'Stitching failed',
+    );
+    expect(electronMocks.destroy).toHaveBeenCalledOnce();
   });
 
   it.each(['load', 'measure', 'resize', 'capture'] as const)(

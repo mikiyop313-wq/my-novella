@@ -450,7 +450,7 @@ describe('BookSettingsComponent', () => {
     expect(sections[3].getAttribute('aria-current')).toBe('page');
   });
 
-  it.each(['docx', 'epub', 'pdf', 'png'] as const)(
+  it.each(['docx', 'epub', 'pdf'] as const)(
     'exports the complete book as %s',
     async (format) => {
       electronInvoke.mockResolvedValueOnce({ status: 'saved', filePath: `book.${format}` });
@@ -467,6 +467,21 @@ describe('BookSettingsComponent', () => {
       );
     },
   );
+
+  it('opens the PNG preview for the complete book', async () => {
+    await fixture.componentInstance.exportManuscript('png');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.pngExportPreviewTarget()).toEqual({
+      mode: 'book',
+      id: 'book-1',
+    });
+    expect(electronInvoke).not.toHaveBeenCalledWith(
+      'manuscript-export:save',
+      expect.anything(),
+    );
+    expect(fixture.nativeElement.querySelector('app-png-export-preview-modal')).not.toBeNull();
+  });
 
   it('exports the complete book as a portable archive', async () => {
     electronInvoke.mockResolvedValueOnce({ status: 'saved', filePath: 'book.novella' });
