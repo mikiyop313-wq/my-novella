@@ -83,7 +83,7 @@ describe('ChatResponseService', () => {
 
   const settings = {
     selectedModelId: 'openrouter/test-model',
-    reasoningMode: true,
+    reasoningEffort: 'high' as const,
     context: {
       includeBookMetadata: false,
       includeFullOutline: false,
@@ -198,6 +198,7 @@ describe('ChatResponseService', () => {
       provider: 'openrouter',
       modelId: 'openrouter/test-model',
       reasoningMode: true,
+      reasoningEffort: 'high',
       aiPrompt: {
         systemPromptCategory: 'chat',
         prompt: 'Write a scene',
@@ -226,7 +227,7 @@ describe('ChatResponseService', () => {
   ) => {
     await service.generateResponse(messages[0], 'Write a scene', {
       selectedModelId,
-      reasoningMode: false,
+      reasoningEffort: null,
       context: settings.context,
     });
 

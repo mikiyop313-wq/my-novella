@@ -1,5 +1,5 @@
 import type { AiSystemPromptPresetSelection } from '../../../shared/models/system-prompt.model';
-import type { AiChatMessage } from '../../../shared/models/ai.model';
+import type { AiChatMessage, AiReasoningEffort } from '../../../shared/models/ai.model';
 export type { AiChatMessage, AiChatMessageRole } from '../../../shared/models/ai.model';
 
 export interface AiChatCompletionPayload {
@@ -13,9 +13,9 @@ export interface AiChatCompletionPayload {
     stream: boolean;
     reasoning?: {
         enabled: true;
-        effort: 'medium';
+        effort: AiReasoningEffort;
     };
-    reasoning_effort?: 'medium';
+    reasoning_effort?: AiReasoningEffort;
     stream_options?: {
         include_usage: true;
     };
@@ -31,6 +31,7 @@ export interface AiPromptRequest {
     systemMessage?: string;
     systemPromptPreset?: AiSystemPromptPresetSelection;
     reasoningMode?: boolean;
+    reasoningEffort?: AiReasoningEffort;
     abortSignal?: AbortSignal;
     onToken?: (token: string) => void;
     onReasoningToken?: (token: string) => void;

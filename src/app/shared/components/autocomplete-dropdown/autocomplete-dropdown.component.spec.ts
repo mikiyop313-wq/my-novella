@@ -20,6 +20,23 @@ describe('AutocompleteDropdownComponent', () => {
     return { fixture, component: fixture.componentInstance };
   }
 
+  it('does not open when disabled', async () => {
+    const { fixture, component } = await createComponent({
+      options: [{ value: 'one', label: 'One' }],
+      disabled: true,
+      showSearchBar: false,
+    });
+    const trigger = fixture.nativeElement.querySelector('.dropdown-trigger') as HTMLButtonElement;
+
+    expect(trigger.disabled).toBe(true);
+    trigger.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.isOpen()).toBe(false);
+    expect(document.querySelector('.autocomplete-dropdown')).toBeNull();
+  });
+
   it('renders recursive submenu main titles, section titles, dividers, and counts', async () => {
     const sections: DropdownSection<string>[] = [{
       key: 'providers',

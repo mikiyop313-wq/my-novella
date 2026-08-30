@@ -50,7 +50,10 @@ export class AnthropicProvider implements AiProvider {
                 stream: true,
                 ...(systemMessages.length > 0 ? { system: systemMessages.join('\n\n') } : {}),
                 ...(request.reasoningMode
-                    ? { thinking: { type: 'adaptive', display: 'summarized' } }
+                    ? {
+                        thinking: { type: 'adaptive', display: 'summarized' },
+                        output_config: { effort: request.reasoningEffort ?? 'medium' },
+                    }
                     : {}),
             }),
         });

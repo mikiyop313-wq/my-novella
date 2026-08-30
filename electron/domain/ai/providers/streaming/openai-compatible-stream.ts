@@ -7,6 +7,7 @@
  * @packageDocumentation
  */
 
+import type { AiReasoningEffort } from '../../../../../shared/models/ai.model';
 import type { AiChatCompletionPayload, AiPromptResponse } from '../../models';
 import { readServerSentEvents } from './sse-decoder';
 
@@ -75,18 +76,18 @@ export async function consumeOpenAiCompatibleStream(
  * Adapts the shared chat-completion payload for providers that implement the OpenAI API shape.
  *
  * @param payload - The shared request payload.
- * @param reasoningMode - Whether to request the provider's medium reasoning effort.
+ * @param reasoningEffort - The reasoning effort to request, or undefined when reasoning is off.
  * @returns A payload with streaming usage enabled and OpenRouter-only options removed.
  */
 export function openAiCompatiblePayload(
     payload: AiChatCompletionPayload,
-    reasoningMode: boolean,
+    reasoningEffort?: AiReasoningEffort,
 ): AiChatCompletionPayload {
     const { reasoning: _openRouterReasoning, ...compatiblePayload } = payload;
     return {
         ...compatiblePayload,
         stream_options: { include_usage: true },
-        ...(reasoningMode ? { reasoning_effort: 'medium' as const } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
     };
 }
 

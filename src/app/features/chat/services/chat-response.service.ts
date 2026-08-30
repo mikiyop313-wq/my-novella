@@ -4,6 +4,7 @@ import {
   type ChatMessageDetailDto,
   type ChatThreadDetailDto,
 } from '../../../../../shared/models/chat.model';
+import type { AiReasoningEffort } from '../../../../../shared/models/ai.model';
 import { AiStore } from '../../../core/store/ai.store';
 import { AiGenerationSessionService } from '../../../core/services/ai-generation-session.service';
 import { ToastService } from '../../../shared/services/toast.service';
@@ -25,7 +26,7 @@ const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
 
 export interface ChatResponseSettings {
   selectedModelId: string | null;
-  reasoningMode: boolean;
+  reasoningEffort: AiReasoningEffort | null;
   context: Pick<
     ChatAiContextRequest,
     'includeBookMetadata' | 'bookContext' | 'includeFullOutline' | 'sceneIds' | 'codexEntryIds'
@@ -199,7 +200,8 @@ export class ChatResponseService {
         aiPrompt,
         provider,
         modelId: modelId ?? undefined,
-        reasoningMode: settings.reasoningMode,
+        reasoningMode: settings.reasoningEffort !== null,
+        reasoningEffort: settings.reasoningEffort ?? undefined,
         onContentChange: (content) => {
           streamedContent = content;
           if (!streamedContent.trim()) return;

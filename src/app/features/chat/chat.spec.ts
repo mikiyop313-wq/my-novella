@@ -743,6 +743,105 @@ describe('Chat', () => {
     });
   });
 
+  it('selects and deselects Thinking effort from the shared dropdown', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'new-chat' }) },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    fixture.detectChanges();
+
+    const trigger = fixture.nativeElement.querySelector(
+      '.reasoning-dropdown .dropdown-trigger',
+    ) as HTMLButtonElement;
+    trigger.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    let options = [...document.querySelectorAll<HTMLButtonElement>(
+      '.thinking-effort-dropdown .menu-row',
+    )];
+    expect(options.map(option => option.textContent?.trim())).toEqual([
+      'Off',
+      'Low',
+      'Medium',
+      'High',
+    ]);
+    expect(document.querySelector('.thinking-effort-dropdown .dropdown-search')).toBeNull();
+    expect(options[0].querySelector('.check-icon')).not.toBeNull();
+    expect(document.querySelectorAll('.thinking-effort-dropdown .check-icon')).toHaveLength(1);
+
+    options[2].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.reasoningEffort()).toBe('medium');
+    expect(fixture.nativeElement.querySelector(
+      '.reasoning-toggle-content.is-enabled',
+    )).not.toBeNull();
+
+    trigger.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    options = [...document.querySelectorAll<HTMLButtonElement>(
+      '.thinking-effort-dropdown .menu-row',
+    )];
+    expect(options[2].querySelector('.check-icon')).not.toBeNull();
+    expect(document.querySelectorAll('.thinking-effort-dropdown .check-icon')).toHaveLength(1);
+
+    options[0].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(component.reasoningEffort()).toBeNull();
+    expect(fixture.nativeElement.querySelector(
+      '.reasoning-toggle-content.is-enabled',
+    )).toBeNull();
+  });
+
+  it('clears Thinking effort and disables its menu for an unsupported model', async () => {
+    const models = [
+      {
+        id: 'openrouter/test-model',
+        name: 'Test Model',
+        provider: 'test',
+        source: 'openrouter',
+        supportsReasoning: true,
+      },
+      {
+        id: 'ollama/basic-model',
+        name: 'Basic Model',
+        provider: 'ollama',
+        source: 'local',
+        supportsReasoning: false,
+      },
+    ];
+    aiStore.models.mockReturnValue(models);
+
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'new-chat' }) },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    component.selectReasoningEffort('high');
+
+    await component.onModelSelectionChange('ollama/basic-model');
+    fixture.detectChanges();
+
+    const trigger = fixture.nativeElement.querySelector(
+      '.reasoning-dropdown .dropdown-trigger',
+    ) as HTMLButtonElement;
+    expect(component.reasoningEffort()).toBeNull();
+    expect(trigger.disabled).toBe(true);
+
+    trigger.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('.thinking-effort-dropdown')).toBeNull();
+  });
+
   it('persists an unsaved chat model after the first message creates its thread', async () => {
     await createComponent({
       snapshot: {

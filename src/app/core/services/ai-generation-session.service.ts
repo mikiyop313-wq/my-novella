@@ -176,6 +176,9 @@ export class AiGenerationSessionService {
         provider: request.provider,
         modelId: request.modelId,
         reasoningMode: request.reasoningMode,
+        ...(request.reasoningEffort !== undefined
+          ? { reasoningEffort: request.reasoningEffort }
+          : {}),
         onToken: token => {
           if (!token) return;
 

@@ -47,7 +47,7 @@ export class LocalOpenAiCompatibleProvider implements AiProvider {
             request,
             modelId,
         );
-        const payload = openAiCompatiblePayload(basePayload, false);
+        const payload = openAiCompatiblePayload(basePayload);
 
         const response = await fetch(this.endpoint(serverUrl, 'chat/completions'), {
             method: 'POST',

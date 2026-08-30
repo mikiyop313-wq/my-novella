@@ -125,47 +125,37 @@
       }
     }
 
-    .reasoning-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 0;
-      background: transparent;
-      border: none;
-      border-radius: 0;
-      color: var(--color-text-secondary);
-      font-family: inherit;
-      font-size: 0.72rem;
-      line-height: 1.1;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-
-      svg {
-        width: 12px;
-        height: 12px;
-        stroke-width: 2.2;
-        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease, fill 0.2s ease;
-      }
-
-      &:hover:not(:disabled) {
-        background: transparent;
-        color: var(--color-text-primary);
-      }
-
-      &.is-enabled {
-        color: var(--color-primary);
+    app-autocomplete-dropdown.reasoning-dropdown {
+      .reasoning-toggle-content {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--color-text-secondary);
+        transition: color 0.2s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 0.2s ease;
 
         svg {
-          fill: color-mix(in srgb, var(--color-primary) 20%, transparent);
-          filter: drop-shadow(0 0 5px color-mix(in srgb, var(--color-primary) 50%, transparent));
-          transform: scale(1.08);
+          width: 12px;
+          height: 12px;
+          stroke-width: 2.2;
+          opacity: 0.85;
+          transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease, fill 0.2s ease;
+        }
+
+        &.is-enabled {
+          color: color-mix(in srgb, var(--color-btn-primary-bg) 72%, var(--color-text-primary));
+          text-shadow: 0 0 8px color-mix(in srgb, var(--color-btn-primary-bg) 45%, transparent);
+
+          svg {
+            fill: color-mix(in srgb, var(--color-btn-primary-bg) 38%, transparent);
+            filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-btn-primary-bg) 80%, transparent));
+            opacity: 1;
+            transform: scale(1.12);
+          }
         }
       }
 
-      &:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
+      ::ng-deep .dropdown-trigger:hover:not(:disabled) .reasoning-toggle-content:not(.is-enabled) {
+        color: var(--color-text-primary);
       }
     }
   }
@@ -260,5 +250,19 @@
       cursor: not-allowed;
       transform: none;
     }
+  }
+}
+
+::ng-deep .autocomplete-dropdown.thinking-effort-dropdown {
+  min-width: min(148px, calc(100vw - 16px));
+  max-width: min(180px, calc(100vw - 16px));
+
+  .menu-scroll {
+    padding: 5px;
+  }
+
+  .menu-row {
+    min-height: 32px;
+    padding: 7px 9px;
   }
 }
