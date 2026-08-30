@@ -44,10 +44,10 @@ export class SearchComponent implements AfterViewInit {
     this.focusInput();
   }
 
-  focusInput(): void {
+  focusInput({ select = true }: { select?: boolean } = {}): void {
     queueMicrotask(() => {
       this.searchInput?.nativeElement.focus();
-      this.searchInput?.nativeElement.select();
+      if (select) this.searchInput?.nativeElement.select();
     });
   }
 

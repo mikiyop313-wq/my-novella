@@ -664,9 +664,55 @@ button {
 .prompt-textarea {
   min-height: 210px;
   padding: 12px;
+  display: block;
   font-family: var(--body-font);
   line-height: 1.55;
   resize: vertical;
+
+  &.has-search-highlight {
+    position: relative;
+    background: transparent;
+  }
+
+  &:read-only {
+    color: var(--color-text-secondary);
+    cursor: text;
+    opacity: 0.75;
+  }
+}
+
+.prompt-textarea-shell {
+  position: relative;
+}
+
+.prompt-search-highlight {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-background) 62%, var(--color-surface));
+  color: transparent;
+  font-family: var(--body-font);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  white-space: pre-wrap;
+
+  mark {
+    border-radius: 2px;
+    background: var(--color-search-match-active-bg);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-text-primary) 32%, transparent);
+    color: transparent;
+  }
+}
+
+.system-prompt-search {
+  width: min(408px, 100%);
+  align-self: flex-end;
 }
 
 .generation-card {

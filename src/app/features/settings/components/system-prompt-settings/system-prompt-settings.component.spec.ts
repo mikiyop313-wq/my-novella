@@ -41,6 +41,7 @@ describe('SystemPromptSettingsComponent', () => {
   const globalPreset = presetDto({
     id: 'global-chat',
     name: 'Global Chat',
+    systemPrompt: 'Write write writer WRITE.',
     category: 'chat',
     scope: 'global',
     bookId: null,
@@ -298,7 +299,7 @@ describe('SystemPromptSettingsComponent', () => {
       }),
     );
     expect(element.querySelector<HTMLInputElement>('#preset-name')?.disabled).toBe(true);
-    expect(element.querySelector<HTMLTextAreaElement>('#system-prompt')?.disabled).toBe(true);
+    expect(element.querySelector<HTMLTextAreaElement>('#system-prompt')?.readOnly).toBe(true);
     expect(element.querySelector<HTMLInputElement>('#temperature')?.disabled).toBe(true);
     expect(element.querySelector<HTMLInputElement>('#top-p')?.disabled).toBe(true);
     expect(element.querySelector<HTMLButtonElement>('.reset-generation-button')?.disabled).toBe(
@@ -308,6 +309,110 @@ describe('SystemPromptSettingsComponent', () => {
     component.resetGenerationSettings();
     expect(component.pendingSaveIds().size).toBe(0);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('searches the selected prompt with Ctrl+F and selects the active match', async () => {
+    component.selectPreset('global-chat');
+    fixture.detectChanges();
+
+    const shortcut = new KeyboardEvent('keydown', {
+      key: 'f',
+      ctrlKey: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(shortcut);
+    fixture.detectChanges();
+    await settle();
+
+    const searchInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      'app-search input',
+    );
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(searchInput).not.toBeNull();
+    expect(document.activeElement).toBe(searchInput);
+
+    searchInput!.value = 'write';
+    searchInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await settle();
+
+    const textarea = (fixture.nativeElement as HTMLElement).querySelector<HTMLTextAreaElement>(
+      '#system-prompt',
+    )!;
+    expect(component.searchMatches()).toHaveLength(4);
+    expect(component.currentSearchMatch()).toBe(1);
+    expect(textarea.selectionStart).toBe(0);
+    expect(textarea.selectionEnd).toBe(5);
+    expect(document.activeElement).toBe(searchInput);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.prompt-search-highlight mark')
+        ?.textContent,
+    ).toBe('Write');
+
+    component.selectNextSearchMatch();
+    fixture.detectChanges();
+    await settle();
+    expect(component.currentSearchMatch()).toBe(2);
+    expect(textarea.selectionStart).toBe(6);
+    expect(textarea.selectionEnd).toBe(11);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.prompt-search-highlight mark')
+        ?.textContent,
+    ).toBe('write');
+
+    component.selectPreviousSearchMatch();
+    component.selectPreviousSearchMatch();
+    await settle();
+    expect(component.currentSearchMatch()).toBe(4);
+    expect(textarea.selectionStart).toBe(19);
+    expect(textarea.selectionEnd).toBe(24);
+  });
+
+  it('applies case and whole-word options and preserves the query across presets', async () => {
+    component.selectPreset('global-chat');
+    component.openSearch();
+    fixture.detectChanges();
+    component.updateSearchQuery('write');
+    expect(component.searchMatches()).toHaveLength(4);
+
+    component.updateSearchWholeWord(true);
+    expect(component.searchMatches()).toHaveLength(3);
+
+    component.updateSearchMatchCase(true);
+    expect(component.searchMatches()).toHaveLength(1);
+
+    component.selectPreset('default-assistant');
+    fixture.detectChanges();
+    await settle();
+    expect(component.searchQuery()).toBe('write');
+    expect(component.currentSearchMatch()).toBeLessThanOrEqual(1);
+  });
+
+  it('toggles search closed and does not intercept Ctrl+F without a selected prompt', async () => {
+    component.openSearch();
+    fixture.detectChanges();
+
+    const closeShortcut = new KeyboardEvent('keydown', {
+      key: 'f',
+      metaKey: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(closeShortcut);
+    fixture.detectChanges();
+    await settle();
+    expect(closeShortcut.defaultPrevented).toBe(true);
+    expect(component.searchOpen()).toBe(false);
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-search')).toBeNull();
+
+    changeScope('book');
+    const browserShortcut = new KeyboardEvent('keydown', {
+      key: 'f',
+      ctrlKey: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(browserShortcut);
+    expect(browserShortcut.defaultPrevented).toBe(false);
+    expect(component.searchOpen()).toBe(false);
   });
 
   it('shows an editable global model only for action prompt presets', async () => {
