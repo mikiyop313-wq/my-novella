@@ -387,6 +387,23 @@ export class Outline implements OnInit {
     }
   }
 
+  async exportPdf(mode: ManuscriptMode, id: string): Promise<void> {
+    try {
+      const result = await this.electronService.invoke('manuscript-export:save', {
+        mode,
+        id,
+        format: 'pdf',
+      }) as SaveManuscriptExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success('The PDF manuscript was exported.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export the PDF manuscript.';
+      this.toastService.error(message, 'Outline');
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Display Helpers
   // ---------------------------------------------------------------------------

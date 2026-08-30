@@ -585,7 +585,8 @@
   <div class="overlay-menu export-options-menu" cdkMenu>
     <button class="menu-item" cdkMenuItem
       (cdkMenuItemTriggered)="exportDocx(mode, itemId)">DOCX</button>
-    <button class="menu-item" cdkMenuItem>PDF</button>
+    <button class="menu-item" cdkMenuItem
+      (cdkMenuItemTriggered)="exportPdf(mode, itemId)">PDF</button>
     <button class="menu-item" cdkMenuItem
       (cdkMenuItemTriggered)="openPngExportPreview(mode, itemId)">PNG</button>
   </div>

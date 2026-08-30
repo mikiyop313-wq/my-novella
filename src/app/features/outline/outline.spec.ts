@@ -340,6 +340,64 @@ describe('Outline', () => {
     ['act', '.act-header-right .btn-more', '.act-options-menu', 'act-1'],
     ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu', 'chapter-1'],
     ['scene', '.scene-more', '.scene-options-menu', 'scene-1'],
+  ] as const)('exports the selected %s as PDF', async (
+    mode,
+    triggerSelector,
+    menuSelector,
+    itemId,
+  ) => {
+    showScene('Scene summary', 12);
+    electronService.invoke.mockResolvedValueOnce({ status: 'saved', filePath: 'manuscript.pdf' });
+
+    (fixture.nativeElement.querySelector(triggerSelector) as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    document.querySelector<HTMLElement>(menuSelector)!
+      .querySelector<HTMLButtonElement>('.export-menu-trigger')!
+      .click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pdfButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.export-options-menu .menu-item'),
+    ).find(button => button.textContent?.trim() === 'PDF')!;
+    pdfButton.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.export-options-menu')).toBeNull();
+    expect(document.querySelector(menuSelector)).toBeNull();
+    expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript-export:save', {
+      mode,
+      id: itemId,
+      format: 'pdf',
+    });
+    expect(toastService.success).toHaveBeenCalledWith('The PDF manuscript was exported.');
+  });
+
+  it('does not show export feedback when the PDF save dialog is cancelled', async () => {
+    electronService.invoke.mockResolvedValueOnce({ status: 'cancelled' });
+
+    await component.exportPdf('chapter', 'chapter-1');
+
+    expect(toastService.success).not.toHaveBeenCalled();
+    expect(toastService.error).not.toHaveBeenCalled();
+  });
+
+  it('shows an Outline error when PDF export fails', async () => {
+    electronService.invoke.mockRejectedValueOnce(new Error('PDF generation failed.'));
+
+    await component.exportPdf('scene', 'scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith('PDF generation failed.', 'Outline');
+    expect(toastService.success).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['act', '.act-header-right .btn-more', '.act-options-menu', 'act-1'],
+    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu', 'chapter-1'],
+    ['scene', '.scene-more', '.scene-options-menu', 'scene-1'],
   ] as const)('opens PNG preview for the selected %s', async (
     mode,
     triggerSelector,
