@@ -275,6 +275,164 @@ describe('Outline', () => {
     expect(document.querySelector('.outline-inclusion-switch')?.getAttribute('aria-checked')).toBe('false');
   });
 
+  it.each([
+    ['act', '.act-header-right .btn-more', '.act-options-menu', 'act-1'],
+    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu', 'chapter-1'],
+    ['scene', '.scene-more', '.scene-options-menu', 'scene-1'],
+  ] as const)('exports the selected %s as DOCX', async (
+    mode,
+    triggerSelector,
+    menuSelector,
+    itemId,
+  ) => {
+    showScene('Scene summary', 12);
+    electronService.invoke.mockResolvedValueOnce({ status: 'saved', filePath: 'manuscript.docx' });
+
+    (fixture.nativeElement.querySelector(triggerSelector) as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const entityMenu = document.querySelector<HTMLElement>(menuSelector)!;
+    const exportTrigger = entityMenu.querySelector<HTMLButtonElement>('.export-menu-trigger')!;
+    expect(exportTrigger.textContent?.trim()).toBe('Export');
+
+    exportTrigger.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const exportMenu = document.querySelector<HTMLElement>('.export-options-menu')!;
+    const formatButtons = Array.from(exportMenu.querySelectorAll<HTMLButtonElement>('.menu-item'));
+    expect(formatButtons.map(button => button.textContent?.trim())).toEqual(['DOCX', 'PDF', 'PNG']);
+
+    formatButtons[0].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.export-options-menu')).toBeNull();
+    expect(document.querySelector(menuSelector)).toBeNull();
+    expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript-export:save', {
+      mode,
+      id: itemId,
+      format: 'docx',
+    });
+    expect(toastService.success).toHaveBeenCalledWith('The DOCX manuscript was exported.');
+  });
+
+  it('does not show export feedback when the DOCX save dialog is cancelled', async () => {
+    electronService.invoke.mockResolvedValueOnce({ status: 'cancelled' });
+
+    await component.exportDocx('chapter', 'chapter-1');
+
+    expect(toastService.success).not.toHaveBeenCalled();
+    expect(toastService.error).not.toHaveBeenCalled();
+  });
+
+  it('shows an Outline error when DOCX export fails', async () => {
+    electronService.invoke.mockRejectedValueOnce(new Error('DOCX generation failed.'));
+
+    await component.exportDocx('scene', 'scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith('DOCX generation failed.', 'Outline');
+    expect(toastService.success).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['act', '.act-header-right .btn-more', '.act-options-menu', 'act-1'],
+    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu', 'chapter-1'],
+    ['scene', '.scene-more', '.scene-options-menu', 'scene-1'],
+  ] as const)('exports the selected %s as PDF', async (
+    mode,
+    triggerSelector,
+    menuSelector,
+    itemId,
+  ) => {
+    showScene('Scene summary', 12);
+    electronService.invoke.mockResolvedValueOnce({ status: 'saved', filePath: 'manuscript.pdf' });
+
+    (fixture.nativeElement.querySelector(triggerSelector) as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    document.querySelector<HTMLElement>(menuSelector)!
+      .querySelector<HTMLButtonElement>('.export-menu-trigger')!
+      .click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pdfButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.export-options-menu .menu-item'),
+    ).find(button => button.textContent?.trim() === 'PDF')!;
+    pdfButton.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.querySelector('.export-options-menu')).toBeNull();
+    expect(document.querySelector(menuSelector)).toBeNull();
+    expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript-export:save', {
+      mode,
+      id: itemId,
+      format: 'pdf',
+    });
+    expect(toastService.success).toHaveBeenCalledWith('The PDF manuscript was exported.');
+  });
+
+  it('does not show export feedback when the PDF save dialog is cancelled', async () => {
+    electronService.invoke.mockResolvedValueOnce({ status: 'cancelled' });
+
+    await component.exportPdf('chapter', 'chapter-1');
+
+    expect(toastService.success).not.toHaveBeenCalled();
+    expect(toastService.error).not.toHaveBeenCalled();
+  });
+
+  it('shows an Outline error when PDF export fails', async () => {
+    electronService.invoke.mockRejectedValueOnce(new Error('PDF generation failed.'));
+
+    await component.exportPdf('scene', 'scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith('PDF generation failed.', 'Outline');
+    expect(toastService.success).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['act', '.act-header-right .btn-more', '.act-options-menu', 'act-1'],
+    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu', 'chapter-1'],
+    ['scene', '.scene-more', '.scene-options-menu', 'scene-1'],
+  ] as const)('opens PNG preview for the selected %s', async (
+    mode,
+    triggerSelector,
+    menuSelector,
+    itemId,
+  ) => {
+    showScene('Scene summary', 12);
+    electronService.invoke.mockResolvedValueOnce({
+      html: '<section class="scene"><p>Scene prose.</p></section>',
+    });
+
+    (fixture.nativeElement.querySelector(triggerSelector) as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const exportTrigger = document.querySelector<HTMLElement>(menuSelector)!
+      .querySelector<HTMLButtonElement>('.export-menu-trigger')!;
+    exportTrigger.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pngButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.export-options-menu .menu-item'),
+    ).find(button => button.textContent?.trim() === 'PNG')!;
+    pngButton.click();
+    fixture.detectChanges();
+
+    expect(component.pngExportPreviewTarget()).toEqual({ mode, id: itemId });
+    expect(document.querySelector('.png-preview-modal')).not.toBeNull();
+    expect(electronService.invoke).toHaveBeenCalledWith('manuscript-export:preview-content', {
+      mode,
+      id: itemId,
+    });
+  });
+
   it('disables empty scene, chapter, and act inclusion switches with explanatory tooltips', async () => {
     showScene('   ', 0);
 

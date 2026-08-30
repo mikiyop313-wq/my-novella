@@ -17,12 +17,17 @@ import {
   UpdateStructurePositionsPayload,
 } from '../../../../shared/models/manuscript.model';
 import type { SystemPromptCategory } from '../../../../shared/models/system-prompt.model';
+import type { SaveManuscriptExportResult } from '../../../../shared/models/manuscript-export.model';
 
 import { ToastService } from '../../shared/services/toast.service';
 import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
 import { ElectronService } from '../../core/services/electron.service';
 import { ElementAnimationDirective } from '../../shared/directives/element-animation.directive';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
+import {
+  PngExportPreviewModalComponent,
+  type PngExportPreviewTarget,
+} from '../../shared/components/png-export-preview-modal/png-export-preview-modal.component';
 import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import { serializeTiptapDocument } from '../../shared/utils/story-context-builder';
 import {
@@ -112,6 +117,7 @@ const transferBetween = <T>(
     ElementAnimationDirective,
     MarkdownComponent,
     MarkdownEditorComponent,
+    PngExportPreviewModalComponent,
     AutocompleteKeepOpenMenuItemDirective,
     CodexContextHighlightDirective,
   ],
@@ -147,8 +153,9 @@ export class Outline implements OnInit {
   summaryModelResolution = signal<SystemPromptModelResolution | null>(null);
   codexDetectionModelResolution = signal<SystemPromptModelResolution | null>(null);
   resolvingSummaryModel = signal(false);
+  pngExportPreviewTarget = signal<PngExportPreviewTarget | null>(null);
   private readonly activeSceneAiMenuId = signal<string | null>(null);
-  readonly sceneAiMenuPositions: ConnectedPosition[] = [
+  readonly submenuPositions: ConnectedPosition[] = [
     { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 4 },
     { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 4 },
     { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -4 },
@@ -349,6 +356,52 @@ export class Outline implements OnInit {
     if (!bookId) return;
 
     this.router.navigate(['/workspace', bookId, 'manuscript', mode, id]);
+  }
+
+  openPngExportPreview(mode: PngExportPreviewTarget['mode'], id: string): void {
+    this.pngExportPreviewTarget.set({ mode, id });
+  }
+
+  closePngExportPreview(): void {
+    this.pngExportPreviewTarget.set(null);
+  }
+
+  onPngExported(): void {
+    this.toastService.success('The PNG manuscript image was exported.');
+  }
+
+  async exportDocx(mode: ManuscriptMode, id: string): Promise<void> {
+    try {
+      const result = await this.electronService.invoke('manuscript-export:save', {
+        mode,
+        id,
+        format: 'docx',
+      }) as SaveManuscriptExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success('The DOCX manuscript was exported.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export the DOCX manuscript.';
+      this.toastService.error(message, 'Outline');
+    }
+  }
+
+  async exportPdf(mode: ManuscriptMode, id: string): Promise<void> {
+    try {
+      const result = await this.electronService.invoke('manuscript-export:save', {
+        mode,
+        id,
+        format: 'pdf',
+      }) as SaveManuscriptExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success('The PDF manuscript was exported.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export the PDF manuscript.';
+      this.toastService.error(message, 'Outline');
+    }
   }
 
   // ---------------------------------------------------------------------------

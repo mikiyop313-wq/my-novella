@@ -32,9 +32,22 @@ import type {
 const FONT_FAMILY = 'Times New Roman';
 const MONOSPACE_FONT_FAMILY = 'Courier New';
 const BODY_FONT_SIZE = 24;
+const ROOT_HEADING_FONT_SIZE = 60;
+const ACT_HEADING_FONT_SIZE = 48;
+const CHAPTER_HEADING_FONT_SIZE = 42;
+const SCENE_HEADING_FONT_SIZE = 27;
 const DOUBLE_LINE_SPACING = 480;
 const HALF_INCH = 720;
 const ONE_INCH = 1440;
+const BOOK_TITLE_SPACING_BEFORE = 1200;
+const BOOK_TITLE_SPACING_AFTER = 360;
+const ACT_SPACING_BEFORE = 720;
+const ACT_TITLE_SPACING = 180;
+const ACT_SPACING_AFTER = 480;
+const CHAPTER_SPACING_BEFORE = 540;
+const CHAPTER_SPACING_AFTER = 360;
+const SCENE_SPACING_BEFORE = 360;
+const SCENE_SPACING_AFTER = 180;
 const LETTER_PAGE_WIDTH = 12240;
 const LETTER_PAGE_HEIGHT = 15840;
 const MAX_LIST_DEPTH = 8;
@@ -62,9 +75,17 @@ interface ListParagraphContext {
 }
 
 interface RenderContext {
+  mode: ManuscriptExportDocument['target']['mode'];
   sceneId: string;
   numbering: NumberingConfiguration[];
   nextNumberingId: number;
+}
+
+interface CenteredHeadingOptions {
+  text: string;
+  fontSize: number;
+  spacingBefore: number;
+  spacingAfter: number;
 }
 
 interface DocumentLayout {
@@ -77,6 +98,7 @@ export async function exportManuscriptToDocx(
   manuscript: ManuscriptExportDocument,
 ): Promise<Buffer> {
   const renderContext: RenderContext = {
+    mode: manuscript.target.mode,
     sceneId: '',
     numbering: [],
     nextNumberingId: 1,
@@ -134,8 +156,10 @@ function appendTitlePage(layout: DocumentLayout, title: string, author: string):
     new Paragraph({
       alignment: AlignmentType.CENTER,
       indent: { firstLine: 0 },
-      spacing: { before: 4320, after: 480 },
-      children: [new TextRun({ text: title, bold: true, size: 32, font: FONT_FAMILY })],
+      spacing: { before: BOOK_TITLE_SPACING_BEFORE, after: BOOK_TITLE_SPACING_AFTER },
+      children: [
+        new TextRun({ text: title, bold: true, size: ROOT_HEADING_FONT_SIZE, font: FONT_FAMILY }),
+      ],
     }),
   );
   appendParagraph(
@@ -167,10 +191,21 @@ function appendStructureNode(
 
 function appendAct(layout: DocumentLayout, act: ManuscriptExportAct, context: RenderContext): void {
   appendPageBreak(layout);
-  appendCenteredHeading(layout, `ACT ${act.number}`, 28, 4320);
+  const fontSize = structureHeadingFontSize(context.mode, 'act');
+  appendCenteredHeading(layout, {
+    text: `ACT ${act.number}`,
+    fontSize,
+    spacingBefore: ACT_SPACING_BEFORE,
+    spacingAfter: act.title ? ACT_TITLE_SPACING : ACT_SPACING_AFTER,
+  });
 
   if (act.title) {
-    appendCenteredHeading(layout, act.title, 28, 240);
+    appendCenteredHeading(layout, {
+      text: act.title,
+      fontSize,
+      spacingBefore: 0,
+      spacingAfter: ACT_SPACING_AFTER,
+    });
   }
 
   act.chapters.forEach((chapter) => appendChapter(layout, chapter, context));
@@ -182,7 +217,12 @@ function appendChapter(
   context: RenderContext,
 ): void {
   appendPageBreak(layout);
-  appendCenteredHeading(layout, structureLabel('Chapter', chapter.number, chapter.title), 28, 720);
+  appendCenteredHeading(layout, {
+    text: structureLabel('Chapter', chapter.number, chapter.title),
+    fontSize: structureHeadingFontSize(context.mode, 'chapter'),
+    spacingBefore: CHAPTER_SPACING_BEFORE,
+    spacingAfter: CHAPTER_SPACING_AFTER,
+  });
   chapter.scenes.forEach((scene) => appendScene(layout, scene, context));
 }
 
@@ -196,13 +236,16 @@ function appendScene(
     new Paragraph({
       alignment: AlignmentType.CENTER,
       indent: { firstLine: 0 },
-      spacing: { before: layout.atPageStart ? 0 : 480, after: 240 },
+      spacing: {
+        before: context.mode === 'scene' ? 0 : SCENE_SPACING_BEFORE,
+        after: SCENE_SPACING_AFTER,
+      },
       keepNext: true,
       children: [
         new TextRun({
           text: structureLabel('Scene', scene.number, scene.title),
           bold: true,
-          size: BODY_FONT_SIZE,
+          size: structureHeadingFontSize(context.mode, 'scene'),
           font: FONT_FAMILY,
         }),
       ],
@@ -217,20 +260,39 @@ function appendScene(
 
 function appendCenteredHeading(
   layout: DocumentLayout,
-  text: string,
-  fontSize: number,
-  spacingBefore: number,
+  { text, fontSize, spacingBefore, spacingAfter }: CenteredHeadingOptions,
 ): void {
   appendParagraph(
     layout,
     new Paragraph({
       alignment: AlignmentType.CENTER,
       indent: { firstLine: 0 },
-      spacing: { before: spacingBefore, after: 240 },
+      spacing: { before: spacingBefore, after: spacingAfter },
       keepNext: true,
       children: [new TextRun({ text, bold: true, size: fontSize, font: FONT_FAMILY })],
     }),
   );
+}
+
+function structureHeadingFontSize(
+  mode: ManuscriptExportDocument['target']['mode'],
+  nodeType: ManuscriptExportNode['type'],
+): number {
+  if (mode === nodeType) {
+    return ROOT_HEADING_FONT_SIZE;
+  }
+
+  if (mode === 'act') {
+    return nodeType === 'chapter' ? ACT_HEADING_FONT_SIZE : CHAPTER_HEADING_FONT_SIZE;
+  }
+
+  if (mode === 'chapter') {
+    return ACT_HEADING_FONT_SIZE;
+  }
+
+  if (nodeType === 'act') return ACT_HEADING_FONT_SIZE;
+  if (nodeType === 'chapter') return CHAPTER_HEADING_FONT_SIZE;
+  return SCENE_HEADING_FONT_SIZE;
 }
 
 function appendParagraph(layout: DocumentLayout, paragraph: Paragraph): void {

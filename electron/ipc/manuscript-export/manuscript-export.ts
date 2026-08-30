@@ -5,11 +5,16 @@ import { dialog, ipcMain } from 'electron';
 import { exportManuscriptToDocx } from '../../domain/manuscript-export/exporters/docx-exporter';
 import { exportManuscriptToEpub } from '../../domain/manuscript-export/exporters/epub-exporter';
 import { exportManuscriptToPdf } from '../../domain/manuscript-export/exporters/pdf-exporter';
-import { exportManuscriptToPng } from '../../domain/manuscript-export/exporters/png-exporter';
+import {
+  exportManuscriptToPng,
+  renderManuscriptExportContent,
+} from '../../domain/manuscript-export/exporters/png-exporter';
 import { manuscriptExportService } from '../../domain/manuscript-export/manuscript-export.service';
 import type { ManuscriptExportDocument } from '../../domain/manuscript-export/models';
 import type {
   ManuscriptExportFormat,
+  ManuscriptPngPreviewContentRequest,
+  ManuscriptPngPreviewContentResult,
   SaveManuscriptExportRequest,
   SaveManuscriptExportResult,
 } from '../../../shared/models/manuscript-export.model';
@@ -17,34 +22,58 @@ import type {
 interface ExportFormatConfiguration {
   extension: ManuscriptExportFormat;
   filterName: string;
-  generate: (manuscript: ManuscriptExportDocument) => Promise<Buffer>;
+  generate: (input: GenerateExportInput) => Promise<Buffer>;
+}
+
+interface GenerateExportInput {
+  manuscript: ManuscriptExportDocument;
+  request: SaveManuscriptExportRequest;
 }
 
 const EXPORT_FORMATS: Record<ManuscriptExportFormat, ExportFormatConfiguration> = {
   docx: {
     extension: 'docx',
     filterName: 'Word document',
-    generate: exportManuscriptToDocx,
+    generate: ({ manuscript }) => exportManuscriptToDocx(manuscript),
   },
   epub: {
     extension: 'epub',
     filterName: 'EPUB book',
-    generate: exportManuscriptToEpub,
+    generate: ({ manuscript }) => exportManuscriptToEpub(manuscript),
   },
   pdf: {
     extension: 'pdf',
     filterName: 'PDF document',
-    generate: exportManuscriptToPdf,
+    generate: ({ manuscript }) => exportManuscriptToPdf(manuscript),
   },
   png: {
     extension: 'png',
     filterName: 'PNG image',
-    generate: exportManuscriptToPng,
+    generate: ({ manuscript, request }) => exportManuscriptToPng({
+      manuscript,
+      options: request.pngOptions,
+    }),
   },
 };
 
 /** Registers IPC handlers for readable manuscript export operations. */
 export function setupManuscriptExportHandlers(): void {
+  ipcMain.handle(
+    'manuscript-export:preview-content',
+    async (
+      _,
+      request: ManuscriptPngPreviewContentRequest,
+    ): Promise<ManuscriptPngPreviewContentResult> => {
+      try {
+        const manuscript = await manuscriptExportService.prepareExport(request);
+        return { html: renderManuscriptExportContent(manuscript) };
+      } catch (error) {
+        console.error('Failed to prepare PNG manuscript preview content:', error);
+        throw error;
+      }
+    },
+  );
+
   ipcMain.handle(
     'manuscript-export:save',
     async (_, request: SaveManuscriptExportRequest): Promise<SaveManuscriptExportResult> => {
@@ -61,7 +90,7 @@ export function setupManuscriptExportHandlers(): void {
           return { status: 'cancelled' };
         }
 
-        const file = await format.generate(manuscript);
+        const file = await format.generate({ manuscript, request });
         await writeFile(saveResult.filePath, file);
 
         return { status: 'saved', filePath: saveResult.filePath };

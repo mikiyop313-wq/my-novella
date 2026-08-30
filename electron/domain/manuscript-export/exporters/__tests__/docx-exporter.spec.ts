@@ -61,6 +61,46 @@ describe('exportManuscriptToDocx', () => {
     expect(sceneXml).toContain('Scene 3 — Scene title');
   });
 
+  it('matches the PNG hierarchy sizes and spacing in a book export', async () => {
+    const xml = await documentXml(createBookDocument([createAct()]));
+
+    expect(paragraphXmlContaining(xml, 'A Tale &amp; More')).toContain(
+      '<w:spacing w:after="360" w:before="1200"/>',
+    );
+    expect(paragraphXmlContaining(xml, 'A Tale &amp; More')).toContain('<w:sz w:val="60"/>');
+    expect(paragraphXmlContaining(xml, 'ACT 1')).toContain(
+      '<w:spacing w:after="180" w:before="720"/>',
+    );
+    expect(paragraphXmlContaining(xml, 'ACT 1')).toContain('<w:sz w:val="48"/>');
+    expect(paragraphXmlContaining(xml, 'Act title')).toContain(
+      '<w:spacing w:after="480" w:before="0"/>',
+    );
+    expect(paragraphXmlContaining(xml, 'Chapter 2')).toContain(
+      '<w:spacing w:after="360" w:before="540"/>',
+    );
+    expect(paragraphXmlContaining(xml, 'Chapter 2')).toContain('<w:sz w:val="42"/>');
+    expect(paragraphXmlContaining(xml, 'Scene 3')).toContain(
+      '<w:spacing w:after="180" w:before="360"/>',
+    );
+    expect(paragraphXmlContaining(xml, 'Scene 3')).toContain('<w:sz w:val="27"/>');
+  });
+
+  it('promotes the selected partial-export root and its descendants', async () => {
+    const actXml = await documentXml(createDocument('act', [createAct()]));
+    const chapterXml = await documentXml(createDocument('chapter', [createChapter()]));
+    const sceneXml = await documentXml(createDocument('scene', [createScene()]));
+
+    expect(paragraphXmlContaining(actXml, 'ACT 1')).toContain('<w:sz w:val="60"/>');
+    expect(paragraphXmlContaining(actXml, 'Chapter 2')).toContain('<w:sz w:val="48"/>');
+    expect(paragraphXmlContaining(actXml, 'Scene 3')).toContain('<w:sz w:val="42"/>');
+    expect(paragraphXmlContaining(chapterXml, 'Chapter 2')).toContain('<w:sz w:val="60"/>');
+    expect(paragraphXmlContaining(chapterXml, 'Scene 3')).toContain('<w:sz w:val="48"/>');
+    expect(paragraphXmlContaining(sceneXml, 'Scene 3')).toContain('<w:sz w:val="60"/>');
+    expect(paragraphXmlContaining(sceneXml, 'Scene 3')).toContain(
+      '<w:spacing w:after="180" w:before="0"/>',
+    );
+  });
+
   it('does not add a trailing blank page to an empty book export', async () => {
     const xml = await documentXml(createBookDocument([]));
 
@@ -266,4 +306,11 @@ async function archiveText(archive: JSZip, path: string): Promise<string> {
 
 function count(text: string, value: string): number {
   return text.split(value).length - 1;
+}
+
+function paragraphXmlContaining(xml: string, text: string): string {
+  const paragraphs = xml.match(/<w:p(?: [^>]*)?>[\s\S]*?<\/w:p>/g) ?? [];
+  const paragraph = paragraphs.find((candidate) => candidate.includes(text));
+  expect(paragraph, `Expected a DOCX paragraph containing "${text}".`).toBeDefined();
+  return paragraph!;
 }

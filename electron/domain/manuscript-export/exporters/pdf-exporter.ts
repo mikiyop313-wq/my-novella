@@ -60,7 +60,7 @@ function buildHtmlDocument(manuscript: ManuscriptExportDocument): string {
   <style>${PRINT_STYLES}</style>
 </head>
 <body>
-  <main class="export-root">${titlePage}${content}</main>
+  <main class="export-root export-mode-${manuscript.target.mode}">${titlePage}${content}</main>
 </body>
 </html>`;
 }
@@ -284,22 +284,20 @@ body {
 }
 
 .title-page h1 {
-  margin: 0 0 24pt;
-  font-size: 16pt;
+  margin: 0 0 18pt;
+  font-size: 30pt;
+  line-height: 1.2;
 }
 
 .title-page p {
   margin: 0;
+  color: #737373;
   text-indent: 0;
 }
 
-.act,
-.chapter {
-  break-before: page;
-}
-
 .act {
-  padding-top: 3in;
+  break-before: page;
+  padding: 36pt 0 24pt;
   text-align: center;
 }
 
@@ -315,25 +313,55 @@ body {
 .act-number,
 .act-title {
   margin: 0;
-  font-size: 14pt;
+  font-size: 24pt;
+  line-height: 1.3;
 }
 
 .act-title {
-  margin-top: 12pt;
+  margin-top: 9pt;
+  color: #737373;
 }
 
 .chapter {
-  padding-top: 0.5in;
+  padding-top: 27pt;
 }
 
 .chapter-heading {
-  margin: 0;
-  font-size: 14pt;
+  margin: 0 0 18pt;
+  font-size: 21pt;
+  line-height: 1.3;
 }
 
 .scene-heading {
-  margin: 24pt 0 12pt;
-  font-size: 12pt;
+  margin: 18pt 0 9pt;
+  color: #737373;
+  font-size: 13.3333pt;
+  line-height: 1.4;
+}
+
+.export-root.export-mode-act > .act:first-child > .act-number,
+.export-root.export-mode-act > .act:first-child > .act-title {
+  font-size: 30pt;
+}
+
+.export-root.export-mode-act > .chapter > .chapter-heading {
+  font-size: 24pt;
+}
+
+.export-root.export-mode-act > .chapter > .scene > .scene-heading {
+  font-size: 21pt;
+}
+
+.export-root.export-mode-chapter > .chapter:first-child > .chapter-heading {
+  font-size: 30pt;
+}
+
+.export-root.export-mode-chapter > .chapter:first-child > .scene > .scene-heading {
+  font-size: 24pt;
+}
+
+.export-root.export-mode-scene > .scene:first-child > .scene-heading {
+  font-size: 30pt;
 }
 
 .export-root > .scene:first-child > .scene-heading {

@@ -1,0 +1,127 @@
+<ng-container
+  [appOverlayModal]="previewModal"
+  #modalTrigger="appOverlayModal"
+  (closed)="onOverlayClosed()"
+></ng-container>
+
+<ng-template #previewModal>
+  <section
+    class="png-preview-modal overlay-modal"
+    [class.is-visible]="isVisible()"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="png-preview-title"
+    aria-describedby="png-preview-description"
+    [cdkTrapFocus]="true"
+    [cdkTrapFocusAutoCapture]="true"
+  >
+    <header class="png-preview-header">
+      <div>
+        <h2 id="png-preview-title">PNG export preview</h2>
+        <p id="png-preview-description">Review the image and adjust its appearance before exporting.</p>
+      </div>
+      <button type="button" class="icon-button" aria-label="Close PNG preview" [disabled]="isSaving()" (click)="cancel()">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </header>
+
+    <div class="png-preview-body">
+      <aside class="png-preview-settings" aria-label="PNG export settings">
+        <fieldset>
+          <legend>Theme</legend>
+          <div class="theme-options">
+            <button type="button" [class.is-selected]="theme() === 'dark'" [attr.aria-pressed]="theme() === 'dark'" (click)="setTheme('dark')">Dark</button>
+            <button type="button" [class.is-selected]="theme() === 'light'" [attr.aria-pressed]="theme() === 'light'" (click)="setTheme('light')">Light</button>
+          </div>
+        </fieldset>
+
+        <div class="slider-label">
+          <label for="png-font-size">Font size</label>
+          <output for="png-font-size">{{ fontSizeInput() }} px</output>
+        </div>
+        <div class="slider-control">
+          <input
+            id="png-font-size"
+            type="range"
+            step="1"
+            [min]="limits.fontSize.minimum"
+            [max]="limits.fontSize.maximum"
+            [value]="fontSizeInput()"
+            [style.--slider-progress]="fontSizeProgress() + '%'"
+            (input)="updateFontSize($any($event.target).value)"
+          />
+          <div class="slider-range" aria-hidden="true">
+            <span>{{ limits.fontSize.minimum }} px</span>
+            <span>{{ limits.fontSize.maximum }} px</span>
+          </div>
+        </div>
+
+        <label for="png-width">Layout width</label>
+        <div class="number-control">
+          <input
+            id="png-width"
+            type="number"
+            step="1"
+            [min]="limits.width.minimum"
+            [max]="limits.width.maximum"
+            [value]="widthInput()"
+            [attr.aria-invalid]="!!widthError()"
+            (input)="updateWidth($any($event.target).value)"
+          />
+          <span>px</span>
+        </div>
+        @if (widthError(); as error) {
+          <p class="field-error" role="alert">{{ error }}</p>
+        } @else {
+          <p class="export-resolution">Exports at {{ exportedWidth() }} px wide (2× resolution).</p>
+        }
+      </aside>
+
+      <div class="png-preview-workspace" aria-label="PNG manuscript export preview">
+        @if (previewHtml(); as html) {
+          <div class="png-preview-scroll-content">
+            <article
+              class="png-document-preview"
+              [class.preview-dark]="theme() === 'dark'"
+              [class.preview-light]="theme() === 'light'"
+              [style.width.px]="previewWidth()"
+              [style.font-size.px]="fontSizeInput()"
+              [style.--preview-background]="previewColors().background"
+              [style.--preview-text]="previewColors().text"
+              [style.--preview-surface]="previewColors().surface"
+              [style.--preview-secondary-text]="previewColors().secondaryText"
+              [style.--preview-border]="previewColors().border"
+              (click)="preventPreviewNavigation($event)"
+              (dragstart)="preventPreviewDrag($event)"
+            >
+              <main
+                class="export-root"
+                [class.export-mode-act]="target().mode === 'act'"
+                [class.export-mode-chapter]="target().mode === 'chapter'"
+                [class.export-mode-scene]="target().mode === 'scene'"
+                [innerHTML]="html"
+              ></main>
+            </article>
+          </div>
+        }
+        @if (isPreviewLoading()) {
+          <div class="preview-status" role="status">
+            <span class="spinner" aria-hidden="true"></span>
+            Loading preview…
+          </div>
+        } @else if (previewError(); as error) {
+          <div class="preview-status preview-error" role="alert">{{ error }}</div>
+        }
+      </div>
+    </div>
+
+    <footer class="png-preview-actions">
+      <button type="button" class="btn-secondary" [disabled]="isSaving()" (click)="cancel()">Cancel</button>
+      <button type="button" class="btn-primary" [disabled]="!canExport()" (click)="exportPng()">
+        {{ isSaving() ? 'Exporting…' : 'Export PNG' }}
+      </button>
+    </footer>
+  </section>
+</ng-template>

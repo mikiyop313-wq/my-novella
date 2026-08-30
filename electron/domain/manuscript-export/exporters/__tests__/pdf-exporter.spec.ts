@@ -74,6 +74,7 @@ describe('exportManuscriptToPdf', () => {
     expect(html).toContain('font-size: 12pt');
     expect(html).toContain('line-height: 2');
     expect(html).toContain('text-indent: 0.5in');
+    expect(html).toContain('class="export-root export-mode-book"');
     expect(html).toContain('<section class="title-page">');
     expect(html).toContain('<h1>A Tale &amp; More</h1>');
     expect(html).toContain('<p>by A. Writer</p>');
@@ -82,6 +83,11 @@ describe('exportManuscriptToPdf', () => {
     expect(html).toContain('Chapter 2 — Chapter title');
     expect(html).toContain('Scene 3 — Scene title');
     expect(html).toContain('Opening prose.');
+    expect(html).toMatch(/\.title-page h1\s*{[^}]*font-size: 30pt/s);
+    expect(html).toMatch(/\.act\s*{[^}]*break-before: page/s);
+    expect(html).not.toMatch(/\.chapter\s*{[^}]*break-before:/s);
+    expect(html).toMatch(/\.chapter-heading\s*{[^}]*margin: 0 0 18pt/s);
+    expect(html).toMatch(/\.scene-heading\s*{[^}]*margin: 18pt 0 9pt/s);
   });
 
   it('starts partial exports at the selected node without a title page', async () => {
@@ -96,8 +102,33 @@ describe('exportManuscriptToPdf', () => {
     const sceneHtml = loadedHtml();
 
     expect(sceneHtml).not.toContain('class="title-page"');
+    expect(sceneHtml).toContain('class="export-root export-mode-scene"');
     expect(sceneHtml).toContain('Scene 3 — Scene title');
     expect(sceneHtml).toContain('.export-root > .scene:first-child');
+  });
+
+  it('promotes the complete heading hierarchy for partial exports', async () => {
+    await exportManuscriptToPdf(createDocument('act', [createAct()]));
+
+    const html = loadedHtml();
+    expect(html).toMatch(
+      /\.export-root\.export-mode-act > \.act:first-child > \.act-number,[^}]*font-size: 30pt/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-act > \.chapter > \.chapter-heading\s*{[^}]*font-size: 24pt/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-act > \.chapter > \.scene > \.scene-heading\s*{[^}]*font-size: 21pt/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-chapter > \.chapter:first-child > \.chapter-heading\s*{[^}]*font-size: 30pt/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-chapter > \.chapter:first-child > \.scene > \.scene-heading\s*{[^}]*font-size: 24pt/s,
+    );
+    expect(html).toMatch(
+      /\.export-root\.export-mode-scene > \.scene:first-child > \.scene-heading\s*{[^}]*font-size: 30pt/s,
+    );
   });
 
   it('does not add manuscript structure after an empty book title page', async () => {
