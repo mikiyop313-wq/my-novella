@@ -1,27 +1,38 @@
-import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, ViewChild, input, output } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  ViewChild,
+  ViewEncapsulation,
+  input,
+  output,
+} from '@angular/core';
 
 @Component({
-  selector: 'app-manuscript-search',
+  selector: 'app-search',
   standalone: true,
-  imports: [CommonModule],
-  templateUrl: './manuscript-search.component.html',
-  styleUrl: './manuscript-search.component.scss',
+  templateUrl: './search.component.html',
+  styleUrl: './search.component.scss',
+  encapsulation: ViewEncapsulation.None,
 })
-export class ManuscriptSearchComponent implements AfterViewInit {
+export class SearchComponent implements AfterViewInit {
   @ViewChild('searchInput') private searchInput?: ElementRef<HTMLInputElement>;
 
   readonly query = input('');
   readonly currentMatch = input(0);
   readonly totalMatches = input(0);
-  readonly wholeManuscript = input(false);
+  readonly scopeSelected = input(false);
+  readonly scopeLabel = input<string | null>(null);
   readonly matchCase = input(false);
   readonly wholeWord = input(false);
   readonly loading = input(false);
   readonly error = input<string | null>(null);
+  readonly regionLabel = input('Search');
+  readonly inputLabel = input('Search content');
+  readonly placeholder = input('Find');
 
   readonly queryChange = output<string>();
-  readonly wholeManuscriptChange = output<boolean>();
+  readonly scopeSelectedChange = output<boolean>();
   readonly matchCaseChange = output<boolean>();
   readonly wholeWordChange = output<boolean>();
   readonly previous = output<void>();
@@ -33,10 +44,10 @@ export class ManuscriptSearchComponent implements AfterViewInit {
     this.focusInput();
   }
 
-  focusInput(): void {
+  focusInput({ select = true }: { select?: boolean } = {}): void {
     queueMicrotask(() => {
       this.searchInput?.nativeElement.focus();
-      this.searchInput?.nativeElement.select();
+      if (select) this.searchInput?.nativeElement.select();
     });
   }
 
@@ -47,9 +58,17 @@ export class ManuscriptSearchComponent implements AfterViewInit {
   onInputKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (event.shiftKey) this.previous.emit();
-      else this.next.emit();
-    } else if (event.key === 'Escape') {
+
+      if (event.shiftKey) {
+        this.previous.emit();
+        return;
+      }
+
+      this.next.emit();
+      return;
+    }
+
+    if (event.key === 'Escape') {
       event.preventDefault();
       this.closed.emit();
     }

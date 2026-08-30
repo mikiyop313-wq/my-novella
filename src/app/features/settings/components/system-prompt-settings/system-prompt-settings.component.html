@@ -329,15 +329,56 @@
                   }}
                 </span>
               </div>
-              <textarea
-                id="system-prompt"
-                class="prompt-textarea"
-                rows="11"
-                [value]="preset.systemPrompt"
-                [disabled]="preset.isBuiltIn"
-                placeholder="Describe how the AI should behave..."
-                (input)="updateSystemPrompt($event)"
-              ></textarea>
+              @if (searchOpen()) {
+                <app-search
+                  class="system-prompt-search"
+                  animate.enter="search-enter"
+                  animate.leave="search-leave"
+                  regionLabel="Find in system prompt"
+                  inputLabel="Search system prompt text"
+                  placeholder="Find in system prompt"
+                  [query]="searchQuery()"
+                  [currentMatch]="currentSearchMatch()"
+                  [totalMatches]="searchMatches().length"
+                  [matchCase]="searchMatchCase()"
+                  [wholeWord]="searchWholeWord()"
+                  (queryChange)="updateSearchQuery($event)"
+                  (matchCaseChange)="updateSearchMatchCase($event)"
+                  (wholeWordChange)="updateSearchWholeWord($event)"
+                  (previous)="selectPreviousSearchMatch()"
+                  (next)="selectNextSearchMatch()"
+                  (closed)="closeSearch()"
+                ></app-search>
+              }
+              <div class="prompt-textarea-shell">
+                @if (searchHighlightSegments().length > 0) {
+                  <div
+                    #systemPromptHighlight
+                    class="prompt-search-highlight"
+                    aria-hidden="true"
+                  >
+                    @for (segment of searchHighlightSegments(); track $index) {
+                      @if (segment.isMatch) {
+                        <mark [class.is-active]="segment.isActive">{{ segment.text }}</mark>
+                      } @else {
+                        <span>{{ segment.text }}</span>
+                      }
+                    }
+                  </div>
+                }
+                <textarea
+                  #systemPromptTextarea
+                  id="system-prompt"
+                  class="prompt-textarea"
+                  [class.has-search-highlight]="searchHighlightSegments().length > 0"
+                  rows="11"
+                  [value]="preset.systemPrompt"
+                  [readOnly]="preset.isBuiltIn"
+                  placeholder="Describe how the AI should behave..."
+                  (input)="updateSystemPrompt($event)"
+                  (scroll)="syncPromptSearchHighlight($event)"
+                ></textarea>
+              </div>
             </div>
 
             @if (showsDefaultModel(preset.category)) {

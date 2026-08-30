@@ -15,6 +15,7 @@ import {
   AutocompleteDropdownComponent,
   DropdownOption,
 } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { SearchComponent } from '../../shared/components/search/search.component';
 import { ElectronService } from '../../core/services/electron.service';
 import { ThemeService } from '../../core/services/theme.service';
 import {
@@ -36,7 +37,6 @@ import {
 import { SceneHeaderComponent } from './components/scene/scene-header/scene-header.component';
 import { SceneSkeletonExtension } from './components/scene/scene-skeleton/scene-skeleton.extension';
 import { SceneSummaryExtension } from './components/scene/scene-summary/scene-summary.extension';
-import { ManuscriptSearchComponent } from './components/manuscript-search/manuscript-search.component';
 import {
   SLASH_COMMAND_MENU_ITEMS,
   SlashCommandMenuComponent,
@@ -90,7 +90,7 @@ import { ManuscriptSearchService } from './helpers/search/manuscript-search.serv
     SceneHeaderComponent,
     CodexContextHighlightDirective,
     MarkdownPlainTextPipe,
-    ManuscriptSearchComponent,
+    SearchComponent,
     SlashCommandMenuComponent,
   ],
   templateUrl: './manuscript.html',
@@ -102,8 +102,8 @@ export class Manuscript implements OnInit, OnDestroy {
   @ViewChild(EditorBubbleMenuComponent)
   private editorBubbleMenu!: EditorBubbleMenuComponent;
 
-  @ViewChild(ManuscriptSearchComponent)
-  private manuscriptSearchWidget?: ManuscriptSearchComponent;
+  @ViewChild(SearchComponent)
+  private searchWidget?: SearchComponent;
 
   // ---------------------------------------------------------------------------
   // Dependencies
@@ -529,7 +529,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
   openSearch(): void {
     this.search.show();
-    queueMicrotask(() => this.manuscriptSearchWidget?.focusInput());
+    queueMicrotask(() => this.searchWidget?.focusInput());
   }
 
   closeSearch(): void {

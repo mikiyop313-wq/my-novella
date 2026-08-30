@@ -8,17 +8,15 @@ import type {
   SceneDto,
   TiptapNode,
 } from '../../../../../../shared/models/manuscript.model';
+import {
+  findTextMatches,
+  type TextSearchOptions,
+} from '../../../../shared/utils/text-search.utils';
 import { isHeaderNodeType } from '../content/manuscript-node-types';
 
 const SEARCHABLE_TEXT_BLOCK_TYPES = new Set(['paragraph', 'heading', 'codeBlock']);
 const EXCLUDED_PROSE_NODE_TYPES = new Set(['aiPrompt', 'aiGeneratedBlock', 'sceneSkeleton']);
-const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
-
-export interface ManuscriptSearchOptions {
-  query: string;
-  matchCase: boolean;
-  wholeWord: boolean;
-}
+export type ManuscriptSearchOptions = TextSearchOptions;
 
 export interface ManuscriptSearchMatch {
   sceneId: string;
@@ -242,45 +240,4 @@ function documentPositionAtOffset(
 ): number | null {
   const segment = segments.find(candidate => offset >= candidate.textFrom && offset < candidate.textTo);
   return segment ? segment.documentFrom + offset - segment.textFrom : null;
-}
-
-function findTextMatches(
-  text: string,
-  options: ManuscriptSearchOptions,
-): Array<{ from: number; to: number }> {
-  if (!text || !options.query) return [];
-
-  const flags = options.matchCase ? 'gu' : 'giu';
-  const expression = new RegExp(escapeRegExp(options.query), flags);
-  const matches: Array<{ from: number; to: number }> = [];
-  let match = expression.exec(text);
-
-  while (match) {
-    const from = match.index;
-    const to = from + match[0].length;
-    if (!options.wholeWord || hasWholeWordBoundaries(text, from, to)) {
-      matches.push({ from, to });
-    }
-    match = expression.exec(text);
-  }
-
-  return matches;
-}
-
-function hasWholeWordBoundaries(text: string, from: number, to: number): boolean {
-  const before = codePointBefore(text, from);
-  const after = codePointAt(text, to);
-  return (!before || !WORD_CHARACTER.test(before)) && (!after || !WORD_CHARACTER.test(after));
-}
-
-function codePointBefore(text: string, offset: number): string {
-  return Array.from(text.slice(0, offset)).at(-1) ?? '';
-}
-
-function codePointAt(text: string, offset: number): string {
-  return Array.from(text.slice(offset))[0] ?? '';
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

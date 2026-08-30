@@ -1,4 +1,15 @@
-import { Component, OnDestroy, OnInit, computed, inject, input, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  computed,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 
 import {
   BUILT_IN_SYSTEM_PROMPT_PRESETS,
@@ -19,8 +30,13 @@ import {
   AutocompleteDropdownComponent,
   type DropdownOption,
 } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import { SearchComponent } from '../../../../shared/components/search/search.component';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
+import {
+  findTextMatches,
+  type TextSearchMatch,
+} from '../../../../shared/utils/text-search.utils';
 import { SystemPromptService } from '../../services/system-prompt.service';
 import { AiStore } from '../../../../core/store/ai.store';
 import { buildModelDropdownSections } from '../../../manuscript/components/ai-prompt/ai-prompt-dropdown-options';
@@ -41,6 +57,12 @@ type NumericPresetField = 'temperature' | 'topP' | 'presencePenalty' | 'frequenc
 interface SystemPromptCategoryDefinition {
   id: SystemPromptCategory;
   label: string;
+}
+
+interface PromptSearchHighlightSegment {
+  text: string;
+  isMatch: boolean;
+  isActive: boolean;
 }
 
 const SYSTEM_PROMPT_CATEGORY_LABELS: Record<SystemPromptCategory, string> = {
@@ -67,11 +89,15 @@ const AUTOSAVE_DELAY_MS = 500;
 
 @Component({
   selector: 'app-system-prompt-settings',
-  imports: [AutocompleteDropdownComponent],
+  imports: [AutocompleteDropdownComponent, SearchComponent],
   templateUrl: './system-prompt-settings.component.html',
   styleUrl: './system-prompt-settings.component.scss',
 })
 export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
+  @ViewChild(SearchComponent) private searchWidget?: SearchComponent;
+  @ViewChild('systemPromptTextarea') private systemPromptTextarea?: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('systemPromptHighlight') private systemPromptHighlight?: ElementRef<HTMLDivElement>;
+
   readonly bookId = input<string>();
   readonly globalOnly = input(false);
 
@@ -107,6 +133,11 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly deletingPresetId = signal<string | null>(null);
   readonly pendingSaveIds = signal<ReadonlySet<string>>(new Set());
   readonly savingPresetIds = signal<ReadonlySet<string>>(new Set());
+  readonly searchOpen = signal(false);
+  readonly searchQuery = signal('');
+  readonly searchMatchCase = signal(false);
+  readonly searchWholeWord = signal(false);
+  readonly activeSearchMatchIndex = signal(-1);
   readonly filteredPresets = computed(() =>
     this.presets().filter(
       (preset) =>
@@ -124,6 +155,53 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly selectedPreset = computed(() =>
     this.filteredPresets().find((preset) => preset.id === this.selectedPresetId()),
   );
+  readonly searchMatches = computed<readonly TextSearchMatch[]>(() =>
+    findTextMatches(this.selectedPreset()?.systemPrompt ?? '', {
+      query: this.searchQuery(),
+      matchCase: this.searchMatchCase(),
+      wholeWord: this.searchWholeWord(),
+    }),
+  );
+  readonly currentSearchMatch = computed(() => {
+    const index = this.activeSearchMatchIndex();
+    return index >= 0 && index < this.searchMatches().length ? index + 1 : 0;
+  });
+  readonly searchHighlightSegments = computed<readonly PromptSearchHighlightSegment[]>(() => {
+    const prompt = this.selectedPreset()?.systemPrompt ?? '';
+    const matches = this.searchOpen() ? this.searchMatches() : [];
+    if (matches.length === 0) return [];
+
+    const activeIndex = this.activeSearchMatchIndex();
+    const segments: PromptSearchHighlightSegment[] = [];
+    let offset = 0;
+
+    matches.forEach((match, index) => {
+      if (match.from > offset) {
+        segments.push({
+          text: prompt.slice(offset, match.from),
+          isMatch: false,
+          isActive: false,
+        });
+      }
+
+      segments.push({
+        text: prompt.slice(match.from, match.to),
+        isMatch: true,
+        isActive: index === activeIndex,
+      });
+      offset = match.to;
+    });
+
+    if (offset < prompt.length) {
+      segments.push({
+        text: prompt.slice(offset),
+        isMatch: false,
+        isActive: false,
+      });
+    }
+
+    return segments;
+  });
 
   ngOnInit(): void {
     void this.aiStore.ensureModelsLoaded();
@@ -178,7 +256,77 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   selectPreset(id: string): void {
     if (this.filteredPresets().some((preset) => preset.id === id)) {
       this.selectedPresetId.set(id);
+      this.refreshSearchForSelectedPreset();
     }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  handleSearchShortcut(event: KeyboardEvent): void {
+    if (
+      event.key.toLocaleLowerCase() !== 'f' ||
+      (!event.ctrlKey && !event.metaKey) ||
+      event.altKey ||
+      !this.selectedPreset() ||
+      !this.systemPromptTextarea
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.searchOpen()) this.closeSearch();
+    else this.openSearch();
+  }
+
+  openSearch(): void {
+    if (!this.selectedPreset() || !this.systemPromptTextarea) return;
+
+    this.searchOpen.set(true);
+    this.refreshSearch({ resetActiveMatch: false, selectActiveMatch: false });
+    queueMicrotask(() => this.searchWidget?.focusInput());
+  }
+
+  closeSearch(): void {
+    this.searchOpen.set(false);
+    this.searchQuery.set('');
+    this.searchMatchCase.set(false);
+    this.searchWholeWord.set(false);
+    this.activeSearchMatchIndex.set(-1);
+    queueMicrotask(() => this.systemPromptTextarea?.nativeElement.focus());
+  }
+
+  updateSearchQuery(query: string): void {
+    this.searchQuery.set(query);
+    this.refreshSearch({ resetActiveMatch: true, selectActiveMatch: true });
+  }
+
+  updateSearchMatchCase(matchCase: boolean): void {
+    this.searchMatchCase.set(matchCase);
+    this.refreshSearch({ resetActiveMatch: true, selectActiveMatch: true });
+  }
+
+  updateSearchWholeWord(wholeWord: boolean): void {
+    this.searchWholeWord.set(wholeWord);
+    this.refreshSearch({ resetActiveMatch: true, selectActiveMatch: true });
+  }
+
+  selectPreviousSearchMatch(): void {
+    this.selectSearchMatch(-1);
+  }
+
+  selectNextSearchMatch(): void {
+    this.selectSearchMatch(1);
+  }
+
+  syncPromptSearchHighlight(event?: Event): void {
+    const textarea = event?.target instanceof HTMLTextAreaElement
+      ? event.target
+      : this.systemPromptTextarea?.nativeElement;
+    const highlight = this.systemPromptHighlight?.nativeElement;
+    if (!textarea || !highlight) return;
+
+    highlight.scrollTop = textarea.scrollTop;
+    highlight.scrollLeft = textarea.scrollLeft;
   }
 
   async useSelectedPreset(): Promise<void> {
@@ -270,6 +418,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       this.presets.update((presets) => [...presets, created]);
       if (this.selectedScope() === scope && this.selectedCategory() === category) {
         this.selectedPresetId.set(created.id);
+        this.refreshSearchForSelectedPreset();
       }
     } catch (error) {
       this.showError(error, 'Unable to create this preset.', 'Preset creation failed');
@@ -311,6 +460,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       this.presets.update((presets) => [...presets, created]);
       if (this.selectedScope() === scope && this.selectedCategory() === selected.category) {
         this.selectedPresetId.set(created.id);
+        this.refreshSearchForSelectedPreset();
       }
     } catch (error) {
       this.showError(error, 'Unable to clone this preset.', 'Preset cloning failed');
@@ -353,6 +503,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       this.confirmedPresets.delete(selected.id);
       this.presets.set(remainingPresets);
       this.selectedPresetId.set(nextSelection?.id ?? '');
+      this.refreshSearchForSelectedPreset();
     } catch (error) {
       this.showError(error, 'Unable to delete this preset.', 'Preset deletion failed');
       this.deletingPresetId.set(null);
@@ -398,6 +549,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
 
   updateSystemPrompt(event: Event): void {
     this.updateSelectedPreset({ systemPrompt: this.inputValue(event) });
+    this.refreshSearch({ resetActiveMatch: false, selectActiveMatch: false });
   }
 
   updateNumericField(field: NumericPresetField, event: Event): void {
@@ -516,6 +668,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     this.presets.update((presets) =>
       presets.map((preset) => (preset.id === replacement.id ? replacement : preset)),
     );
+    if (replacement.id === this.selectedPresetId()) {
+      this.refreshSearch({ resetActiveMatch: false, selectActiveMatch: false });
+    }
   }
 
   private updateIdSet(
@@ -537,7 +692,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     );
     if (!selectedExists) {
       this.selectDefaultForCurrentView();
+      return;
     }
+    this.refreshSearchForSelectedPreset();
   }
 
   private selectDefaultForCurrentView(): void {
@@ -547,6 +704,67 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
         ? visiblePresets.find((preset) => preset.id === defaultPresetIdFor(this.selectedCategory()))
         : undefined;
     this.selectedPresetId.set(defaultPreset?.id ?? visiblePresets[0]?.id ?? '');
+    this.refreshSearchForSelectedPreset();
+  }
+
+  private refreshSearchForSelectedPreset(): void {
+    if (!this.searchOpen()) return;
+    if (!this.selectedPreset()) {
+      this.closeSearch();
+      return;
+    }
+
+    this.refreshSearch({ resetActiveMatch: true, selectActiveMatch: true });
+  }
+
+  private refreshSearch({
+    resetActiveMatch,
+    selectActiveMatch,
+  }: {
+    resetActiveMatch: boolean;
+    selectActiveMatch: boolean;
+  }): void {
+    if (!this.searchOpen()) return;
+
+    const matches = this.searchMatches();
+    const currentIndex = this.activeSearchMatchIndex();
+    const nextIndex = matches.length === 0
+      ? -1
+      : resetActiveMatch || currentIndex < 0 || currentIndex >= matches.length
+        ? 0
+        : currentIndex;
+    this.activeSearchMatchIndex.set(nextIndex);
+
+    if (selectActiveMatch && nextIndex >= 0) this.selectActiveSearchMatch();
+  }
+
+  private selectSearchMatch(direction: -1 | 1): void {
+    const matches = this.searchMatches();
+    if (matches.length === 0) {
+      this.activeSearchMatchIndex.set(-1);
+      return;
+    }
+
+    const currentIndex = this.activeSearchMatchIndex();
+    const nextIndex = currentIndex < 0
+      ? 0
+      : (currentIndex + direction + matches.length) % matches.length;
+    this.activeSearchMatchIndex.set(nextIndex);
+    this.selectActiveSearchMatch();
+  }
+
+  private selectActiveSearchMatch(): void {
+    queueMicrotask(() => {
+      const textarea = this.systemPromptTextarea?.nativeElement;
+      const match = this.searchMatches()[this.activeSearchMatchIndex()];
+      if (!textarea || !match) return;
+
+      const restoreSearchFocus = !!document.activeElement?.closest('app-search');
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(match.from, match.to);
+      this.syncPromptSearchHighlight();
+      if (restoreSearchFocus) this.searchWidget?.focusInput({ select: false });
+    });
   }
 
   private inputValue(event: Event): string {

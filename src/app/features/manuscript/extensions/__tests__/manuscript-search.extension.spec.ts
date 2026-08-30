@@ -27,10 +27,10 @@ describe('ManuscriptSearchExtension', () => {
 
     setManuscriptSearchDecorations({ editor, matches, activeMatch: matches[1] });
 
-    expect(editor.view.dom.querySelectorAll('.manuscript-search-match')).toHaveLength(2);
-    expect(editor.view.dom.querySelectorAll('.manuscript-search-match-active')).toHaveLength(1);
+    expect(editor.view.dom.querySelectorAll('.search-match')).toHaveLength(2);
+    expect(editor.view.dom.querySelectorAll('.search-match-active')).toHaveLength(1);
 
     clearManuscriptSearchDecorations(editor);
-    expect(editor.view.dom.querySelectorAll('.manuscript-search-match')).toHaveLength(0);
+    expect(editor.view.dom.querySelectorAll('.search-match')).toHaveLength(0);
   });
 });
