@@ -100,9 +100,11 @@
       <div class="footer-right">
         <app-ai-prompt-settings [wordCount]="wordCount()" [pov]="pov()" [povCharacter]="povCharacter()"
           [vectorSearch]="vectorSearch()" [selectedModel]="selectedModel()" [reasoningMode]="reasoningMode()"
+          [reasoningEffort]="reasoningEffort()"
           (wordCountChange)="onWordCountChange($event)" (povChange)="onPovChange($event)"
           (povCharacterChange)="onPovCharacterChange($event)" (vectorSearchChange)="onVectorSearchChange($event)"
-          (reasoningModeChange)="onReasoningModeChange($event)" (reset)="onSettingsReset()">
+          (reasoningModeChange)="onReasoningModeChange($event)"
+          (reasoningEffortChange)="onReasoningEffortChange($event)" (reset)="onSettingsReset()">
         </app-ai-prompt-settings>
       </div>
     </div>

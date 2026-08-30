@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
+import type { AiReasoningEffort } from '../../../../../../shared/models/ai.model';
 import { AiStore } from '../../../../core/store/ai.store';
 import { isVectorSearchSetting } from '../../../../shared/models/vector-search.model';
 import { ToastService } from '../../../../shared/services/toast.service';
@@ -45,6 +46,7 @@ export interface PreparedManuscriptAiRequest {
   promptText: string;
   provider: string;
   reasoningMode: boolean;
+  reasoningEffort: AiReasoningEffort;
 }
 
 export interface ManuscriptAiModificationText {
@@ -216,6 +218,7 @@ export class ManuscriptAiRequestService {
       promptText,
       provider,
       reasoningMode: request.promptAttrs['reasoningMode'] === true,
+      reasoningEffort: this.readReasoningEffort(request.promptAttrs['reasoningEffort']),
     };
   }
 
@@ -242,6 +245,10 @@ export class ManuscriptAiRequestService {
 
   private readNumber(value: unknown, defaultValue: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : defaultValue;
+  }
+
+  private readReasoningEffort(value: unknown): AiReasoningEffort {
+    return value === 'low' || value === 'high' ? value : 'medium';
   }
 
   private readPointOfView(value: unknown): ManuscriptAiPointOfViewSetting {

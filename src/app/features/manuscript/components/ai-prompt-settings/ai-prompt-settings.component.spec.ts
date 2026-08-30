@@ -17,11 +17,16 @@ describe('AiPromptSettingsComponent', () => {
     id: string;
     settings: { vectorSearchEnabled?: boolean };
   }>>;
+  let models: WritableSignal<Array<{
+    id: string;
+    supportsReasoning?: boolean;
+  }>>;
   let getEntries: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     bookId = signal<string | null>('book-1');
     books = signal([]);
+    models = signal([]);
     getEntries = vi.fn();
 
     await TestBed.configureTestingModule({
@@ -35,7 +40,7 @@ describe('AiPromptSettingsComponent', () => {
             loadBooks: vi.fn(),
           },
         },
-        { provide: AiStore, useValue: { models: signal([]) } },
+        { provide: AiStore, useValue: { models } },
         { provide: CodexService, useValue: { getEntries } },
       ],
     }).compileComponents();
@@ -135,6 +140,93 @@ describe('AiPromptSettingsComponent', () => {
 
     expect(emitted).toHaveBeenNthCalledWith(1, 'enabled');
     expect(emitted).toHaveBeenNthCalledWith(2, 'disabled');
+  });
+
+  it('keeps the effort chevron visible and enables it with compact level text', () => {
+    models.set([{ id: 'reasoning-model', supportsReasoning: true }]);
+    fixture.componentRef.setInput('selectedModel', 'reasoning-model');
+    fixture.componentRef.setInput('reasoningMode', false);
+    fixture.componentRef.setInput('reasoningEffort', 'medium');
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.settings-btn') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const trigger = document.querySelector(
+      '.reasoning-effort-menu .dropdown-trigger',
+    ) as HTMLButtonElement;
+    expect(trigger).not.toBeNull();
+    expect(trigger.disabled).toBe(true);
+    expect(document.querySelector('.reasoning-status')?.textContent?.trim()).toBe('Off');
+
+    fixture.componentRef.setInput('reasoningMode', true);
+    fixture.detectChanges();
+
+    expect(trigger.disabled).toBe(false);
+    expect(document.querySelector('.reasoning-status')?.textContent?.trim()).toBe('Medium');
+  });
+
+  it('opens Low, Medium, and High from the left chevron without search', async () => {
+    models.set([{ id: 'reasoning-model', supportsReasoning: true }]);
+    fixture.componentRef.setInput('selectedModel', 'reasoning-model');
+    fixture.componentRef.setInput('reasoningMode', true);
+    fixture.componentRef.setInput('reasoningEffort', 'medium');
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.settings-btn') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    (document.querySelector(
+      '.reasoning-effort-menu .dropdown-trigger',
+    ) as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const rows = [...document.querySelectorAll(
+      '.prompt-reasoning-effort-dropdown .menu-row',
+    )] as HTMLElement[];
+    expect(rows.map(row => row.textContent?.trim())).toEqual(['Low', 'Medium', 'High']);
+    expect(document.querySelector('.prompt-reasoning-effort-dropdown .dropdown-search')).toBeNull();
+    expect(document.querySelector('.reasoning-chevron.is-open')).not.toBeNull();
+
+    const emitted = vi.fn();
+    component.reasoningEffortChange.subscribe(emitted);
+    rows[2].click();
+    expect(emitted).toHaveBeenCalledWith('high');
+
+    fixture.componentRef.setInput('reasoningEffort', 'high');
+    fixture.detectChanges();
+    expect(document.querySelector('.reasoning-status')?.textContent?.trim()).toBe('High');
+  });
+
+  it.each(['low', 'medium', 'high'] as const)(
+    'emits the selected %s reasoning effort',
+    (effort) => {
+      const emitted = vi.fn();
+      component.reasoningEffortChange.subscribe(emitted);
+
+      component.onReasoningEffortChange(effort);
+
+      expect(emitted).toHaveBeenCalledWith(effort);
+    },
+  );
+
+  it('turns reasoning off for an unsupported model without changing its effort', () => {
+    const modeChanged = vi.fn();
+    component.reasoningModeChange.subscribe(modeChanged);
+    fixture.componentRef.setInput('reasoningMode', true);
+    fixture.componentRef.setInput('reasoningEffort', 'high');
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.settings-btn') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(modeChanged).toHaveBeenCalledWith(false);
+    expect(component.reasoningEffort()).toBe('high');
+    expect((document.querySelector(
+      '.reasoning-effort-menu .dropdown-trigger',
+    ) as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector(
+      '.reasoning-switch input',
+    ) as HTMLInputElement).disabled).toBe(true);
+    expect(document.querySelector('.reasoning-status')?.textContent?.trim()).toBe('Not supported');
   });
 
   it('does not query Codex without a current book', async () => {

@@ -294,6 +294,7 @@ export class AiGeneratedBlockComponent extends AngularNodeViewComponent {
         provider: prepared.provider,
         modelId: prepared.modelId,
         reasoningMode: prepared.reasoningMode,
+        reasoningEffort: prepared.reasoningEffort,
         bookId: prepared.bookId,
         promptText: prepared.promptText,
         sceneId,

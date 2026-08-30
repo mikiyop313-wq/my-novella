@@ -56,6 +56,14 @@ export const AiGeneratedBlockExtension = (injector: Injector) => {
           default: false,
           parseHTML: element => element.getAttribute('data-reasoning-mode') === 'true',
           renderHTML: attributes => attributes['reasoningMode'] ? { 'data-reasoning-mode': 'true' } : {},
+        },
+        reasoningEffort: {
+          default: 'medium',
+          parseHTML: element => {
+            const effort = element.getAttribute('data-reasoning-effort');
+            return effort === 'low' || effort === 'high' ? effort : 'medium';
+          },
+          renderHTML: attributes => ({ 'data-reasoning-effort': attributes['reasoningEffort'] }),
         }
       };
     },

@@ -1,7 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 
-import { AutocompleteDropdownComponent, DropdownOption } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import type { AiReasoningEffort } from '../../../../../../shared/models/ai.model';
+import {
+  AutocompleteDropdownComponent,
+  AutocompleteDropdownTriggerDirective,
+  DropdownOption,
+} from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { InfoIconComponent } from '../../../../shared/components/info-icon/info-icon.component';
 import { INFO_MESSAGES } from '../../../../shared/constants/info-messages';
 import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
@@ -13,10 +18,22 @@ import { WorkspaceStore } from '../../../workspace/workspace.store';
 
 type CharacterLoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
+const REASONING_EFFORT_OPTIONS: readonly DropdownOption<AiReasoningEffort>[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
 @Component({
   selector: 'app-ai-prompt-settings',
   standalone: true,
-  imports: [CommonModule, OverlayModalDirective, AutocompleteDropdownComponent, InfoIconComponent],
+  imports: [
+    CommonModule,
+    OverlayModalDirective,
+    AutocompleteDropdownComponent,
+    AutocompleteDropdownTriggerDirective,
+    InfoIconComponent,
+  ],
   templateUrl: './ai-prompt-settings.component.html',
   styleUrl: './ai-prompt-settings.component.scss'
 })
@@ -32,12 +49,14 @@ export class AiPromptSettingsComponent {
   vectorSearch = input<VectorSearchSetting>('global');
   selectedModel = input<string | null>(null);
   reasoningMode = input<boolean>(false);
+  reasoningEffort = input<AiReasoningEffort>('medium');
 
   wordCountChange = output<number>();
   povChange = output<string>();
   povCharacterChange = output<string | null>();
   vectorSearchChange = output<VectorSearchSetting>();
   reasoningModeChange = output<boolean>();
+  reasoningEffortChange = output<AiReasoningEffort>();
   reset = output<void>();
 
 
@@ -128,6 +147,17 @@ export class AiPromptSettingsComponent {
   });
 
   readonly INFO = INFO_MESSAGES.AI_PROMPT;
+  readonly reasoningEffortOptions = REASONING_EFFORT_OPTIONS;
+  readonly reasoningEffortLabel = computed(() => {
+    switch (this.reasoningEffort()) {
+      case 'low':
+        return 'Low';
+      case 'high':
+        return 'High';
+      default:
+        return 'Medium';
+    }
+  });
   private characterLoadRequestId = 0;
 
 
@@ -238,5 +268,9 @@ export class AiPromptSettingsComponent {
   onReasoningModeToggleChange(event: Event): void {
     const target = event.target as HTMLInputElement;
     this.reasoningModeChange.emit(target.checked);
+  }
+
+  onReasoningEffortChange(value: AiReasoningEffort): void {
+    this.reasoningEffortChange.emit(value);
   }
 }

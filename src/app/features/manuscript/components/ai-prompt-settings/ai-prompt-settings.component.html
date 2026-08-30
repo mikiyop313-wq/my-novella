@@ -115,22 +115,38 @@
           </span>
 
           <div class="vector-controls">
-            <!-- Main Toggle Switch -->
-            <div class="toggle-control">
-              <label class="premium-switch" [class.disabled]="!supportsReasoning()">
-                <input type="checkbox" [checked]="supportsReasoning() && reasoningMode()"
-                  [disabled]="!supportsReasoning()" (change)="onReasoningModeToggleChange($event)" />
-                <span class="switch-slider"></span>
-              </label>
-              <span class="switch-status" [class.inherited]="!supportsReasoning()">
-                @if (!supportsReasoning()) {
-                Not Supported
-                } @else if (reasoningMode()) {
-                Enabled
-                } @else {
-                Disabled
-                }
-              </span>
+            <div class="reasoning-control-row" [class.is-disabled]="!supportsReasoning()">
+              <div class="reasoning-toggle-control">
+                <label class="premium-switch reasoning-switch" [class.disabled]="!supportsReasoning()">
+                  <input type="checkbox" [checked]="supportsReasoning() && reasoningMode()"
+                    [disabled]="!supportsReasoning()" (change)="onReasoningModeToggleChange($event)" />
+                  <span class="switch-slider"></span>
+                </label>
+                <span class="switch-status reasoning-status" [class.inherited]="!supportsReasoning()">
+                  @if (!supportsReasoning()) {
+                  Not supported
+                  } @else if (reasoningMode()) {
+                  {{ reasoningEffortLabel() }}
+                  } @else {
+                  Off
+                  }
+                </span>
+              </div>
+
+              <app-autocomplete-dropdown class="reasoning-effort-menu" [options]="reasoningEffortOptions"
+                [selectedValue]="reasoningEffort()" [showSearchBar]="false"
+                [disabled]="!supportsReasoning() || !reasoningMode()" placeholder="Thinking effort"
+                triggerVariant="icon" triggerAriaLabel="Choose thinking effort"
+                customDropdownClass="prompt-reasoning-effort-dropdown"
+                (selectionChange)="onReasoningEffortChange($any($event))">
+                <ng-template autocompleteDropdownTrigger let-menuOpen>
+                  <svg class="reasoning-chevron" [class.is-open]="menuOpen" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </ng-template>
+              </app-autocomplete-dropdown>
             </div>
 
             @if (!supportsReasoning()) {
@@ -152,7 +168,8 @@
     <!-- Footer Actions -->
     <div class="modal-footer">
       <button class="btn-reset" (click)="onReset()"
-        [disabled]="wordCount() === 500 && pov() === 'global' && !povCharacter() && vectorSearch() === 'global'">
+        [disabled]="wordCount() === 500 && pov() === 'global' && !povCharacter()
+          && vectorSearch() === 'global' && !reasoningMode() && reasoningEffort() === 'medium'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"
           class="reset-icon">
           <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>

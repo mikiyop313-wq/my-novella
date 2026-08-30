@@ -88,6 +88,7 @@ describe('ManuscriptAiRequestService', () => {
         promptText: 'Continue the scene.',
         selectedModel: 'anthropic/current-model',
         reasoningMode: true,
+        reasoningEffort: 'high',
         wordCount: 900,
         pov: 'first',
         povCharacter: 'codex-1',
@@ -120,6 +121,7 @@ describe('ManuscriptAiRequestService', () => {
       promptText: 'Continue the scene.',
       provider: 'anthropic',
       reasoningMode: true,
+      reasoningEffort: 'high',
     }));
     expect(prepared?.aiPrompt.messages).toEqual([
       {
@@ -132,6 +134,31 @@ describe('ManuscriptAiRequestService', () => {
       },
       { role: 'user', content: 'Continue the scene.' },
     ]);
+  });
+
+  it('uses medium reasoning effort for a legacy enabled prompt', async () => {
+    const service = TestBed.inject(ManuscriptAiRequestService);
+
+    const prepared = await service.prepare({
+      editor: createEditorStub(),
+      promptPos: 12,
+      promptAttrs: {
+        id: 'prompt-1',
+        promptText: 'Continue the scene.',
+        selectedModel: 'anthropic/current-model',
+        reasoningMode: true,
+      },
+      contextPromptText: 'Continue the scene.',
+      requestMessages: [{
+        role: 'user',
+        parts: [{ type: 'text', content: 'Continue the scene.' }],
+      }],
+    });
+
+    expect(prepared).toEqual(expect.objectContaining({
+      reasoningMode: true,
+      reasoningEffort: 'medium',
+    }));
   });
 
   it('prepares modification messages in revision conversation order', async () => {
