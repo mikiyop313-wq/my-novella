@@ -704,9 +704,13 @@ button {
 
   mark {
     border-radius: 2px;
-    background: var(--color-search-match-active-bg);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-text-primary) 32%, transparent);
+    background: var(--color-search-match-bg);
     color: transparent;
+
+    &.is-active {
+      background: var(--color-search-match-active-bg);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-text-primary) 32%, transparent);
+    }
   }
 }
 

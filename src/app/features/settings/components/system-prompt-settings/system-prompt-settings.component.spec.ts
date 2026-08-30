@@ -344,10 +344,12 @@ describe('SystemPromptSettingsComponent', () => {
     expect(textarea.selectionStart).toBe(0);
     expect(textarea.selectionEnd).toBe(5);
     expect(document.activeElement).toBe(searchInput);
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('.prompt-search-highlight mark')
-        ?.textContent,
-    ).toBe('Write');
+    const highlight = (fixture.nativeElement as HTMLElement).querySelector(
+      '.prompt-search-highlight',
+    );
+    expect(highlight?.textContent).toBe('Write write writer WRITE.');
+    expect(highlight?.querySelectorAll('mark')).toHaveLength(4);
+    expect(highlight?.querySelector('mark.is-active')?.textContent).toBe('Write');
 
     component.selectNextSearchMatch();
     fixture.detectChanges();
@@ -356,8 +358,9 @@ describe('SystemPromptSettingsComponent', () => {
     expect(textarea.selectionStart).toBe(6);
     expect(textarea.selectionEnd).toBe(11);
     expect(
-      (fixture.nativeElement as HTMLElement).querySelector('.prompt-search-highlight mark')
-        ?.textContent,
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '.prompt-search-highlight mark.is-active',
+      )?.textContent,
     ).toBe('write');
 
     component.selectPreviousSearchMatch();

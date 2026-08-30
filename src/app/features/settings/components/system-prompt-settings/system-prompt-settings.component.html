@@ -351,18 +351,26 @@
                 ></app-search>
               }
               <div class="prompt-textarea-shell">
-                @if (activeSearchHighlight(); as highlight) {
+                @if (searchHighlightSegments().length > 0) {
                   <div
                     #systemPromptHighlight
                     class="prompt-search-highlight"
                     aria-hidden="true"
-                  ><span>{{ highlight.before }}</span><mark>{{ highlight.match }}</mark><span>{{ highlight.after }}</span></div>
+                  >
+                    @for (segment of searchHighlightSegments(); track $index) {
+                      @if (segment.isMatch) {
+                        <mark [class.is-active]="segment.isActive">{{ segment.text }}</mark>
+                      } @else {
+                        <span>{{ segment.text }}</span>
+                      }
+                    }
+                  </div>
                 }
                 <textarea
                   #systemPromptTextarea
                   id="system-prompt"
                   class="prompt-textarea"
-                  [class.has-search-highlight]="activeSearchHighlight() !== null"
+                  [class.has-search-highlight]="searchHighlightSegments().length > 0"
                   rows="11"
                   [value]="preset.systemPrompt"
                   [readOnly]="preset.isBuiltIn"

@@ -59,6 +59,12 @@ interface SystemPromptCategoryDefinition {
   label: string;
 }
 
+interface PromptSearchHighlightSegment {
+  text: string;
+  isMatch: boolean;
+  isActive: boolean;
+}
+
 const SYSTEM_PROMPT_CATEGORY_LABELS: Record<SystemPromptCategory, string> = {
   chat: 'Chat',
   sceneBeat: 'Prose Generation',
@@ -160,18 +166,41 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     const index = this.activeSearchMatchIndex();
     return index >= 0 && index < this.searchMatches().length ? index + 1 : 0;
   });
-  readonly activeSearchHighlight = computed(() => {
-    if (!this.searchOpen()) return null;
-
+  readonly searchHighlightSegments = computed<readonly PromptSearchHighlightSegment[]>(() => {
     const prompt = this.selectedPreset()?.systemPrompt ?? '';
-    const match = this.searchMatches()[this.activeSearchMatchIndex()];
-    if (!match) return null;
+    const matches = this.searchOpen() ? this.searchMatches() : [];
+    if (matches.length === 0) return [];
 
-    return {
-      before: prompt.slice(0, match.from),
-      match: prompt.slice(match.from, match.to),
-      after: prompt.slice(match.to),
-    };
+    const activeIndex = this.activeSearchMatchIndex();
+    const segments: PromptSearchHighlightSegment[] = [];
+    let offset = 0;
+
+    matches.forEach((match, index) => {
+      if (match.from > offset) {
+        segments.push({
+          text: prompt.slice(offset, match.from),
+          isMatch: false,
+          isActive: false,
+        });
+      }
+
+      segments.push({
+        text: prompt.slice(match.from, match.to),
+        isMatch: true,
+        isActive: index === activeIndex,
+      });
+      offset = match.to;
+    });
+
+    if (offset < prompt.length) {
+      segments.push({
+        text: prompt.slice(offset),
+        isMatch: false,
+        isActive: false,
+      });
+    }
+
+    return segments;
   });
 
   ngOnInit(): void {
