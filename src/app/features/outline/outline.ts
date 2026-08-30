@@ -17,6 +17,7 @@ import {
   UpdateStructurePositionsPayload,
 } from '../../../../shared/models/manuscript.model';
 import type { SystemPromptCategory } from '../../../../shared/models/system-prompt.model';
+import type { SaveManuscriptExportResult } from '../../../../shared/models/manuscript-export.model';
 
 import { ToastService } from '../../shared/services/toast.service';
 import { AiGenerationSessionService } from '../../core/services/ai-generation-session.service';
@@ -367,6 +368,23 @@ export class Outline implements OnInit {
 
   onPngExported(): void {
     this.toastService.success('The PNG manuscript image was exported.');
+  }
+
+  async exportDocx(mode: ManuscriptMode, id: string): Promise<void> {
+    try {
+      const result = await this.electronService.invoke('manuscript-export:save', {
+        mode,
+        id,
+        format: 'docx',
+      }) as SaveManuscriptExportResult;
+
+      if (result.status === 'saved') {
+        this.toastService.success('The DOCX manuscript was exported.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export the DOCX manuscript.';
+      this.toastService.error(message, 'Outline');
+    }
   }
 
   // ---------------------------------------------------------------------------

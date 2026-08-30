@@ -276,31 +276,17 @@ describe('Outline', () => {
   });
 
   it.each([
-    ['act', '.act-header-right .btn-more', '.act-options-menu'],
-    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu'],
-    ['scene', '.scene-more', '.scene-options-menu'],
-  ])('shows export formats in the %s options menu without invoking DOCX from this scope', async (
-    _entityType,
+    ['act', '.act-header-right .btn-more', '.act-options-menu', 'act-1'],
+    ['chapter', '.chapter-row-right .btn-more', '.chapter-options-menu', 'chapter-1'],
+    ['scene', '.scene-more', '.scene-options-menu', 'scene-1'],
+  ] as const)('exports the selected %s as DOCX', async (
+    mode,
     triggerSelector,
     menuSelector,
+    itemId,
   ) => {
     showScene('Scene summary', 12);
-    const mutationMethods = [
-      store.createAct,
-      store.createChapter,
-      store.createScene,
-      store.updateAct,
-      store.updateChapter,
-      store.updateScene,
-      store.archiveAct,
-      store.archiveChapter,
-      store.archiveScene,
-      store.deleteAct,
-      store.deleteChapter,
-      store.deleteScene,
-      store.setContextInclusion,
-    ];
-    const mutationCallCounts = mutationMethods.map(method => method.mock.calls.length);
+    electronService.invoke.mockResolvedValueOnce({ status: 'saved', filePath: 'manuscript.docx' });
 
     (fixture.nativeElement.querySelector(triggerSelector) as HTMLButtonElement).click();
     await fixture.whenStable();
@@ -324,10 +310,30 @@ describe('Outline', () => {
 
     expect(document.querySelector('.export-options-menu')).toBeNull();
     expect(document.querySelector(menuSelector)).toBeNull();
-    expect(electronService.invoke).not.toHaveBeenCalled();
-    mutationMethods.forEach((method, index) => {
-      expect(method.mock.calls.length).toBe(mutationCallCounts[index]);
+    expect(electronService.invoke).toHaveBeenLastCalledWith('manuscript-export:save', {
+      mode,
+      id: itemId,
+      format: 'docx',
     });
+    expect(toastService.success).toHaveBeenCalledWith('The DOCX manuscript was exported.');
+  });
+
+  it('does not show export feedback when the DOCX save dialog is cancelled', async () => {
+    electronService.invoke.mockResolvedValueOnce({ status: 'cancelled' });
+
+    await component.exportDocx('chapter', 'chapter-1');
+
+    expect(toastService.success).not.toHaveBeenCalled();
+    expect(toastService.error).not.toHaveBeenCalled();
+  });
+
+  it('shows an Outline error when DOCX export fails', async () => {
+    electronService.invoke.mockRejectedValueOnce(new Error('DOCX generation failed.'));
+
+    await component.exportDocx('scene', 'scene-1');
+
+    expect(toastService.error).toHaveBeenCalledWith('DOCX generation failed.', 'Outline');
+    expect(toastService.success).not.toHaveBeenCalled();
   });
 
   it.each([
