@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
 import { ToastService } from '../../shared/services/toast.service';
 import type { BuiltAiPrompt } from '../../shared/utils/ai-prompt-builder';
-import type { AiStreamEvent } from '../../../../shared/models/ai.model';
+import type { AiReasoningEffort, AiStreamEvent } from '../../../../shared/models/ai.model';
 import { AIStateService } from './ai-state.service';
 import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 
@@ -16,6 +16,7 @@ export interface AiStreamRequest {
   provider?: string;
   modelId?: string;
   reasoningMode?: boolean;
+  reasoningEffort?: AiReasoningEffort;
   suppressErrorToasts?: boolean;
   onToken?: (token: string) => void;
   onReasoningUpdate?: (reasoningText: string) => void;
@@ -125,6 +126,9 @@ export class AiStreamService {
         model: provider,
         modelId,
         reasoningMode: request.reasoningMode,
+        ...(request.reasoningEffort !== undefined
+          ? { reasoningEffort: request.reasoningEffort }
+          : {}),
         suppressErrorToasts: request.suppressErrorToasts,
         systemPromptPreset: {
           category: request.aiPrompt.systemPromptCategory,

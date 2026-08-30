@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import type { Transaction } from '@tiptap/pm/state';
 import { AngularNodeViewComponent } from 'ngx-tiptap';
 
+import type { AiReasoningEffort } from '../../../../../../shared/models/ai.model';
 import { AiPromptSettingsComponent } from '../ai-prompt-settings/ai-prompt-settings.component';
 import { AiStreamEditorService } from '../../helpers/ai/ai-stream-editor.service';
 import { ManuscriptAiRequestService } from '../../helpers/ai/manuscript-ai-request.service';
@@ -48,6 +49,7 @@ interface PromptSettings {
   povCharacter: string | null;
   vectorSearch: VectorSearchSetting;
   reasoningMode: boolean;
+  reasoningEffort: AiReasoningEffort;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,7 +61,8 @@ const DEFAULT_PROMPT_SETTINGS: PromptSettings = {
   pov: 'global',
   povCharacter: null,
   vectorSearch: 'global',
-  reasoningMode: false
+  reasoningMode: false,
+  reasoningEffort: 'medium',
 };
 
 @Component({
@@ -121,6 +124,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
   povCharacter = signal<string | null>(DEFAULT_PROMPT_SETTINGS.povCharacter);
   vectorSearch = signal(DEFAULT_PROMPT_SETTINGS.vectorSearch);
   reasoningMode = signal(DEFAULT_PROMPT_SETTINGS.reasoningMode);
+  reasoningEffort = signal<AiReasoningEffort>(DEFAULT_PROMPT_SETTINGS.reasoningEffort);
 
   // ---------------------------------------------------------------------------
   //  Context Selection State
@@ -356,6 +360,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.setAttribute(this.reasoningMode, 'reasoningMode', value);
   }
 
+  onReasoningEffortChange(value: AiReasoningEffort): void {
+    this.setAttribute(this.reasoningEffort, 'reasoningEffort', value);
+  }
+
   onSettingsReset(): void {
     this.applySettings(DEFAULT_PROMPT_SETTINGS);
     this.updateAttributes()(DEFAULT_PROMPT_SETTINGS);
@@ -461,6 +469,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
         provider: prepared.provider,
         modelId: prepared.modelId,
         reasoningMode: prepared.reasoningMode,
+        reasoningEffort: prepared.reasoningEffort,
         bookId: prepared.bookId,
         responseId,
         sourcePromptId: blockId,
@@ -506,7 +515,10 @@ export class AiPromptComponent extends AngularNodeViewComponent {
       vectorSearch: isVectorSearchSetting(attrs['vectorSearch'])
         ? attrs['vectorSearch']
         : DEFAULT_PROMPT_SETTINGS.vectorSearch,
-      reasoningMode: attrs['reasoningMode'] || DEFAULT_PROMPT_SETTINGS.reasoningMode
+      reasoningMode: attrs['reasoningMode'] === true,
+      reasoningEffort: isAiReasoningEffort(attrs['reasoningEffort'])
+        ? attrs['reasoningEffort']
+        : DEFAULT_PROMPT_SETTINGS.reasoningEffort,
     });
   }
 
@@ -549,6 +561,7 @@ export class AiPromptComponent extends AngularNodeViewComponent {
     this.povCharacter.set(settings.povCharacter);
     this.vectorSearch.set(settings.vectorSearch);
     this.reasoningMode.set(settings.reasoningMode);
+    this.reasoningEffort.set(settings.reasoningEffort);
   }
 
   /** Sync a single local signal and its matching Tiptap node attribute. */
@@ -643,4 +656,8 @@ function isPointOfViewSetting(value: string): value is ManuscriptAiPointOfViewSe
     || value === 'second'
     || value === 'third_limited'
     || value === 'third_omni';
+}
+
+function isAiReasoningEffort(value: unknown): value is AiReasoningEffort {
+  return value === 'low' || value === 'medium' || value === 'high';
 }

@@ -19,11 +19,16 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MarkdownComponent } from 'ngx-markdown';
 
+import type { AiReasoningEffort } from '../../../../shared/models/ai.model';
 import type { BookDto } from '../../../../shared/models/book.model';
 import { type ChatMessageDetailDto, type ChatMessageRole } from '../../../../shared/models/chat.model';
 import { buildContextHighlightSegments } from '../../../../shared/utils/context-highlighter';
 import { AiStore } from '../../core/store/ai.store';
-import { AutocompleteDropdownComponent } from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
+import {
+  AutocompleteDropdownComponent,
+  AutocompleteDropdownTriggerDirective,
+  type DropdownOption,
+} from '../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { MarkdownEditorComponent } from '../../shared/components/markdown-editor/markdown-editor.component';
 import type { AiManuscriptContextRef } from '../../shared/models/ai-context.model';
 import {
@@ -66,6 +71,12 @@ import { ChatStore } from './store/chat.store';
 const NEW_CHAT_ROUTE_ID = 'new-chat';
 const CHAT_BOTTOM_THRESHOLD_PX = 32;
 const STREAMING_AUTO_SCROLL_FRAMES = 3;
+const THINKING_EFFORT_OPTIONS: readonly DropdownOption<AiReasoningEffort | null>[] = [
+  { value: null, label: 'Off' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
 
 @Component({
   selector: 'app-chat',
@@ -73,6 +84,7 @@ const STREAMING_AUTO_SCROLL_FRAMES = 3;
   imports: [
     ChatThreads,
     AutocompleteDropdownComponent,
+    AutocompleteDropdownTriggerDirective,
     CdkMenuModule,
     MarkdownComponent,
     MarkdownEditorComponent,
@@ -127,7 +139,8 @@ export class Chat implements OnInit, OnDestroy {
 
   readonly isChatOpenInDetachedWindow = signal(false);
   readonly selectedModelId = signal<string | null>(null);
-  readonly reasoningMode = signal(false);
+  readonly reasoningEffort = signal<AiReasoningEffort | null>(null);
+  readonly reasoningEffortOptions = THINKING_EFFORT_OPTIONS;
   readonly composerValue = signal('');
   readonly copiedMessageId = signal<string | null>(null);
   readonly expandedReasoningMessageIds = signal<ReadonlySet<string>>(new Set());
@@ -297,6 +310,7 @@ export class Chat implements OnInit, OnDestroy {
         && !this.aiStore.models().some((model) => model.id === selectedModelId)
       ) {
         this.selectedModelId.set(null);
+        this.reasoningEffort.set(null);
         this.editingMessageId = null;
       }
     });
@@ -386,7 +400,7 @@ export class Chat implements OnInit, OnDestroy {
     this.hasActiveConversation = true;
     this.selectedThreadId = null;
     this.selectedModelId.set(null);
-    this.reasoningMode.set(false);
+    this.reasoningEffort.set(null);
 
     if (!this.isDetachedMode) {
       await this.navigateToNewChat(replaceUrl);
@@ -605,14 +619,17 @@ export class Chat implements OnInit, OnDestroy {
       : this.isSendButtonDisabled();
   }
 
-  toggleReasoningMode(): void {
-    if (this.supportsReasoning()) {
-      this.reasoningMode.update((enabled) => !enabled);
-    }
+  selectReasoningEffort(effort: AiReasoningEffort | null): void {
+    if (effort !== null && !this.supportsReasoning()) return;
+
+    this.reasoningEffort.set(effort);
   }
 
   async onModelSelectionChange(modelId: string | null): Promise<void> {
     this.selectedModelId.set(modelId);
+    if (!this.supportsReasoning()) {
+      this.reasoningEffort.set(null);
+    }
     if (!modelId) {
       this.editingMessageId = null;
     }
@@ -890,7 +907,7 @@ export class Chat implements OnInit, OnDestroy {
       this.selectedThreadId = null;
       this.hasActiveConversation = true;
       this.selectedModelId.set(null);
-      this.reasoningMode.set(false);
+      this.reasoningEffort.set(null);
       return;
     }
 
@@ -934,7 +951,7 @@ export class Chat implements OnInit, OnDestroy {
       this.selectedThreadId = null;
       if (hadSavedThreadOpen) {
         this.selectedModelId.set(null);
-        this.reasoningMode.set(false);
+        this.reasoningEffort.set(null);
       }
       if (hadSavedThreadOpen || !this.chatStore.selectedThread()) {
         this.chatStore.closeThread();
@@ -949,7 +966,7 @@ export class Chat implements OnInit, OnDestroy {
         this.selectedThreadId = null;
         if (hadSavedThreadOpen) {
           this.selectedModelId.set(null);
-          this.reasoningMode.set(false);
+          this.reasoningEffort.set(null);
         }
         this.chatStore.closeThread();
         return;
@@ -965,7 +982,7 @@ export class Chat implements OnInit, OnDestroy {
       this.selectedThreadId = threadId;
       this.hasActiveConversation = true;
       this.selectedModelId.set(this.chatStore.selectedThread()?.lastModelId ?? null);
-      this.reasoningMode.set(false);
+      this.reasoningEffort.set(null);
       return;
     }
 
@@ -988,7 +1005,7 @@ export class Chat implements OnInit, OnDestroy {
     }
 
     this.selectedModelId.set(this.chatStore.selectedThread()?.lastModelId ?? null);
-    this.reasoningMode.set(false);
+    this.reasoningEffort.set(null);
     this.response.rehydrateThread(id);
   }
 
@@ -1067,7 +1084,7 @@ export class Chat implements OnInit, OnDestroy {
 
     return {
       selectedModelId: this.selectedModelId(),
-      reasoningMode: this.reasoningMode(),
+      reasoningEffort: this.reasoningEffort(),
       context: {
         includeBookMetadata: this.includeBookMetadata(),
         bookContext: this.contextBookMetadata() ?? undefined,

@@ -52,6 +52,7 @@ describe('AnthropicProvider', () => {
             modelId: 'claude-a',
             prompt: 'Write.',
             reasoningMode: true,
+            reasoningEffort: 'high',
             onToken,
             onReasoningToken,
         })).resolves.toEqual({
@@ -77,6 +78,7 @@ describe('AnthropicProvider', () => {
             stream: true,
             system: 'System one.\n\nSystem two.',
             thinking: { type: 'adaptive', display: 'summarized' },
+            output_config: { effort: 'high' },
         });
         expect(onReasoningToken).toHaveBeenCalledWith('Consider');
         expect(onToken).toHaveBeenCalledWith('Answer');

@@ -242,6 +242,18 @@ describe('ChatCompletionPayloadBuilderService', () => {
         expect(payload.top_p).toBeUndefined();
     });
 
+    it.each(['low', 'medium', 'high'] as const)(
+        'uses the selected %s reasoning effort',
+        async (reasoningEffort) => {
+            const payload = await service.buildChatCompletionPayload(makeRequest({
+                reasoningMode: true,
+                reasoningEffort,
+            }), 'fallback-model');
+
+            expect(payload.reasoning).toEqual({ enabled: true, effort: reasoningEffort });
+        },
+    );
+
     it('rejects requests without any non-empty non-system message', async () => {
         await expect(service.buildChatCompletionPayload(makeRequest({
             prompt: '   ',

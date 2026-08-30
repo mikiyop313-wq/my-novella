@@ -5,7 +5,7 @@
   }
 
   <div class="autocomplete-wrapper">
-    <button type="button" class="dropdown-trigger" [class.active]="isOpen()"
+    <button type="button" class="dropdown-trigger" [class.active]="isOpen()" [disabled]="disabled()"
       [class.add-trigger]="triggerVariant() === 'add'" [class.icon-trigger]="triggerVariant() === 'icon'"
       [attr.aria-label]="triggerAriaLabel()" [attr.aria-expanded]="isOpen()" [cdkMenuTriggerFor]="menu"
       (click)="onTriggerClick($event)" (cdkMenuOpened)="onMenuOpened()" (cdkMenuClosed)="onMenuClosed()">

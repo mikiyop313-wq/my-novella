@@ -336,6 +336,7 @@ export class AutocompleteDropdownComponent implements OnInit, OnChanges, OnDestr
   readonly options = input<readonly DropdownOption[]>([]);
   readonly sections = input<readonly DropdownSection[]>([]);
   readonly selectedValue = input<any | readonly any[]>(null);
+  readonly disabled = input(false);
   readonly multi = input(false);
   readonly allowCustom = input(false);
   readonly grouped = input(false);

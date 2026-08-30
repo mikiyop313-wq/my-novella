@@ -60,6 +60,7 @@ describe('AIStateService', () => {
         model: 'openrouter',
         modelId: 'model-1',
         reasoningMode: true,
+        reasoningEffort: 'high',
         systemPromptPreset: { category: 'chat', presetId: 'custom-chat' },
       }),
     ).resolves.toBe('Done');
@@ -70,6 +71,7 @@ describe('AIStateService', () => {
       modelId: 'model-1',
       prompt: 'Continue',
       reasoningMode: true,
+      reasoningEffort: 'high',
       messages,
       systemPromptPreset: { category: 'chat', presetId: 'custom-chat' },
     });

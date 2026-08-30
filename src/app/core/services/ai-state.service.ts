@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import type { AiSystemPromptPresetSelection } from '../../../../shared/models/system-prompt.model';
+import type { AiReasoningEffort } from '../../../../shared/models/ai.model';
 import type { BuiltAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import { ToastService } from '../../shared/services/toast.service';
 
@@ -11,6 +12,7 @@ export interface AiGenerationRequest {
     model?: string;
     modelId?: string;
     reasoningMode?: boolean;
+    reasoningEffort?: AiReasoningEffort;
     suppressErrorToasts?: boolean;
     systemPromptPreset?: AiSystemPromptPresetSelection;
 }
@@ -39,6 +41,9 @@ export class AIStateService {
                 modelId: request.modelId,
                 prompt: request.aiPrompt.prompt,
                 reasoningMode: request.reasoningMode ?? false,
+                ...(request.reasoningEffort !== undefined
+                    ? { reasoningEffort: request.reasoningEffort }
+                    : {}),
                 messages: request.aiPrompt.messages,
                 ...(request.systemPromptPreset !== undefined
                     ? { systemPromptPreset: request.systemPromptPreset }

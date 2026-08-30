@@ -37,6 +37,7 @@ describe('GeminiProvider', () => {
             modelId: 'gemini-a',
             prompt: 'Write.',
             reasoningMode: true,
+            reasoningEffort: 'low',
         })).resolves.toMatchObject({ text: 'Gemini', modelUsed: 'gemini-a' });
 
         const [url, init] = vi.mocked(fetch).mock.calls[0];
@@ -48,7 +49,7 @@ describe('GeminiProvider', () => {
         }));
         expect(JSON.parse(init?.body as string)).toMatchObject({
             model: 'gemini-a',
-            reasoning_effort: 'medium',
+            reasoning_effort: 'low',
         });
     });
 

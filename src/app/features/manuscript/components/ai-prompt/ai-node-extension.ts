@@ -82,6 +82,14 @@ export const AiPromptExtension = (injector: Injector) => {
           parseHTML: element => element.getAttribute('data-reasoning-mode') === 'true',
           renderHTML: attributes => ({ 'data-reasoning-mode': String(attributes['reasoningMode'] === true) }),
         },
+        reasoningEffort: {
+          default: 'medium',
+          parseHTML: element => {
+            const effort = element.getAttribute('data-reasoning-effort');
+            return effort === 'low' || effort === 'high' ? effort : 'medium';
+          },
+          renderHTML: attributes => ({ 'data-reasoning-effort': attributes['reasoningEffort'] }),
+        },
         includeFullOutline: {
           default: false,
           parseHTML: element => element.getAttribute('data-include-full-outline') === 'true',

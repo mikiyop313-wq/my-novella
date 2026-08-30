@@ -90,6 +90,7 @@ describe('AiStreamEditorService', () => {
       'openrouter',
       'model-1',
       false,
+      'medium',
       'book-1',
       'scene-1',
     );
@@ -138,6 +139,7 @@ describe('AiStreamEditorService', () => {
       'openrouter',
       'model-1',
       false,
+      'medium',
       'book-1',
       'scene-1',
     );
@@ -173,6 +175,7 @@ describe('AiStreamEditorService', () => {
       'openrouter',
       'model-1',
       false,
+      'high',
       'book-1',
       'scene-1',
     );
@@ -185,6 +188,7 @@ describe('AiStreamEditorService', () => {
     expect(startSession).toHaveBeenCalledWith(expect.objectContaining({
       source: 'manuscript-prose',
       scopeId: 'scene-1',
+      reasoningEffort: 'high',
     }));
 
     TestBed.resetTestingModule();
@@ -220,19 +224,28 @@ describe('AiStreamEditorService', () => {
       provider: 'openrouter',
       modelId: 'model-1',
       reasoningMode: false,
+      reasoningEffort: 'high',
       bookId: 'book-1',
       responseId: 'response-1',
       sourcePromptId: 'prompt-1',
       sceneId: 'scene-1',
     });
 
-    expect(insertInitialBlock).toHaveBeenCalled();
+    expect(insertInitialBlock).toHaveBeenCalledWith(
+      editor,
+      10,
+      expect.objectContaining({
+        reasoningMode: false,
+        reasoningEffort: 'high',
+      }),
+    );
     expect(streamToBlock).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'response-1', sourcePromptId: 'prompt-1' }),
       aiPrompt,
       'openrouter',
       'model-1',
       false,
+      'high',
       'book-1',
       'scene-1',
     );
@@ -266,6 +279,7 @@ describe('AiStreamEditorService', () => {
       provider: 'openrouter',
       modelId: 'model-1',
       reasoningMode: false,
+      reasoningEffort: 'low',
       bookId: 'book-1',
       promptText: 'Updated prompt',
       sceneId: 'scene-1',
@@ -277,6 +291,7 @@ describe('AiStreamEditorService', () => {
       'openrouter',
       'model-1',
       false,
+      'low',
       'book-1',
       'scene-1',
     );
@@ -288,6 +303,7 @@ describe('AiStreamEditorService', () => {
         provider: 'openrouter',
         modelId: 'model-1',
         reasoningMode: false,
+        reasoningEffort: 'low',
       }),
     );
 

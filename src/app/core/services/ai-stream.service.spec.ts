@@ -93,6 +93,8 @@ describe('AiStreamService', () => {
       aiPrompt: textPrompt('chat', 'Write'),
       provider: 'openrouter',
       modelId: 'model-1',
+      reasoningMode: true,
+      reasoningEffort: 'low',
       onToken: token => tokens.push(token),
     });
 
@@ -102,7 +104,8 @@ describe('AiStreamService', () => {
       aiPrompt: textPrompt('chat', 'Write'),
       model: 'openrouter',
       modelId: 'model-1',
-      reasoningMode: undefined,
+      reasoningMode: true,
+      reasoningEffort: 'low',
       systemPromptPreset: { category: 'chat', presetId: 'chat-preset' },
     });
   });

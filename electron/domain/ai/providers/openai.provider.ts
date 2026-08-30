@@ -32,7 +32,10 @@ export class OpenAiProvider implements AiProvider {
             request,
             modelId,
         );
-        const payload = openAiCompatiblePayload(basePayload, request.reasoningMode === true);
+        const payload = openAiCompatiblePayload(
+            basePayload,
+            request.reasoningMode ? request.reasoningEffort ?? 'medium' : undefined,
+        );
 
         const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
             method: 'POST',

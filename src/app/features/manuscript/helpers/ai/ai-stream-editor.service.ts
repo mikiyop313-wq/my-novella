@@ -3,6 +3,7 @@ import { Editor } from '@tiptap/core';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 
+import type { AiReasoningEffort } from '../../../../../../shared/models/ai.model';
 import { AiGenerationSession, AiGenerationSessionService } from '../../../../core/services/ai-generation-session.service';
 import { LoadingStatus } from '../../../../core/services/ai-stream.service';
 import { ElectronService } from '../../../../core/services/electron.service';
@@ -22,6 +23,7 @@ export interface GenerateNewBlockRequest {
   provider: string;
   modelId: string;
   reasoningMode: boolean;
+  reasoningEffort: AiReasoningEffort;
   bookId: string;
   responseId: string;
   sourcePromptId: string;
@@ -36,6 +38,7 @@ export interface RegenerateExistingBlockRequest {
   provider: string;
   modelId: string;
   reasoningMode: boolean;
+  reasoningEffort: AiReasoningEffort;
   bookId: string;
   promptText: string;
   sceneId: string;
@@ -237,6 +240,7 @@ export class AiStreamEditorService {
     provider,
     modelId,
     reasoningMode,
+    reasoningEffort,
     bookId,
     responseId,
     sourcePromptId,
@@ -249,6 +253,7 @@ export class AiStreamEditorService {
       provider,
       modelId,
       reasoningMode,
+      reasoningEffort,
     });
 
     this.insertInitialBlock(editor, insertPos, blockAttrs);
@@ -260,6 +265,7 @@ export class AiStreamEditorService {
       provider,
       modelId,
       reasoningMode,
+      reasoningEffort,
       bookId,
       sceneId,
     );
@@ -277,6 +283,7 @@ export class AiStreamEditorService {
     provider,
     modelId,
     reasoningMode,
+    reasoningEffort,
     bookId,
     promptText,
     sceneId,
@@ -288,6 +295,7 @@ export class AiStreamEditorService {
       provider,
       modelId,
       reasoningMode,
+      reasoningEffort,
       reasoningText: '',
     });
 
@@ -302,6 +310,7 @@ export class AiStreamEditorService {
       provider,
       modelId,
       reasoningMode,
+      reasoningEffort,
       bookId,
       sceneId,
     );
@@ -395,6 +404,7 @@ export class AiStreamEditorService {
     provider: string,
     modelId: string | undefined,
     reasoningMode: boolean,
+    reasoningEffort: AiReasoningEffort,
     bookId: string,
     sceneId: string,
   ): Promise<void> {
@@ -430,6 +440,7 @@ export class AiStreamEditorService {
       provider,
       modelId,
       reasoningMode,
+      reasoningEffort,
       onContentChange: scheduleVisibleRender,
       onReasoningChange: reasoningText => {
         const editor = this.currentEditor;
@@ -681,6 +692,7 @@ export class AiStreamEditorService {
         isGenerating: false,
         reasoningText,
         reasoningMode: foundNode.attrs['reasoningMode'] || false,
+        reasoningEffort: this.readReasoningEffort(foundNode.attrs['reasoningEffort']),
       },
       content: foundNode.content.toJSON(),
     };
@@ -694,6 +706,10 @@ export class AiStreamEditorService {
     // The finalized insertion is intentionally added to history so the user can
     // undo the generated result as one document change.
     editor.chain().insertContentAt(foundPos, finalizedBlockJson).focus().run();
+  }
+
+  private readReasoningEffort(value: unknown): AiReasoningEffort {
+    return value === 'low' || value === 'high' ? value : 'medium';
   }
 
   /**

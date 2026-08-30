@@ -60,7 +60,12 @@ export class ChatCompletionPayloadBuilderService {
                 : {}),
             stream: true,
             ...(request.reasoningMode
-                ? { reasoning: { enabled: true as const, effort: 'medium' as const } }
+                ? {
+                    reasoning: {
+                        enabled: true as const,
+                        effort: request.reasoningEffort ?? 'medium',
+                    },
+                }
                 : {}),
         };
     }

@@ -68,6 +68,22 @@ describe('AiGenerationSessionService', () => {
     });
   });
 
+  it('forwards the selected reasoning effort to the stream service', async () => {
+    streamText.mockResolvedValue('Done');
+
+    const session = service.start({
+      ...request('session-1'),
+      reasoningMode: true,
+      reasoningEffort: 'high',
+    })!;
+    await session.completion;
+
+    expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
+      reasoningMode: true,
+      reasoningEffort: 'high',
+    }));
+  });
+
   it('preserves the optional activity label', () => {
     streamText.mockReturnValue(new Promise(() => undefined));
 

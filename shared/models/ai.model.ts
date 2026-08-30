@@ -1,3 +1,5 @@
+export type AiReasoningEffort = 'low' | 'medium' | 'high';
+
 /** Model metadata returned by the AI model-list IPC channel. */
 export interface AiModel {
   id: string;

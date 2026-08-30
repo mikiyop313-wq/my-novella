@@ -40,6 +40,7 @@ describe('OpenAiProvider', () => {
             modelId: 'gpt-model',
             prompt: 'Write.',
             reasoningMode: true,
+            reasoningEffort: 'high',
             onToken,
         })).resolves.toEqual({
             text: 'Draft',
@@ -54,7 +55,7 @@ describe('OpenAiProvider', () => {
         }));
         expect(JSON.parse(init?.body as string)).toMatchObject({
             model: 'gpt-model',
-            reasoning_effort: 'medium',
+            reasoning_effort: 'high',
             stream_options: { include_usage: true },
         });
         expect(JSON.parse(init?.body as string)).not.toHaveProperty('reasoning');

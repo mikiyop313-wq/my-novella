@@ -310,15 +310,23 @@
               (selectionChange)="onModelSelectionChange($any($event))" customDropdownClass="chat-model-minimal">
             </app-autocomplete-dropdown>
 
-            <button class="reasoning-toggle" [class.is-enabled]="reasoningMode()" [disabled]="!supportsReasoning()"
-              (click)="toggleReasoningMode()"
-              [title]="supportsReasoning() ? 'Toggle Thinking Mode' : 'Model does not support Thinking Mode'">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z"></path>
-              </svg>
-              <span>Thinking</span>
-            </button>
+            <app-autocomplete-dropdown class="reasoning-dropdown" [options]="reasoningEffortOptions"
+              [selectedValue]="reasoningEffort()" [showSearchBar]="false" [disabled]="!supportsReasoning()"
+              placeholder="Thinking" triggerVariant="icon"
+              [triggerAriaLabel]="reasoningEffort() ? 'Thinking mode: ' + reasoningEffort() : 'Thinking mode: off'"
+              [attr.title]="supportsReasoning() ? 'Choose Thinking Mode effort' : 'Model does not support Thinking Mode'"
+              customDropdownClass="thinking-effort-dropdown"
+              (selectionChange)="selectReasoningEffort($any($event))">
+              <ng-template autocompleteDropdownTrigger>
+                <span class="reasoning-toggle-content" [class.is-enabled]="reasoningEffort() !== null">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z"></path>
+                  </svg>
+                  <span>Thinking</span>
+                </span>
+              </ng-template>
+            </app-autocomplete-dropdown>
           </div>
 
           <div class="footer-separator"></div>
