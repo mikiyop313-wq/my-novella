@@ -1,15 +1,20 @@
 import {
+  ChangeDetectorRef,
   Component,
   ElementRef,
   HostListener,
   OnDestroy,
   OnInit,
+  QueryList,
   ViewChild,
+  ViewChildren,
   computed,
   inject,
   input,
   signal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { A11yModule } from '@angular/cdk/a11y';
 
 import {
   BUILT_IN_SYSTEM_PROMPT_PRESETS,
@@ -31,6 +36,7 @@ import {
   type DropdownOption,
 } from '../../../../shared/components/autocomplete-dropdown/autocomplete-dropdown.component';
 import { SearchComponent } from '../../../../shared/components/search/search.component';
+import { OverlayModalDirective } from '../../../../shared/directives/overlay-modal.directive';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
 import {
@@ -65,6 +71,13 @@ interface PromptSearchHighlightSegment {
   isActive: boolean;
 }
 
+interface PromptEditorViewState {
+  selectionStart: number;
+  selectionEnd: number;
+  scrollTop: number;
+  scrollLeft: number;
+}
+
 const SYSTEM_PROMPT_CATEGORY_LABELS: Record<SystemPromptCategory, string> = {
   chat: 'Chat',
   sceneBeat: 'Prose Generation',
@@ -86,17 +99,25 @@ const SYSTEM_PROMPT_CATEGORIES: readonly SystemPromptCategoryDefinition[] = Obje
   }));
 
 const AUTOSAVE_DELAY_MS = 500;
+const COPY_CONFIRMATION_DURATION_MS = 2000;
 
 @Component({
   selector: 'app-system-prompt-settings',
-  imports: [AutocompleteDropdownComponent, SearchComponent],
+  imports: [
+    A11yModule,
+    AutocompleteDropdownComponent,
+    NgTemplateOutlet,
+    OverlayModalDirective,
+    SearchComponent,
+  ],
   templateUrl: './system-prompt-settings.component.html',
   styleUrl: './system-prompt-settings.component.scss',
 })
 export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   @ViewChild(SearchComponent) private searchWidget?: SearchComponent;
-  @ViewChild('systemPromptTextarea') private systemPromptTextarea?: ElementRef<HTMLTextAreaElement>;
-  @ViewChild('systemPromptHighlight') private systemPromptHighlight?: ElementRef<HTMLDivElement>;
+  @ViewChildren('systemPromptTextarea')
+  private systemPromptTextareas?: QueryList<ElementRef<HTMLTextAreaElement>>;
+  @ViewChild('systemPromptModalTrigger') private systemPromptModalTrigger?: OverlayModalDirective;
 
   readonly bookId = input<string>();
   readonly globalOnly = input(false);
@@ -104,10 +125,13 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   private readonly systemPromptService = inject(SystemPromptService);
   private readonly systemPromptSelectionService = inject(SystemPromptSelectionService);
   private readonly toastService = inject(ToastService);
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
   readonly aiStore = inject(AiStore);
   private readonly confirmedPresets = new Map<string, SystemPromptPreset>();
   private readonly saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly presetRevisions = new Map<string, number>();
+  private pendingPromptEditorState: PromptEditorViewState | null = null;
+  private copyConfirmationTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly categories = SYSTEM_PROMPT_CATEGORIES;
   readonly modelDropdownSections = computed(() => buildModelDropdownSections({
@@ -138,6 +162,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly searchMatchCase = signal(false);
   readonly searchWholeWord = signal(false);
   readonly activeSearchMatchIndex = signal(-1);
+  readonly promptExpanded = signal(false);
+  readonly promptCopied = signal(false);
+  private readonly expandedPromptSavedPresetId = signal<string | null>(null);
   readonly filteredPresets = computed(() =>
     this.presets().filter(
       (preset) =>
@@ -155,6 +182,15 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly selectedPreset = computed(() =>
     this.filteredPresets().find((preset) => preset.id === this.selectedPresetId()),
   );
+  readonly expandedPromptSaveStatus = computed<'saving' | 'saved' | null>(() => {
+    if (!this.promptExpanded()) return null;
+
+    const preset = this.selectedPreset();
+    if (!preset || preset.isBuiltIn) return null;
+    if (this.isPresetPendingOrSaving(preset.id)) return 'saving';
+
+    return this.expandedPromptSavedPresetId() === preset.id ? 'saved' : null;
+  });
   readonly searchMatches = computed<readonly TextSearchMatch[]>(() =>
     findTextMatches(this.selectedPreset()?.systemPrompt ?? '', {
       query: this.searchQuery(),
@@ -209,6 +245,8 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.copyConfirmationTimer) clearTimeout(this.copyConfirmationTimer);
+
     for (const [presetId, timer] of this.saveTimers) {
       clearTimeout(timer);
       void this.savePreset(presetId);
@@ -267,19 +305,23 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       (!event.ctrlKey && !event.metaKey) ||
       event.altKey ||
       !this.selectedPreset() ||
-      !this.systemPromptTextarea
+      !this.activePromptTextarea()
     ) {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    if (this.searchOpen()) this.closeSearch();
-    else this.openSearch();
+    if (this.searchOpen()) {
+      this.closeSearch();
+      return;
+    }
+
+    this.openSearch();
   }
 
   openSearch(): void {
-    if (!this.selectedPreset() || !this.systemPromptTextarea) return;
+    if (!this.selectedPreset() || !this.activePromptTextarea()) return;
 
     this.searchOpen.set(true);
     this.refreshSearch({ resetActiveMatch: false, selectActiveMatch: false });
@@ -292,7 +334,54 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     this.searchMatchCase.set(false);
     this.searchWholeWord.set(false);
     this.activeSearchMatchIndex.set(-1);
-    queueMicrotask(() => this.systemPromptTextarea?.nativeElement.focus());
+    queueMicrotask(() => this.activePromptTextarea()?.focus());
+  }
+
+  openExpandedPrompt(): void {
+    if (this.promptExpanded() || !this.selectedPreset() || !this.activePromptTextarea()) return;
+
+    if (!this.systemPromptModalTrigger) return;
+
+    const editorState = this.capturePromptEditorState();
+    this.promptExpanded.set(true);
+    this.changeDetectorRef.detectChanges();
+    this.systemPromptModalTrigger.openModal();
+    this.restorePromptEditorState(editorState);
+  }
+
+  closeExpandedPrompt(): void {
+    if (!this.promptExpanded()) return;
+
+    if (!this.systemPromptModalTrigger) return;
+
+    this.pendingPromptEditorState = this.capturePromptEditorState();
+    this.systemPromptModalTrigger.closeModal();
+  }
+
+  handleExpandedPromptClosed(): void {
+    const editorState = this.pendingPromptEditorState;
+    this.pendingPromptEditorState = null;
+    this.promptExpanded.set(false);
+    this.expandedPromptSavedPresetId.set(null);
+    this.changeDetectorRef.detectChanges();
+    if (editorState) this.restorePromptEditorState(editorState);
+  }
+
+  handleExpandedPromptKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape') return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.searchOpen()) {
+      this.closeSearch();
+      return;
+    }
+
+    this.closeExpandedPrompt();
+  }
+
+  stopSearchEscape(event: Event): void {
+    event.stopPropagation();
   }
 
   updateSearchQuery(query: string): void {
@@ -321,8 +410,10 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   syncPromptSearchHighlight(event?: Event): void {
     const textarea = event?.target instanceof HTMLTextAreaElement
       ? event.target
-      : this.systemPromptTextarea?.nativeElement;
-    const highlight = this.systemPromptHighlight?.nativeElement;
+      : this.activePromptTextarea();
+    const highlight = textarea
+      ?.closest('.prompt-textarea-shell')
+      ?.querySelector<HTMLElement>('.prompt-search-highlight');
     if (!textarea || !highlight) return;
 
     highlight.scrollTop = textarea.scrollTop;
@@ -552,6 +643,24 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     this.refreshSearch({ resetActiveMatch: false, selectActiveMatch: false });
   }
 
+  async copySystemPrompt(): Promise<void> {
+    const selected = this.selectedPreset();
+    if (!selected) return;
+
+    try {
+      await navigator.clipboard.writeText(selected.systemPrompt);
+      if (this.copyConfirmationTimer) clearTimeout(this.copyConfirmationTimer);
+
+      this.promptCopied.set(true);
+      this.copyConfirmationTimer = setTimeout(() => {
+        this.promptCopied.set(false);
+        this.copyConfirmationTimer = null;
+      }, COPY_CONFIRMATION_DURATION_MS);
+    } catch (error) {
+      this.showError(error, 'Unable to copy the system prompt.', 'Copy failed');
+    }
+  }
+
   updateNumericField(field: NumericPresetField, event: Event): void {
     const value = Number(this.inputValue(event));
     if (!Number.isFinite(value)) return;
@@ -613,6 +722,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     const selected = this.selectedPreset();
     if (!selected || selected.isBuiltIn) return;
 
+    this.expandedPromptSavedPresetId.set(null);
     this.presets.update((presets) =>
       presets.map((preset) => (preset.id === selected.id ? { ...preset, ...update } : preset)),
     );
@@ -652,6 +762,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       this.confirmedPresets.set(presetId, confirmed);
       if ((this.presetRevisions.get(presetId) ?? 0) === revision) {
         this.replacePreset(confirmed);
+        if (this.promptExpanded() && this.selectedPresetId() === presetId) {
+          this.expandedPromptSavedPresetId.set(presetId);
+        }
       }
     } catch (error) {
       const confirmed = this.confirmedPresets.get(presetId);
@@ -755,7 +868,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
 
   private selectActiveSearchMatch(): void {
     queueMicrotask(() => {
-      const textarea = this.systemPromptTextarea?.nativeElement;
+      const textarea = this.activePromptTextarea();
       const match = this.searchMatches()[this.activeSearchMatchIndex()];
       if (!textarea || !match) return;
 
@@ -765,6 +878,43 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       this.syncPromptSearchHighlight();
       if (restoreSearchFocus) this.searchWidget?.focusInput({ select: false });
     });
+  }
+
+  private capturePromptEditorState(): PromptEditorViewState {
+    const textarea = this.activePromptTextarea()!;
+    return {
+      selectionStart: textarea.selectionStart,
+      selectionEnd: textarea.selectionEnd,
+      scrollTop: textarea.scrollTop,
+      scrollLeft: textarea.scrollLeft,
+    };
+  }
+
+  private restorePromptEditorState(editorState: PromptEditorViewState): void {
+    setTimeout(() => {
+      const textarea = this.activePromptTextarea();
+      if (!textarea) return;
+
+      if (!this.searchOpen()) textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(editorState.selectionStart, editorState.selectionEnd);
+      textarea.scrollTop = editorState.scrollTop;
+      textarea.scrollLeft = editorState.scrollLeft;
+      this.syncPromptSearchHighlight();
+
+      if (this.searchOpen()) {
+        this.searchWidget?.focusInput({ select: false });
+        return;
+      }
+    }, 0);
+  }
+
+  private activePromptTextarea(): HTMLTextAreaElement | undefined {
+    const textareas = this.systemPromptTextareas?.map(({ nativeElement }) => nativeElement) ?? [];
+    const expanded = this.promptExpanded();
+
+    return textareas.find((textarea) =>
+      textarea.closest('.system-prompt-field')?.classList.contains('is-expanded') === expanded
+    );
   }
 
   private inputValue(event: Event): string {

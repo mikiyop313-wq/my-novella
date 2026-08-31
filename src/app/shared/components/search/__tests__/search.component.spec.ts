@@ -68,6 +68,21 @@ describe('SearchComponent', () => {
     expect(fixture.nativeElement.querySelector('.search-widget__scope-button')).toBeNull();
   });
 
+  it('renders the compact presentation without changing search actions', () => {
+    fixture.componentRef.setInput('compact', true);
+    fixture.detectChanges();
+
+    const region = fixture.nativeElement.querySelector('.search-widget') as HTMLElement;
+    expect(region.classList).toContain('is-compact');
+    expect(region.querySelector('.search-widget__search-row')).not.toBeNull();
+    expect(region.querySelector('.search-widget__option-row')).not.toBeNull();
+    expect(region.querySelector('[aria-label="Match case"]')).not.toBeNull();
+    expect(region.querySelector('[aria-label="Match whole word"]')).not.toBeNull();
+    expect(region.querySelector('[aria-label="Close search"]')).not.toBeNull();
+    const buttons = Array.from(region.querySelectorAll('button'));
+    expect(buttons.at(-1)?.getAttribute('aria-label')).toBe('Close search');
+  });
+
   it('renders loading and match progress', () => {
     fixture.componentRef.setInput('loading', true);
     fixture.detectChanges();

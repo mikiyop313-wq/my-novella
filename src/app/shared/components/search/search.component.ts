@@ -30,6 +30,7 @@ export class SearchComponent implements AfterViewInit {
   readonly regionLabel = input('Search');
   readonly inputLabel = input('Search content');
   readonly placeholder = input('Find');
+  readonly compact = input(false);
 
   readonly queryChange = output<string>();
   readonly scopeSelectedChange = output<boolean>();

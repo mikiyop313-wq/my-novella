@@ -1,4 +1,7 @@
 <div class="settings-section-panel system-prompts-panel">
+  <span class="prompt-copy-status" role="status" aria-live="polite">
+    {{ promptCopied() ? 'System prompt copied to clipboard.' : '' }}
+  </span>
   <header class="content-header">
     <div class="content-header-copy">
       <h1 class="content-title">{{ globalOnly() ? 'Global Prompts' : 'System Prompts' }}</h1>
@@ -318,68 +321,145 @@
               />
             </div>
 
-            <div class="form-field">
-              <div class="field-heading">
-                <label for="system-prompt">System prompt</label>
-                <span>
-                  {{
-                    preset.isBuiltIn
-                      ? 'Built-in prompt'
-                      : 'Instructions sent before the conversation'
-                  }}
-                </span>
-              </div>
-              @if (searchOpen()) {
-                <app-search
-                  class="system-prompt-search"
-                  animate.enter="search-enter"
-                  animate.leave="search-leave"
-                  regionLabel="Find in system prompt"
-                  inputLabel="Search system prompt text"
-                  placeholder="Find in system prompt"
-                  [query]="searchQuery()"
-                  [currentMatch]="currentSearchMatch()"
-                  [totalMatches]="searchMatches().length"
-                  [matchCase]="searchMatchCase()"
-                  [wholeWord]="searchWholeWord()"
-                  (queryChange)="updateSearchQuery($event)"
-                  (matchCaseChange)="updateSearchMatchCase($event)"
-                  (wholeWordChange)="updateSearchWholeWord($event)"
-                  (previous)="selectPreviousSearchMatch()"
-                  (next)="selectNextSearchMatch()"
-                  (closed)="closeSearch()"
-                ></app-search>
-              }
-              <div class="prompt-textarea-shell">
-                @if (searchHighlightSegments().length > 0) {
-                  <div
-                    #systemPromptHighlight
-                    class="prompt-search-highlight"
+            <ng-template #copyPromptButton>
+              <button
+                class="prompt-copy-button"
+                type="button"
+                [attr.aria-label]="promptCopied() ? 'System prompt copied' : 'Copy system prompt'"
+                [title]="promptCopied() ? 'System prompt copied' : 'Copy system prompt'"
+                (click)="copySystemPrompt()"
+              >
+                @if (promptCopied()) {
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
                     aria-hidden="true"
                   >
-                    @for (segment of searchHighlightSegments(); track $index) {
-                      @if (segment.isMatch) {
-                        <mark [class.is-active]="segment.isActive">{{ segment.text }}</mark>
-                      } @else {
-                        <span>{{ segment.text }}</span>
-                      }
-                    }
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                } @else {
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.9"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
+                  </svg>
+                }
+              </button>
+            </ng-template>
+
+            <ng-template #promptEditor let-editorPreset="preset" let-expanded="expanded">
+              <div class="form-field system-prompt-field" [class.is-expanded]="expanded">
+                @if (!expanded) {
+                  <div class="field-heading">
+                    <label for="system-prompt">System prompt</label>
+                    <div class="system-prompt-heading-actions">
+                      <span>
+                        {{
+                          editorPreset.isBuiltIn
+                            ? 'Built-in prompt'
+                            : 'Instructions sent before the conversation'
+                        }}
+                      </span>
+                      <ng-container [ngTemplateOutlet]="copyPromptButton"></ng-container>
+                      <button
+                        class="prompt-expand-button"
+                        type="button"
+                        aria-label="Expand system prompt"
+                        title="Expand system prompt"
+                        (click)="openExpandedPrompt()"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.9"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M8 3H3v5"></path>
+                          <path d="m3 3 6 6"></path>
+                          <path d="M16 3h5v5"></path>
+                          <path d="m21 3-6 6"></path>
+                          <path d="M8 21H3v-5"></path>
+                          <path d="m3 21 6-6"></path>
+                          <path d="M16 21h5v-5"></path>
+                          <path d="m21 21-6-6"></path>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 }
-                <textarea
-                  #systemPromptTextarea
-                  id="system-prompt"
-                  class="prompt-textarea"
-                  [class.has-search-highlight]="searchHighlightSegments().length > 0"
-                  rows="11"
-                  [value]="preset.systemPrompt"
-                  [readOnly]="preset.isBuiltIn"
-                  placeholder="Describe how the AI should behave..."
-                  (input)="updateSystemPrompt($event)"
-                  (scroll)="syncPromptSearchHighlight($event)"
-                ></textarea>
+                @if (searchOpen() && !expanded && !promptExpanded()) {
+                  <app-search
+                    class="system-prompt-search"
+                    animate.enter="search-enter"
+                    animate.leave="search-leave"
+                    regionLabel="Find in system prompt"
+                    inputLabel="Search system prompt text"
+                    placeholder="Find in system prompt"
+                    [query]="searchQuery()"
+                    [currentMatch]="currentSearchMatch()"
+                    [totalMatches]="searchMatches().length"
+                    [matchCase]="searchMatchCase()"
+                    [wholeWord]="searchWholeWord()"
+                    (keydown.escape)="stopSearchEscape($event)"
+                    (queryChange)="updateSearchQuery($event)"
+                    (matchCaseChange)="updateSearchMatchCase($event)"
+                    (wholeWordChange)="updateSearchWholeWord($event)"
+                    (previous)="selectPreviousSearchMatch()"
+                    (next)="selectNextSearchMatch()"
+                    (closed)="closeSearch()"
+                  ></app-search>
+                }
+                <div class="prompt-textarea-shell">
+                  @if (searchHighlightSegments().length > 0) {
+                    <div
+                      #systemPromptHighlight
+                      class="prompt-search-highlight"
+                      aria-hidden="true"
+                    >
+                      @for (segment of searchHighlightSegments(); track $index) {
+                        @if (segment.isMatch) {
+                          <mark [class.is-active]="segment.isActive">{{ segment.text }}</mark>
+                        } @else {
+                          <span>{{ segment.text }}</span>
+                        }
+                      }
+                    </div>
+                  }
+                  <textarea
+                    #systemPromptTextarea
+                    [id]="expanded ? 'expanded-system-prompt' : 'system-prompt'"
+                    class="prompt-textarea"
+                    [class.has-search-highlight]="searchHighlightSegments().length > 0"
+                    [attr.aria-label]="expanded ? 'System prompt for ' + editorPreset.name : null"
+                    rows="11"
+                    [value]="editorPreset.systemPrompt"
+                    [readOnly]="editorPreset.isBuiltIn"
+                    placeholder="Describe how the AI should behave..."
+                    (input)="updateSystemPrompt($event)"
+                    (scroll)="syncPromptSearchHighlight($event)"
+                  ></textarea>
+                </div>
               </div>
-            </div>
+            </ng-template>
+
+            <ng-container
+              [ngTemplateOutlet]="promptEditor"
+              [ngTemplateOutletContext]="{ preset: preset, expanded: false }"
+            ></ng-container>
 
             @if (showsDefaultModel(preset.category)) {
               <div class="form-field default-model-field">
@@ -570,6 +650,125 @@
               </div>
             </section>
           </div>
+
+          <ng-container
+            [appOverlayModal]="systemPromptModal"
+            [closeOnBackdrop]="false"
+            #systemPromptModalTrigger="appOverlayModal"
+            (closed)="handleExpandedPromptClosed()"
+          ></ng-container>
+
+          <ng-template #systemPromptModal>
+            <section
+              class="system-prompt-dialog overlay-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="expanded-system-prompt-title"
+              [cdkTrapFocus]="true"
+              [cdkTrapFocusAutoCapture]="true"
+              (keydown)="handleExpandedPromptKeydown($event)"
+            >
+              <header class="expanded-prompt-header">
+              <div class="expanded-prompt-title-group">
+                <span class="eyebrow">{{ selectedCategoryLabel() }} system prompt</span>
+                <div class="expanded-prompt-title-line">
+                  <h2 id="expanded-system-prompt-title">{{ preset.name || 'Untitled Preset' }}</h2>
+                  @if (preset.isBuiltIn) {
+                    <span class="expanded-prompt-status">Built-in · Read only</span>
+                  }
+                  @if (expandedPromptSaveStatus(); as saveStatus) {
+                    <span
+                      class="expanded-prompt-status"
+                      [class.is-saving]="saveStatus === 'saving'"
+                      [class.is-saved]="saveStatus === 'saved'"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {{ saveStatus === 'saving' ? 'Saving changes shortly…' : 'Saved' }}
+                    </span>
+                  }
+                </div>
+              </div>
+              <div class="expanded-prompt-actions">
+                <div class="expanded-prompt-search-control" [class.is-searching]="searchOpen()">
+                  @if (searchOpen()) {
+                    <app-search
+                      class="expanded-prompt-search"
+                      animate.enter="expanded-search-enter"
+                      animate.leave="expanded-search-leave"
+                      regionLabel="Find in system prompt"
+                      inputLabel="Search system prompt text"
+                      placeholder="Find in system prompt"
+                      [compact]="true"
+                      [query]="searchQuery()"
+                      [currentMatch]="currentSearchMatch()"
+                      [totalMatches]="searchMatches().length"
+                      [matchCase]="searchMatchCase()"
+                      [wholeWord]="searchWholeWord()"
+                      (keydown.escape)="stopSearchEscape($event)"
+                      (queryChange)="updateSearchQuery($event)"
+                      (matchCaseChange)="updateSearchMatchCase($event)"
+                      (wholeWordChange)="updateSearchWholeWord($event)"
+                      (previous)="selectPreviousSearchMatch()"
+                      (next)="selectNextSearchMatch()"
+                      (closed)="closeSearch()"
+                    ></app-search>
+                  } @else {
+                    <button
+                      class="expanded-prompt-find"
+                      animate.enter="expanded-find-enter"
+                      animate.leave="expanded-find-leave"
+                      type="button"
+                      title="Find in system prompt (Ctrl+F)"
+                      (click)="openSearch()"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        aria-hidden="true"
+                      >
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m20 20-4-4"></path>
+                      </svg>
+                      <span>Find</span>
+                    </button>
+                  }
+                </div>
+                <ng-container [ngTemplateOutlet]="copyPromptButton"></ng-container>
+                <button
+                  class="expanded-prompt-close"
+                  type="button"
+                  aria-label="Close expanded system prompt"
+                  title="Close expanded system prompt (Escape)"
+                  (click)="closeExpandedPrompt()"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 6 6 18"></path>
+                    <path d="m6 6 12 12"></path>
+                  </svg>
+                </button>
+              </div>
+              </header>
+              @if (promptExpanded()) {
+                <div class="expanded-prompt-body">
+                  <ng-container
+                    [ngTemplateOutlet]="promptEditor"
+                    [ngTemplateOutletContext]="{ preset: preset, expanded: true }"
+                  ></ng-container>
+                </div>
+              }
+            </section>
+          </ng-template>
         </section>
       } @else {
         <section class="preset-editor preset-empty-state" aria-labelledby="empty-preset-heading">

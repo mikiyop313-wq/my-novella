@@ -6,6 +6,16 @@
   animation: settings-section-slide-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.prompt-copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .content-header {
   padding-bottom: 20px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
@@ -628,6 +638,50 @@ button {
   }
 }
 
+.system-prompt-heading-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.prompt-copy-button,
+.prompt-expand-button,
+.expanded-prompt-close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--color-text-secondary) 55%, var(--color-border));
+    background: var(--color-hover-bg);
+    color: var(--color-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 42%, transparent);
+    outline-offset: 2px;
+  }
+}
+
 .text-input,
 .prompt-textarea {
   width: 100%;
@@ -717,6 +771,181 @@ button {
 .system-prompt-search {
   width: min(408px, 100%);
   align-self: flex-end;
+}
+
+.system-prompt-dialog {
+  width: min(1120px, calc(100vw - 48px));
+  height: min(850px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: 18px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--color-surface) 96%, var(--color-background)),
+    color-mix(in srgb, var(--color-surface) 82%, var(--color-background))
+  );
+  color: var(--color-text-primary);
+  box-shadow: 0 32px 90px -28px rgba(0, 0, 0, 0.58);
+  display: flex;
+  flex-direction: column;
+  animation: prompt-dialog-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  &.is-closed {
+    pointer-events: none;
+    animation: prompt-dialog-exit 180ms ease-in both;
+  }
+}
+
+.expanded-prompt-header {
+  min-height: 74px;
+  box-sizing: border-box;
+  padding: 15px 18px 15px 22px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.expanded-prompt-title-group {
+  min-width: 0;
+}
+
+.expanded-prompt-title-line {
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  h2 {
+    overflow: hidden;
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--title-font);
+    font-size: 1.18rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.expanded-prompt-status {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-background) 48%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.expanded-prompt-actions {
+  min-width: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.expanded-prompt-search-control {
+  min-width: 0;
+  display: grid;
+  place-items: center end;
+
+  > * {
+    grid-area: 1 / 1;
+  }
+}
+
+.expanded-prompt-search {
+  display: block;
+  min-width: 0;
+  opacity: 1;
+  clip-path: inset(0);
+}
+
+.expanded-prompt-find {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:hover,
+  &[aria-pressed='true'] {
+    border-color: color-mix(in srgb, var(--color-text-secondary) 55%, var(--color-border));
+    background: var(--color-hover-bg);
+    color: var(--color-text-primary);
+  }
+}
+
+.expanded-search-enter {
+  animation: expanded-search-grow 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.expanded-search-leave {
+  pointer-events: none;
+  animation: expanded-search-shrink 150ms ease-in both;
+}
+
+.expanded-find-enter {
+  animation: expanded-find-appear 180ms 70ms ease-out both;
+}
+
+.expanded-find-leave {
+  pointer-events: none;
+  animation: expanded-find-disappear 120ms ease-in both;
+}
+
+.expanded-prompt-close {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+}
+
+.expanded-prompt-body {
+  min-height: 0;
+  flex: 1;
+  padding: clamp(16px, 2.5vw, 28px);
+  display: flex;
+}
+
+.system-prompt-field.is-expanded {
+  min-height: 0;
+  flex: 1;
+
+  .system-prompt-search {
+    flex: 0 0 auto;
+  }
+
+  .prompt-textarea-shell {
+    min-height: 0;
+    flex: 1;
+    display: flex;
+  }
+
+  .prompt-textarea {
+    min-height: 0;
+    flex: 1;
+    resize: none;
+  }
 }
 
 .generation-card {
@@ -926,10 +1155,82 @@ textarea:focus-visible {
   }
 }
 
+@keyframes prompt-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes prompt-dialog-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@keyframes expanded-search-grow {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 0 62%);
+  }
+
+  to {
+    opacity: 1;
+    clip-path: inset(0);
+  }
+}
+
+@keyframes expanded-search-shrink {
+  from {
+    opacity: 1;
+    clip-path: inset(0);
+  }
+
+  to {
+    opacity: 0;
+    clip-path: inset(0 0 0 62%);
+  }
+}
+
+@keyframes expanded-find-appear {
+  from {
+    opacity: 0;
+    transform: translateX(6px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes expanded-find-disappear {
+  to {
+    opacity: 0;
+    transform: translateX(6px) scale(0.94);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .system-prompts-panel,
   .advanced-controls,
-  .prompt-spinner {
+  .prompt-spinner,
+  .system-prompt-dialog,
+  .expanded-search-enter,
+  .expanded-search-leave,
+  .expanded-find-enter,
+  .expanded-find-leave {
     animation: none;
   }
 
@@ -955,6 +1256,44 @@ textarea:focus-visible {
 }
 
 @media (max-width: 620px) {
+  .system-prompt-dialog {
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 24px);
+    border-radius: 14px;
+  }
+
+  .expanded-prompt-header {
+    padding-right: 12px;
+    padding-left: 16px;
+    gap: 12px;
+  }
+
+  .expanded-prompt-header:has(.expanded-prompt-search-control.is-searching) {
+    .expanded-prompt-title-group {
+      display: none;
+    }
+
+    .expanded-prompt-actions,
+    .expanded-prompt-search-control {
+      min-width: 0;
+      flex: 1;
+    }
+  }
+
+  .expanded-prompt-status {
+    display: none;
+  }
+
+  .expanded-prompt-find {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .expanded-prompt-body {
+    padding: 12px;
+  }
+
   .content-header {
     align-items: stretch;
     flex-direction: column;
@@ -987,6 +1326,11 @@ textarea:focus-visible {
     align-items: flex-start;
     flex-direction: column;
     gap: 3px;
+  }
+
+  .system-prompt-heading-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .editor-header {

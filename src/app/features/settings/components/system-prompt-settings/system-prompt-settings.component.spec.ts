@@ -29,6 +29,7 @@ describe('SystemPromptSettingsComponent', () => {
   let invalidate: ReturnType<typeof vi.fn>;
   let invalidateAll: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
+  let clipboardWriteText: ReturnType<typeof vi.fn>;
   let getBuiltInDefaultModelId: ReturnType<typeof vi.fn>;
   let setBuiltInDefaultModelId: ReturnType<typeof vi.fn>;
 
@@ -63,6 +64,11 @@ describe('SystemPromptSettingsComponent', () => {
     invalidate = vi.fn();
     invalidateAll = vi.fn();
     toastError = vi.fn();
+    clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: clipboardWriteText },
+    });
     getBuiltInDefaultModelId = vi.fn().mockResolvedValue('deepseek/deepseek-v4-flash');
     setBuiltInDefaultModelId = vi.fn().mockImplementation(
       (_presetId: string, modelId: string) => Promise.resolve(modelId),
@@ -311,6 +317,63 @@ describe('SystemPromptSettingsComponent', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('copies a built-in system prompt from beside the expand action', async () => {
+    vi.useFakeTimers();
+    const element = fixture.nativeElement as HTMLElement;
+    const copyButton = element.querySelector<HTMLButtonElement>(
+      '.system-prompt-heading-actions .prompt-copy-button',
+    )!;
+
+    expect(copyButton.nextElementSibling?.classList.contains('prompt-expand-button')).toBe(true);
+    expect(copyButton.getAttribute('aria-label')).toBe('Copy system prompt');
+
+    copyButton.click();
+    await settle();
+    fixture.detectChanges();
+
+    expect(clipboardWriteText).toHaveBeenCalledWith(AI_SYSTEM_PROMPTS.chat.default);
+    expect(component.promptCopied()).toBe(true);
+    expect(copyButton.getAttribute('aria-label')).toBe('System prompt copied');
+    expect(element.querySelector('.prompt-copy-status')?.textContent).toContain(
+      'System prompt copied to clipboard.',
+    );
+
+    await vi.advanceTimersByTimeAsync(2000);
+    fixture.detectChanges();
+    expect(component.promptCopied()).toBe(false);
+  });
+
+  it('copies an editable system prompt from the expanded modal header', async () => {
+    selectSavedScenePreset();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+
+    const dialog = expandedDialog();
+    const copyButton = dialog.querySelector<HTMLButtonElement>(
+      '.expanded-prompt-actions .prompt-copy-button',
+    )!;
+    expect(copyButton).not.toBeNull();
+
+    copyButton.click();
+    await settle();
+
+    expect(clipboardWriteText).toHaveBeenCalledWith(savedScenePreset.systemPrompt);
+  });
+
+  it('reports clipboard failures', async () => {
+    clipboardWriteText.mockRejectedValueOnce(new Error('Clipboard unavailable'));
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-copy-button')
+      ?.click();
+    await settle();
+
+    expect(component.promptCopied()).toBe(false);
+    expect(toastError).toHaveBeenCalledWith('Clipboard unavailable', 'Copy failed');
+  });
+
   it('searches the selected prompt with Ctrl+F and selects the active match', async () => {
     component.selectPreset('global-chat');
     fixture.detectChanges();
@@ -391,16 +454,22 @@ describe('SystemPromptSettingsComponent', () => {
     expect(component.currentSearchMatch()).toBeLessThanOrEqual(1);
   });
 
-  it('toggles search closed and does not intercept Ctrl+F without a selected prompt', async () => {
+  it('closes open search and does not intercept Ctrl+F without a selected prompt', async () => {
     component.openSearch();
     fixture.detectChanges();
+    await settle();
+
+    const searchInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      'app-search input',
+    )!;
 
     const closeShortcut = new KeyboardEvent('keydown', {
       key: 'f',
-      metaKey: true,
+      ctrlKey: true,
+      bubbles: true,
       cancelable: true,
     });
-    document.dispatchEvent(closeShortcut);
+    searchInput.dispatchEvent(closeShortcut);
     fixture.detectChanges();
     await settle();
     expect(closeShortcut.defaultPrevented).toBe(true);
@@ -416,6 +485,236 @@ describe('SystemPromptSettingsComponent', () => {
     document.dispatchEvent(browserShortcut);
     expect(browserShortcut.defaultPrevented).toBe(false);
     expect(component.searchOpen()).toBe(false);
+  });
+
+  it('expands the prompt without losing selection, scrolling, or read-only state', async () => {
+    vi.useFakeTimers();
+    const inlineTextarea = (fixture.nativeElement as HTMLElement).querySelector<HTMLTextAreaElement>(
+      '#system-prompt',
+    )!;
+    inlineTextarea.setSelectionRange(4, 13);
+    inlineTextarea.scrollTop = 28;
+    inlineTextarea.scrollLeft = 3;
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    await vi.advanceTimersByTimeAsync(0);
+
+    const dialog = expandedDialog();
+    const expandedTextarea = dialog.querySelector<HTMLTextAreaElement>('#expanded-system-prompt')!;
+    expect(component.promptExpanded()).toBe(true);
+    expect(document.querySelector('.cdk-overlay-container .system-prompt-dialog')).toBe(dialog);
+    expect(inlineTextarea.isConnected).toBe(true);
+    expect(expandedTextarea.readOnly).toBe(true);
+    expect(expandedTextarea.selectionStart).toBe(4);
+    expect(expandedTextarea.selectionEnd).toBe(13);
+    expect(expandedTextarea.scrollTop).toBe(28);
+
+    expandedTextarea.setSelectionRange(1, 7);
+    expandedTextarea.scrollTop = 44;
+    expandedTextarea.scrollLeft = 5;
+    document.querySelector<HTMLElement>('.cdk-overlay-backdrop')?.click();
+    expect(component.promptExpanded()).toBe(true);
+
+    dialog.querySelector<HTMLButtonElement>('.expanded-prompt-close')?.click();
+    await vi.advanceTimersByTimeAsync(200);
+    fixture.detectChanges();
+    await settle();
+    await vi.runOnlyPendingTimersAsync();
+
+    const restoredTextarea = (fixture.nativeElement as HTMLElement).querySelector<HTMLTextAreaElement>(
+      '#system-prompt',
+    )!;
+    expect(component.promptExpanded()).toBe(false);
+    expect(document.querySelector('.cdk-overlay-container .system-prompt-dialog')).toBeNull();
+    expect(restoredTextarea.selectionStart).toBe(1);
+    expect(restoredTextarea.selectionEnd).toBe(7);
+    expect(restoredTextarea.scrollTop).toBe(44);
+    expect(document.activeElement).toBe(restoredTextarea);
+  });
+
+  it('keeps search matches active in expanded mode and layers Escape correctly', async () => {
+    vi.useFakeTimers();
+    component.selectPreset('global-chat');
+    fixture.detectChanges();
+    component.openSearch();
+    fixture.detectChanges();
+    component.updateSearchQuery('write');
+    component.updateSearchWholeWord(true);
+    fixture.detectChanges();
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    await vi.advanceTimersByTimeAsync(0);
+
+    const dialog = expandedDialog();
+    expect(component.searchOpen()).toBe(true);
+    expect(dialog.querySelector('.expanded-prompt-find')).toBeNull();
+    expect(dialog.querySelector('.expanded-prompt-search .search-widget.is-compact')).not.toBeNull();
+    expect(dialog.querySelectorAll('app-search')).toHaveLength(1);
+    expect(component.searchQuery()).toBe('write');
+    expect(component.searchWholeWord()).toBe(true);
+    expect(component.searchMatches()).toHaveLength(3);
+    expect(dialog.querySelectorAll('.prompt-search-highlight mark')).toHaveLength(3);
+
+    component.selectNextSearchMatch();
+    fixture.detectChanges();
+    await settle();
+    const expandedTextarea = dialog.querySelector<HTMLTextAreaElement>('#expanded-system-prompt')!;
+    expect(component.currentSearchMatch()).toBe(2);
+    expect(expandedTextarea.selectionStart).toBe(6);
+    expect(expandedTextarea.selectionEnd).toBe(11);
+
+    const searchInput = dialog.querySelector<HTMLInputElement>('app-search input')!;
+    const searchEscape = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    searchInput.dispatchEvent(searchEscape);
+    fixture.detectChanges();
+    await settle();
+    expect(component.searchOpen()).toBe(false);
+    expect(component.promptExpanded()).toBe(true);
+    expect(dialog.querySelector('.expanded-prompt-find')).not.toBeNull();
+    expect(dialog.querySelector('app-search')).toBeNull();
+
+    const dialogEscape = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    dialog.querySelector<HTMLTextAreaElement>('#expanded-system-prompt')?.dispatchEvent(dialogEscape);
+    await vi.advanceTimersByTimeAsync(200);
+    fixture.detectChanges();
+    await settle();
+    expect(dialogEscape.defaultPrevented).toBe(true);
+    expect(component.promptExpanded()).toBe(false);
+  });
+
+  it('autosaves edits made in expanded mode', async () => {
+    vi.useFakeTimers();
+    selectSavedScenePreset();
+    update.mockResolvedValue({
+      ...savedScenePreset,
+      systemPrompt: 'Expanded editor revision.',
+    });
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    const textarea = expandedDialog().querySelector<HTMLTextAreaElement>('#expanded-system-prompt')!;
+    textarea.value = 'Expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')?.textContent).toContain(
+      'Saving changes shortly…',
+    );
+
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    expect(update).toHaveBeenCalledWith(
+      'scene-custom',
+      expect.objectContaining({ systemPrompt: 'Expanded editor revision.' }),
+    );
+    expect(component.selectedPreset()?.systemPrompt).toBe('Expanded editor revision.');
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')?.textContent).toContain(
+      'Saved',
+    );
+
+    textarea.value = 'A newer expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')?.textContent).toContain(
+      'Saving changes shortly…',
+    );
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+  });
+
+  it('does not show an autosave status for a built-in prompt in expanded mode', async () => {
+    vi.useFakeTimers();
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')).toBeNull();
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+  });
+
+  it('does not show saved when an expanded prompt autosave fails', async () => {
+    vi.useFakeTimers();
+    selectSavedScenePreset();
+    update.mockRejectedValue(new Error('Database unavailable'));
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    const textarea = expandedDialog().querySelector<HTMLTextAreaElement>('#expanded-system-prompt')!;
+    textarea.value = 'Unsaved expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+    expect(toastError).toHaveBeenCalledWith('Database unavailable', 'Preset autosave failed');
+  });
+
+  it('waits for the latest expanded prompt revision before showing saved', async () => {
+    vi.useFakeTimers();
+    selectSavedScenePreset();
+
+    let finishFirstSave!: (preset: SystemPromptPresetDto) => void;
+    update
+      .mockImplementationOnce(
+        () =>
+          new Promise<SystemPromptPresetDto>((resolve) => {
+            finishFirstSave = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        ...savedScenePreset,
+        systemPrompt: 'Second expanded editor revision.',
+      });
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    const textarea = expandedDialog().querySelector<HTMLTextAreaElement>('#expanded-system-prompt')!;
+    textarea.value = 'First expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    textarea.value = 'Second expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    finishFirstSave({ ...savedScenePreset, systemPrompt: 'First expanded editor revision.' });
+    await settle();
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')).not.toBeNull();
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')?.textContent).toContain(
+      'Saved',
+    );
   });
 
   it('shows an editable global model only for action prompt presets', async () => {
@@ -718,6 +1017,14 @@ describe('SystemPromptSettingsComponent', () => {
     input.value = value;
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
+  }
+
+  function expandedDialog(): HTMLElement {
+    const dialog = document.querySelector<HTMLElement>(
+      '.cdk-overlay-container .system-prompt-dialog',
+    );
+    if (!dialog) throw new Error('Expected the system prompt dialog');
+    return dialog;
   }
 });
 
