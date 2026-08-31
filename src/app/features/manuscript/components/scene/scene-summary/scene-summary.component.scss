@@ -89,6 +89,22 @@
     margin-top: 1rem;
   }
 
+  &.is-wide-page {
+    position: relative;
+    right: auto;
+    width: 100%;
+    min-height: 0;
+    max-height: none;
+    overflow-y: visible;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+
+    .summary-content-wrapper {
+      max-height: min(320px, 40vh);
+      overflow-y: auto;
+    }
+  }
+
   .summary-header {
     display: flex;
     justify-content: space-between;
@@ -134,6 +150,11 @@
 
   .summary-content-wrapper {
     overflow: hidden;
+
+    @media (max-width: 1399px) {
+      max-height: min(320px, 40vh);
+      overflow-y: auto;
+    }
   }
 
   .summary-markdown-editor {

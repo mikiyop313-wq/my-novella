@@ -384,6 +384,20 @@
       font-weight: 600;
     }
 
+    &.selected:disabled {
+      background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+      color: var(--color-text-primary);
+      opacity: 0.65;
+    }
+
+    .menu-item-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 8px;
+      flex-shrink: 0;
+    }
+
     .menu-item-icon {
       margin-right: 8px;
       color: var(--color-text-secondary);
@@ -446,6 +460,19 @@
       color: var(--color-text-primary);
       margin-left: 8px;
       flex-shrink: 0;
+    }
+
+    .scope-marker {
+      margin-left: 8px;
+      flex-shrink: 0;
+    }
+
+    .menu-item-actions .scope-marker {
+      margin-left: 0;
+    }
+
+    .ancestor-icon {
+      color: var(--color-text-secondary);
     }
   }
 }

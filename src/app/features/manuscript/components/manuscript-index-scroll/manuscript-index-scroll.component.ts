@@ -1,6 +1,22 @@
-import { Component, input, output, signal, effect, OnDestroy, NgZone, ElementRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import {
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  NgZone,
+  OnDestroy,
+  output,
+  signal,
+} from '@angular/core';
 import { ManuscriptStore } from '../../store/manuscript.store';
+
+const ACTIVE_SECTION_OFFSET_PX = 20;
+const BOTTOM_SCROLL_TOLERANCE_PX = 1;
+const LAYOUT_UPDATE_DELAY_MS = 100;
+const MINIMUM_MARKER_GAP_PX = 8;
 
 export interface ManuscriptIndexItem {
   id: string;
@@ -13,6 +29,56 @@ interface PositionedItem {
   topPercent: number;
 }
 
+interface SectionOffset {
+  id: string;
+  type: ManuscriptIndexItem['type'];
+  absoluteTop: number;
+}
+
+interface MarkerPosition {
+  id: string;
+  topPx: number;
+}
+
+interface SpaceMarkerPositionsRequest {
+  positions: MarkerPosition[];
+  trackHeight: number;
+}
+
+function spaceMarkerPositions({
+  positions,
+  trackHeight,
+}: SpaceMarkerPositionsRequest): MarkerPosition[] {
+  if (positions.length < 2) return positions;
+
+  const effectiveGap = Math.min(
+    MINIMUM_MARKER_GAP_PX,
+    trackHeight / (positions.length - 1),
+  );
+  const adjustedPositions = positions.map(position => ({ ...position }));
+
+  for (let index = 1; index < adjustedPositions.length; index++) {
+    const previousTop = adjustedPositions[index - 1].topPx;
+    adjustedPositions[index].topPx = Math.max(
+      adjustedPositions[index].topPx,
+      previousTop + effectiveGap,
+    );
+  }
+
+  const lastIndex = adjustedPositions.length - 1;
+  if (adjustedPositions[lastIndex].topPx <= trackHeight) return adjustedPositions;
+
+  adjustedPositions[lastIndex].topPx = trackHeight;
+  for (let index = lastIndex - 1; index >= 0; index--) {
+    adjustedPositions[index].topPx = Math.min(
+      adjustedPositions[index].topPx,
+      adjustedPositions[index + 1].topPx - effectiveGap,
+    );
+  }
+
+  return adjustedPositions;
+}
+
 @Component({
   selector: 'app-manuscript-index-scroll',
   standalone: true,
@@ -23,42 +89,49 @@ interface PositionedItem {
 export class ManuscriptIndexScrollComponent implements OnDestroy {
   items = input.required<ManuscriptIndexItem[]>();
   select = output<ManuscriptIndexItem>();
-  
-  positionedItems = signal<PositionedItem[]>([]);
+
+  private readonly markerPositions = signal<ReadonlyMap<string, number>>(new Map());
+  readonly positionedItems = computed<PositionedItem[]>(() => {
+    const positions = this.markerPositions();
+
+    return this.items().flatMap(item => {
+      const topPercent = positions.get(item.id);
+      return topPercent === undefined ? [] : [{ item, topPercent }];
+    });
+  });
   store = inject(ManuscriptStore);
-  
+
   thumbTop = signal<number>(0);
   thumbHeight = signal<number>(0);
   isDragging = signal(false);
 
-  private observer: IntersectionObserver | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private scrollContainer: HTMLElement | null = null;
-  private scrollListener: any;
-  private isClickScrolling = false;
-  private clickScrollTimeout: any;
+  private trackElement: HTMLElement | null = null;
+  private scrollListener: (() => void) | null = null;
+  private layoutUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private sectionOffsets: SectionOffset[] = [];
+  private itemStructureKey = '';
   private dragStartY = 0;
   private dragStartScrollTop = 0;
 
-  constructor(private ngZone: NgZone, private elementRef: ElementRef) {
+  constructor(
+    private ngZone: NgZone,
+    private elementRef: ElementRef<HTMLElement>,
+  ) {
     effect(() => {
       const currentItems = this.items();
-      setTimeout(() => {
-        this.setupObservers(currentItems);
-        this.calculatePositions();
-      }, 100);
+      const structureKey = currentItems.map(item => `${item.type}:${item.id}`).join('|');
+      if (structureKey === this.itemStructureKey) return;
+
+      this.itemStructureKey = structureKey;
+      this.scheduleLayoutUpdate();
     });
   }
 
   onItemClick(item: ManuscriptIndexItem) {
     this.store.setActiveSection(item.type, item.id);
     this.select.emit(item);
-
-    this.isClickScrolling = true;
-    clearTimeout(this.clickScrollTimeout);
-    this.clickScrollTimeout = setTimeout(() => {
-      this.isClickScrolling = false;
-    }, 1000);
   }
 
   onTrackPointerDown(event: PointerEvent) {
@@ -119,74 +192,57 @@ export class ManuscriptIndexScrollComponent implements OnDestroy {
     return false;
   }
 
-  private setupObservers(items: ManuscriptIndexItem[]) {
-    if (this.observer) this.observer.disconnect();
-    if (this.resizeObserver) this.resizeObserver.disconnect();
-    if (this.scrollContainer && this.scrollListener) {
-      this.scrollContainer.removeEventListener('scroll', this.scrollListener);
-    }
+  private setupTracking(): void {
+    if (this.scrollContainer) return;
 
-    this.scrollContainer = document.querySelector('.editor-content-wrapper') as HTMLElement;
-    if (!this.scrollContainer) return;
+    const scrollContainer = document.querySelector<HTMLElement>('.editor-content-wrapper');
+    const trackElement = this.elementRef.nativeElement.querySelector<HTMLElement>('.scrollbar-track');
+    if (!scrollContainer || !trackElement) return;
 
-    // Track scroll to update thumb position
+    this.scrollContainer = scrollContainer;
+    this.trackElement = trackElement;
+
     this.scrollListener = () => {
       this.updateThumbPosition();
+      this.updateActiveSection();
     };
     this.scrollContainer.addEventListener('scroll', this.scrollListener, { passive: true });
 
-    // Track resizing of editor to recalculate marker positions
+    this.resizeObserver = new ResizeObserver(() => {
+      this.ngZone.run(() => {
+        this.calculatePositions();
+        this.updateThumbPosition();
+      });
+    });
+
     const tiptapEl = this.scrollContainer.querySelector('.tiptap');
-    if (tiptapEl) {
-      this.resizeObserver = new ResizeObserver(() => {
-        this.ngZone.run(() => {
-          this.calculatePositions();
-          this.updateThumbPosition();
-        });
-      });
-      this.resizeObserver.observe(tiptapEl);
-      this.resizeObserver.observe(this.scrollContainer);
-    }
-
-    // Intersection observer to track active item
-    this.observer = new IntersectionObserver((entries) => {
-      if (this.isClickScrolling) return;
-
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const id = entry.target.id;
-          const itemId = id.replace('section-', '');
-          const item = this.items().find(i => i.id === itemId);
-          if (item) {
-            this.store.setActiveSection(item.type, item.id);
-          }
-        }
-      });
-    }, {
-      root: this.scrollContainer,
-      rootMargin: '-10% 0px -80% 0px' // Trigger near top of view
-    });
-
-    items.forEach(item => {
-      const el = document.getElementById(`section-${item.id}`);
-      if (el) this.observer!.observe(el);
-    });
-
-    // Initial calcs
-    this.calculatePositions();
-    this.updateThumbPosition();
+    if (tiptapEl) this.resizeObserver.observe(tiptapEl);
+    this.resizeObserver.observe(this.scrollContainer);
+    this.resizeObserver.observe(this.trackElement);
   }
 
-  private calculatePositions() {
+  private scheduleLayoutUpdate(): void {
+    if (this.layoutUpdateTimeout !== null) clearTimeout(this.layoutUpdateTimeout);
+
+    this.layoutUpdateTimeout = setTimeout(() => {
+      this.layoutUpdateTimeout = null;
+      this.setupTracking();
+      this.calculatePositions();
+      this.updateThumbPosition();
+    }, LAYOUT_UPDATE_DELAY_MS);
+  }
+
+  private calculatePositions(): void {
     if (!this.scrollContainer) return;
-    
+
     const scrollHeight = this.scrollContainer.scrollHeight;
-    if (scrollHeight === 0) return;
+    const trackHeight = this.trackElement?.clientHeight ?? 0;
+    if (scrollHeight === 0 || trackHeight === 0) return;
 
     const currentItems = this.items();
-    const newPositioned: PositionedItem[] = [];
+    const rawMarkerPositions: MarkerPosition[] = [];
+    const newSectionOffsets: SectionOffset[] = [];
 
-    // Container offset to calculate absolute top within the scroll area
     const containerTop = this.scrollContainer.getBoundingClientRect().top;
     const scrollTop = this.scrollContainer.scrollTop;
 
@@ -194,21 +250,51 @@ export class ManuscriptIndexScrollComponent implements OnDestroy {
       const el = document.getElementById(`section-${item.id}`);
       if (el) {
         const rect = el.getBoundingClientRect();
-        // Calculate the absolute Y position of the element from the top of the scroll container
         const absoluteTop = rect.top - containerTop + scrollTop;
-        
-        let topPercent = (absoluteTop / scrollHeight) * 100;
-        // Clamp to 0-100 just in case
-        topPercent = Math.max(0, Math.min(100, topPercent));
+        const topPx = Math.max(0, Math.min(trackHeight, (absoluteTop / scrollHeight) * trackHeight));
 
-        newPositioned.push({ item, topPercent });
+        rawMarkerPositions.push({ id: item.id, topPx });
+        newSectionOffsets.push({ id: item.id, type: item.type, absoluteTop });
       }
     }
 
-    this.positionedItems.set(newPositioned);
+    const newMarkerPositions = new Map(
+      spaceMarkerPositions({ positions: rawMarkerPositions, trackHeight })
+        .map(position => [position.id, (position.topPx / trackHeight) * 100]),
+    );
+
+    this.sectionOffsets = newSectionOffsets;
+    this.markerPositions.set(newMarkerPositions);
+    this.updateActiveSection();
   }
 
-  private updateThumbPosition() {
+  private updateActiveSection(): void {
+    if (!this.scrollContainer || this.sectionOffsets.length === 0) return;
+
+    const scrollTop = this.scrollContainer.scrollTop;
+    const maximumScrollTop = Math.max(
+      0,
+      this.scrollContainer.scrollHeight - this.scrollContainer.clientHeight,
+    );
+    const isAtBottom = maximumScrollTop > 0
+      && scrollTop >= maximumScrollTop - BOTTOM_SCROLL_TOLERANCE_PX;
+
+    let activeSection = this.sectionOffsets[0];
+
+    if (isAtBottom) {
+      activeSection = this.sectionOffsets[this.sectionOffsets.length - 1];
+    } else {
+      const activeOffset = scrollTop + ACTIVE_SECTION_OFFSET_PX;
+      for (const section of this.sectionOffsets) {
+        if (section.absoluteTop <= activeOffset) activeSection = section;
+      }
+    }
+
+    if (this.store.activeSectionId() === activeSection.id) return;
+    this.store.setActiveSection(activeSection.type, activeSection.id);
+  }
+
+  private updateThumbPosition(): void {
     if (!this.scrollContainer) return;
 
     const scrollTop = this.scrollContainer.scrollTop;
@@ -220,16 +306,15 @@ export class ManuscriptIndexScrollComponent implements OnDestroy {
     const thumbHeightPct = (clientHeight / scrollHeight) * 100;
     const thumbTopPct = (scrollTop / scrollHeight) * 100;
 
-    this.thumbHeight.set(Math.min(100, Math.max(2, thumbHeightPct))); // Min 2% height
+    this.thumbHeight.set(Math.min(100, Math.max(2, thumbHeightPct)));
     this.thumbTop.set(Math.min(100 - this.thumbHeight(), Math.max(0, thumbTopPct)));
   }
 
-  ngOnDestroy() {
-    if (this.observer) this.observer.disconnect();
+  ngOnDestroy(): void {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     if (this.scrollContainer && this.scrollListener) {
       this.scrollContainer.removeEventListener('scroll', this.scrollListener);
     }
-    clearTimeout(this.clickScrollTimeout);
+    if (this.layoutUpdateTimeout !== null) clearTimeout(this.layoutUpdateTimeout);
   }
 }

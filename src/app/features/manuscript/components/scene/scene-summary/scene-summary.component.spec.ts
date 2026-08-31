@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { vi } from 'vitest';
@@ -14,9 +15,13 @@ describe('SceneSummaryComponent', () => {
   let fixture: ComponentFixture<SceneSummaryComponent>;
   let updateAttributes: ReturnType<typeof vi.fn>;
 
+  const settings = signal<{
+    pageWidth: 'narrow' | 'medium' | 'wide';
+  }>({ pageWidth: 'medium' });
   const store = {
     showSceneTitles: vi.fn(() => true),
     showSummaries: vi.fn(() => true),
+    settings,
     editor: vi.fn(() => null),
     bookHierarchy: vi.fn(() => [{
       bookId: 'book-1',
@@ -37,6 +42,7 @@ describe('SceneSummaryComponent', () => {
       bookId: 'book-1',
       chapters: [{ scenes: [{ id: 'scene-1', wordCount: 2 }] }],
     }]);
+    settings.set({ pageWidth: 'medium' });
     store.updateScene.mockReset();
     store.archiveScene.mockReset();
     store.deleteScene.mockReset();
@@ -113,6 +119,21 @@ describe('SceneSummaryComponent', () => {
     expect(component.summary()).toBe('');
     expect(updateAttributes).toHaveBeenCalledWith({ summary: '' });
     expect(store.updateScene).toHaveBeenCalledWith({ id: 'scene-1', summary: '' });
+  });
+
+  it('places the summary inline when the manuscript page width is wide', () => {
+    settings.set({ pageWidth: 'wide' });
+    fixture.detectChanges();
+
+    const gutter = fixture.nativeElement.querySelector('.scene-summary-gutter-node') as HTMLElement;
+    gutter.style.transform = 'translateY(20px)';
+    gutter.style.maxHeight = '200px';
+
+    component.updateLayout();
+
+    expect(gutter.classList.contains('is-wide-page')).toBe(true);
+    expect(gutter.style.transform).toBe('none');
+    expect(gutter.style.maxHeight).toBe('');
   });
 
   it('generates an AI summary from the scene prose and replaces the current summary', async () => {

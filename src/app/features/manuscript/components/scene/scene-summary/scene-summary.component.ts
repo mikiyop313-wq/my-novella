@@ -124,7 +124,9 @@ export class SceneSummaryComponent extends AngularNodeViewComponent implements O
   }
 
   updateLayout(): void {
-    if (window.innerWidth < 1400) {
+    const useInlineSummary = window.innerWidth < 1400 || this.store.settings().pageWidth === 'wide';
+
+    if (useInlineSummary) {
       const gutterNode = this.elementRef.nativeElement.querySelector('.scene-summary-gutter-node') as HTMLElement;
       if (gutterNode) {
         gutterNode.style.transform = 'none';

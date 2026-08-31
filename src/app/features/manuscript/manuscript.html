@@ -109,6 +109,7 @@
     <!-- View Scope & Stats -->
     <div class="toolbar-group view-scope-group">
       <button class="dropdown-trigger-btn view-scope-btn" [cdkMenuTriggerFor]="bookMenu"
+        #viewScopeMenuTrigger="cdkMenuTriggerFor"
         [attr.aria-label]="'View scope: ' + currentScopeLabel()" [attr.title]="currentScopeLabel()">
         <span class="active-style-label">
           {{ currentScopeLabel() }}
@@ -302,20 +303,47 @@
   <ng-template #bookMenu>
     <div class="dropdown-menu toolbar-dropdown-menu" cdkMenu>
       <button class="menu-item"
+        [class.selected]="store.mode() === 'book'" [disabled]="store.mode() === 'book'"
+        [attr.aria-current]="store.mode() === 'book' ? 'page' : null"
         (click)="switchViewMode('book', store.bookHierarchy()[0]?.bookId || store.bookId() || '')" cdkMenuItem>
         <span class="item-label" style="font-weight: 600;">Full Novel</span>
+        @if (store.mode() === 'book') {
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960"
+          width="16" fill="currentColor" class="check-icon scope-marker">
+          <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+        </svg>
+        }
       </button>
       @if (store.bookHierarchy().length > 0) {
       <div class="menu-divider"></div>
       @for (act of store.bookHierarchy(); track act.id) {
-      <button class="menu-item" [cdkMenuTriggerFor]="actMenu" [cdkMenuTriggerData]="{ $implicit: act }" cdkMenuItem>
+      <button class="menu-item" [class.selected]="scopeMarker('act', act.id) === 'current'"
+        [attr.aria-current]="scopeMarker('act', act.id) === 'current' ? 'page' : null"
+        [cdkMenuTriggerFor]="act.chapters?.length ? actMenu : null"
+        [cdkMenuTriggerData]="{ $implicit: act }"
+        (click)="selectHierarchyScope('act', act.id, viewScopeMenuTrigger)" cdkMenuItem>
         <span class="item-label">
           {{ 'Act ' + (act.position + 1) + (act.title ? ': ' + act.title : '') }}
         </span>
-        <svg class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          width="12" height="12">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
+        <span class="menu-item-actions">
+          @if (scopeMarker('act', act.id) === 'current') {
+          <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960"
+            width="16" fill="currentColor" class="check-icon scope-marker">
+            <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+          </svg>
+          } @else if (scopeMarker('act', act.id) === 'ancestor') {
+          <svg aria-hidden="true" class="ancestor-icon scope-marker" viewBox="0 0 16 16" width="16" height="16"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="4" y1="8" x2="12" y2="8"></line>
+          </svg>
+          }
+          @if (act.chapters?.length) {
+            <svg aria-hidden="true" class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" width="12" height="12">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          }
+        </span>
       </button>
       }
       }
@@ -324,21 +352,35 @@
 
   <ng-template #actMenu let-act>
     <div class="dropdown-menu toolbar-dropdown-menu" cdkMenu>
-      <button class="menu-item" (click)="switchViewMode('act', act.id)" cdkMenuItem>
-        <span class="item-label" style="font-weight: 600;">View Act</span>
-      </button>
       @if (act.chapters && act.chapters.length > 0) {
-      <div class="menu-divider"></div>
       @for (chapter of act.chapters; track chapter.id) {
-      <button class="menu-item" [cdkMenuTriggerFor]="chapterMenu" [cdkMenuTriggerData]="{ $implicit: chapter }"
-        cdkMenuItem>
+      <button class="menu-item" [class.selected]="scopeMarker('chapter', chapter.id) === 'current'"
+        [attr.aria-current]="scopeMarker('chapter', chapter.id) === 'current' ? 'page' : null"
+        [cdkMenuTriggerFor]="chapter.scenes?.length ? chapterMenu : null"
+        [cdkMenuTriggerData]="{ $implicit: chapter }"
+        (click)="selectHierarchyScope('chapter', chapter.id, viewScopeMenuTrigger)" cdkMenuItem>
         <span class="item-label">
           {{ 'Chapter ' + (chapter.position + 1) + (chapter.title ? ': ' + chapter.title : '') }}
         </span>
-        <svg class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          width="12" height="12">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
+        <span class="menu-item-actions">
+          @if (scopeMarker('chapter', chapter.id) === 'current') {
+          <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960"
+            width="16" fill="currentColor" class="check-icon scope-marker">
+            <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+          </svg>
+          } @else if (scopeMarker('chapter', chapter.id) === 'ancestor') {
+          <svg aria-hidden="true" class="ancestor-icon scope-marker" viewBox="0 0 16 16" width="16" height="16"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="4" y1="8" x2="12" y2="8"></line>
+          </svg>
+          }
+          @if (chapter.scenes?.length) {
+            <svg aria-hidden="true" class="chevron-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" width="12" height="12">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          }
+        </span>
       </button>
       }
       }
@@ -347,13 +389,12 @@
 
   <ng-template #chapterMenu let-chapter>
     <div class="dropdown-menu toolbar-dropdown-menu" cdkMenu>
-      <button class="menu-item" (click)="switchViewMode('chapter', chapter.id)" cdkMenuItem>
-        <span class="item-label" style="font-weight: 600;">View Chapter</span>
-      </button>
       @if (chapter.scenes && chapter.scenes.length > 0) {
-      <div class="menu-divider"></div>
       @for (scene of chapter.scenes; track scene.id) {
-      <button class="menu-item" (click)="switchViewMode('scene', scene.id)" cdkMenuItem>
+      <button class="menu-item" [class.selected]="isCurrentScope('scene', scene.id)"
+        [disabled]="isCurrentScope('scene', scene.id)"
+        [attr.aria-current]="isCurrentScope('scene', scene.id) ? 'page' : null"
+        (click)="switchViewMode('scene', scene.id)" cdkMenuItem>
         <span class="scene-menu-copy">
           <span class="item-label">
             {{ 'Scene ' + (scene.position + 1) + (scene.title ? ': ' + scene.title : '') }}
@@ -362,6 +403,12 @@
           <span class="item-summary">{{ summary }}</span>
           }
         </span>
+        @if (isCurrentScope('scene', scene.id)) {
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960"
+          width="16" fill="currentColor" class="check-icon scope-marker">
+          <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+        </svg>
+        }
       </button>
       }
       }
