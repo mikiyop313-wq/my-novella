@@ -1,4 +1,9 @@
-<section class="search-widget" role="search" [attr.aria-label]="regionLabel()">
+<section
+  class="search-widget"
+  [class.is-compact]="compact()"
+  role="search"
+  [attr.aria-label]="regionLabel()"
+>
   <div class="search-widget__search-row">
     <input
       #searchInput
@@ -32,13 +37,15 @@
       [disabled]="totalMatches() === 0 || loading()"
       (click)="next.emit()"
     >&darr;</button>
-    <button
-      type="button"
-      class="search-widget__icon-button search-widget__close-button"
-      title="Close (Escape)"
-      aria-label="Close search"
-      (click)="closed.emit()"
-    >&times;</button>
+    @if (!compact()) {
+      <button
+        type="button"
+        class="search-widget__icon-button search-widget__close-button"
+        title="Close (Escape)"
+        aria-label="Close search"
+        (click)="closed.emit()"
+      >&times;</button>
+    }
   </div>
 
   <div class="search-widget__option-row">
@@ -68,7 +75,16 @@
       [class.active]="wholeWord()"
       [attr.aria-pressed]="wholeWord()"
       (click)="wholeWordChange.emit(!wholeWord())"
-    >Word</button>
+    >{{ compact() ? 'W' : 'Word' }}</button>
+    @if (compact()) {
+      <button
+        type="button"
+        class="search-widget__icon-button search-widget__close-button"
+        title="Close (Escape)"
+        aria-label="Close search"
+        (click)="closed.emit()"
+      >&times;</button>
+    }
   </div>
 
   @if (error()) {

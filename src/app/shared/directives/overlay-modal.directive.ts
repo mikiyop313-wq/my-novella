@@ -17,6 +17,7 @@ import { TemplatePortal } from '@angular/cdk/portal';
 })
 export class OverlayModalDirective implements OnDestroy {
   @Input('appOverlayModal') modalTemplate!: TemplateRef<any>;
+  @Input() closeOnBackdrop = true;
   @Output() closed = new EventEmitter<void>();
 
   private overlayRef?: OverlayRef;
@@ -48,7 +49,9 @@ export class OverlayModalDirective implements OnDestroy {
     });
     this.isClosing = false;
 
-    this.overlayRef.backdropClick().subscribe(() => this.closeModal());
+    this.overlayRef.backdropClick().subscribe(() => {
+      if (this.closeOnBackdrop) this.closeModal();
+    });
 
     // Provide the close function as $implicit to the template
     const portal = new TemplatePortal(this.modalTemplate, this.viewContainerRef, {
