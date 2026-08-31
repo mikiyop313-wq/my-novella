@@ -443,6 +443,55 @@
   }
 }
 
+.copyable-note-editor {
+  position: relative;
+
+  .note-copy-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+      border-color: var(--color-text-secondary);
+      background: var(--color-hover-bg);
+      color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--color-text-primary) 30%, transparent);
+      outline-offset: 1px;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    svg {
+      width: 15px;
+      height: 15px;
+    }
+  }
+
+  ::ng-deep .cm-scroller {
+    padding-right: 42px;
+  }
+}
+
 :host ::ng-deep .note-editor .cm-editor {
   height: min(380px, calc(100vh - 270px));
   min-height: 220px;

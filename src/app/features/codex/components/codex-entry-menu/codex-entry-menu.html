@@ -155,14 +155,34 @@
 
       <div class="form-group description-form-group">
         <label>Description</label>
-        <app-markdown-editor
-          [value]="newEntryDescription()"
-          [keywordHighlights]="descriptionKeywordHighlights()"
-          placeholder="Brief description..."
-          ariaLabel="Codex description"
-          (valueChange)="updateEntryDescription($event)"
-          (keywordClick)="openDescriptionKeyword($event)">
-        </app-markdown-editor>
+        <div class="copyable-description-editor">
+          <app-markdown-editor
+            [value]="newEntryDescription()"
+            [keywordHighlights]="descriptionKeywordHighlights()"
+            placeholder="Brief description..."
+            ariaLabel="Codex description"
+            (valueChange)="updateEntryDescription($event)"
+            (keywordClick)="openDescriptionKeyword($event)">
+          </app-markdown-editor>
+          <button
+            type="button"
+            class="description-copy-button"
+            [disabled]="!newEntryDescription().trim()"
+            [attr.aria-label]="isEntryDescriptionCopied() ? 'Codex description copied' : 'Copy Codex description'"
+            [title]="isEntryDescriptionCopied() ? 'Codex description copied' : 'Copy Codex description'"
+            (click)="copyEntryDescription()">
+            @if (isEntryDescriptionCopied()) {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m5 12 4 4L19 6"></path>
+              </svg>
+            } @else {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
+              </svg>
+            }
+          </button>
+        </div>
       </div>
     } @else if (activeEntryView() === 'Notes') {
       <div class="notes-view">
@@ -194,13 +214,33 @@
                     </svg>
                   </button>
                 </div>
-                <app-markdown-editor
-                  class="note-content-editor"
-                  [value]="note.content"
-                  placeholder="Note description..."
-                  [ariaLabel]="'Codex note ' + ($index + 1) + ' content'"
-                  (valueChange)="updateNoteContent($index, $event)">
-                </app-markdown-editor>
+                <div class="copyable-description-editor">
+                  <app-markdown-editor
+                    class="note-content-editor"
+                    [value]="note.content"
+                    placeholder="Note description..."
+                    [ariaLabel]="'Codex note ' + ($index + 1) + ' content'"
+                    (valueChange)="updateNoteContent($index, $event)">
+                  </app-markdown-editor>
+                  <button
+                    type="button"
+                    class="description-copy-button note-description-copy-button"
+                    [disabled]="!note.content.trim()"
+                    [attr.aria-label]="isNoteDescriptionCopied($index) ? 'Note description copied' : 'Copy note description'"
+                    [title]="isNoteDescriptionCopied($index) ? 'Note description copied' : 'Copy note description'"
+                    (click)="copyNoteDescription($index)">
+                    @if (isNoteDescriptionCopied($index)) {
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m5 12 4 4L19 6"></path>
+                      </svg>
+                    } @else {
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                        <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
+                      </svg>
+                    }
+                  </button>
+                </div>
               </div>
             }
           </div>
