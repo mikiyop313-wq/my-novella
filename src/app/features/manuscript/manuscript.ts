@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { CdkMenuModule } from '@angular/cdk/menu';
+import { CdkMenuModule, type CdkMenuTrigger } from '@angular/cdk/menu';
 import { Component, HostListener, Injector, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
@@ -75,6 +75,8 @@ import { AiSelectionEditService } from './helpers/ai/ai-selection-edit.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { MarkdownPlainTextPipe } from '../../shared/pipes/markdown-plain-text.pipe';
 import { ManuscriptSearchService } from './helpers/search/manuscript-search.service';
+
+type ScopeMarker = 'current' | 'ancestor' | null;
 
 @Component({
   selector: 'app-manuscript',
@@ -188,6 +190,39 @@ export class Manuscript implements OnInit, OnDestroy {
 
     return '';
   });
+
+  scopeMarker(type: Exclude<ManuscriptMode, 'book'>, id: string): ScopeMarker {
+    const activeMode = this.store.mode();
+    const activeId = this.store.activeEntityId();
+
+    if (activeMode === type && activeId === id) return 'current';
+    if (!activeMode || !activeId || type === 'scene') return null;
+
+    for (const act of this.store.bookHierarchy()) {
+      if (type === 'act' && act.id === id) {
+        const containsActiveChapter = activeMode === 'chapter'
+          && act.chapters?.some(chapter => chapter.id === activeId);
+        const containsActiveScene = activeMode === 'scene'
+          && act.chapters?.some(chapter => chapter.scenes?.some(scene => scene.id === activeId));
+        return containsActiveChapter || containsActiveScene ? 'ancestor' : null;
+      }
+
+      if (type === 'chapter') {
+        const chapter = act.chapters?.find(candidate => candidate.id === id);
+        if (chapter) {
+          const containsActiveScene = activeMode === 'scene'
+            && chapter.scenes?.some(scene => scene.id === activeId);
+          return containsActiveScene ? 'ancestor' : null;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  isCurrentScope(type: ManuscriptMode, id: string): boolean {
+    return this.store.mode() === type && this.store.activeEntityId() === id;
+  }
 
 
   // ---------------------------------------------------------------------------
@@ -673,10 +708,17 @@ export class Manuscript implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   switchViewMode(mode: ManuscriptMode, id: string): void {
+    if (this.isCurrentScope(mode, id)) return;
+
     const bookId = this.getWorkspaceBookId();
     if (!bookId) return;
 
     this.router.navigate(['/workspace', bookId, 'manuscript', mode, id], { replaceUrl: true });
+  }
+
+  selectHierarchyScope(mode: ManuscriptMode, id: string, menuTrigger: CdkMenuTrigger): void {
+    this.switchViewMode(mode, id);
+    queueMicrotask(() => menuTrigger.close());
   }
 
   async focusProseGeneration(request: ProseGenerationFocusRequest): Promise<void> {

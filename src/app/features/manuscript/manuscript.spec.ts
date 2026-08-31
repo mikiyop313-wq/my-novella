@@ -585,7 +585,78 @@ describe('Manuscript', () => {
     expect(component.currentScopeLabel()).toBe('Chapter 3');
   });
 
-  it('shows numbered hierarchy titles and plain-text scene summaries in the view menu', async () => {
+  it('marks the active manuscript scope and its route ancestors', () => {
+    const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
+    workspaceBookStore.setBookHierarchy([{
+      id: 'act-1',
+      title: 'Act One',
+      bookId: 'book-1',
+      position: 0,
+      status: 'active',
+      summary: null,
+      chapters: [{
+        id: 'chapter-1',
+        title: 'Chapter One',
+        actId: 'act-1',
+        position: 0,
+        status: 'active',
+        summary: null,
+        scenes: [{
+          id: 'scene-1',
+          title: 'Arrival',
+          chapterId: 'chapter-1',
+          position: 0,
+          status: 'active',
+          prose: null,
+          summary: null,
+          wordCount: 0,
+          pointOfViewOverride: null,
+          povCharacterIdOverride: null,
+        }],
+      }],
+    }, {
+      id: 'act-2',
+      title: 'Act Two',
+      bookId: 'book-1',
+      position: 1,
+      status: 'active',
+      summary: null,
+      chapters: [],
+    }]);
+
+    component.store.setRouteParams('scene', 'scene-1');
+    component.store.setActiveSection('scene', 'another-scene');
+
+    expect(component.scopeMarker('act', 'act-1')).toBe('ancestor');
+    expect(component.scopeMarker('chapter', 'chapter-1')).toBe('ancestor');
+    expect(component.scopeMarker('scene', 'scene-1')).toBe('current');
+    expect(component.scopeMarker('act', 'act-2')).toBeNull();
+
+    component.store.setRouteParams('chapter', 'chapter-1');
+    expect(component.scopeMarker('act', 'act-1')).toBe('ancestor');
+    expect(component.scopeMarker('chapter', 'chapter-1')).toBe('current');
+    expect(component.scopeMarker('scene', 'scene-1')).toBeNull();
+
+    component.store.setRouteParams('act', 'act-1');
+    expect(component.scopeMarker('act', 'act-1')).toBe('current');
+    expect(component.scopeMarker('chapter', 'chapter-1')).toBeNull();
+  });
+
+  it('does not navigate to the already active scope', () => {
+    component.store.setRouteParams('scene', 'scene-1');
+    routerNavigate.mockClear();
+
+    component.switchViewMode('scene', 'scene-1');
+    expect(routerNavigate).not.toHaveBeenCalled();
+
+    component.switchViewMode('chapter', 'chapter-1');
+    expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'chapter', 'chapter-1'],
+      { replaceUrl: true },
+    );
+  });
+
+  it('navigates directly from hierarchy rows while preserving nested menu access', async () => {
     const workspaceBookStore = TestBed.inject(WorkspaceBookStore);
     workspaceBookStore.setBookHierarchy([{
       id: 'act-1',
@@ -615,15 +686,62 @@ describe('Manuscript', () => {
         }],
       }],
     }]);
+    component.store.setRouteParams('scene', 'scene-1');
     fixture.detectChanges();
 
     (fixture.nativeElement.querySelector('.view-scope-btn') as HTMLButtonElement).click();
     await fixture.whenStable();
-    (Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
-      .find(button => button.textContent?.includes('Act 1: Act One'))!).click();
+    let actButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Act 1: Act One'))!;
+    expect(actButton.disabled).toBe(false);
+    expect(actButton.querySelector('.ancestor-icon')).not.toBeNull();
+    expect(actButton.getAttribute('aria-current')).toBeNull();
+    expect(document.body.textContent).not.toContain('View Act');
+    expect(document.body.textContent).not.toContain('View Chapter');
+
+    routerNavigate.mockClear();
+    actButton.click();
     await fixture.whenStable();
-    (Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
-      .find(button => button.textContent?.includes('Chapter 1: Chapter One'))!).click();
+    expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'act', 'act-1'],
+      { replaceUrl: true },
+    );
+    expect(document.querySelector('.toolbar-dropdown-menu')).toBeNull();
+
+    (fixture.nativeElement.querySelector('.view-scope-btn') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    actButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Act 1: Act One'))!;
+    actButton.dispatchEvent(new MouseEvent('mouseenter'));
+    await fixture.whenStable();
+
+    let chapterButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Chapter 1: Chapter One'))!;
+    expect(chapterButton.disabled).toBe(false);
+    expect(chapterButton.querySelector('.ancestor-icon')).not.toBeNull();
+
+    routerNavigate.mockClear();
+    chapterButton.click();
+    await fixture.whenStable();
+    expect(routerNavigate).toHaveBeenCalledWith(
+      ['/workspace', 'book-1', 'manuscript', 'chapter', 'chapter-1'],
+      { replaceUrl: true },
+    );
+    expect(document.querySelector('.toolbar-dropdown-menu')).toBeNull();
+
+    (fixture.nativeElement.querySelector('.view-scope-btn') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    actButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Act 1: Act One'))!;
+    actButton.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      key: 'ArrowRight',
+      keyCode: 39,
+    }));
+    await fixture.whenStable();
+    chapterButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-dropdown-menu .menu-item'))
+      .find(button => button.textContent?.includes('Chapter 1: Chapter One'))!;
+    chapterButton.dispatchEvent(new MouseEvent('mouseenter'));
     await fixture.whenStable();
 
     const sceneCopy = document.querySelector('.scene-menu-copy');
@@ -631,7 +749,14 @@ describe('Manuscript', () => {
     expect(sceneCopy?.querySelector('.item-summary')?.textContent).toContain('Mara enters the keep.');
     expect(sceneCopy?.querySelector('.item-summary')?.textContent).not.toContain('**');
 
-    (sceneCopy?.closest('button') as HTMLButtonElement).click();
+    const sceneButton = sceneCopy?.closest('button') as HTMLButtonElement;
+    expect(sceneButton.disabled).toBe(true);
+    expect(sceneButton.getAttribute('aria-current')).toBe('page');
+    expect(sceneButton.querySelector('.check-icon')).not.toBeNull();
+
+    routerNavigate.mockClear();
+    sceneButton.click();
+    expect(routerNavigate).not.toHaveBeenCalled();
     await fixture.whenStable();
   });
 
