@@ -99,6 +99,7 @@ const SYSTEM_PROMPT_CATEGORIES: readonly SystemPromptCategoryDefinition[] = Obje
   }));
 
 const AUTOSAVE_DELAY_MS = 500;
+const COPY_CONFIRMATION_DURATION_MS = 2000;
 
 @Component({
   selector: 'app-system-prompt-settings',
@@ -130,6 +131,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   private readonly saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly presetRevisions = new Map<string, number>();
   private pendingPromptEditorState: PromptEditorViewState | null = null;
+  private copyConfirmationTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly categories = SYSTEM_PROMPT_CATEGORIES;
   readonly modelDropdownSections = computed(() => buildModelDropdownSections({
@@ -161,6 +163,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly searchWholeWord = signal(false);
   readonly activeSearchMatchIndex = signal(-1);
   readonly promptExpanded = signal(false);
+  readonly promptCopied = signal(false);
   readonly filteredPresets = computed(() =>
     this.presets().filter(
       (preset) =>
@@ -232,6 +235,8 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.copyConfirmationTimer) clearTimeout(this.copyConfirmationTimer);
+
     for (const [presetId, timer] of this.saveTimers) {
       clearTimeout(timer);
       void this.savePreset(presetId);
@@ -625,6 +630,24 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   updateSystemPrompt(event: Event): void {
     this.updateSelectedPreset({ systemPrompt: this.inputValue(event) });
     this.refreshSearch({ resetActiveMatch: false, selectActiveMatch: false });
+  }
+
+  async copySystemPrompt(): Promise<void> {
+    const selected = this.selectedPreset();
+    if (!selected) return;
+
+    try {
+      await navigator.clipboard.writeText(selected.systemPrompt);
+      if (this.copyConfirmationTimer) clearTimeout(this.copyConfirmationTimer);
+
+      this.promptCopied.set(true);
+      this.copyConfirmationTimer = setTimeout(() => {
+        this.promptCopied.set(false);
+        this.copyConfirmationTimer = null;
+      }, COPY_CONFIRMATION_DURATION_MS);
+    } catch (error) {
+      this.showError(error, 'Unable to copy the system prompt.', 'Copy failed');
+    }
   }
 
   updateNumericField(field: NumericPresetField, event: Event): void {

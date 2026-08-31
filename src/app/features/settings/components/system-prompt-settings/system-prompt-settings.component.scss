@@ -6,6 +6,16 @@
   animation: settings-section-slide-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.prompt-copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .content-header {
   padding-bottom: 20px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
@@ -636,6 +646,7 @@ button {
   gap: 8px;
 }
 
+.prompt-copy-button,
 .prompt-expand-button,
 .expanded-prompt-close {
   width: 30px;

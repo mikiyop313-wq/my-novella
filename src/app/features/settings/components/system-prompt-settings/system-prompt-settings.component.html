@@ -1,4 +1,7 @@
 <div class="settings-section-panel system-prompts-panel">
+  <span class="prompt-copy-status" role="status" aria-live="polite">
+    {{ promptCopied() ? 'System prompt copied to clipboard.' : '' }}
+  </span>
   <header class="content-header">
     <div class="content-header-copy">
       <h1 class="content-title">{{ globalOnly() ? 'Global Prompts' : 'System Prompts' }}</h1>
@@ -318,6 +321,43 @@
               />
             </div>
 
+            <ng-template #copyPromptButton>
+              <button
+                class="prompt-copy-button"
+                type="button"
+                [attr.aria-label]="promptCopied() ? 'System prompt copied' : 'Copy system prompt'"
+                [title]="promptCopied() ? 'System prompt copied' : 'Copy system prompt'"
+                (click)="copySystemPrompt()"
+              >
+                @if (promptCopied()) {
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                } @else {
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.9"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
+                  </svg>
+                }
+              </button>
+            </ng-template>
+
             <ng-template #promptEditor let-editorPreset="preset" let-expanded="expanded">
               <div class="form-field system-prompt-field" [class.is-expanded]="expanded">
                 @if (!expanded) {
@@ -331,6 +371,7 @@
                             : 'Instructions sent before the conversation'
                         }}
                       </span>
+                      <ng-container [ngTemplateOutlet]="copyPromptButton"></ng-container>
                       <button
                         class="prompt-expand-button"
                         type="button"
@@ -685,6 +726,7 @@
                     </button>
                   }
                 </div>
+                <ng-container [ngTemplateOutlet]="copyPromptButton"></ng-container>
                 <button
                   class="expanded-prompt-close"
                   type="button"

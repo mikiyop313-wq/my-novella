@@ -29,6 +29,7 @@ describe('SystemPromptSettingsComponent', () => {
   let invalidate: ReturnType<typeof vi.fn>;
   let invalidateAll: ReturnType<typeof vi.fn>;
   let toastError: ReturnType<typeof vi.fn>;
+  let clipboardWriteText: ReturnType<typeof vi.fn>;
   let getBuiltInDefaultModelId: ReturnType<typeof vi.fn>;
   let setBuiltInDefaultModelId: ReturnType<typeof vi.fn>;
 
@@ -63,6 +64,11 @@ describe('SystemPromptSettingsComponent', () => {
     invalidate = vi.fn();
     invalidateAll = vi.fn();
     toastError = vi.fn();
+    clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: clipboardWriteText },
+    });
     getBuiltInDefaultModelId = vi.fn().mockResolvedValue('deepseek/deepseek-v4-flash');
     setBuiltInDefaultModelId = vi.fn().mockImplementation(
       (_presetId: string, modelId: string) => Promise.resolve(modelId),
@@ -309,6 +315,63 @@ describe('SystemPromptSettingsComponent', () => {
     component.resetGenerationSettings();
     expect(component.pendingSaveIds().size).toBe(0);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('copies a built-in system prompt from beside the expand action', async () => {
+    vi.useFakeTimers();
+    const element = fixture.nativeElement as HTMLElement;
+    const copyButton = element.querySelector<HTMLButtonElement>(
+      '.system-prompt-heading-actions .prompt-copy-button',
+    )!;
+
+    expect(copyButton.nextElementSibling?.classList.contains('prompt-expand-button')).toBe(true);
+    expect(copyButton.getAttribute('aria-label')).toBe('Copy system prompt');
+
+    copyButton.click();
+    await settle();
+    fixture.detectChanges();
+
+    expect(clipboardWriteText).toHaveBeenCalledWith(AI_SYSTEM_PROMPTS.chat.default);
+    expect(component.promptCopied()).toBe(true);
+    expect(copyButton.getAttribute('aria-label')).toBe('System prompt copied');
+    expect(element.querySelector('.prompt-copy-status')?.textContent).toContain(
+      'System prompt copied to clipboard.',
+    );
+
+    await vi.advanceTimersByTimeAsync(2000);
+    fixture.detectChanges();
+    expect(component.promptCopied()).toBe(false);
+  });
+
+  it('copies an editable system prompt from the expanded modal header', async () => {
+    selectSavedScenePreset();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+
+    const dialog = expandedDialog();
+    const copyButton = dialog.querySelector<HTMLButtonElement>(
+      '.expanded-prompt-actions .prompt-copy-button',
+    )!;
+    expect(copyButton).not.toBeNull();
+
+    copyButton.click();
+    await settle();
+
+    expect(clipboardWriteText).toHaveBeenCalledWith(savedScenePreset.systemPrompt);
+  });
+
+  it('reports clipboard failures', async () => {
+    clipboardWriteText.mockRejectedValueOnce(new Error('Clipboard unavailable'));
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-copy-button')
+      ?.click();
+    await settle();
+
+    expect(component.promptCopied()).toBe(false);
+    expect(toastError).toHaveBeenCalledWith('Clipboard unavailable', 'Copy failed');
   });
 
   it('searches the selected prompt with Ctrl+F and selects the active match', async () => {
