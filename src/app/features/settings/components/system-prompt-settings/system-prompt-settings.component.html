@@ -676,6 +676,17 @@
                   @if (preset.isBuiltIn) {
                     <span class="expanded-prompt-status">Built-in · Read only</span>
                   }
+                  @if (expandedPromptSaveStatus(); as saveStatus) {
+                    <span
+                      class="expanded-prompt-status"
+                      [class.is-saving]="saveStatus === 'saving'"
+                      [class.is-saved]="saveStatus === 'saved'"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {{ saveStatus === 'saving' ? 'Saving changes shortly…' : 'Saved' }}
+                    </span>
+                  }
                 </div>
               </div>
               <div class="expanded-prompt-actions">

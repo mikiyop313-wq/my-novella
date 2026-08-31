@@ -164,6 +164,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly activeSearchMatchIndex = signal(-1);
   readonly promptExpanded = signal(false);
   readonly promptCopied = signal(false);
+  private readonly expandedPromptSavedPresetId = signal<string | null>(null);
   readonly filteredPresets = computed(() =>
     this.presets().filter(
       (preset) =>
@@ -181,6 +182,15 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly selectedPreset = computed(() =>
     this.filteredPresets().find((preset) => preset.id === this.selectedPresetId()),
   );
+  readonly expandedPromptSaveStatus = computed<'saving' | 'saved' | null>(() => {
+    if (!this.promptExpanded()) return null;
+
+    const preset = this.selectedPreset();
+    if (!preset || preset.isBuiltIn) return null;
+    if (this.isPresetPendingOrSaving(preset.id)) return 'saving';
+
+    return this.expandedPromptSavedPresetId() === preset.id ? 'saved' : null;
+  });
   readonly searchMatches = computed<readonly TextSearchMatch[]>(() =>
     findTextMatches(this.selectedPreset()?.systemPrompt ?? '', {
       query: this.searchQuery(),
@@ -352,6 +362,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     const editorState = this.pendingPromptEditorState;
     this.pendingPromptEditorState = null;
     this.promptExpanded.set(false);
+    this.expandedPromptSavedPresetId.set(null);
     this.changeDetectorRef.detectChanges();
     if (editorState) this.restorePromptEditorState(editorState);
   }
@@ -711,6 +722,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
     const selected = this.selectedPreset();
     if (!selected || selected.isBuiltIn) return;
 
+    this.expandedPromptSavedPresetId.set(null);
     this.presets.update((presets) =>
       presets.map((preset) => (preset.id === selected.id ? { ...preset, ...update } : preset)),
     );
@@ -750,6 +762,9 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       this.confirmedPresets.set(presetId, confirmed);
       if ((this.presetRevisions.get(presetId) ?? 0) === revision) {
         this.replacePreset(confirmed);
+        if (this.promptExpanded() && this.selectedPresetId() === presetId) {
+          this.expandedPromptSavedPresetId.set(presetId);
+        }
       }
     } catch (error) {
       const confirmed = this.confirmedPresets.get(presetId);

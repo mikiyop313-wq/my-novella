@@ -613,6 +613,10 @@ describe('SystemPromptSettingsComponent', () => {
     textarea.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')?.textContent).toContain(
+      'Saving changes shortly…',
+    );
+
     await vi.advanceTimersByTimeAsync(500);
     fixture.detectChanges();
 
@@ -621,6 +625,96 @@ describe('SystemPromptSettingsComponent', () => {
       expect.objectContaining({ systemPrompt: 'Expanded editor revision.' }),
     );
     expect(component.selectedPreset()?.systemPrompt).toBe('Expanded editor revision.');
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')?.textContent).toContain(
+      'Saved',
+    );
+
+    textarea.value = 'A newer expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')?.textContent).toContain(
+      'Saving changes shortly…',
+    );
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+  });
+
+  it('does not show an autosave status for a built-in prompt in expanded mode', async () => {
+    vi.useFakeTimers();
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')).toBeNull();
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+  });
+
+  it('does not show saved when an expanded prompt autosave fails', async () => {
+    vi.useFakeTimers();
+    selectSavedScenePreset();
+    update.mockRejectedValue(new Error('Database unavailable'));
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    const textarea = expandedDialog().querySelector<HTMLTextAreaElement>('#expanded-system-prompt')!;
+    textarea.value = 'Unsaved expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+    expect(toastError).toHaveBeenCalledWith('Database unavailable', 'Preset autosave failed');
+  });
+
+  it('waits for the latest expanded prompt revision before showing saved', async () => {
+    vi.useFakeTimers();
+    selectSavedScenePreset();
+
+    let finishFirstSave!: (preset: SystemPromptPresetDto) => void;
+    update
+      .mockImplementationOnce(
+        () =>
+          new Promise<SystemPromptPresetDto>((resolve) => {
+            finishFirstSave = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        ...savedScenePreset,
+        systemPrompt: 'Second expanded editor revision.',
+      });
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.prompt-expand-button')
+      ?.click();
+    await settle();
+    const textarea = expandedDialog().querySelector<HTMLTextAreaElement>('#expanded-system-prompt')!;
+    textarea.value = 'First expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    textarea.value = 'Second expanded editor revision.';
+    textarea.dispatchEvent(new Event('input'));
+    finishFirstSave({ ...savedScenePreset, systemPrompt: 'First expanded editor revision.' });
+    await settle();
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saving')).not.toBeNull();
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.detectChanges();
+
+    expect(expandedDialog().querySelector('.expanded-prompt-status.is-saved')?.textContent).toContain(
+      'Saved',
+    );
   });
 
   it('shows an editable global model only for action prompt presets', async () => {
