@@ -15,7 +15,10 @@ import { FormsModule } from '@angular/forms';
 
 import { ElementAnimationDirective } from '../../../../shared/directives/element-animation.directive';
 import { MarkdownEditorComponent } from '../../../../shared/components/markdown-editor/markdown-editor.component';
-import { MarkdownPlainTextPipe } from '../../../../shared/pipes/markdown-plain-text.pipe';
+import {
+  MarkdownPlainTextPipe,
+  markdownToPlainText,
+} from '../../../../shared/pipes/markdown-plain-text.pipe';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ElectronService } from '../../../../core/services/electron.service';
 import type {
@@ -26,6 +29,7 @@ import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { GeneralNotesService } from '../../services/general-notes.service';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+const COPY_CONFIRMATION_DURATION_MS = 2000;
 
 interface PendingNoteSave {
   noteId: string;
@@ -59,6 +63,7 @@ export class GeneralNotesSidebarSection implements OnDestroy {
   readonly selectedNoteId = signal<string | null>(null);
   readonly isLoading = signal(false);
   readonly saveStatus = signal<SaveStatus>('idle');
+  readonly noteCopied = signal(false);
   readonly selectedNote = computed(() => {
     const selectedId = this.selectedNoteId();
     return this.notes().find(note => note.id === selectedId) ?? null;
@@ -76,6 +81,7 @@ export class GeneralNotesSidebarSection implements OnDestroy {
   readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
   private readonly noteAnimation = viewChild<ElementAnimationDirective>('noteAnimation');
   private saveTimer: number | null = null;
+  private copyConfirmationTimer: number | null = null;
   private pendingSave: PendingNoteSave | null = null;
   private saveInFlight: Promise<void> | null = null;
   private loadRequestId = 0;
@@ -90,6 +96,7 @@ export class GeneralNotesSidebarSection implements OnDestroy {
 
   ngOnDestroy(): void {
     this.electronService.removeBeforeCloseHandler(this.closeHandler);
+    this.clearCopyConfirmation();
     void this.flushPendingSave();
   }
 
@@ -145,11 +152,15 @@ export class GeneralNotesSidebarSection implements OnDestroy {
 
   async openNote(noteId: string): Promise<void> {
     await this.flushPendingSave();
-    if (this.notes().some(note => note.id === noteId)) this.selectedNoteId.set(noteId);
+    if (this.notes().some(note => note.id === noteId)) {
+      this.clearCopyConfirmation();
+      this.selectedNoteId.set(noteId);
+    }
   }
 
   async closeNote(): Promise<void> {
     await this.flushPendingSave();
+    this.clearCopyConfirmation();
     this.selectedNoteId.set(null);
   }
 
@@ -159,6 +170,24 @@ export class GeneralNotesSidebarSection implements OnDestroy {
 
   updateSelectedContent(content: string): void {
     this.updateSelectedNote({ content });
+  }
+
+  async copySelectedNote(): Promise<void> {
+    const content = this.selectedNote()?.content ?? '';
+    if (!content.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(markdownToPlainText(content));
+      this.clearCopyConfirmation();
+      this.noteCopied.set(true);
+      this.copyConfirmationTimer = window.setTimeout(() => {
+        this.noteCopied.set(false);
+        this.copyConfirmationTimer = null;
+      }, COPY_CONFIRMATION_DURATION_MS);
+    } catch {
+      this.clearCopyConfirmation();
+      this.toastService.error('Unable to copy the note.', 'Copy failed');
+    }
   }
 
   async deleteSelectedNote(): Promise<void> {
@@ -215,6 +244,14 @@ export class GeneralNotesSidebarSection implements OnDestroy {
         void this.flushPendingSave();
       }, 300);
     }
+  }
+
+  private clearCopyConfirmation(): void {
+    if (this.copyConfirmationTimer !== null) {
+      window.clearTimeout(this.copyConfirmationTimer);
+      this.copyConfirmationTimer = null;
+    }
+    this.noteCopied.set(false);
   }
 
   private async loadBookNotes(bookId: string | null): Promise<void> {

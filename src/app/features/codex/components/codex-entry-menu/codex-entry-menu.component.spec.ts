@@ -16,11 +16,14 @@ import { MarkdownEditorComponent } from '../../../../shared/components/markdown-
 import { CODEX_IMAGE_CROP_CONFIG } from '../../utils/codex-image-upload';
 import { CodexMatchChooserService } from '../../highlighting/codex-match-chooser.service';
 import { CodexContextTrieService } from '../../services/codex-context-trie.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 import { CodexEntryMenuComponent } from './codex-entry-menu.component';
 
 describe('CodexEntryMenuComponent', () => {
   let fixture: ComponentFixture<CodexEntryMenuComponent>;
   let component: CodexEntryMenuComponent;
+  let clipboardWriteText: ReturnType<typeof vi.fn>;
+  const toastError = vi.fn();
   const contextTrie = {
     findMatches: vi.fn<(text: string) => ContextMatch<CodexContextTrieValue>[]>(() => []),
   };
@@ -29,13 +32,20 @@ describe('CodexEntryMenuComponent', () => {
   };
 
   beforeEach(async () => {
+    clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: clipboardWriteText },
+    });
     contextTrie.findMatches.mockReset().mockReturnValue([]);
     matchChooser.open.mockReset();
+    toastError.mockReset();
     await TestBed.configureTestingModule({
       imports: [CodexEntryMenuComponent],
       providers: [
         { provide: CodexContextTrieService, useValue: contextTrie },
         { provide: CodexMatchChooserService, useValue: matchChooser },
+        { provide: ToastService, useValue: { error: toastError } },
       ],
     }).compileComponents();
 
@@ -143,6 +153,103 @@ describe('CodexEntryMenuComponent', () => {
       'Codex note 1 content',
       'Codex note 2 content',
     ]);
+  });
+
+  it('copies the Codex description as plain text from the editor top-right', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      description: '# Character\n\nA **bold** [description](https://example.com).',
+    }));
+    await render();
+
+    const editorContainer = fixture.nativeElement.querySelector(
+      '.description-form-group .copyable-description-editor',
+    ) as HTMLElement;
+    const copyButton = editorContainer.querySelector(
+      '.description-copy-button',
+    ) as HTMLButtonElement;
+
+    expect(copyButton).not.toBeNull();
+    expect(copyButton.disabled).toBe(false);
+    copyButton.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(clipboardWriteText).toHaveBeenCalledWith('Character A bold description.');
+    expect(copyButton.getAttribute('aria-label')).toBe('Codex description copied');
+  });
+
+  it('copies only the selected note description and isolates its success state', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      entryNotes: [
+        createNote('First title', 'First *description*'),
+        { ...createNote('Second title', 'Second **description**'), id: 'note-2' },
+      ],
+    }));
+    await render();
+    component.setEntryView('Notes');
+    await render();
+
+    const copyButtons = [
+      ...fixture.nativeElement.querySelectorAll(
+        '.note-description-copy-button',
+      ) as NodeListOf<HTMLButtonElement>,
+    ];
+    copyButtons[1]?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(clipboardWriteText).toHaveBeenCalledWith('Second description');
+    expect(clipboardWriteText).not.toHaveBeenCalledWith(expect.stringContaining('Second title'));
+    expect(copyButtons[0]?.getAttribute('aria-label')).toBe('Copy note description');
+    expect(copyButtons[1]?.getAttribute('aria-label')).toBe('Note description copied');
+  });
+
+  it('disables copy buttons for empty and whitespace-only descriptions', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({
+      description: ' \n ',
+      entryNotes: [createNote('Empty body', '   ')],
+    }));
+    await render();
+
+    expect(
+      (fixture.nativeElement.querySelector(
+        '.description-form-group .description-copy-button',
+      ) as HTMLButtonElement | null)?.disabled,
+    ).toBe(true);
+
+    component.setEntryView('Notes');
+    await render();
+    expect(
+      (fixture.nativeElement.querySelector(
+        '.note-description-copy-button',
+      ) as HTMLButtonElement | null)?.disabled,
+    ).toBe(true);
+  });
+
+  it('clears copy confirmation after two seconds', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({ description: 'Copy me' }));
+    await render();
+    vi.useFakeTimers();
+
+    await component.copyEntryDescription();
+    expect(component.isEntryDescriptionCopied()).toBe(true);
+
+    vi.advanceTimersByTime(2000);
+    expect(component.isEntryDescriptionCopied()).toBe(false);
+  });
+
+  it('reports clipboard failures without showing copied state', async () => {
+    fixture.componentRef.setInput('existingEntry', createEntry({ description: 'Copy me' }));
+    await render();
+    clipboardWriteText.mockRejectedValueOnce(new Error('Clipboard unavailable'));
+
+    await component.copyEntryDescription();
+
+    expect(component.isEntryDescriptionCopied()).toBe(false);
+    expect(toastError).toHaveBeenCalledWith(
+      'Unable to copy the description.',
+      'Copy failed',
+    );
   });
 
   it('updates and autosaves Markdown from the correct note editor', async () => {

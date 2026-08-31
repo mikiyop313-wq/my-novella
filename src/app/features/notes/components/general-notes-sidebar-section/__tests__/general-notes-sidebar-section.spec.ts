@@ -14,6 +14,7 @@ describe('GeneralNotesSidebarSection', () => {
   let fixture: ComponentFixture<GeneralNotesSidebarSection>;
   let component: GeneralNotesSidebarSection;
   let overlayContainer: OverlayContainer;
+  let clipboardWriteText: ReturnType<typeof vi.fn>;
   const sidebarOpen = signal(true);
   const bookId = signal<string | null>('book-1');
   const notesService = {
@@ -30,6 +31,11 @@ describe('GeneralNotesSidebarSection', () => {
   let nextNoteId = 0;
 
   beforeEach(async () => {
+    clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: clipboardWriteText },
+    });
     sidebarOpen.set(true);
     bookId.set('book-1');
     nextNoteId = 0;
@@ -150,6 +156,59 @@ describe('GeneralNotesSidebarSection', () => {
     expect(component.notes()).toHaveLength(1);
     expect(component.selectedNote()?.id).toBe('general-note-1');
     expect(toastService.error).toHaveBeenCalledWith('Delete failed', 'Notes');
+  });
+
+  it('copies the selected general note as plain text from the editor top-right', async () => {
+    component.notes.set([note({
+      id: 'copy-note',
+      content: '# Reminder\n\nUse **Mara** at [the gate](https://example.com).',
+    })]);
+    component.selectedNoteId.set('copy-note');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const editor = overlayContainer.getContainerElement().querySelector(
+      '.copyable-note-editor',
+    ) as HTMLElement;
+    const copyButton = editor.querySelector('.note-copy-button') as HTMLButtonElement;
+    copyButton.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(copyButton.disabled).toBe(false);
+    expect(clipboardWriteText).toHaveBeenCalledWith('Reminder Use Mara at the gate.');
+    expect(copyButton.getAttribute('aria-label')).toBe('General note copied');
+  });
+
+  it('disables copying empty notes and clears confirmation after two seconds', async () => {
+    component.notes.set([note({ id: 'empty-note', content: '   ' })]);
+    component.selectedNoteId.set('empty-note');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const copyButton = overlayContainer.getContainerElement().querySelector(
+      '.note-copy-button',
+    ) as HTMLButtonElement;
+    expect(copyButton.disabled).toBe(true);
+
+    component.notes.set([note({ id: 'empty-note', content: 'Copy me' })]);
+    vi.useFakeTimers();
+    await component.copySelectedNote();
+    expect(component.noteCopied()).toBe(true);
+
+    vi.advanceTimersByTime(2000);
+    expect(component.noteCopied()).toBe(false);
+  });
+
+  it('reports clipboard failures without showing copied state', async () => {
+    component.notes.set([note({ id: 'copy-note', content: 'Copy me' })]);
+    component.selectedNoteId.set('copy-note');
+    clipboardWriteText.mockRejectedValueOnce(new Error('Clipboard unavailable'));
+
+    await component.copySelectedNote();
+
+    expect(component.noteCopied()).toBe(false);
+    expect(toastService.error).toHaveBeenCalledWith('Unable to copy the note.', 'Copy failed');
   });
 
   it('renders compact controls when the workspace sidebar is collapsed', () => {

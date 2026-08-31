@@ -31,6 +31,8 @@ import { isSceneIncludedInContext } from '../../../../../../shared/utils/manuscr
 import { ImageCropModalComponent } from '../../../../shared/components/image-crop-modal/image-crop-modal.component';
 import { fileToDataUrl, prepareImageUpload } from '../../../../shared/utils/image-upload';
 import { CODEX_IMAGE_CROP_CONFIG } from '../../utils/codex-image-upload';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { markdownToPlainText } from '../../../../shared/pipes/markdown-plain-text.pipe';
 
 type CodexEntryProgressionInput = CodexEntryProgressionPayload & {
   localId: string;
@@ -54,6 +56,8 @@ const SELECT_SCENE_LABEL = 'Select scene...';
 const UNTITLED_SCENE_LABEL = 'Untitled Scene';
 const EXCLUDED_FROM_AI_CONTEXT_LABEL = 'Excluded from AI context';
 const UNRANKED_SCENE_RANK = Number.MAX_SAFE_INTEGER;
+const COPY_CONFIRMATION_DURATION_MS = 2000;
+const DESCRIPTION_COPY_TARGET = 'description';
 
 @Component({
   selector: 'app-codex-entry-menu',
@@ -73,6 +77,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
   readonly INFO_MESSAGES = INFO_MESSAGES;
   private readonly codexContextTrie = inject(CodexContextTrieService);
   private readonly codexMatchChooser = inject(CodexMatchChooserService);
+  private readonly toastService = inject(ToastService);
 
   readonly initialType = input.required<CodexEntryType>();
   readonly existingEntry = input<CodexEntryDetailDto | null>(null);
@@ -122,6 +127,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
   readonly newEntryImage = signal<string | null | undefined>(null);
   readonly imageActionsOpen = signal(false);
   readonly pendingImageFile = signal<File | null>(null);
+  readonly copiedDescriptionTarget = signal<string | null>(null);
   readonly newEntryTrackingSetting = signal<CodexTrackingSetting>('include_when_detected');
   readonly newEntryNotes = signal<CodexEntryNoteInput[]>([]);
   readonly newEntryProgression = signal<CodexEntryProgressionInput[]>([]);
@@ -175,6 +181,7 @@ export class CodexEntryMenuComponent implements OnDestroy {
   private readonly hasUnsavedChanges = signal(false);
 
   private autosaveTimeoutId: number | null = null;
+  private copyConfirmationTimeoutId: number | null = null;
   private appliedEntryId: string | null = null;
   private appliedInitialDraftSignature = '';
   private lastAutosaveSignature = '';
@@ -204,6 +211,11 @@ export class CodexEntryMenuComponent implements OnDestroy {
     if (this.autosaveTimeoutId !== null) {
       window.clearTimeout(this.autosaveTimeoutId);
       this.autosaveTimeoutId = null;
+    }
+
+    if (this.copyConfirmationTimeoutId !== null) {
+      window.clearTimeout(this.copyConfirmationTimeoutId);
+      this.copyConfirmationTimeoutId = null;
     }
 
     this.flushAutosave();
@@ -247,6 +259,28 @@ export class CodexEntryMenuComponent implements OnDestroy {
   updateEntryDescription(description: string): void {
     this.newEntryDescription.set(description);
     this.queueAutosave();
+  }
+
+  copyEntryDescription(): Promise<void> {
+    return this.copyDescription({
+      content: this.newEntryDescription(),
+      target: DESCRIPTION_COPY_TARGET,
+    });
+  }
+
+  copyNoteDescription(index: number): Promise<void> {
+    return this.copyDescription({
+      content: this.newEntryNotes()[index]?.content ?? '',
+      target: this.noteCopyTarget(index),
+    });
+  }
+
+  isEntryDescriptionCopied(): boolean {
+    return this.copiedDescriptionTarget() === DESCRIPTION_COPY_TARGET;
+  }
+
+  isNoteDescriptionCopied(index: number): boolean {
+    return this.copiedDescriptionTarget() === this.noteCopyTarget(index);
   }
 
   async onImageChange(event: Event): Promise<void> {
@@ -346,6 +380,33 @@ export class CodexEntryMenuComponent implements OnDestroy {
 
   updateNoteContent(index: number, content: string): void {
     this.updateNote(index, { content });
+  }
+
+  private async copyDescription({ content, target }: {
+    content: string;
+    target: string;
+  }): Promise<void> {
+    if (!content.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(markdownToPlainText(content));
+      if (this.copyConfirmationTimeoutId !== null) {
+        window.clearTimeout(this.copyConfirmationTimeoutId);
+      }
+
+      this.copiedDescriptionTarget.set(target);
+      this.copyConfirmationTimeoutId = window.setTimeout(() => {
+        this.copiedDescriptionTarget.set(null);
+        this.copyConfirmationTimeoutId = null;
+      }, COPY_CONFIRMATION_DURATION_MS);
+    } catch {
+      this.copiedDescriptionTarget.set(null);
+      this.toastService.error('Unable to copy the description.', 'Copy failed');
+    }
+  }
+
+  private noteCopyTarget(index: number): string {
+    return `note-${index}`;
   }
 
   addProgression(): void {
