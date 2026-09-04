@@ -74,17 +74,18 @@ export class AiPromptSettingsComponent {
   // Derived State
   // ---------------------------------------------------------------------------
 
-  /**
-   * Whether the selected model supports reasoning/thinking tokens.
-   * The IPC layer provides this metadata, so the UI does no model-name guessing.
-   */
-  supportsReasoning = computed(() => {
+  /** Resolved metadata is absent while model selection or loading is incomplete. */
+  private readonly selectedModelMetadata = computed(() => {
     const modelId = this.selectedModel();
-    if (!modelId) return false;
+    if (!modelId) return undefined;
 
-    const model = this.aiStore.models().find((model) => model.id === modelId);
-    return model?.supportsReasoning === true;
+    return this.aiStore.models().find((model) => model.id === modelId);
   });
+
+  /** The IPC layer provides reasoning support, so the UI does no model-name guessing. */
+  supportsReasoning = computed(
+    () => this.selectedModelMetadata()?.supportsReasoning === true,
+  );
 
   bookId = computed(() => this.workspaceStore.bookId());
 
@@ -180,7 +181,8 @@ export class AiPromptSettingsComponent {
 
     // Keep persisted prompt settings valid when the user changes model.
     effect(() => {
-      if (!this.supportsReasoning() && this.reasoningMode()) {
+      const selectedModel = this.selectedModelMetadata();
+      if (selectedModel && !selectedModel.supportsReasoning && this.reasoningMode()) {
         this.reasoningModeChange.emit(false);
       }
     });

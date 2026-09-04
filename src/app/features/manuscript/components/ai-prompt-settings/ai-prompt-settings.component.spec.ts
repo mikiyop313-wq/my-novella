@@ -209,9 +209,46 @@ describe('AiPromptSettingsComponent', () => {
     },
   );
 
+  it('preserves reasoning while no model is selected during initialization', () => {
+    const modeChanged = vi.fn();
+    component.reasoningModeChange.subscribe(modeChanged);
+
+    fixture.componentRef.setInput('reasoningMode', true);
+    fixture.detectChanges();
+
+    expect(modeChanged).not.toHaveBeenCalled();
+  });
+
+  it('preserves reasoning while selected model metadata is unresolved', () => {
+    const modeChanged = vi.fn();
+    component.reasoningModeChange.subscribe(modeChanged);
+
+    fixture.componentRef.setInput('selectedModel', 'unresolved-model');
+    fixture.componentRef.setInput('reasoningMode', true);
+    fixture.detectChanges();
+
+    expect(modeChanged).not.toHaveBeenCalled();
+  });
+
+  it('preserves reasoning on and off for a supported model', () => {
+    const modeChanged = vi.fn();
+    component.reasoningModeChange.subscribe(modeChanged);
+    models.set([{ id: 'reasoning-model', supportsReasoning: true }]);
+    fixture.componentRef.setInput('selectedModel', 'reasoning-model');
+
+    fixture.componentRef.setInput('reasoningMode', true);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('reasoningMode', false);
+    fixture.detectChanges();
+
+    expect(modeChanged).not.toHaveBeenCalled();
+  });
+
   it('turns reasoning off for an unsupported model without changing its effort', () => {
     const modeChanged = vi.fn();
     component.reasoningModeChange.subscribe(modeChanged);
+    models.set([{ id: 'standard-model', supportsReasoning: false }]);
+    fixture.componentRef.setInput('selectedModel', 'standard-model');
     fixture.componentRef.setInput('reasoningMode', true);
     fixture.componentRef.setInput('reasoningEffort', 'high');
     fixture.detectChanges();
