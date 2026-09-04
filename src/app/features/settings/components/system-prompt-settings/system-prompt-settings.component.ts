@@ -416,6 +416,24 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
       ?.querySelector<HTMLElement>('.prompt-search-highlight');
     if (!textarea || !highlight) return;
 
+    const textareaStyles = getComputedStyle(textarea);
+    const horizontalBorderWidth = (parseFloat(textareaStyles.borderLeftWidth) || 0)
+      + (parseFloat(textareaStyles.borderRightWidth) || 0);
+    const scrollbarWidth = Math.max(
+      0,
+      textarea.offsetWidth - textarea.clientWidth - horizontalBorderWidth,
+    );
+    highlight.style.setProperty('--prompt-textarea-scrollbar-width', `${scrollbarWidth}px`);
+
+    highlight.style.setProperty('--prompt-textarea-scroll-height-compensation', '0px');
+    const textareaMaxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    const highlightMaxScrollTop = Math.max(0, highlight.scrollHeight - highlight.clientHeight);
+    const missingScrollHeight = Math.max(0, textareaMaxScrollTop - highlightMaxScrollTop);
+    highlight.style.setProperty(
+      '--prompt-textarea-scroll-height-compensation',
+      `${missingScrollHeight}px`,
+    );
+
     highlight.scrollTop = textarea.scrollTop;
     highlight.scrollLeft = textarea.scrollLeft;
   }
@@ -641,6 +659,7 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   updateSystemPrompt(event: Event): void {
     this.updateSelectedPreset({ systemPrompt: this.inputValue(event) });
     this.refreshSearch({ resetActiveMatch: false, selectActiveMatch: false });
+    queueMicrotask(() => this.syncPromptSearchHighlight());
   }
 
   async copySystemPrompt(): Promise<void> {
@@ -869,15 +888,42 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   private selectActiveSearchMatch(): void {
     queueMicrotask(() => {
       const textarea = this.activePromptTextarea();
-      const match = this.searchMatches()[this.activeSearchMatchIndex()];
+      const activeMatchIndex = this.activeSearchMatchIndex();
+      const match = this.searchMatches()[activeMatchIndex];
       if (!textarea || !match) return;
 
       const restoreSearchFocus = !!document.activeElement?.closest('app-search');
       textarea.focus({ preventScroll: true });
       textarea.setSelectionRange(match.from, match.to);
       this.syncPromptSearchHighlight();
+      this.scrollActiveSearchMatchIntoView(textarea, activeMatchIndex);
+      this.syncPromptSearchHighlight();
       if (restoreSearchFocus) this.searchWidget?.focusInput({ select: false });
     });
+  }
+
+  private scrollActiveSearchMatchIntoView(
+    textarea: HTMLTextAreaElement,
+    activeMatchIndex: number,
+  ): void {
+    const highlight = textarea
+      .closest('.prompt-textarea-shell')
+      ?.querySelector<HTMLElement>('.prompt-search-highlight');
+    const activeMatch = highlight
+      ?.querySelectorAll<HTMLElement>('mark')
+      .item(activeMatchIndex);
+    if (!highlight || !activeMatch) return;
+
+    const highlightBounds = highlight.getBoundingClientRect();
+    const matchBounds = activeMatch.getBoundingClientRect();
+    if (matchBounds.top < highlightBounds.top) {
+      textarea.scrollTop += matchBounds.top - highlightBounds.top;
+      return;
+    }
+
+    if (matchBounds.bottom > highlightBounds.bottom) {
+      textarea.scrollTop += matchBounds.bottom - highlightBounds.bottom;
+    }
   }
 
   private capturePromptEditorState(): PromptEditorViewState {

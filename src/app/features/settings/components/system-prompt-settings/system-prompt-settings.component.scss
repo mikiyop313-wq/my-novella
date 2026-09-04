@@ -745,6 +745,8 @@ button {
   box-sizing: border-box;
   overflow: hidden;
   padding: 12px;
+  padding-right: calc(12px + var(--prompt-textarea-scrollbar-width, 0px));
+  padding-bottom: calc(12px + var(--prompt-textarea-scroll-height-compensation, 0px));
   border: 1px solid transparent;
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-background) 62%, var(--color-surface));

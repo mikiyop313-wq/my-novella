@@ -434,6 +434,132 @@ describe('SystemPromptSettingsComponent', () => {
     expect(textarea.selectionEnd).toBe(24);
   });
 
+  it('matches the textarea scrollbar width and extends a shorter mirror scroll range', async () => {
+    component.selectPreset('global-chat');
+    component.openSearch();
+    fixture.detectChanges();
+    component.updateSearchQuery('write');
+    fixture.detectChanges();
+    await settle();
+
+    const editor = fixture.nativeElement as HTMLElement;
+    const textarea = editor.querySelector<HTMLTextAreaElement>('#system-prompt')!;
+    const highlight = editor.querySelector<HTMLElement>('.prompt-search-highlight')!;
+    textarea.style.borderLeftWidth = '1px';
+    textarea.style.borderRightWidth = '1px';
+    Object.defineProperties(textarea, {
+      offsetWidth: { configurable: true, value: 500 },
+      clientWidth: { configurable: true, value: 480 },
+      scrollHeight: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 200 },
+    });
+    Object.defineProperties(highlight, {
+      scrollHeight: { configurable: true, value: 580 },
+      clientHeight: { configurable: true, value: 200 },
+    });
+
+    textarea.scrollTop = 250;
+    textarea.scrollLeft = 4;
+    component.syncPromptSearchHighlight();
+    expect(highlight.style.getPropertyValue('--prompt-textarea-scrollbar-width')).toBe('18px');
+    expect(
+      highlight.style.getPropertyValue('--prompt-textarea-scroll-height-compensation'),
+    ).toBe('20px');
+    expect(highlight.scrollTop).toBe(250);
+    expect(highlight.scrollLeft).toBe(4);
+
+    textarea.scrollTop = 399.5;
+    component.syncPromptSearchHighlight();
+    expect(highlight.scrollTop).toBe(399.5);
+  });
+
+  it('scrolls only as needed to reveal the active search match and keeps the mirror aligned', async () => {
+    component.selectPreset('global-chat');
+    component.openSearch();
+    fixture.detectChanges();
+    component.updateSearchQuery('write');
+    fixture.detectChanges();
+    await settle();
+
+    const editor = fixture.nativeElement as HTMLElement;
+    const searchInput = editor.querySelector<HTMLInputElement>('app-search input')!;
+    const textarea = editor.querySelector<HTMLTextAreaElement>('#system-prompt')!;
+    const highlight = editor.querySelector<HTMLElement>('.prompt-search-highlight')!;
+    const marks = [...highlight.querySelectorAll<HTMLElement>('mark')];
+    vi.spyOn(highlight, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 300,
+    } as DOMRect);
+    vi.spyOn(marks[1]!, 'getBoundingClientRect').mockReturnValue({
+      top: 320,
+      bottom: 340,
+    } as DOMRect);
+    vi.spyOn(marks[2]!, 'getBoundingClientRect').mockReturnValue({
+      top: 180,
+      bottom: 200,
+    } as DOMRect);
+
+    textarea.scrollTop = 20;
+    component.selectNextSearchMatch();
+    fixture.detectChanges();
+    await settle();
+    expect(textarea.scrollTop).toBe(60);
+    expect(highlight.scrollTop).toBe(60);
+    expect(document.activeElement).toBe(searchInput);
+
+    component.selectNextSearchMatch();
+    fixture.detectChanges();
+    await settle();
+    expect(textarea.scrollTop).toBe(60);
+
+    vi.spyOn(marks[1]!, 'getBoundingClientRect').mockReturnValue({
+      top: 70,
+      bottom: 90,
+    } as DOMRect);
+    component.selectPreviousSearchMatch();
+    fixture.detectChanges();
+    await settle();
+    expect(textarea.scrollTop).toBe(30);
+    expect(highlight.scrollTop).toBe(30);
+    expect(document.activeElement).toBe(searchInput);
+  });
+
+  it('scrolls from the first match to the last before the active class rerenders', async () => {
+    component.selectPreset('global-chat');
+    component.openSearch();
+    fixture.detectChanges();
+    component.updateSearchQuery('write');
+    fixture.detectChanges();
+    await settle();
+
+    const editor = fixture.nativeElement as HTMLElement;
+    const searchInput = editor.querySelector<HTMLInputElement>('app-search input')!;
+    const textarea = editor.querySelector<HTMLTextAreaElement>('#system-prompt')!;
+    const highlight = editor.querySelector<HTMLElement>('.prompt-search-highlight')!;
+    const marks = [...highlight.querySelectorAll<HTMLElement>('mark')];
+    vi.spyOn(highlight, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 300,
+    } as DOMRect);
+    vi.spyOn(marks[3]!, 'getBoundingClientRect').mockReturnValue({
+      top: 340,
+      bottom: 360,
+    } as DOMRect);
+
+    expect(highlight.querySelector('mark.is-active')).toBe(marks[0]);
+    textarea.scrollTop = 20;
+    component.selectPreviousSearchMatch();
+    await settle();
+
+    expect(highlight.querySelector('mark.is-active')).toBe(marks[0]);
+    expect(component.currentSearchMatch()).toBe(4);
+    expect(textarea.selectionStart).toBe(19);
+    expect(textarea.selectionEnd).toBe(24);
+    expect(textarea.scrollTop).toBe(80);
+    expect(highlight.scrollTop).toBe(80);
+    expect(document.activeElement).toBe(searchInput);
+  });
+
   it('applies case and whole-word options and preserves the query across presets', async () => {
     component.selectPreset('global-chat');
     component.openSearch();
