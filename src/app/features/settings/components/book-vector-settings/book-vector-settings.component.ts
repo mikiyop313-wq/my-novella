@@ -153,6 +153,10 @@ export class BookVectorSettingsComponent implements OnInit, OnDestroy {
   readonly effectiveIndexingEnabled = computed(
     () => this.savedIndexingEnabled() && !this.selectedProviderUnavailable(),
   );
+  readonly indexingStatusLabel = computed(() => {
+    if (this.selectedProviderUnavailable()) return 'Unavailable';
+    return this.savedIndexingEnabled() ? 'On' : 'Off';
+  });
   readonly automaticIndexingEnabled = computed(
     () => this.book().settings?.automaticIndexingEnabled ?? false,
   );

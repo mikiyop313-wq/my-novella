@@ -296,21 +296,28 @@ export const LibraryStore = signalStore(
       }
     },
 
+    /** Replaces an already-persisted book in local state without saving it again. */
+    syncBook(book: BookDto): BookUi {
+      const processedBook: BookUi = {
+        ...book,
+        displayCoverImage: this.getSafeDisplayUrl(book, sanitizer)
+      };
+
+      patchState(store, (state: LibraryState) => ({
+        books: state.books.map((currentBook: BookUi) => (
+          currentBook.id === book.id ? processedBook : currentBook
+        ))
+      }));
+      return processedBook;
+    },
+
     /**
      * Updates a book's data and refreshes its display in the local state.
      */
     async updateBook(id: string, data: any) {
       try {
         const updatedBook = await libraryService.updateBook(id, data);
-        const processedBook: BookUi = {
-          ...updatedBook,
-          displayCoverImage: this.getSafeDisplayUrl(updatedBook, sanitizer)
-        };
-
-        patchState(store, (state: LibraryState) => ({
-          books: state.books.map((b: BookUi) => b.id === id ? processedBook : b)
-        }));
-        return processedBook;
+        return this.syncBook(updatedBook);
       } catch (error) {
         patchState(store, {
           error: error instanceof Error ? error.message : 'Failed to update book'

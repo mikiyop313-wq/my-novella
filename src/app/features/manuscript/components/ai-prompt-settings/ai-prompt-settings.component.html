@@ -86,15 +86,14 @@
           <div class="vector-controls">
             <!-- Main Toggle Switch -->
             <div class="toggle-control">
-              <label class="premium-switch" [class.disabled]="vectorSearch() === 'global'">
+              <label class="premium-switch" [class.disabled]="vectorSearch() === 'global' || !vectorSearchAvailable()">
                 <input type="checkbox"
-                  [checked]="vectorSearch() === 'global' ? globalVectorSearchEnabled() : vectorSearch() === 'enabled'"
-                  [disabled]="vectorSearch() === 'global'" (change)="onVectorSearchToggleChange($event)" />
+                  [checked]="effectiveVectorSearchEnabled()"
+                  [disabled]="vectorSearch() === 'global' || !vectorSearchAvailable()" (change)="onVectorSearchToggleChange($event)" />
                 <span class="switch-slider"></span>
               </label>
               <span class="switch-status" [class.inherited]="vectorSearch() === 'global'">
-                {{ vectorSearch() === 'global' ? (globalVectorSearchEnabled() ? 'Inherited (Enabled)' : 'Inherited (Disabled)') : (vectorSearch() === 'enabled' ? 'Enabled' :
-                'Disabled') }}
+                {{ vectorSearchStatusLabel() }}
               </span>
             </div>
 
@@ -102,7 +101,7 @@
             <label class="inherit-checkbox-label">
               <input type="checkbox" [checked]="vectorSearch() === 'global'"
                 (change)="onInheritVectorSearchChange($event)" class="premium-checkbox" />
-              <span>Inherit global setting</span>
+              <span>Inherit book indexing setting</span>
             </label>
           </div>
         </div>

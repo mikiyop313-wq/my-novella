@@ -37,6 +37,7 @@ import { ToastService } from '../../../../shared/services/toast.service';
 import { ConfirmModalService } from '../../../../shared/components/confirm-modal/confirm-modal.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
+import { LibraryStore } from '../../../library/store/book.store';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/ai-configuration-settings.component';
 import { ArchiveSettingsComponent } from '../archive-settings/archive-settings.component';
@@ -90,6 +91,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
   private readonly router = inject(Router);
   private readonly workspaceStore = inject(WorkspaceStore);
   private readonly libraryService = inject(LibraryService);
+  private readonly libraryStore = inject(LibraryStore);
   private readonly codexService = inject(CodexService);
   private readonly electronService = inject(ElectronService);
   private readonly toastService = inject(ToastService);
@@ -488,6 +490,7 @@ export class BookSettingsComponent implements OnInit, AfterViewInit {
 
   updateBookFromChild(book: BookDto): void {
     this.book.set(book);
+    this.libraryStore.syncBook(book);
   }
 
   setTheme(theme: Theme): void {

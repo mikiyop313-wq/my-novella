@@ -30,6 +30,7 @@ import {
 } from '../../../../shared/utils/story-context-builder';
 import { extractManuscriptHierarchyById } from '../content/manuscript-content.utils';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
+import { ManuscriptParagraphVectorSyncService } from '../saving/manuscript-paragraph-vector-sync.service';
 import type { SimilarParagraphResult } from '../../../../../../shared/models/vector.model';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
@@ -70,6 +71,7 @@ export class ManuscriptAiContextService {
   private readonly toastService = inject(ToastService);
   private readonly paragraphVectorService = inject(ParagraphVectorService);
   private readonly paragraphReview = inject(ParagraphReviewService);
+  private readonly paragraphVectorSync = inject(ManuscriptParagraphVectorSyncService);
 
   async buildContext(request: ManuscriptAiContextRequest): Promise<string> {
     if (!request.bookId) throw new Error('No active book is available for AI context.');
@@ -284,6 +286,7 @@ export class ManuscriptAiContextService {
   }
 
   private isVectorSearchEnabled(request: ManuscriptAiContextRequest): boolean {
+    if (!this.paragraphVectorSync.indexingAvailable()) return false;
     if (request.vectorSearch === 'enabled') return true;
     if (request.vectorSearch === 'disabled') return false;
     return this.libraryStore.books()

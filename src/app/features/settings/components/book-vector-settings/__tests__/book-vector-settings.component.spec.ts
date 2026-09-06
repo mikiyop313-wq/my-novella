@@ -136,6 +136,7 @@ describe('BookVectorSettingsComponent', () => {
     expect(settingsLink?.textContent).toContain('General Settings → Vector Search');
     expect(indexingSwitch?.disabled).toBe(true);
     expect(indexingSwitch?.getAttribute('aria-checked')).toBe('false');
+    expect(indexingSwitch?.textContent).toContain('Unavailable');
     expect(modelOption(unavailableModel.modelName).textContent).toContain('Index ~1.5 KB');
     expect(modelOption(installedModel.modelName).textContent).toContain('Index ~0 B');
     expect(element.querySelector<HTMLButtonElement>(
@@ -499,7 +500,9 @@ describe('BookVectorSettingsComponent', () => {
     const thresholdInput = element.querySelector<HTMLInputElement>('#vector-similarity-threshold');
     const manualSwitch = element.querySelector<HTMLButtonElement>('.manual-selection-switch');
     const resultLimit = element.querySelector<HTMLInputElement>('#vector-result-limit');
+    const indexingSwitch = element.querySelector<HTMLButtonElement>('.indexing-switch');
 
+    expect(indexingSwitch?.textContent).toContain('On');
     expect(thresholdInput?.type).toBe('range');
     expect(thresholdInput?.value).toBe('0.7');
     expect(element.querySelector('.threshold-value')?.textContent).toContain('0.70');
@@ -513,6 +516,18 @@ describe('BookVectorSettingsComponent', () => {
     expect(resultLimit?.disabled).toBe(false);
     expect(element.querySelector('.result-limit-control')?.textContent).toContain('Min');
     expect(element.querySelector('.result-limit-control')?.textContent).toContain('Max');
+  });
+
+  it('shows Off when indexing is disabled for an available model', async () => {
+    await create(book(false, installedModel.modelName));
+    fixture.componentInstance.selectedLocalModelName.set(installedModel.modelName);
+    fixture.detectChanges();
+
+    const indexingSwitch = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.indexing-switch');
+
+    expect(indexingSwitch?.getAttribute('aria-checked')).toBe('false');
+    expect(indexingSwitch?.textContent).toContain('Off');
   });
 
   it('persists manual selection and validates the paragraph result limit', async () => {

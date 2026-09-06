@@ -7,6 +7,7 @@ import { AiStore } from '../../../../core/store/ai.store';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryStore } from '../../../library/store/book.store';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
+import { ManuscriptParagraphVectorSyncService } from '../../helpers/saving/manuscript-paragraph-vector-sync.service';
 import { AiPromptSettingsComponent } from './ai-prompt-settings.component';
 
 describe('AiPromptSettingsComponent', () => {
@@ -22,12 +23,14 @@ describe('AiPromptSettingsComponent', () => {
     supportsReasoning?: boolean;
   }>>;
   let getEntries: ReturnType<typeof vi.fn>;
+  let indexingAvailable: WritableSignal<boolean>;
 
   beforeEach(async () => {
     bookId = signal<string | null>('book-1');
     books = signal([]);
     models = signal([]);
     getEntries = vi.fn();
+    indexingAvailable = signal(true);
 
     await TestBed.configureTestingModule({
       imports: [AiPromptSettingsComponent],
@@ -42,6 +45,10 @@ describe('AiPromptSettingsComponent', () => {
         },
         { provide: AiStore, useValue: { models } },
         { provide: CodexService, useValue: { getEntries } },
+        {
+          provide: ManuscriptParagraphVectorSyncService,
+          useValue: { indexingAvailable },
+        },
       ],
     }).compileComponents();
 
@@ -123,12 +130,35 @@ describe('AiPromptSettingsComponent', () => {
 
   it('emits the disabled global value when vector search inheritance is removed', () => {
     books.set([{ id: 'book-1', settings: { vectorSearchEnabled: false } }]);
+    indexingAvailable.set(false);
     const emitted = vi.fn();
     component.vectorSearchChange.subscribe(emitted);
+
+    expect(component.vectorSearchStatusLabel()).toBe('Inherited (Disabled)');
+    component.onInheritVectorSearchChange(checkboxEvent(false));
+
+    expect(emitted).toHaveBeenCalledWith('disabled');
+  });
+
+  it('reports inherited vector search as unavailable and copies disabled when inheritance is removed', () => {
+    books.set([{ id: 'book-1', settings: { vectorSearchEnabled: true } }]);
+    indexingAvailable.set(false);
+    const emitted = vi.fn();
+    component.vectorSearchChange.subscribe(emitted);
+
+    expect(component.effectiveVectorSearchEnabled()).toBe(false);
+    expect(component.vectorSearchStatusLabel()).toBe('Inherited (Unavailable)');
 
     component.onInheritVectorSearchChange(checkboxEvent(false));
 
     expect(emitted).toHaveBeenCalledWith('disabled');
+  });
+
+  it('labels vector inheritance as the book indexing setting', () => {
+    (fixture.nativeElement.querySelector('.settings-btn') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(document.body.textContent).toContain('Inherit book indexing setting');
   });
 
   it('emits enabled and disabled when vector search is toggled', () => {

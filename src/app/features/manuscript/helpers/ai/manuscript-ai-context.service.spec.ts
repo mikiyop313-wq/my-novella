@@ -7,6 +7,7 @@ import { ElectronService } from '../../../../core/services/electron.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryStore } from '../../../library/store/book.store';
 import { ManuscriptProseSaverService } from '../saving/manuscript-prose-saver.service';
+import { ManuscriptParagraphVectorSyncService } from '../saving/manuscript-paragraph-vector-sync.service';
 import type { ActDto, ChapterDto, SceneDto } from '../../../../../../shared/models/manuscript.model';
 import { ManuscriptAiContextService } from './manuscript-ai-context.service';
 import { ToastService } from '../../../../shared/services/toast.service';
@@ -26,6 +27,7 @@ describe('ManuscriptAiContextService', () => {
   let books: ReturnType<typeof vi.fn>;
   let searchSimilarParagraphs: ReturnType<typeof vi.fn>;
   let reviewParagraphs: ReturnType<typeof vi.fn>;
+  let indexingAvailable: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     invoke = vi.fn();
@@ -35,6 +37,7 @@ describe('ManuscriptAiContextService', () => {
     warning = vi.fn();
     searchSimilarParagraphs = vi.fn().mockResolvedValue([]);
     reviewParagraphs = vi.fn(async items => items.map((item: any) => item.result));
+    indexingAvailable = vi.fn(() => true);
     books = vi.fn(() => [{
       id: 'book-1',
       language: 'english',
@@ -61,6 +64,10 @@ describe('ManuscriptAiContextService', () => {
         { provide: ToastService, useValue: { warning } },
         { provide: ParagraphVectorService, useValue: { searchSimilarParagraphs } },
         { provide: ParagraphReviewService, useValue: { review: reviewParagraphs } },
+        {
+          provide: ManuscriptParagraphVectorSyncService,
+          useValue: { indexingAvailable },
+        },
       ],
     });
     service = TestBed.inject(ManuscriptAiContextService);
@@ -857,6 +864,18 @@ describe('ManuscriptAiContextService', () => {
     expect(warning).toHaveBeenCalledOnce();
     expect(messages[0].content).not.toContain('Semantically Relevant Manuscript Paragraphs');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Continue the scene.' });
+  });
+
+  it('does not search when book indexing is unavailable even with an enabled prompt override', async () => {
+    const doc = schema.node('doc', null, [schema.node('aiPrompt')]);
+    indexingAvailable.mockReturnValue(false);
+
+    await buildContextMessages(service, {
+      ...baseRequest(doc, findNodePos(doc, 'aiPrompt')),
+      vectorSearch: 'enabled',
+    });
+
+    expect(searchSimilarParagraphs).not.toHaveBeenCalled();
   });
 
   it('resolves global vector search from the book setting', async () => {

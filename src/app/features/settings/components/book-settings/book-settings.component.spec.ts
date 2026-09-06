@@ -13,6 +13,7 @@ import { ConfirmModalService } from '../../../../shared/components/confirm-modal
 import { SystemPromptSelectionService } from '../../../../shared/services/system-prompt-selection.service';
 import { CodexService } from '../../../codex/services/codex.service';
 import { LibraryService } from '../../../library/services/library.service';
+import { LibraryStore } from '../../../library/store/book.store';
 import { ManuscriptStructureService } from '../../../workspace/services/manuscript-structure.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 import { AiConfigurationSettingsComponent } from '../ai-configuration-settings/ai-configuration-settings.component';
@@ -38,6 +39,7 @@ describe('BookSettingsComponent', () => {
   let getBooks: ReturnType<typeof vi.fn>;
   let updateBook: ReturnType<typeof vi.fn>;
   let removeBook: ReturnType<typeof vi.fn>;
+  let syncBook: ReturnType<typeof vi.fn>;
   let getCodexEntries: ReturnType<typeof vi.fn>;
   let getArchiveOverview: ReturnType<typeof vi.fn>;
   let getBookHierarchy: ReturnType<typeof vi.fn>;
@@ -182,6 +184,7 @@ describe('BookSettingsComponent', () => {
       }),
     );
     removeBook = vi.fn().mockResolvedValue({ success: true });
+    syncBook = vi.fn();
 
     await TestBed.configureTestingModule({
       imports: [BookSettingsComponent],
@@ -199,6 +202,7 @@ describe('BookSettingsComponent', () => {
           provide: LibraryService,
           useValue: { getBooks, updateBook, removeBook },
         },
+        { provide: LibraryStore, useValue: { syncBook } },
         {
           provide: ElectronService,
           useValue: {
@@ -322,6 +326,21 @@ describe('BookSettingsComponent', () => {
     expect(element.textContent).toContain('Fantasy');
     expect(element.textContent).toContain('Found Family');
     expect(element.querySelector('.placeholder-panel')).toBeNull();
+  });
+
+  it('synchronizes book updates emitted by vector settings with the library store', () => {
+    const updatedBook: BookDto = {
+      ...book,
+      settings: {
+        ...book.settings!,
+        vectorSearchEnabled: false,
+      },
+    };
+
+    fixture.componentInstance.updateBookFromChild(updatedBook);
+
+    expect(fixture.componentInstance.book()).toBe(updatedBook);
+    expect(syncBook).toHaveBeenCalledWith(updatedBook);
   });
 
   it('keeps identity concise and groups language with prose settings', () => {

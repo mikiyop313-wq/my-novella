@@ -14,6 +14,7 @@ import type { VectorSearchSetting } from '../../../../shared/models/vector-searc
 import { LibraryStore } from '../../../library/store/book.store';
 import { AiStore } from '../../../../core/store/ai.store';
 import { CodexService } from '../../../codex/services/codex.service';
+import { ManuscriptParagraphVectorSyncService } from '../../helpers/saving/manuscript-paragraph-vector-sync.service';
 import { WorkspaceStore } from '../../../workspace/workspace.store';
 
 type CharacterLoadState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -68,6 +69,7 @@ export class AiPromptSettingsComponent {
   private readonly libraryStore = inject(LibraryStore);
   private readonly aiStore = inject(AiStore);
   private readonly codexService = inject(CodexService);
+  private readonly paragraphVectorSync = inject(ManuscriptParagraphVectorSyncService);
 
 
   // ---------------------------------------------------------------------------
@@ -134,6 +136,26 @@ export class AiPromptSettingsComponent {
   globalVectorSearchEnabled = computed(
     () => this.activeBook()?.settings?.vectorSearchEnabled ?? true,
   );
+  vectorSearchAvailable = computed(() => this.paragraphVectorSync.indexingAvailable());
+  effectiveGlobalVectorSearchEnabled = computed(
+    () => this.globalVectorSearchEnabled() && this.vectorSearchAvailable(),
+  );
+  effectiveVectorSearchEnabled = computed(() => {
+    if (!this.vectorSearchAvailable()) return false;
+    return this.vectorSearch() === 'global'
+      ? this.globalVectorSearchEnabled()
+      : this.vectorSearch() === 'enabled';
+  });
+  vectorSearchStatusLabel = computed(() => {
+    const inherited = this.vectorSearch() === 'global';
+    if (inherited) {
+      if (!this.globalVectorSearchEnabled()) return 'Inherited (Disabled)';
+      if (!this.vectorSearchAvailable()) return 'Inherited (Unavailable)';
+      return 'Inherited (Enabled)';
+    }
+    if (!this.vectorSearchAvailable()) return 'Unavailable';
+    return this.vectorSearch() === 'enabled' ? 'Enabled' : 'Disabled';
+  });
 
   povOptions = computed<DropdownOption[]>(() => {
     const globalLabel = this.globalPOVLabel();
@@ -254,7 +276,7 @@ export class AiPromptSettingsComponent {
     this.vectorSearchChange.emit(
       target.checked
         ? 'global'
-        : this.globalVectorSearchEnabled() ? 'enabled' : 'disabled',
+        : this.effectiveGlobalVectorSearchEnabled() ? 'enabled' : 'disabled',
     );
   }
 
