@@ -120,9 +120,9 @@
           <div class="message-list"
             codexContextHighlight="article.from-user markdown.message-text, article.from-assistant markdown.message-text">
             @for (message of chatStore.visibleMessages(); track message.id) {
-            <article class="message-row" [class.from-user]="message.role === 'user'"
+            <article #messageRow class="message-row" [class.from-user]="message.role === 'user'"
               [class.from-assistant]="message.role === 'assistant'" [class.from-system]="message.role === 'system'"
-              [class.is-editing]="editingMessageId === message.id">
+              [style.width.px]="editingMessageId === message.id ? editingMessageWidth : null">
               <div class="message-avatar" aria-hidden="true">
                 @if (message.role === 'assistant') {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
@@ -212,7 +212,8 @@
                   </div>
                   }
                   @if (message.role === 'user') {
-                  <button class="action-btn" [disabled]="isPromptSubmitDisabled()" (click)="editMessage(message.id)"
+                  <button class="action-btn" [disabled]="isPromptSubmitDisabled()"
+                    (click)="editMessage({ messageId: message.id, width: messageRow.getBoundingClientRect().width })"
                     [title]="isGeneratingResponse() ? 'Editing is unavailable while this thread is generating.' : 'Edit'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                       stroke-linejoin="round">

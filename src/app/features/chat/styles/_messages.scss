@@ -28,10 +28,6 @@
   animation: slideUp 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   transition: max-width 0.2s ease;
 
-  &.is-editing {
-    max-width: 100%;
-  }
-
   &.from-user {
     grid-template-columns: minmax(0, 1fr) 34px;
     align-self: flex-end;

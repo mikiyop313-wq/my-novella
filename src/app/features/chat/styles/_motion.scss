@@ -26,6 +26,23 @@
   }
 }
 
+@keyframes messageEditEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-edit-input,
+.message-edit-actions {
+  animation: messageEditEnter 180ms ease-out;
+}
+
 @keyframes glowRotate {
   to {
     --glow-angle: 360deg;
@@ -51,6 +68,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .message-edit-input,
+  .message-edit-actions {
+    animation: none;
+  }
+
   .message-reasoning-content,
   .message-reasoning-toggle svg {
     transition: none;
