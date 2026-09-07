@@ -431,7 +431,7 @@
     }
 
     <div class="editor-content-wrapper" [class.scene-mode]="store.mode() === 'scene'"
-      (scroll)="dismissSlashCommandMenu()">
+      (scroll)="repositionSlashCommandMenu()">
       @if (store.mode() === 'scene') {
       <app-scene-header></app-scene-header>
       }

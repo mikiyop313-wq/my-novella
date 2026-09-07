@@ -40,6 +40,7 @@ import { SceneSummaryExtension } from './components/scene/scene-summary/scene-su
 import {
   SLASH_COMMAND_MENU_ITEMS,
   SlashCommandMenuComponent,
+  positionSlashCommandMenu,
   type SlashCommandMenuItem,
   type SlashCommandMenuPosition,
 } from './components/slash-command-menu/slash-command-menu.component';
@@ -107,6 +108,9 @@ export class Manuscript implements OnInit, OnDestroy {
   @ViewChild(SearchComponent)
   private searchWidget?: SearchComponent;
 
+  @ViewChild(SlashCommandMenuComponent)
+  private slashCommandMenu?: SlashCommandMenuComponent;
+
   // ---------------------------------------------------------------------------
   // Dependencies
   // ---------------------------------------------------------------------------
@@ -141,6 +145,7 @@ export class Manuscript implements OnInit, OnDestroy {
   private isNavigatingAfterRemoval = false;
   private pendingGenerationFocus: ProseGenerationFocusRequest | null = null;
   private generationFocusTimeout: number | null = null;
+  private slashCommandMenuFrame: number | null = null;
   readonly slashCommandMenuPosition = signal<SlashCommandMenuPosition | null>(null);
   readonly slashCommandMenuSelectedIndex = signal(0);
   readonly slashCommandCreationPending = signal(false);
@@ -327,6 +332,9 @@ export class Manuscript implements OnInit, OnDestroy {
     if (this.generationFocusTimeout !== null) {
       window.clearTimeout(this.generationFocusTimeout);
     }
+    if (this.slashCommandMenuFrame !== null) {
+      window.cancelAnimationFrame(this.slashCommandMenuFrame);
+    }
   }
 
 
@@ -352,7 +360,7 @@ export class Manuscript implements OnInit, OnDestroy {
 
         SlashCommandMenuExtension.configure({
           onOpen: anchor => this.openSlashCommandMenu(anchor),
-          onClose: () => this.slashCommandMenuPosition.set(null),
+          onClose: () => this.closeSlashCommandMenu(),
           onNavigate: direction => this.navigateSlashCommandMenu(direction),
           onSelect: () => this.selectActiveSlashCommand(),
         }),
@@ -400,7 +408,46 @@ export class Manuscript implements OnInit, OnDestroy {
 
   private openSlashCommandMenu(anchor: SlashCommandMenuAnchor): void {
     if (!this.slashCommandMenuPosition()) this.slashCommandMenuSelectedIndex.set(0);
-    this.slashCommandMenuPosition.set(positionSlashCommandMenu(anchor));
+    this.slashCommandMenuPosition.set(this.calculateSlashCommandMenuPosition(anchor));
+    this.repositionSlashCommandMenu();
+  }
+
+  private closeSlashCommandMenu(): void {
+    this.slashCommandMenuPosition.set(null);
+    if (this.slashCommandMenuFrame === null) return;
+
+    window.cancelAnimationFrame(this.slashCommandMenuFrame);
+    this.slashCommandMenuFrame = null;
+  }
+
+  @HostListener('window:resize')
+  repositionSlashCommandMenu(): void {
+    if (!this.slashCommandMenuPosition() || this.slashCommandMenuFrame !== null) return;
+
+    this.slashCommandMenuFrame = window.requestAnimationFrame(() => {
+      this.slashCommandMenuFrame = null;
+      const editor = this.editor;
+      if (!editor || editor.isDestroyed) return;
+
+      const range = getSlashCommandRange(editor);
+      if (!range) return;
+
+      const coordinates = editor.view.coordsAtPos(range.triggerTo);
+      this.slashCommandMenuPosition.set(this.calculateSlashCommandMenuPosition(coordinates));
+    });
+  }
+
+  private calculateSlashCommandMenuPosition(anchor: SlashCommandMenuAnchor): SlashCommandMenuPosition {
+    const menu = this.slashCommandMenu?.measure() ?? {
+      width: Math.min(370, window.innerWidth - 24),
+      height: 0,
+    };
+
+    return positionSlashCommandMenu({
+      anchor,
+      menu,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    });
   }
 
   private navigateSlashCommandMenu(direction: 1 | -1): void {
@@ -1022,23 +1069,6 @@ export class Manuscript implements OnInit, OnDestroy {
       this.store.bookHierarchy()[0]?.bookId ||
       this.store.bookId();
   }
-}
-
-function positionSlashCommandMenu(anchor: SlashCommandMenuAnchor): SlashCommandMenuPosition {
-  const viewportPadding = 12;
-  const menuGap = 8;
-  const menuWidth = Math.min(370, window.innerWidth - viewportPadding * 2);
-  const menuHeight = 360;
-  const preferredTop = anchor.bottom + menuGap;
-  const top = preferredTop + menuHeight <= window.innerHeight - viewportPadding
-    ? preferredTop
-    : Math.max(viewportPadding, anchor.top - menuHeight - menuGap);
-  const left = Math.min(
-    Math.max(viewportPadding, anchor.left),
-    Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
-  );
-
-  return { left, top };
 }
 
 interface StructureSplitContext {

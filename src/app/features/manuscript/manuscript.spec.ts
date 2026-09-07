@@ -343,6 +343,60 @@ describe('Manuscript', () => {
     expect(commandsFor('scene')).toEqual(['ai']);
   });
 
+  it('keeps the slash menu anchored while scrolling and resizing', () => {
+    const editor = component.editor!;
+    component.store.setRouteParams('book', 'book-1');
+    editor.chain().command(({ tr }) => {
+      tr.setMeta('skipSaver', true);
+      return true;
+    }).setContent({
+      type: 'doc',
+      content: [
+        { type: 'actHeader', attrs: { id: 'act-1', bookId: 'book-1', position: 0 } },
+        { type: 'chapterHeader', attrs: { id: 'chapter-1', actId: 'act-1', position: 0 } },
+        { type: 'sceneSummary', attrs: { id: 'scene-1', chapterId: 'chapter-1', position: 0 } },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '/' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
+      ],
+    }).run();
+    const coordinates = { left: 100, right: 100, top: 40, bottom: 60 };
+    editor.view.coordsAtPos = vi.fn(() => coordinates);
+    let slashSelection = 0;
+    editor.state.doc.forEach((node, offset) => {
+      if (node.textContent === '/') slashSelection = offset + 2;
+    });
+    editor.commands.setTextSelection(slashSelection);
+    expect(getSlashCommandRange(editor)).not.toBeNull();
+    fixture.detectChanges();
+    flushFrames();
+
+    expect(component.slashCommandMenuPosition()).toMatchObject({ left: 100, top: 68 });
+
+    Object.assign(coordinates, { left: 120, right: 120, top: 140, bottom: 160 });
+    const scrollContainer = fixture.nativeElement.querySelector('.editor-content-wrapper');
+    scrollContainer.dispatchEvent(new Event('scroll'));
+
+    expect(hasSlashParagraph()).toBe(true);
+    flushFrames();
+    expect(component.slashCommandMenuPosition()).toMatchObject({ left: 120, top: 168 });
+
+    Object.assign(coordinates, { left: 140, right: 140, top: 180, bottom: 200 });
+    window.dispatchEvent(new Event('resize'));
+    flushFrames();
+
+    expect(hasSlashParagraph()).toBe(true);
+    expect(component.slashCommandMenuPosition()).toMatchObject({ left: 140, top: 208 });
+
+    function hasSlashParagraph(): boolean {
+      let found = false;
+      editor.state.doc.forEach(node => {
+        if (node.type.name === 'paragraph' && node.textContent === '/') found = true;
+      });
+      return found;
+    }
+  });
+
   it('splits prose into a new chapter and moves following scenes with undo support', async () => {
     const editor = component.editor!;
     component.store.setRouteParams('book', 'book-1');

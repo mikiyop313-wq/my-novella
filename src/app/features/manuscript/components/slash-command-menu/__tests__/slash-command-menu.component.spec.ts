@@ -1,7 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SlashCommandMenuComponent } from '../slash-command-menu.component';
+import {
+  positionSlashCommandMenu,
+  SlashCommandMenuComponent,
+} from '../slash-command-menu.component';
 
 describe('SlashCommandMenuComponent', () => {
   let fixture: ComponentFixture<SlashCommandMenuComponent>;
@@ -74,5 +77,57 @@ describe('SlashCommandMenuComponent', () => {
     expect(fixture.nativeElement.querySelector('#slash-command-ai')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('#structure-command-heading')).toBeNull();
     expect(fixture.nativeElement.querySelector('.section-divider')).toBeNull();
+  });
+});
+
+describe('positionSlashCommandMenu', () => {
+  const viewport = { width: 1024, height: 800 };
+  const menu = { width: 370, height: 240 };
+
+  it('places the menu below the editing line when it fits', () => {
+    expect(positionSlashCommandMenu({
+      anchor: { left: 100, top: 40, bottom: 60 },
+      menu,
+      viewport,
+    })).toEqual({ left: 100, top: 68, maxHeight: 720, placement: 'below' });
+  });
+
+  it('places the menu above the editing line when it does not fit below', () => {
+    expect(positionSlashCommandMenu({
+      anchor: { left: 100, top: 700, bottom: 720 },
+      menu,
+      viewport,
+    })).toEqual({ left: 100, top: 692, maxHeight: 680, placement: 'above' });
+  });
+
+  it('uses the rendered menu height when choosing a side', () => {
+    const anchor = { left: 100, top: 600, bottom: 620 };
+
+    expect(positionSlashCommandMenu({
+      anchor,
+      menu: { width: 370, height: 160 },
+      viewport,
+    }).placement).toBe('below');
+    expect(positionSlashCommandMenu({
+      anchor,
+      menu: { width: 370, height: 161 },
+      viewport,
+    }).placement).toBe('above');
+  });
+
+  it('constrains the menu horizontally and limits its height on the larger side', () => {
+    expect(positionSlashCommandMenu({
+      anchor: { left: 1000, top: 450, bottom: 470 },
+      menu: { width: 370, height: 500 },
+      viewport,
+    })).toEqual({ left: 642, top: 442, maxHeight: 430, placement: 'above' });
+  });
+
+  it('allows the menu to follow an off-screen editing line', () => {
+    expect(positionSlashCommandMenu({
+      anchor: { left: 100, top: -100, bottom: -80 },
+      menu,
+      viewport,
+    })).toEqual({ left: 100, top: -72, maxHeight: 776, placement: 'below' });
   });
 });
