@@ -4,12 +4,16 @@
   display: block;
   width: min(370px, calc(100vw - 24px));
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  &.placed-above {
+    transform: translateY(-100%);
+  }
 }
 
 .slash-command-menu {
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: calc(100vh - 24px);
+  max-height: var(--slash-command-menu-max-height, calc(100vh - 24px));
   padding: 7px;
   border: 1px solid var(--color-border);
   border-radius: 14px;

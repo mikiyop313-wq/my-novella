@@ -37,7 +37,7 @@
     </div>
 
     <div class="generation-details">
-      <span class="generation-eyebrow">{{ generation.activityLabel }}</span>
+      <span class="generation-eyebrow" [title]="generation.activityLabel">{{ generation.activityLabel }}</span>
       <span class="generation-location" [title]="generation.breadcrumb">
         {{ generation.breadcrumb }}
       </span>

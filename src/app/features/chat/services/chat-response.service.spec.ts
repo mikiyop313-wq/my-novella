@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { type ChatMessageDetailDto, type ChatThreadDetailDto } from '../../../../../shared/models/chat.model';
-import { AiStreamService } from '../../../core/services/ai-stream.service';
+import { AiStreamService, type AiStreamRequest } from '../../../core/services/ai-stream.service';
 import { AiStore } from '../../../core/store/ai.store';
 import { ToastService } from '../../../shared/services/toast.service';
 import { WorkspaceBookStore } from '../../workspace/workspace-book.store';
@@ -217,6 +217,85 @@ describe('ChatResponseService', () => {
     expect(service.isThreadGenerating('thread-1')).toBe(false);
   });
 
+  it('creates the message on thinking and reuses pending creation for later updates', async () => {
+    let resolveMessage!: (message: ChatMessageDetailDto) => void;
+    chatStore.createAssistantMessage.mockImplementationOnce(() => new Promise<ChatMessageDetailDto>(resolve => {
+      resolveMessage = resolve;
+    }));
+    aiStreamService.streamText.mockImplementationOnce(async (request: AiStreamRequest) => {
+      request.onReasoningUpdate?.('Checking');
+      await vi.waitFor(() => expect(chatStore.createAssistantMessage).toHaveBeenCalledTimes(1));
+      expect(chatStore.patchStreamingMessage).not.toHaveBeenCalled();
+
+      request.onReasoningUpdate?.('Checking context');
+      request.onToken?.('Draft reply');
+      resolveMessage(makeMessage({ id: 'assistant-1', role: 'assistant', content: '', status: 'streaming' }));
+      await vi.waitFor(() => expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
+        content: 'Draft reply',
+        reasoningSummary: 'Checking context',
+      }));
+      return 'Draft reply';
+    });
+
+    await service.generateResponse(messages[0], 'Write a scene', settings);
+
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(chatStore.patchStreamingMessage).toHaveBeenNthCalledWith(1, 'assistant-1', {
+      reasoningSummary: 'Checking',
+    });
+  });
+
+  it('waits for non-whitespace answer text when thinking is disabled', async () => {
+    aiStreamService.streamText.mockImplementationOnce(async (request: AiStreamRequest) => {
+      request.onToken?.(' ');
+      await Promise.resolve();
+      expect(chatStore.createAssistantMessage).not.toHaveBeenCalled();
+      request.onToken?.('Reply');
+      await vi.waitFor(() => expect(chatStore.createAssistantMessage).toHaveBeenCalledTimes(1));
+      return ' Reply';
+    });
+
+    await service.generateResponse(messages[0], 'Write a scene', { ...settings, reasoningEffort: null });
+
+    expect(chatStore.updateMessage).toHaveBeenCalledWith('assistant-1', expect.objectContaining({
+      content: ' Reply', status: 'complete',
+    }));
+  });
+
+  it.each(['complete', 'aborted', 'failed'] as const)('preserves thinking-only responses with status %s', async status => {
+    selectedThread = makeThreadDetail({ title: 'New chat', messages });
+    aiStreamService.streamText.mockImplementationOnce(async (request: AiStreamRequest) => {
+      request.onReasoningUpdate?.('Checking context');
+      await vi.waitFor(() => expect(chatStore.patchStreamingMessage).toHaveBeenCalledWith('assistant-1', {
+        reasoningSummary: 'Checking context',
+      }));
+      expect(chatStore.updateMessage).not.toHaveBeenCalled();
+      if (status === 'aborted') {
+        await service.stopResponse('thread-1');
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      if (status === 'failed') {
+        throw new Error('Provider failed');
+      }
+      return '';
+    });
+
+    await service.generateResponse(messages[0], 'Write a scene', settings);
+
+    const finalData = expect.objectContaining({
+      content: '',
+      reasoningSummary: 'Checking context',
+      status,
+      error: status === 'failed' ? 'Provider failed' : null,
+    });
+    expect(chatStore.createAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(chatStore.patchStreamingMessage).toHaveBeenLastCalledWith('assistant-1', finalData);
+    expect(chatStore.updateMessage).toHaveBeenCalledWith('assistant-1', finalData);
+    expect(chatStore.deleteMessage).not.toHaveBeenCalled();
+    expect(aiStreamService.streamText).toHaveBeenCalledTimes(1);
+    expect(service.isThreadGenerating('thread-1')).toBe(false);
+  });
+
   it.each([
     ['gemini/gemini-pro', 'gemini', 'gemini-pro'],
     ['ollama/library/model:tag', 'ollama', 'library/model:tag'],
@@ -356,9 +435,10 @@ describe('ChatResponseService', () => {
     }));
   });
 
-  it('does not create or persist an assistant message when no content is generated', async () => {
-    aiStreamService.streamText.mockImplementationOnce(async (request: { onToken?: (token: string) => void }) => {
-      await request.onToken?.(' ');
+  it.each(['', ' \n'])('does not create or persist an assistant message for empty output %j', async output => {
+    aiStreamService.streamText.mockImplementationOnce(async (request: AiStreamRequest) => {
+      request.onReasoningUpdate?.(output);
+      request.onToken?.(output);
       return '';
     });
 

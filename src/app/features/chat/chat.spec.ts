@@ -887,7 +887,7 @@ describe('Chat', () => {
       },
     });
 
-    component.editMessage('user-1');
+    component.editMessage({ messageId: 'user-1', width: 480 });
     await component.retryMessage('assistant-1');
     fixture.detectChanges();
 
@@ -1643,6 +1643,41 @@ describe('Chat', () => {
     expect(aiStreamService.streamText).not.toHaveBeenCalled();
   });
 
+  it('preserves the measured row width while editing and releases it on Escape or leaving the conversation', async () => {
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
+      paramMap: of(convertToParamMap({ threadId: 'thread-1' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    component.selectedModelId.set('openrouter/test-model');
+    selectedThread = makeThreadDetail({ messages: [makeMessage({ id: 'user-1' })] });
+    fixture.detectChanges();
+
+    const row: HTMLElement = fixture.nativeElement.querySelector('.message-row.from-user');
+    vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({ width: 480.5 } as DOMRect);
+    row.querySelector<HTMLButtonElement>('button[title="Edit"]')!.click();
+    fixture.detectChanges();
+
+    expect(row.style.width).toBe('480.5px');
+    const input = row.querySelector('textarea')!;
+    input.value = 'Shorter';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(row.style.width).toBe('480.5px');
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(row.style.width).toBe('');
+    expect(component.editingMessageWidth).toBeNull();
+
+    row.querySelector<HTMLButtonElement>('button[title="Edit"]')!.click();
+    fixture.detectChanges();
+    expect(row.style.width).toBe('480.5px');
+    await component.goBackToList();
+    expect(component.editingMessageId).toBeNull();
+    expect(component.editingMessageWidth).toBeNull();
+  });
+
   it('creates and selects an edited user-message branch before generating a response', async () => {
     await createComponent({
       snapshot: { paramMap: convertToParamMap({ threadId: 'thread-1' }) },
@@ -1660,9 +1695,10 @@ describe('Chat', () => {
     selectedThread = makeThreadDetail({ messages: [original] });
     chatStore.createMessageBranch.mockResolvedValueOnce(edited);
 
-    component.editMessage('user-1');
+    component.editMessage({ messageId: 'user-1', width: 480 });
     await component.saveMessageEdit('user-1', '  Edited prompt  ');
 
+    expect(component.editingMessageWidth).toBeNull();
     expect(chatStore.createMessageBranch).toHaveBeenCalledWith('user-1', 'Edited prompt');
     expect(chatStore.selectMessageBranch).toHaveBeenCalledWith('user-2');
     expect(aiStreamService.streamText).toHaveBeenCalledWith(expect.objectContaining({
@@ -1688,7 +1724,7 @@ describe('Chat', () => {
     });
     selectedThread = makeThreadDetail({ messages: [user, assistant] });
 
-    component.editMessage('user-1');
+    component.editMessage({ messageId: 'user-1', width: 480 });
     await component.saveMessageEdit('user-1', 'Keep this prompt');
 
     expect(chatStore.createMessageBranch).not.toHaveBeenCalled();
@@ -1841,7 +1877,10 @@ describe('Chat', () => {
 
     expect(fixture.nativeElement.querySelector('.message-spinner')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Partial reply');
-    expect(fixture.nativeElement.querySelector('.message-reasoning-toggle')).not.toBeNull();
+    const liveReasoningToggle = fixture.nativeElement.querySelector('.message-reasoning-toggle') as HTMLButtonElement;
+    expect(liveReasoningToggle).not.toBeNull();
+    expect(liveReasoningToggle.classList.contains('is-live')).toBe(true);
+    expect(liveReasoningToggle.closest('.message-meta')).not.toBeNull();
     expect((fixture.nativeElement.querySelector('.message-reasoning-content') as HTMLElement)
       .getAttribute('aria-hidden')).toBe('true');
 
@@ -1850,6 +1889,8 @@ describe('Chat', () => {
     fixture.detectChanges(false);
 
     expect(fixture.nativeElement.querySelector('.message-spinner')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.message-reasoning-toggle')
+      ?.classList.contains('is-live')).toBe(false);
   });
 
   it('renders assistant reasoning as a collapsed, accessible disclosure', async () => {
@@ -1871,6 +1912,10 @@ describe('Chat', () => {
     const toggle = fixture.nativeElement.querySelector('.message-reasoning-toggle') as HTMLButtonElement;
     expect(toggle).not.toBeNull();
     expect(toggle.textContent).toContain('Thinking');
+    expect(toggle.closest('.message-meta')).not.toBeNull();
+    expect(toggle.classList.contains('is-live')).toBe(false);
+    expect(toggle.querySelector('.message-reasoning-icon')).not.toBeNull();
+    expect(toggle.querySelector('.message-reasoning-chevron')).not.toBeNull();
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect((fixture.nativeElement.querySelector('.message-reasoning-content') as HTMLElement)
       .getAttribute('aria-hidden')).toBe('true');
@@ -1884,6 +1929,13 @@ describe('Chat', () => {
     expect(content.classList.contains('is-expanded')).toBe(true);
     expect(content.id).toBe('chat-message-reasoning-assistant-with-reasoning');
     expect(content.textContent).toContain('First, inspect the prompt.\nThen, answer it.');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(content.getAttribute('aria-hidden')).toBe('true');
+    expect(content.classList.contains('is-expanded')).toBe(false);
   });
 
   it('does not render a reasoning disclosure when no reasoning is available', async () => {
@@ -1898,6 +1950,7 @@ describe('Chat', () => {
     });
 
     expect(fixture.nativeElement.querySelector('.message-reasoning')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.message-reasoning-toggle')).toBeNull();
   });
 
   it('disables sending until a model is selected', async () => {

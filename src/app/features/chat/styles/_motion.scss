@@ -26,6 +26,23 @@
   }
 }
 
+@keyframes messageEditEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-edit-input,
+.message-edit-actions {
+  animation: messageEditEnter 180ms ease-out;
+}
+
 @keyframes glowRotate {
   to {
     --glow-angle: 360deg;
@@ -50,10 +67,38 @@
   }
 }
 
+@keyframes thinkingTextGlowSlide {
+  0% {
+    background-position: 100% 50%;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+
+  50% {
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-text-primary) 45%, transparent));
+  }
+
+  100% {
+    background-position: -100% 50%;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .message-edit-input,
+  .message-edit-actions {
+    animation: none;
+  }
+
   .message-reasoning-content,
   .message-reasoning-toggle svg {
     transition: none;
+  }
+
+  .message-reasoning-toggle.is-live .message-reasoning-label {
+    color: inherit;
+    background: none;
+    animation: none;
+    filter: none;
   }
 }
 

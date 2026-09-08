@@ -68,6 +68,11 @@ import {
 import { ChatWindowService } from './services/chat-window.service';
 import { ChatStore } from './store/chat.store';
 
+interface EditMessageOptions {
+  messageId: string;
+  width: number;
+}
+
 const NEW_CHAT_ROUTE_ID = 'new-chat';
 const CHAT_BOTTOM_THRESHOLD_PX = 32;
 const STREAMING_AUTO_SCROLL_FRAMES = 3;
@@ -136,6 +141,7 @@ export class Chat implements OnInit, OnDestroy {
   selectedThreadId: string | null = null;
   editingActiveThreadId: string | null = null;
   editingMessageId: string | null = null;
+  editingMessageWidth: number | null = null;
 
   readonly isChatOpenInDetachedWindow = signal(false);
   readonly selectedModelId = signal<string | null>(null);
@@ -311,7 +317,7 @@ export class Chat implements OnInit, OnDestroy {
       ) {
         this.selectedModelId.set(null);
         this.reasoningEffort.set(null);
-        this.editingMessageId = null;
+        this.cancelMessageEdit();
       }
     });
 
@@ -395,6 +401,7 @@ export class Chat implements OnInit, OnDestroy {
   async startNewConversation(): Promise<void> {
     if (this.isNewChat) return;
 
+    this.cancelMessageEdit();
     const replaceUrl = this.hasActiveConversation;
     this.chatStore.closeThread();
     this.hasActiveConversation = true;
@@ -419,6 +426,7 @@ export class Chat implements OnInit, OnDestroy {
   async goBackToList(): Promise<void> {
     if (this.isDetachedMode) return;
 
+    this.cancelMessageEdit();
     this.hasActiveConversation = false;
     this.selectedThreadId = null;
     this.chatStore.closeThread();
@@ -631,7 +639,7 @@ export class Chat implements OnInit, OnDestroy {
       this.reasoningEffort.set(null);
     }
     if (!modelId) {
-      this.editingMessageId = null;
+      this.cancelMessageEdit();
     }
 
     const thread = this.chatStore.selectedThread();
@@ -750,13 +758,14 @@ export class Chat implements OnInit, OnDestroy {
   // Message Editing and Branching
   // ---------------------------------------------------------------------------
 
-  editMessage(messageId: string): void {
+  editMessage({ messageId, width }: EditMessageOptions): void {
     if (this.isPromptSubmitDisabled()) return;
 
     const message = this.chatStore.visibleMessages().find((item) => item.id === messageId);
     if (!message || message.role !== 'user') return;
 
     this.editingMessageId = message.id;
+    this.editingMessageWidth = width;
     afterNextRender(() => {
       const input = this.messageEditInput?.nativeElement;
       input?.focus();
@@ -767,6 +776,7 @@ export class Chat implements OnInit, OnDestroy {
 
   cancelMessageEdit(): void {
     this.editingMessageId = null;
+    this.editingMessageWidth = null;
   }
 
   async saveMessageEdit(messageId: string, content: string): Promise<void> {
@@ -779,7 +789,7 @@ export class Chat implements OnInit, OnDestroy {
     const responseSettings = this.getResponseSettings();
     if (!responseSettings) return;
 
-    this.editingMessageId = null;
+    this.cancelMessageEdit();
 
     if (trimmedContent === message.content.trim()) {
       this.prepareForResponse();
@@ -925,6 +935,7 @@ export class Chat implements OnInit, OnDestroy {
       await removeThread();
 
       if (wasSelectedThread) {
+        this.cancelMessageEdit();
         this.selectedThreadId = null;
         this.hasActiveConversation = false;
 
@@ -944,6 +955,8 @@ export class Chat implements OnInit, OnDestroy {
 
   private async syncThreadFromRoute(threadId: string | null): Promise<void> {
     if (this.isDetachedMode) return;
+
+    if (threadId !== this.selectedThreadId) this.cancelMessageEdit();
 
     if (this.isNewChatThreadId(threadId)) {
       const hadSavedThreadOpen = this.selectedThreadId !== null;
@@ -994,6 +1007,7 @@ export class Chat implements OnInit, OnDestroy {
   }
 
   private async openThread(id: string): Promise<void> {
+    this.cancelMessageEdit();
     this.selectedThreadId = id;
     this.hasActiveConversation = true;
     await this.chatStore.openThread(id);

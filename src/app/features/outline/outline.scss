@@ -862,12 +862,14 @@
 
   ::ng-deep .scene-summary-input .cm-content {
     padding: 0.4rem;
+    text-align: justify;
   }
 
   .scene-summary-body {
     font-size: 0.8rem;
     color: var(--color-text-secondary);
     line-height: 1.6;
+    text-align: justify;
     margin: 0;
     flex: 1;
     min-height: 0;
@@ -956,7 +958,7 @@
     flex-direction: row;
     align-items: stretch;
     min-height: 120px;
-    max-height: 150px;
+    max-height: 240px;
     padding: 0;
     gap: 0;
     position: relative;
