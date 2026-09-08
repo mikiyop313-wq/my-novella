@@ -9,11 +9,12 @@ import {
 } from '../../../shared/models/ai.model';
 
 const API_KEY_SETTING_PREFIX = 'ai.apiKey.';
+export type BackendAiCloudProviderId = AiCloudProviderId | 'venice';
 
 export class ApiKeyService {
     constructor(private readonly settingsStore: AppSettingsStore = appSettingsRepository) {}
 
-    async saveApiKey(providerId: AiCloudProviderId, rawApiKey: string): Promise<AiApiKeyStatus> {
+    async saveApiKey(providerId: BackendAiCloudProviderId, rawApiKey: string): Promise<AiApiKeyStatus> {
         this.assertProviderId(providerId);
 
         const apiKey = rawApiKey.trim();
@@ -28,14 +29,14 @@ export class ApiKeyService {
         return this.statusForKey(apiKey);
     }
 
-    async getApiKeyStatus(providerId: AiCloudProviderId): Promise<AiApiKeyStatus> {
+    async getApiKeyStatus(providerId: BackendAiCloudProviderId): Promise<AiApiKeyStatus> {
         const apiKey = await this.getApiKey(providerId);
         return apiKey === null
             ? { configured: false, suffix: null }
             : this.statusForKey(apiKey);
     }
 
-    async getApiKey(providerId: AiCloudProviderId): Promise<string | null> {
+    async getApiKey(providerId: BackendAiCloudProviderId): Promise<string | null> {
         this.assertProviderId(providerId);
 
         const encryptedKey = await this.settingsStore.get(this.settingKey(providerId));
@@ -68,7 +69,7 @@ export class ApiKeyService {
         }
     }
 
-    private settingKey(providerId: AiCloudProviderId): string {
+    private settingKey(providerId: BackendAiCloudProviderId): string {
         return `${API_KEY_SETTING_PREFIX}${providerId}`;
     }
 
@@ -79,8 +80,8 @@ export class ApiKeyService {
         };
     }
 
-    private assertProviderId(providerId: string): asserts providerId is AiCloudProviderId {
-        if (!AI_CLOUD_PROVIDER_IDS.some((candidate) => candidate === providerId)) {
+    private assertProviderId(providerId: string): asserts providerId is BackendAiCloudProviderId {
+        if (providerId !== 'venice' && !AI_CLOUD_PROVIDER_IDS.some((candidate) => candidate === providerId)) {
             throw new Error(`Unsupported cloud AI provider: ${providerId}`);
         }
     }

@@ -9,6 +9,7 @@ import {
     type AiProviderConfiguration,
 } from '../../../shared/models/ai.model';
 import { ApiKeyService, apiKeyService } from './api-key.service';
+import type { BackendAiCloudProviderId } from './api-key.service';
 
 const SERVER_URL_SETTING_PREFIX = 'ai.serverUrl.';
 
@@ -40,11 +41,11 @@ export class AiConfigurationService {
         };
     }
 
-    async saveApiKey(providerId: AiCloudProviderId, apiKey: string): Promise<AiApiKeyStatus> {
+    async saveApiKey(providerId: BackendAiCloudProviderId, apiKey: string): Promise<AiApiKeyStatus> {
         return this.keys.saveApiKey(providerId, apiKey);
     }
 
-    async loadApiKey(providerId: AiCloudProviderId): Promise<string | null> {
+    async loadApiKey(providerId: BackendAiCloudProviderId): Promise<string | null> {
         return this.keys.getApiKey(providerId);
     }
 

@@ -34,7 +34,7 @@ export function setupAiHandlers() {
 
     ipcMain.handle(
         'ai:config:load-api-key',
-        async (_event, request: LoadAiApiKeyRequest) => {
+        async (_event, request: LoadAiApiKeyRequest | { providerId: 'venice' }) => {
             if (!request || typeof request.providerId !== 'string') {
                 throw new Error('Invalid API key load request.');
             }
@@ -45,7 +45,7 @@ export function setupAiHandlers() {
 
     ipcMain.handle(
         'ai:config:save-api-key',
-        async (_event, request: SaveAiApiKeyRequest) => {
+        async (_event, request: SaveAiApiKeyRequest | { providerId: 'venice'; apiKey: string }) => {
             if (!request || typeof request.providerId !== 'string' || typeof request.apiKey !== 'string') {
                 throw new Error('Invalid API key configuration request.');
             }
@@ -67,7 +67,7 @@ export function setupAiHandlers() {
 
     ipcMain.handle(
         'ai:config:test-connection',
-        async (_event, request: TestAiProviderConnectionRequest) => {
+        async (_event, request: TestAiProviderConnectionRequest | { providerId: 'venice' }) => {
             if (!request || typeof request.providerId !== 'string') {
                 throw new Error('Invalid AI provider connection test request.');
             }

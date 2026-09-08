@@ -14,6 +14,7 @@ import { GeminiProvider } from './providers/gemini.provider';
 import { LmStudioProvider } from './providers/lm-studio.provider';
 import { OllamaProvider } from './providers/ollama.provider';
 import { OpenRouterProvider } from './providers/openrouter.provider';
+import { VeniceProvider } from './providers/venice.provider';
 
 export class AiService {
     private providers: Map<string, AiProvider>;
@@ -23,6 +24,7 @@ export class AiService {
         new GeminiProvider(),
         new AnthropicProvider(),
         new OpenRouterProvider(),
+        new VeniceProvider(),
         new OllamaProvider(),
         new LmStudioProvider(),
     ], private readonly configuration: Pick<AiConfigurationService, 'loadConfiguration'> =
@@ -62,7 +64,7 @@ export class AiService {
         }));
     }
 
-    async testConnection(providerId: AiProviderId): Promise<void> {
+    async testConnection(providerId: AiProviderId | 'venice'): Promise<void> {
         const registeredProviderId = this.registeredProviderId(providerId);
         const provider = this.providers.get(registeredProviderId);
 
@@ -105,7 +107,7 @@ export class AiService {
         return configuration.apiKeys[providerId].configured;
     }
 
-    private registeredProviderId(providerId: AiProviderId): string {
+    private registeredProviderId(providerId: AiProviderId | 'venice'): string {
         return providerId === 'google' ? 'gemini' : providerId;
     }
 }

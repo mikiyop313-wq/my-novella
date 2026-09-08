@@ -12,6 +12,7 @@ import type { AiChatCompletionPayload, AiPromptResponse } from '../../models';
 import { readServerSentEvents } from './sse-decoder';
 
 type StreamCallbacks = {
+    reasoningField?: 'reasoning' | 'reasoning_content';
     onToken?: (token: string) => void;
     onReasoningToken?: (token: string) => void;
 };
@@ -40,7 +41,9 @@ export async function consumeOpenAiCompatibleStream(
         const chunk = parseJsonObject(data, 'AI provider returned a malformed stream event.');
         if (chunk['error']) {
             const error = asObject(chunk['error']);
-            const message = typeof error?.['message'] === 'string'
+            const message = typeof chunk['error'] === 'string'
+                ? chunk['error']
+                : typeof error?.['message'] === 'string'
                 ? error['message']
                 : 'The provider reported a stream error.';
             throw new Error(message);
@@ -63,7 +66,7 @@ export async function consumeOpenAiCompatibleStream(
             emitDelta(delta?.['content'], callbacks.onToken, (token) => {
                 text += token;
             });
-            emitDelta(delta?.['reasoning'], callbacks.onReasoningToken);
+            emitDelta(delta?.[callbacks.reasoningField ?? 'reasoning'], callbacks.onReasoningToken);
         }
 
         return true;
