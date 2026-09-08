@@ -64,7 +64,7 @@ export class AiService {
         }));
     }
 
-    async testConnection(providerId: AiProviderId | 'venice'): Promise<void> {
+    async testConnection(providerId: AiProviderId): Promise<void> {
         const registeredProviderId = this.registeredProviderId(providerId);
         const provider = this.providers.get(registeredProviderId);
 
@@ -107,7 +107,7 @@ export class AiService {
         return configuration.apiKeys[providerId].configured;
     }
 
-    private registeredProviderId(providerId: AiProviderId | 'venice'): string {
+    private registeredProviderId(providerId: AiProviderId): string {
         return providerId === 'google' ? 'gemini' : providerId;
     }
 }

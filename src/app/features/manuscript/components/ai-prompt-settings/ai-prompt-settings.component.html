@@ -125,13 +125,14 @@
                   @if (!supportsReasoning()) {
                   Not supported
                   } @else if (reasoningMode()) {
-                  {{ reasoningEffortLabel() }}
+                  {{ supportsReasoningEffort() ? reasoningEffortLabel() : 'On' }}
                   } @else {
                   Off
                   }
                 </span>
               </div>
 
+              @if (supportsReasoningEffort() || !supportsReasoning()) {
               <app-autocomplete-dropdown class="reasoning-effort-menu" [options]="reasoningEffortOptions"
                 [selectedValue]="reasoningEffort()" [showSearchBar]="false"
                 [disabled]="!supportsReasoning() || !reasoningMode()" placeholder="Thinking effort"
@@ -146,6 +147,7 @@
                   </svg>
                 </ng-template>
               </app-autocomplete-dropdown>
+              }
             </div>
 
             @if (!supportsReasoning()) {

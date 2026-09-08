@@ -26,7 +26,7 @@ const DEFAULT_CHAT_THREAD_TITLE = 'New chat';
 
 export interface ChatResponseSettings {
   selectedModelId: string | null;
-  reasoningEffort: AiReasoningEffort | null;
+  reasoningEffort: AiReasoningEffort | 'on' | null;
   context: Pick<
     ChatAiContextRequest,
     'includeBookMetadata' | 'bookContext' | 'includeFullOutline' | 'sceneIds' | 'codexEntryIds'
@@ -201,7 +201,9 @@ export class ChatResponseService {
         provider,
         modelId: modelId ?? undefined,
         reasoningMode: settings.reasoningEffort !== null,
-        reasoningEffort: settings.reasoningEffort ?? undefined,
+        ...(settings.reasoningEffort !== null && settings.reasoningEffort !== 'on'
+          ? { reasoningEffort: settings.reasoningEffort }
+          : {}),
         onContentChange: (content) => {
           streamedContent = content;
           if (!streamedContent.trim()) return;

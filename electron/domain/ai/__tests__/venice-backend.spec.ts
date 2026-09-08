@@ -54,11 +54,36 @@ describe('Venice backend integration', () => {
         expect(fetch).toHaveBeenCalledTimes(2);
     });
 
-    it('keeps Venice out of the shared configuration and model catalogs', async () => {
+    it('includes configured Venice models and capabilities in the shared catalog', async () => {
         await aiConfigurationService.saveApiKey('venice', 'secret');
-        const configuration = await aiConfigurationService.loadConfiguration();
-        expect(configuration.apiKeys).not.toHaveProperty('venice');
-        expect((await aiService.listModels()).map((provider) => provider.id)).not.toContain('venice');
+        vi.mocked(fetch).mockResolvedValue(Response.json({ data: [{
+            id: 'test-model', type: 'text',
+            model_spec: { name: 'Test model', capabilities: {
+                supportsReasoning: true, supportsReasoningEffort: false,
+            } },
+        }] }));
+        expect((await aiConfigurationService.loadConfiguration()).apiKeys.venice.configured).toBe(true);
+        expect((await aiService.listModels()).find(provider => provider.id === 'venice')).toEqual({
+            id: 'venice', name: 'Venice', state: 'ready', models: [{
+                id: 'venice/test-model', name: 'Test model', provider: 'venice',
+                providerName: 'Venice', source: 'direct',
+                supportsReasoning: true, supportsReasoningEffort: false,
+            }],
+        });
+    });
+
+    it('includes unconfigured Venice without fetching its models', async () => {
+        expect((await aiService.listModels()).find(provider => provider.id === 'venice'))
+            .toEqual({ id: 'venice', name: 'Venice', state: 'unconfigured', models: [] });
         expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('reports a Venice catalog error without discarding other provider groups', async () => {
+        await aiConfigurationService.saveApiKey('venice', 'secret');
+        vi.mocked(fetch).mockRejectedValue(new Error('Connection failed'));
+        const groups = await aiService.listModels();
+        expect(groups.find(provider => provider.id === 'venice'))
+            .toEqual({ id: 'venice', name: 'Venice', state: 'error', models: [] });
+        expect(groups.find(provider => provider.id === 'openai')?.state).toBe('unconfigured');
     });
 });

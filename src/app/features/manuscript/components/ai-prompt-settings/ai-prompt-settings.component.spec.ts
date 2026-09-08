@@ -21,6 +21,8 @@ describe('AiPromptSettingsComponent', () => {
   let models: WritableSignal<Array<{
     id: string;
     supportsReasoning?: boolean;
+    provider?: string;
+    supportsReasoningEffort?: boolean;
   }>>;
   let getEntries: ReturnType<typeof vi.fn>;
   let indexingAvailable: WritableSignal<boolean>;
@@ -238,6 +240,24 @@ describe('AiPromptSettingsComponent', () => {
       expect(emitted).toHaveBeenCalledWith(effort);
     },
   );
+
+  it.each([false, true])('shows Venice thinking with adjustable effort %s', (adjustable) => {
+    models.set([{ id: 'venice/model', provider: 'venice', supportsReasoning: true, supportsReasoningEffort: adjustable }]);
+    fixture.componentRef.setInput('selectedModel', 'venice/model');
+    fixture.componentRef.setInput('reasoningMode', true);
+    fixture.componentRef.setInput('reasoningEffort', 'high');
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.settings-btn') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(document.querySelector('.reasoning-status')?.textContent?.trim()).toBe(adjustable ? 'High' : 'On');
+    expect(document.querySelector('.reasoning-effort-menu') !== null).toBe(adjustable);
+    expect((document.querySelector('.reasoning-switch input') as HTMLInputElement).disabled).toBe(false);
+    fixture.componentRef.setInput('reasoningMode', false);
+    fixture.detectChanges();
+    expect(document.querySelector('.reasoning-status')?.textContent?.trim()).toBe('Off');
+    expect(component.reasoningEffort()).toBe('high');
+  });
+
 
   it('preserves reasoning while no model is selected during initialization', () => {
     const modeChanged = vi.fn();

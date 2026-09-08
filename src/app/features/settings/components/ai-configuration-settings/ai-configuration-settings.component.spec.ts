@@ -61,7 +61,7 @@ describe('AiConfigurationSettingsComponent', () => {
   });
 
   it('groups all supported cloud and local providers', () => {
-    expect(element.querySelectorAll('.provider-card')).toHaveLength(6);
+    expect(element.querySelectorAll('.provider-card')).toHaveLength(7);
     expect(element.textContent).toContain('OpenRouter');
     expect(element.textContent).toContain('Google Gemini');
     expect(element.textContent).toContain('OpenAI');
@@ -73,8 +73,8 @@ describe('AiConfigurationSettingsComponent', () => {
   it('shows a distinct inline SVG icon for every provider', () => {
     const icons = [...element.querySelectorAll<SVGElement>('.provider-mark svg')];
 
-    expect(icons).toHaveLength(6);
-    expect(new Set(icons.map((icon) => icon.dataset['providerIcon'])).size).toBe(6);
+    expect(icons).toHaveLength(7);
+    expect(new Set(icons.map((icon) => icon.dataset['providerIcon'])).size).toBe(7);
     expect(
       element.querySelector('[data-provider-icon="openai"] path')?.getAttribute('fill'),
     ).toBe('currentColor');
@@ -466,6 +466,73 @@ describe('AiConfigurationSettingsComponent', () => {
     expect(input.value).toBe('sk-refocused-abcd');
   });
 
+  it('saves, reveals, tests, and clears the Venice key using the existing workflow', async () => {
+    clickProvider('venice');
+    expect(element.textContent).toContain('Connect directly to Venice AI models.');
+    expect(element.querySelector('[data-provider-icon="venice"] path')?.getAttribute('fill'))
+      .toBe('currentColor');
+    const input = element.querySelector<HTMLInputElement>('#venice-api-key')!;
+    expect(input.placeholder).toBe('Enter your Venice API key');
+    input.dispatchEvent(new FocusEvent('focus'));
+    await fixture.whenStable();
+    setInputValue(input, 'venice-secret-1234');
+    element.querySelector<HTMLButtonElement>('.visibility-button')!.click();
+    fixture.detectChanges();
+    expect(input.type).toBe('text');
+    input.dispatchEvent(new FocusEvent('blur'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(invoke).toHaveBeenCalledWith('ai:config:save-api-key', {
+      providerId: 'venice', apiKey: 'venice-secret-1234',
+    });
+    expect(input.value.endsWith('1234')).toBe(true);
+    expect(input.value).not.toContain('secret');
+    expect(invalidateModels).toHaveBeenCalled();
+    element.querySelector<HTMLButtonElement>('.connection-test-button')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(element.querySelector('.connection-result')?.textContent).toContain('Connection to Venice succeeded.');
+    input.dispatchEvent(new FocusEvent('focus'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(input.value).toBe('venice-secret-1234');
+    setInputValue(input, '');
+    input.dispatchEvent(new FocusEvent('blur'));
+    await fixture.whenStable();
+    expect(invoke).toHaveBeenCalledWith('ai:config:save-api-key', { providerId: 'venice', apiKey: '' });
+  });
+
+  it('loads and reveals an existing Venice key after loading configuration', async () => {
+    const savedConfiguration = configuration();
+    savedConfiguration.apiKeys.venice = { configured: true, suffix: '1234' };
+    invoke.mockResolvedValueOnce(savedConfiguration);
+    await fixture.componentInstance.loadConfiguration();
+    clickProvider('venice');
+    const input = element.querySelector<HTMLInputElement>('#venice-api-key')!;
+    expect(input.value.endsWith('1234')).toBe(true);
+    expect(input.value).not.toContain('secret');
+    invoke.mockResolvedValueOnce('venice-secret-1234');
+    input.dispatchEvent(new FocusEvent('focus'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(invoke).toHaveBeenCalledWith('ai:config:load-api-key', { providerId: 'venice' });
+    expect(input.type).toBe('password');
+    expect(input.value).toBe('venice-secret-1234');
+    element.querySelector<HTMLButtonElement>('.visibility-button')!.click();
+    fixture.detectChanges();
+    expect(input.type).toBe('text');
+  });
+
+  it('shows Venice connection errors inline', async () => {
+    clickProvider('venice');
+    invoke.mockRejectedValueOnce(new Error('Venice API error (401): Invalid key.'));
+    element.querySelector<HTMLButtonElement>('.connection-test-button')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(element.querySelector('.connection-result.is-error')?.textContent)
+      .toContain('Venice API error (401): Invalid key.');
+  });
+
   function clickProvider(providerId: string): void {
     element.querySelector<HTMLButtonElement>(`[data-provider="${providerId}"]`)!.click();
     fixture.detectChanges();
@@ -488,6 +555,7 @@ describe('AiConfigurationSettingsComponent', () => {
         google: { configured: false, suffix: null },
         openai: { configured: false, suffix: null },
         anthropic: { configured: false, suffix: null },
+        venice: { configured: false, suffix: null },
       },
       serverUrls: {
         ollama: 'http://localhost:11434',

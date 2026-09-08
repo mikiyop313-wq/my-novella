@@ -89,6 +89,12 @@ export class AiPromptSettingsComponent {
     () => this.selectedModelMetadata()?.supportsReasoning === true,
   );
 
+  readonly supportsReasoningEffort = computed(() => {
+    const model = this.selectedModelMetadata();
+    return this.supportsReasoning()
+      && (model?.provider !== 'venice' || model.supportsReasoningEffort === true);
+  });
+
   bookId = computed(() => this.workspaceStore.bookId());
 
   characters = signal<DropdownOption<string>[]>([]);

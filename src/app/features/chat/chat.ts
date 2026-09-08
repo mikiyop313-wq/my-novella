@@ -145,8 +145,12 @@ export class Chat implements OnInit, OnDestroy {
 
   readonly isChatOpenInDetachedWindow = signal(false);
   readonly selectedModelId = signal<string | null>(null);
-  readonly reasoningEffort = signal<AiReasoningEffort | null>(null);
-  readonly reasoningEffortOptions = THINKING_EFFORT_OPTIONS;
+  readonly reasoningEffort = signal<ChatResponseSettings['reasoningEffort']>(null);
+  readonly reasoningEffortOptions = computed<readonly DropdownOption<ChatResponseSettings['reasoningEffort']>[]>(() =>
+    this.supportsReasoningEffort()
+      ? THINKING_EFFORT_OPTIONS
+      : [{ value: null, label: 'Off' }, { value: 'on', label: 'On' }],
+  );
   readonly composerValue = signal('');
   readonly copiedMessageId = signal<string | null>(null);
   readonly expandedReasoningMessageIds = signal<ReadonlySet<string>>(new Set());
@@ -219,6 +223,12 @@ export class Chat implements OnInit, OnDestroy {
     const modelId = this.selectedModelId();
     return !!modelId && this.aiStore.models()
       .find((model) => model.id === modelId)?.supportsReasoning === true;
+  });
+
+  readonly supportsReasoningEffort = computed(() => {
+    const model = this.aiStore.models().find((model) => model.id === this.selectedModelId());
+    return this.supportsReasoning()
+      && (model?.provider !== 'venice' || model.supportsReasoningEffort === true);
   });
 
   readonly composerKeywordHighlights = computed<MarkdownKeywordHighlight[]>(() => {
@@ -627,16 +637,24 @@ export class Chat implements OnInit, OnDestroy {
       : this.isSendButtonDisabled();
   }
 
-  selectReasoningEffort(effort: AiReasoningEffort | null): void {
+  selectReasoningEffort(effort: ChatResponseSettings['reasoningEffort']): void {
     if (effort !== null && !this.supportsReasoning()) return;
 
-    this.reasoningEffort.set(effort);
+    if (effort === null) {
+      this.reasoningEffort.set(null);
+      return;
+    }
+    this.reasoningEffort.set(this.supportsReasoningEffort()
+      ? (effort === 'on' ? 'medium' : effort)
+      : 'on');
   }
 
   async onModelSelectionChange(modelId: string | null): Promise<void> {
     this.selectedModelId.set(modelId);
     if (!this.supportsReasoning()) {
       this.reasoningEffort.set(null);
+    } else {
+      this.selectReasoningEffort(this.reasoningEffort());
     }
     if (!modelId) {
       this.cancelMessageEdit();

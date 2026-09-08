@@ -4,6 +4,7 @@ import { vi } from 'vitest';
 import { SystemPromptSelectionService } from '../../shared/services/system-prompt-selection.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { AIStateService } from './ai-state.service';
+import { AiStore } from '../store/ai.store';
 import { AiStreamService } from './ai-stream.service';
 import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 import { buildAiPrompt } from '../../shared/utils/ai-prompt-builder';
@@ -60,6 +61,10 @@ describe('AiStreamService', () => {
     TestBed.configureTestingModule({
       providers: [
         AiStreamService,
+        { provide: AiStore, useValue: { models: () => [
+          { id: 'venice/fixed', provider: 'venice', supportsReasoning: true, supportsReasoningEffort: false },
+          { id: 'venice/adjustable', provider: 'venice', supportsReasoning: true, supportsReasoningEffort: true },
+        ] } },
         { provide: AIStateService, useValue: { generate, abort } },
         { provide: SystemPromptSelectionService, useValue: { getActivePresetId } },
         { provide: ToastService, useValue: { error: toastError } },
@@ -77,6 +82,32 @@ describe('AiStreamService', () => {
     vi.useRealTimers();
     TestBed.resetTestingModule();
   });
+
+  it.each([
+    ['fixed', false, undefined],
+    ['fixed', true, undefined],
+    ['adjustable', false, undefined],
+    ['adjustable', true, 'high'],
+  ] as const)('sends Venice %s reasoning=%s with effort %s', async (modelId, reasoningMode, expectedEffort) => {
+    const reasoning = vi.fn();
+    generate.mockImplementation(async () => {
+      emitMessage('ai:generate-reasoning-stream', { streamId: 'venice-stream', token: 'Thinking' });
+      return 'Draft';
+    });
+    await service.streamText({
+      streamId: 'venice-stream', bookId: 'book-1', aiPrompt: textPrompt('sceneBeat', 'Regenerate'),
+      provider: 'venice', modelId, reasoningMode, reasoningEffort: 'high', onReasoningUpdate: reasoning,
+    });
+    const payload = generate.mock.calls[0][0];
+    expect(payload).toMatchObject({ model: 'venice', modelId, reasoningMode });
+    if (expectedEffort === undefined) {
+      expect(payload).not.toHaveProperty('reasoningEffort');
+    } else {
+      expect(payload.reasoningEffort).toBe(expectedEffort);
+    }
+    expect(reasoning).toHaveBeenCalledTimes(reasoningMode ? 1 : 0);
+  });
+
 
   it('streams content tokens in order while normalizing CRLF', async () => {
     generate.mockImplementation(async () => {
@@ -351,7 +382,7 @@ describe('AiStreamService', () => {
 });
 
 function textPrompt(
-  requestType: 'chat' | 'summary',
+  requestType: 'chat' | 'summary' | 'sceneBeat',
   content: string,
 ) {
   return buildAiPrompt({

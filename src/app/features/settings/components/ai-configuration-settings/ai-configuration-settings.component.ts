@@ -50,6 +50,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     google: 0,
     openai: 0,
     anthropic: 0,
+    venice: 0,
     ollama: 0,
     'lm-studio': 0,
   };
@@ -83,6 +84,12 @@ export class AiConfigurationSettingsComponent implements OnInit {
       description: 'Connect directly to Claude models.',
       keyPlaceholder: 'sk-ant-...',
     },
+    {
+      id: 'venice',
+      name: 'Venice',
+      description: 'Connect directly to Venice AI models.',
+      keyPlaceholder: 'Enter your Venice API key',
+    },
   ];
 
   readonly localProviders: readonly LocalProvider[] = [
@@ -107,6 +114,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     google: null,
     openai: null,
     anthropic: null,
+    venice: null,
     ollama: null,
     'lm-studio': null,
   });
@@ -119,18 +127,21 @@ export class AiConfigurationSettingsComponent implements OnInit {
     google: { configured: false, suffix: null },
     openai: { configured: false, suffix: null },
     anthropic: { configured: false, suffix: null },
+    venice: { configured: false, suffix: null },
   });
   private readonly apiKeyDrafts = signal<Record<AiCloudProviderId, string | null>>({
     openrouter: null,
     google: null,
     openai: null,
     anthropic: null,
+    venice: null,
   });
   private readonly apiKeyDirty = signal<Record<AiCloudProviderId, boolean>>({
     openrouter: false,
     google: false,
     openai: false,
     anthropic: false,
+    venice: false,
   });
   readonly serverUrls = signal<Record<AiLocalProviderId, string>>({
     ollama: '',
@@ -145,6 +156,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     google: 'idle',
     openai: 'idle',
     anthropic: 'idle',
+    venice: 'idle',
     ollama: 'idle',
     'lm-studio': 'idle',
   });
@@ -153,6 +165,7 @@ export class AiConfigurationSettingsComponent implements OnInit {
     google: null,
     openai: null,
     anthropic: null,
+    venice: null,
     ollama: null,
     'lm-studio': null,
   });

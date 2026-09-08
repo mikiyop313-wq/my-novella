@@ -54,6 +54,14 @@ describe('SystemPromptModelService', () => {
     });
   });
 
+  it('resolves a saved Venice default to the direct provider and raw model ID', async () => {
+    invoke.mockResolvedValueOnce({ presetId: 'summary-preset', defaultModelId: 'venice/model' });
+    models.set([{ id: 'venice/model', provider: 'venice', source: 'direct' }]);
+    await expect(service.resolveActiveModel('book-1', 'summary')).resolves.toEqual({
+      status: 'ready', selectorId: 'venice/model', provider: 'venice', modelId: 'model',
+    });
+  });
+
   it('identifies an unconfigured OpenRouter default without substituting a model', async () => {
     invoke.mockResolvedValueOnce({
       presetId: 'default-summary',
