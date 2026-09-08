@@ -1450,7 +1450,7 @@
             <div class="setting-row theme-setting-row">
               <div class="setting-copy">
                 <h3>Theme</h3>
-                <p>Switch between a bright workspace and a low-light writing mode.</p>
+                <p>Choose Light, soft ivory Cream, or Dark for your workspace.</p>
               </div>
               <div class="theme-options" role="radiogroup" aria-label="Application theme">
                 <button
@@ -1469,6 +1469,37 @@
                   </span>
                   <span class="theme-option-footer">
                     <span>Light</span>
+                    <span class="theme-check" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m3 8 3 3 7-7"></path>
+                      </svg>
+                    </span>
+                  </span>
+                </button>
+
+                <button
+                  class="theme-option is-cream"
+                  type="button"
+                  role="radio"
+                  [class.is-selected]="themeService.currentTheme() === 'cream'"
+                  [attr.aria-checked]="themeService.currentTheme() === 'cream'"
+                  (click)="setTheme('cream')"
+                >
+                  <span class="theme-preview" aria-hidden="true">
+                    <span class="theme-preview-sidebar"></span>
+                    <span class="theme-preview-content">
+                      <span></span><span></span><span></span>
+                    </span>
+                  </span>
+                  <span class="theme-option-footer">
+                    <span>Cream</span>
                     <span class="theme-check" aria-hidden="true">
                       <svg
                         viewBox="0 0 16 16"

@@ -580,7 +580,7 @@ describe('BookSettingsComponent', () => {
     expect(sections).toHaveLength(5);
     expect(element.querySelectorAll('.settings-section-panel')).toHaveLength(1);
     expect(element.querySelector('.content-title')?.textContent).toContain('Editor & Display');
-    expect(element.querySelectorAll('.theme-option')).toHaveLength(2);
+    expect(element.querySelectorAll('.theme-option')).toHaveLength(3);
     expect(element.querySelector('.theme-option.is-light')?.getAttribute('aria-checked')).toBe(
       'true',
     );
@@ -594,6 +594,15 @@ describe('BookSettingsComponent', () => {
     expect(element.querySelector('.theme-option.is-dark')?.getAttribute('aria-checked')).toBe(
       'true',
     );
+
+    element.querySelector<HTMLButtonElement>('.theme-option.is-cream')?.click();
+    fixture.detectChanges();
+
+    expect(setTheme).toHaveBeenCalledWith('cream');
+    expect(currentTheme()).toBe('cream');
+    expect(element.querySelector('.theme-option.is-cream')?.getAttribute('aria-checked')).toBe('true');
+    expect(element.querySelector('.theme-option.is-cream')?.classList).toContain('is-selected');
+    expect(element.querySelector('.theme-option.is-dark')?.getAttribute('aria-checked')).toBe('false');
   });
 
   it('opens AI Configuration from general settings', () => {
