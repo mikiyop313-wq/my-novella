@@ -1877,7 +1877,10 @@ describe('Chat', () => {
 
     expect(fixture.nativeElement.querySelector('.message-spinner')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Partial reply');
-    expect(fixture.nativeElement.querySelector('.message-reasoning-toggle')).not.toBeNull();
+    const liveReasoningToggle = fixture.nativeElement.querySelector('.message-reasoning-toggle') as HTMLButtonElement;
+    expect(liveReasoningToggle).not.toBeNull();
+    expect(liveReasoningToggle.classList.contains('is-live')).toBe(true);
+    expect(liveReasoningToggle.closest('.message-meta')).not.toBeNull();
     expect((fixture.nativeElement.querySelector('.message-reasoning-content') as HTMLElement)
       .getAttribute('aria-hidden')).toBe('true');
 
@@ -1886,6 +1889,8 @@ describe('Chat', () => {
     fixture.detectChanges(false);
 
     expect(fixture.nativeElement.querySelector('.message-spinner')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.message-reasoning-toggle')
+      ?.classList.contains('is-live')).toBe(false);
   });
 
   it('renders assistant reasoning as a collapsed, accessible disclosure', async () => {
@@ -1907,6 +1912,10 @@ describe('Chat', () => {
     const toggle = fixture.nativeElement.querySelector('.message-reasoning-toggle') as HTMLButtonElement;
     expect(toggle).not.toBeNull();
     expect(toggle.textContent).toContain('Thinking');
+    expect(toggle.closest('.message-meta')).not.toBeNull();
+    expect(toggle.classList.contains('is-live')).toBe(false);
+    expect(toggle.querySelector('.message-reasoning-icon')).not.toBeNull();
+    expect(toggle.querySelector('.message-reasoning-chevron')).not.toBeNull();
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect((fixture.nativeElement.querySelector('.message-reasoning-content') as HTMLElement)
       .getAttribute('aria-hidden')).toBe('true');
@@ -1920,6 +1929,13 @@ describe('Chat', () => {
     expect(content.classList.contains('is-expanded')).toBe(true);
     expect(content.id).toBe('chat-message-reasoning-assistant-with-reasoning');
     expect(content.textContent).toContain('First, inspect the prompt.\nThen, answer it.');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(content.getAttribute('aria-hidden')).toBe('true');
+    expect(content.classList.contains('is-expanded')).toBe(false);
   });
 
   it('does not render a reasoning disclosure when no reasoning is available', async () => {
@@ -1934,6 +1950,7 @@ describe('Chat', () => {
     });
 
     expect(fixture.nativeElement.querySelector('.message-reasoning')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.message-reasoning-toggle')).toBeNull();
   });
 
   it('disables sending until a model is selected', async () => {

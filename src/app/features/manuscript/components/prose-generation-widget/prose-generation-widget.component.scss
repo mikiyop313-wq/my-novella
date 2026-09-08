@@ -51,6 +51,14 @@
   text-align: right;
 }
 
+.generation-eyebrow,
+.generation-location {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .generation-eyebrow {
   color: var(--color-text-secondary);
   font-size: 0.68rem;
@@ -61,12 +69,9 @@
 }
 
 .generation-location {
-  overflow: hidden;
   font-size: 0.83rem;
   font-weight: 550;
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .generation-word-count {

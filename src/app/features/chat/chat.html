@@ -139,24 +139,33 @@
                 <div class="message-meta">
                   <span>{{ getMessageAuthor(message.role) }}</span>
                   <time [attr.datetime]="message.createdAt">{{ formatMessageTime(message.createdAt) }}</time>
-                </div>
-                @if (hasMessageReasoning(message)) {
-                <div class="message-reasoning">
+                  @if (hasMessageReasoning(message)) {
                   <button class="message-reasoning-toggle" type="button" (click)="toggleMessageReasoning(message.id)"
+                    [class.is-live]="isMessageStreaming(message)"
                     [attr.aria-expanded]="isMessageReasoningExpanded(message.id)"
                     [attr.aria-controls]="'chat-message-reasoning-' + message.id">
-                    <svg [class.is-expanded]="isMessageReasoningExpanded(message.id)" viewBox="0 0 24 24" fill="none"
+                    <svg class="message-reasoning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 3l1.45 4.55L18 9l-4.55 1.45L12 15l-1.45-4.55L6 9l4.55-1.45L12 3z"></path>
+                      <path d="M18.5 14.5l.75 2.25 2.25.75-2.25.75-.75 2.25-.75-2.25-2.25-.75 2.25-.75.75-2.25z"></path>
+                    </svg>
+                    <span class="message-reasoning-label">Thinking</span>
+                    <svg class="message-reasoning-chevron"
+                      [class.is-expanded]="isMessageReasoningExpanded(message.id)" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                       aria-hidden="true">
                       <polyline points="9 18 15 12 9 6"></polyline>
                     </svg>
-                    <span>Thinking</span>
                   </button>
+                  }
+                </div>
+                @if (hasMessageReasoning(message)) {
+                <div class="message-reasoning">
                   <div class="message-reasoning-content" [id]="'chat-message-reasoning-' + message.id"
                     [class.is-expanded]="isMessageReasoningExpanded(message.id)"
                     [attr.aria-hidden]="!isMessageReasoningExpanded(message.id)">
                     <div class="message-reasoning-content-inner">
-                      {{ message.reasoningSummary }}
+                      <div class="message-reasoning-text">{{ message.reasoningSummary }}</div>
                     </div>
                   </div>
                 </div>

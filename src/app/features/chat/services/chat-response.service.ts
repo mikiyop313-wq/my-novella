@@ -213,9 +213,9 @@ export class ChatResponseService {
         },
         onReasoningChange: (reasoningText) => {
           reasoningSummary = reasoningText;
-          if (assistantMessage || assistantMessagePromise) {
-            queueStreamingPatch({ reasoningSummary });
-          }
+          if (!reasoningSummary.trim()) return;
+
+          queueStreamingPatch({ reasoningSummary });
         },
       });
       if (!session) return;
@@ -233,9 +233,8 @@ export class ChatResponseService {
         throw result.error ?? new Error('Failed to generate AI response.');
       }
 
-      // Some providers can finish without returning visible content. In that
-      // case there is no assistant message worth showing or persisting.
-      if (!finalContent.trim()) {
+      // Preserve thinking-only responses, but do not create empty messages.
+      if (!assistantMessage && !finalContent.trim() && !reasoningSummary.trim()) {
         return;
       }
 
@@ -260,13 +259,13 @@ export class ChatResponseService {
       // status and metadata once streaming has settled.
       await this.chatStore.updateMessage(assistantMessage.id, data);
       this.generationSessions.release(streamId);
-      if (result.status === 'complete' && shouldGenerateTitle && titleBookId) {
+      if (result.status === 'complete' && finalContent.trim() && shouldGenerateTitle && titleBookId) {
         await this.generateThreadTitle(userMessage, titleBookId, provider, modelId);
       }
     } catch (error) {
       await lastStreamingPatch;
 
-      if (!assistantMessage && streamedContent.trim()) {
+      if (!assistantMessage && (streamedContent.trim() || reasoningSummary.trim())) {
         assistantMessage = await ensureAssistantMessage();
       }
 
