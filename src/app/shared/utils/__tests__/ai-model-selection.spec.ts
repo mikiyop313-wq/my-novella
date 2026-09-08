@@ -7,6 +7,7 @@ describe('resolveAiModelTarget', () => {
   it.each([
     [model('vendor/model', 'vendor', 'openrouter'), 'openrouter', 'vendor/model'],
     [model('gemini/gemini-pro', 'google', 'direct'), 'gemini', 'gemini-pro'],
+    [model('venice/vendor/model', 'venice', 'direct'), 'venice', 'vendor/model'],
     [model('openai/gpt-5', 'openai', 'direct'), 'openai', 'gpt-5'],
     [model('anthropic/claude', 'anthropic', 'direct'), 'anthropic', 'claude'],
     [model('ollama/library/model:tag', 'ollama', 'local'), 'ollama', 'library/model:tag'],

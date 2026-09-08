@@ -341,6 +341,21 @@ describe('AI prompt dropdown options', () => {
     expect(openRouter.submenu?.sections[0].options[0].searchTerms).toContain('Anthropic');
   });
 
+  it('lists Venice as a cloud provider and preserves catalog IDs in its model options', () => {
+    const sections = buildModelDropdownSections({
+      providers: [{
+        id: 'venice', name: 'Venice', state: 'ready',
+        models: [createModel('venice/model', 'Venice model', 'venice', 'Venice', 'direct')],
+      }],
+      loading: false, error: null,
+    });
+    expect(sections[0].title).toBe('Cloud providers');
+    const provider = sections[0].options[0];
+    expect(provider.label).toBe('Venice');
+    expect(provider.submenu?.title).toBe('Venice');
+    expect(provider.submenu?.sections[0].options[0]).toMatchObject({ value: 'venice/model', label: 'Venice model' });
+  });
+
   it('keeps unavailable and empty providers visible but disabled', () => {
     const sections = buildModelDropdownSections({
       providers: [

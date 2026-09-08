@@ -1,7 +1,7 @@
 import { Injectable, inject, RendererFactory2, signal } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 
-export type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark' | 'cream';
 
 @Injectable({
   providedIn: 'root',
@@ -19,7 +19,7 @@ export class ThemeService {
 
   private initTheme() {
     const savedTheme = localStorage.getItem('app-theme') as Theme | null;
-    if (savedTheme === 'light' || savedTheme === 'dark') {
+    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'cream') {
       this.setTheme(savedTheme);
     } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       this.setTheme('dark');
@@ -33,10 +33,12 @@ export class ThemeService {
   }
 
   setTheme(theme: Theme): void {
+    this.renderer.removeClass(this.document.documentElement, 'dark-theme');
+    this.renderer.removeClass(this.document.documentElement, 'cream-theme');
     if (theme === 'dark') {
       this.renderer.addClass(this.document.documentElement, 'dark-theme');
-    } else {
-      this.renderer.removeClass(this.document.documentElement, 'dark-theme');
+    } else if (theme === 'cream') {
+      this.renderer.addClass(this.document.documentElement, 'cream-theme');
     }
     this.currentTheme.set(theme);
     localStorage.setItem('app-theme', theme);

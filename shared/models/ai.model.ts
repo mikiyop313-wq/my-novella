@@ -8,6 +8,7 @@ export interface AiModel {
   providerName?: string;
   source?: 'direct' | 'openrouter' | 'local';
   supportsReasoning?: boolean;
+  supportsReasoningEffort?: boolean;
 }
 
 export type AiChatMessageRole = 'system' | 'user' | 'assistant';
@@ -36,6 +37,7 @@ export const AI_CLOUD_PROVIDER_IDS = [
   'google',
   'openai',
   'anthropic',
+  'venice',
 ] as const;
 
 export const AI_LOCAL_PROVIDER_IDS = ['ollama', 'lm-studio'] as const;

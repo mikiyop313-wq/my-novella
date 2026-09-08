@@ -92,6 +92,18 @@ describe('ChatResponseService', () => {
     },
   };
 
+  it('streams Venice reasoning with On and omits an adjustable effort', async () => {
+    aiStore.models.mockReturnValue([{ id: 'venice/fixed', provider: 'venice', source: 'direct', supportsReasoning: true, supportsReasoningEffort: false }]);
+    await service.generateResponse(messages[0], 'Write', { ...settings, selectedModelId: 'venice/fixed', reasoningEffort: 'on' });
+    const request = aiStreamService.streamText.mock.calls[0][0];
+    expect(request).toMatchObject({ provider: 'venice', modelId: 'fixed', reasoningMode: true });
+    expect(request).not.toHaveProperty('reasoningEffort');
+    expect(chatStore.updateMessage).toHaveBeenCalledWith('assistant-1', expect.objectContaining({
+      content: 'Draft reply', reasoningSummary: 'Checking context',
+    }));
+  });
+
+
   beforeEach(() => {
     messages = [makeMessage()];
     visibleMessages = messages;

@@ -13,7 +13,9 @@ export async function assertSuccessfulResponse(response: Response, providerName:
     try {
         const body = asObject(await response.clone().json());
         const error = asObject(body?.['error']);
-        providerMessage = typeof error?.['message'] === 'string' ? error['message'] : null;
+        providerMessage = typeof body?.['error'] === 'string'
+            ? body['error']
+            : typeof error?.['message'] === 'string' ? error['message'] : null;
     } catch {
         // Status information remains sufficient when the response is not JSON.
     }

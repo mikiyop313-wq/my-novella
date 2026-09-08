@@ -14,6 +14,7 @@ import { GeminiProvider } from './providers/gemini.provider';
 import { LmStudioProvider } from './providers/lm-studio.provider';
 import { OllamaProvider } from './providers/ollama.provider';
 import { OpenRouterProvider } from './providers/openrouter.provider';
+import { VeniceProvider } from './providers/venice.provider';
 
 export class AiService {
     private providers: Map<string, AiProvider>;
@@ -23,6 +24,7 @@ export class AiService {
         new GeminiProvider(),
         new AnthropicProvider(),
         new OpenRouterProvider(),
+        new VeniceProvider(),
         new OllamaProvider(),
         new LmStudioProvider(),
     ], private readonly configuration: Pick<AiConfigurationService, 'loadConfiguration'> =

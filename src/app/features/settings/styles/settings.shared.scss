@@ -626,13 +626,15 @@
 
 .theme-options {
   min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 170px));
-  justify-content: end;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
 }
 
 .theme-option {
+  flex: 1 1 120px;
+  max-width: 170px;
   min-width: 0;
   padding: 7px;
   border: 1px solid var(--color-border);
@@ -680,6 +682,21 @@
 
     .theme-preview-content span {
       background: #b0aaa0;
+    }
+  }
+
+  &.is-cream {
+    .theme-preview {
+      border-color: var(--cream-preview-border);
+      background: var(--cream-preview-background);
+    }
+
+    .theme-preview-sidebar {
+      background: var(--cream-preview-sidebar);
+    }
+
+    .theme-preview-content span {
+      background: var(--cream-preview-text);
     }
   }
 
@@ -1163,8 +1180,11 @@
   }
 
   .theme-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    justify-content: stretch;
+    justify-content: flex-start;
+  }
+
+  .theme-option {
+    max-width: none;
   }
 
   .category-chips {

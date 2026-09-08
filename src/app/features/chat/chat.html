@@ -320,11 +320,11 @@
               (selectionChange)="onModelSelectionChange($any($event))" customDropdownClass="chat-model-minimal">
             </app-autocomplete-dropdown>
 
-            <app-autocomplete-dropdown class="reasoning-dropdown" [options]="reasoningEffortOptions"
+            <app-autocomplete-dropdown class="reasoning-dropdown" [options]="reasoningEffortOptions()"
               [selectedValue]="reasoningEffort()" [showSearchBar]="false" [disabled]="!supportsReasoning()"
               placeholder="Thinking" triggerVariant="icon"
               [triggerAriaLabel]="reasoningEffort() ? 'Thinking mode: ' + reasoningEffort() : 'Thinking mode: off'"
-              [attr.title]="supportsReasoning() ? 'Choose Thinking Mode effort' : 'Model does not support Thinking Mode'"
+              [attr.title]="supportsReasoning() ? 'Choose Thinking Mode' : 'Model does not support Thinking Mode'"
               customDropdownClass="thinking-effort-dropdown"
               (selectionChange)="selectReasoningEffort($any($event))">
               <ng-template autocompleteDropdownTrigger>

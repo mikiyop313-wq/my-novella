@@ -800,6 +800,40 @@ describe('Chat', () => {
     )).toBeNull();
   });
 
+  it('offers Venice Off/On thinking and normalizes effort when switching models', async () => {
+    aiStore.models.mockReturnValue([
+      { id: 'venice/fixed', provider: 'venice', supportsReasoning: true, supportsReasoningEffort: false },
+      { id: 'venice/adjustable', provider: 'venice', supportsReasoning: true, supportsReasoningEffort: true },
+      { id: 'venice/basic', provider: 'venice', supportsReasoning: false, supportsReasoningEffort: false },
+    ]);
+    await createComponent({
+      snapshot: { paramMap: convertToParamMap({ threadId: 'new-chat' }) },
+      paramMap: of(convertToParamMap({ threadId: 'new-chat' })),
+      parent: { snapshot: { paramMap: convertToParamMap({ bookId: 'book-1' }) } },
+    });
+    await component.onModelSelectionChange('venice/fixed');
+    fixture.detectChanges();
+    const trigger = fixture.nativeElement.querySelector('.reasoning-dropdown .dropdown-trigger') as HTMLButtonElement;
+    trigger.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const options = [...document.querySelectorAll<HTMLButtonElement>('.thinking-effort-dropdown .menu-row')];
+    expect(options.map(option => option.textContent?.trim())).toEqual(['Off', 'On']);
+    options[1].click();
+    expect(component.reasoningEffort()).toBe('on');
+    await component.onModelSelectionChange('venice/adjustable');
+    expect(component.reasoningEffort()).toBe('medium');
+    expect(component.reasoningEffortOptions().map(option => option.label)).toEqual(['Off', 'Low', 'Medium', 'High']);
+    component.selectReasoningEffort('high');
+    await component.onModelSelectionChange('venice/fixed');
+    expect(component.reasoningEffort()).toBe('on');
+    await component.onModelSelectionChange('venice/basic');
+    fixture.detectChanges();
+    expect(component.reasoningEffort()).toBeNull();
+    expect(trigger.disabled).toBe(true);
+  });
+
+
   it('clears Thinking effort and disables its menu for an unsupported model', async () => {
     const models = [
       {

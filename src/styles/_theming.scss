@@ -1,3 +1,5 @@
+@use 'sass:map';
+
 //GLOBAL COLOR THEME
 
 $colors-light: (
@@ -72,6 +74,33 @@ $colors-dark: (
 );
 
 
+$colors-cream: (
+    background: #f5f0e6,
+    text: #38332d,
+    surface: #fbf7ef,
+    border: rgba(81, 71, 60, 0.16),
+    border-secondary: rgba(81, 71, 60, 0.5),
+    shadow: 0 10px 40px -10px rgba(81, 71, 60, 0.2),
+    card-hover-shadow: 0 26px 60px -24px rgba(81, 71, 60, 0.34),
+    cover-overlay: rgba(56, 51, 45, 0.34),
+    cover-highlight: rgba(251, 247, 239, 0.2),
+    cover-control-text: #fbf7ef,
+    cover-control-bg: rgba(56, 51, 45, 0.78),
+    cover-control-hover: rgba(56, 51, 45, 0.9),
+    cover-control-shadow: 0 8px 24px rgba(81, 71, 60, 0.24),
+    overlay-backdrop: rgba(56, 51, 45, 0.58),
+    text-primary: #38332d,
+    text-secondary: #70675c,
+    hover-bg: rgba(81, 71, 60, 0.06),
+    search-match-bg: rgba(211, 169, 71, 0.3),
+    search-match-active-bg: rgba(202, 133, 54, 0.42),
+    btn-primary-bg: #51473c,
+    btn-primary-text: #fbf7ef,
+    btn-primary-hover: #625548,
+    btn-outline-hover: rgba(81, 71, 60, 0.1),
+    danger: #b83228,
+);
+
 @mixin theme($theme-map) {
     @each $key, $value in $theme-map {
         --color-#{$key}: #{$value};
@@ -80,10 +109,20 @@ $colors-dark: (
 
 :root {
     @include theme($colors-light);
+
+    // Keep the Cream preview consistent regardless of the active theme.
+    --cream-preview-background: #{map.get($colors-cream, surface)};
+    --cream-preview-sidebar: #{map.get($colors-cream, background)};
+    --cream-preview-border: #{map.get($colors-cream, border)};
+    --cream-preview-text: #{map.get($colors-cream, text-secondary)};
 }
 
 :root.dark-theme {
     @include theme($colors-dark);
+}
+
+:root.cream-theme {
+    @include theme($colors-cream);
 }
 
 // Global transitions for fluid theme switching

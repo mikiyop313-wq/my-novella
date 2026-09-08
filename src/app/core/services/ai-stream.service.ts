@@ -4,6 +4,7 @@ import { SystemPromptSelectionService } from '../../shared/services/system-promp
 import { ToastService } from '../../shared/services/toast.service';
 import type { BuiltAiPrompt } from '../../shared/utils/ai-prompt-builder';
 import type { AiReasoningEffort, AiStreamEvent } from '../../../../shared/models/ai.model';
+import { AiStore } from '../store/ai.store';
 import { AIStateService } from './ai-state.service';
 import { SystemPromptModelService } from '../../shared/services/system-prompt-model.service';
 
@@ -27,6 +28,7 @@ const REASONING_UPDATE_INTERVAL_MS = 200;
 
 @Injectable({ providedIn: 'root' })
 export class AiStreamService {
+  private readonly aiStore = inject(AiStore);
   private readonly aiStateService = inject(AIStateService);
   private readonly systemPromptSelectionService = inject(SystemPromptSelectionService);
   private readonly toastService = inject(ToastService);
@@ -120,14 +122,22 @@ export class AiStreamService {
         modelId = model.modelId;
       }
 
+      const supportsVeniceEffort = provider === 'venice' && this.aiStore.models().some(
+        (model) => model.id === `venice/${modelId}` && model.supportsReasoningEffort === true,
+      );
+      const reasoningEffort = provider === 'venice'
+        && (!request.reasoningMode || !supportsVeniceEffort)
+        ? undefined
+        : request.reasoningEffort;
+
       return await this.aiStateService.generate({
         streamId: request.streamId,
         aiPrompt: request.aiPrompt,
         model: provider,
         modelId,
         reasoningMode: request.reasoningMode,
-        ...(request.reasoningEffort !== undefined
-          ? { reasoningEffort: request.reasoningEffort }
+        ...(reasoningEffort !== undefined
+          ? { reasoningEffort }
           : {}),
         suppressErrorToasts: request.suppressErrorToasts,
         systemPromptPreset: {

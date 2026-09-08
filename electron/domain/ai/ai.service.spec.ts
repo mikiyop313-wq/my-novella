@@ -143,6 +143,7 @@ function serviceWithConfiguration(
             google: { configured: configured.has('google'), suffix: null },
             openai: { configured: configured.has('openai'), suffix: null },
             anthropic: { configured: configured.has('anthropic'), suffix: null },
+            venice: { configured: configured.has('venice'), suffix: null },
         },
         serverUrls: {
             ollama: configured.has('ollama') ? 'http://localhost:11434' : null,

@@ -59,6 +59,7 @@ describe('AiConfigurationService', () => {
                 google: { configured: false, suffix: null },
                 openai: { configured: false, suffix: null },
                 anthropic: { configured: false, suffix: null },
+                venice: { configured: false, suffix: null },
             },
             serverUrls: {
                 ollama: 'http://localhost:11434',

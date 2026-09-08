@@ -22,7 +22,7 @@ export interface AiChatCompletionPayload {
 }
 
 export interface AiPromptRequest {
-    model: 'openai' | 'gemini' | 'anthropic' | 'openrouter' | 'ollama' | 'lm-studio';
+    model: 'openai' | 'gemini' | 'anthropic' | 'openrouter' | 'ollama' | 'lm-studio' | 'venice';
     modelId?: string;
     prompt: string;
     messages?: AiChatMessage[];
