@@ -1,61 +1,74 @@
-# MyNovella
+![My Novella banner](docs/images/banner.png)
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.7.
+# What is My Novella?
 
-## Development server
+My Novella is a desktop app that helps you turn story ideas into a complete manuscript. It brings your writing, outlines, notes, and story references into one workspace, so you can plan your novel and write it chapter by chapter, scene by scene.
 
-To start a local development server, run:
+You can keep track of your story in a codex, develop scene summaries, and use AI chat and manuscript tools to help brainstorm and draft. Connect your preferred AI provider or use local models through Ollama or LM Studio.
 
-```bash
-ng serve
-```
+Your book data is stored on your computer. When you're ready to share your work, you can export your manuscript as a Word document, EPUB, PDF, or PNG, and create backups of individual projects or your entire library.
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+[Download for Windows](https://github.com/mikiyop313-wq/my-novella/releases/latest) | [Report an issue](https://github.com/mikiyop313-wq/my-novella/issues)
 
-## Code scaffolding
+## Your story in one workspace
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+- **Manuscript:** Organize your book into chapters and scenes, write in a rich-text editor, and use AI tools while drafting.
+- **Planning:** Develop outlines, scene summaries, and notes alongside your manuscript.
+- **Story codex:** Keep reference entries for your story and access them as you write.
+- **AI chat:** Work with configurable system prompts, model selection, and reasoning controls for supported models.
+- **Semantic search:** Find relevant manuscript content with paragraph indexing and configurable embeddings.
+- **Appearance:** Choose Light, Cream, or Dark, and customize typography and layout.
+- **Export and backup:** Export manuscripts as DOCX, EPUB, PDF, or PNG, and create project or library backups.
 
-```bash
-ng generate component component-name
-```
+## Get started
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+Download a Windows x64 build from the [releases page](https://github.com/mikiyop313-wq/my-novella/releases):
 
-```bash
-ng generate --help
-```
+- **Installer:** `My-Novella-Setup-<version>.exe`
+- **Portable:** `My-Novella-Portable-<version>.exe`
 
-## Building
+Open My Novella, create a book in your library, and start organizing your manuscript. Configure an AI provider in settings when you want to use the AI tools.
 
-To build the project run:
+## AI providers
 
-```bash
-ng build
-```
+Use your own API keys with **OpenAI, Anthropic, Google Gemini, OpenRouter, or Venice**, or connect to local models through **Ollama or LM Studio**. Available models and reasoning options depend on the provider.
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+Book data is stored locally. When you use a remote AI provider, prompts and the context included in those requests are sent to that provider.
 
-## Running unit tests
+## Development
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+Built with Angular, Electron, and TypeScript, with SQLite for local data and LanceDB for vector search.
 
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
+Use Node.js 22 and npm. The Windows release workflow also uses Node.js 22.
 
 ```bash
-ng e2e
+git clone https://github.com/mikiyop313-wq/my-novella.git
+cd my-novella
+npm ci
+npm run dev
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+Dependency installation applies the repository's patches and rebuilds native dependencies for Electron. `npm run dev` starts the Angular development server and launches the Electron app.
 
-## Additional Resources
+### Build
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+```bash
+npm run build
+```
 
-<!-- Dummy change: used to verify the diff view. -->
+To package Windows x64 builds on Windows:
+
+```bash
+npm run dist:win
+```
+
+The installer and portable executable are written to `release/`. Use `npm run dist:portable` to build only the portable executable.
+
+### Tests
+
+```bash
+npm test -- --watch=false
+npm run test:electron
+```
+
+These are the Angular and Electron test commands used by the release workflow.
