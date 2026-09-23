@@ -13,7 +13,6 @@ describe('testOpenRouterConnection', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('fetch', fetchMock);
   });
 
   it('tests the saved key without choosing an embedding model', async () => {
@@ -22,7 +21,7 @@ describe('testOpenRouterConnection', () => {
       status: 200,
     }));
 
-    await expect(testOpenRouterConnection(keys as any)).resolves.toBeUndefined();
+    await expect(testOpenRouterConnection(keys as any, fetchMock)).resolves.toBeUndefined();
 
     expect(keys.getApiKey).toHaveBeenCalledWith('openrouter');
     expect(fetchMock).toHaveBeenCalledWith(
@@ -33,11 +32,11 @@ describe('testOpenRouterConnection', () => {
 
   it('rejects missing keys and malformed connection responses', async () => {
     keys.getApiKey.mockResolvedValueOnce(null);
-    await expect(testOpenRouterConnection(keys as any)).rejects.toThrow('requires an API key');
+    await expect(testOpenRouterConnection(keys as any, fetchMock)).rejects.toThrow('requires an API key');
 
     keys.getApiKey.mockResolvedValueOnce('key');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ data: null }), { status: 200 }));
-    await expect(testOpenRouterConnection(keys as any)).rejects.toThrow(
+    await expect(testOpenRouterConnection(keys as any, fetchMock)).rejects.toThrow(
       'malformed connection response',
     );
   });

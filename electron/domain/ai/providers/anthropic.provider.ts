@@ -1,4 +1,5 @@
 import type { AiModel } from '../../../../shared/models/ai.model';
+import type { FetchTransport } from '../../../../shared/network/fetch-transport';
 import { apiKeyService } from '../api-key.service';
 import type { ApiKeyService } from '../api-key.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
@@ -21,7 +22,10 @@ export class AnthropicProvider implements AiProvider {
     readonly id = 'anthropic';
     readonly name = 'Anthropic';
 
-    constructor(private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService) {}
+    constructor(
+        private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService,
+        private readonly fetchTransport: FetchTransport = globalThis.fetch,
+    ) {}
 
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
         const apiKey = await this.requireApiKey();
@@ -35,7 +39,7 @@ export class AnthropicProvider implements AiProvider {
             .map((message) => message.content);
         const messages = normalized.messages.filter((message) => message.role !== 'system');
 
-        const response = await fetch(`${ANTHROPIC_BASE_URL}/messages`, {
+        const response = await this.fetchTransport(`${ANTHROPIC_BASE_URL}/messages`, {
             method: 'POST',
             signal: request.abortSignal,
             headers: {
@@ -79,7 +83,7 @@ export class AnthropicProvider implements AiProvider {
             url.searchParams.set('limit', '1000');
             if (afterId) url.searchParams.set('after_id', afterId);
 
-            const response = await fetch(url, {
+            const response = await this.fetchTransport(url, {
                 signal,
                 headers: {
                     'x-api-key': apiKey,

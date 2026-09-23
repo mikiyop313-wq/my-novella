@@ -7,6 +7,7 @@ import {
 import { assertEmbeddingDimensions } from '../../../vectors/embeddings/types';
 import { getCloudEmbeddingProvider } from '../../../vectors/embeddings/factory';
 import { testOpenRouterConnection } from './openrouter-connection';
+import { electronFetch } from '../../runtime/electron-fetch';
 import { VectorApiKeyService, vectorApiKeyService } from './vector-api-key.service';
 
 export class VectorConfigurationService {
@@ -40,7 +41,7 @@ export class VectorConfigurationService {
 
     async testConnection(providerId: VectorConfigurationProviderId): Promise<void> {
         if (providerId === 'openrouter') {
-            await testOpenRouterConnection(this.keys);
+            await testOpenRouterConnection(this.keys, electronFetch);
             return;
         }
         const provider = await getCloudEmbeddingProvider(providerId, this.keys);

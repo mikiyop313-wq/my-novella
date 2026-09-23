@@ -15,16 +15,17 @@ import { LmStudioProvider } from './providers/lm-studio.provider';
 import { OllamaProvider } from './providers/ollama.provider';
 import { OpenRouterProvider } from './providers/openrouter.provider';
 import { VeniceProvider } from './providers/venice.provider';
+import { electronFetch } from '../../runtime/electron-fetch';
 
 export class AiService {
     private providers: Map<string, AiProvider>;
 
     constructor(providers: AiProvider[] = [
-        new OpenAiProvider(),
-        new GeminiProvider(),
-        new AnthropicProvider(),
-        new OpenRouterProvider(),
-        new VeniceProvider(),
+        new OpenAiProvider(undefined, electronFetch),
+        new GeminiProvider(undefined, electronFetch),
+        new AnthropicProvider(undefined, electronFetch),
+        new OpenRouterProvider(undefined, electronFetch),
+        new VeniceProvider(undefined, electronFetch),
         new OllamaProvider(),
         new LmStudioProvider(),
     ], private readonly configuration: Pick<AiConfigurationService, 'loadConfiguration'> =

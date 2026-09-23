@@ -1,20 +1,17 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { OpenAIEmbeddingProvider } from '../openai';
 import { VoyageEmbeddingProvider } from '../voyage';
 
 describe('cloud embedding provider requests', () => {
-    afterEach(() => vi.unstubAllGlobals());
-
     it('creates an OpenAI query embedding with the configured credential', async () => {
         const fetchMock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ data: [{ index: 0, embedding: [1, 2, 3] }] }),
         });
-        vi.stubGlobal('fetch', fetchMock);
         const provider = new OpenAIEmbeddingProvider({
             type: 'openai', modelName: 'model', dimensions: 3, apiKey: 'openai-key',
-        });
+        }, fetchMock);
 
         await expect(provider.embedQuery('test')).resolves.toEqual([1, 2, 3]);
         expect(fetchMock).toHaveBeenCalledWith(
@@ -31,10 +28,9 @@ describe('cloud embedding provider requests', () => {
             ok: true,
             json: async () => ({ data: [{ embedding: [1, 2] }] }),
         });
-        vi.stubGlobal('fetch', fetchMock);
         const provider = new VoyageEmbeddingProvider({
             type: 'voyage', modelName: 'model', dimensions: 2, apiKey: 'voyage-key',
-        });
+        }, fetchMock);
 
         await expect(provider.embedQuery('test')).resolves.toEqual([1, 2]);
         const request = fetchMock.mock.calls[0][1];

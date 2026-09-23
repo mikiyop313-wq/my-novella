@@ -15,6 +15,12 @@ export default defineConfig({
       main: {
         // Shortcut of `build.lib.entry`
         entry: 'electron/main.ts',
+        onstart({ startup }) {
+          const electronEnv = { ...process.env };
+          delete electronEnv['ELECTRON_RUN_AS_NODE'];
+
+          return startup(undefined, { env: electronEnv });
+        },
         vite: {
           build: {
             rollupOptions: {

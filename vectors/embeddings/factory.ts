@@ -29,6 +29,7 @@ import {
 } from './local-model-definition';
 import { getOpenRouterEmbeddingModelDefinition } from './openrouter-model-definition';
 import type { VectorApiKeyProviderId } from '../../electron/domain/vector/vector-api-key.service';
+import { electronFetch } from '../../electron/runtime/electron-fetch';
 
 export { EmbeddingProviderUnavailableError } from './provider-selection';
 
@@ -75,13 +76,13 @@ function buildCloudProvider(model: DirectEmbeddingModel, apiKey: string): Embedd
                 modelName: 'text-embedding-3-large',
                 dimensions: 3072,
                 apiKey,
-            });
+            }, electronFetch);
         case 'voyage':
             return new VoyageEmbeddingProvider({
                 type: 'voyage',
                 modelName: 'voyage-3',
                 apiKey,
-            });
+            }, electronFetch);
     }
 }
 
@@ -151,7 +152,7 @@ export async function getOpenRouterEmbeddingProvider(
         dimensions: definition.dimensions,
         apiKey,
         definition,
-    });
+    }, electronFetch);
 }
 
 /**

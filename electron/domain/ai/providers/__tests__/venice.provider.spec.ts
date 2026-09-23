@@ -37,19 +37,19 @@ function completion() {
 
 describe('VeniceProvider', () => {
     const getApiKey = vi.fn();
-    const provider = new VeniceProvider({ getApiKey });
+    const fetchMock = vi.fn();
+    const provider = new VeniceProvider({ getApiKey }, fetchMock);
 
     beforeEach(() => {
         getApiKey.mockReset().mockResolvedValue('venice-secret');
-        vi.stubGlobal('fetch', vi.fn());
+        fetchMock.mockReset();
     });
     afterEach(() => {
-        vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
 
     it('preserves messages and settings while streaming prose, reasoning, and usage separately', async () => {
-        vi.mocked(fetch).mockResolvedValue(completion());
+        fetchMock.mockResolvedValue(completion());
         const onToken = vi.fn();
         const onReasoningToken = vi.fn();
         const signal = new AbortController().signal;
@@ -61,7 +61,7 @@ describe('VeniceProvider', () => {
             text: 'Draft', modelUsed: 'test-model',
             usage: { promptTokens: 4, completionTokens: 2, totalTokens: 6 },
         });
-        const [url, init] = vi.mocked(fetch).mock.calls[0];
+        const [url, init] = fetchMock.mock.calls[0];
         expect(url).toBe('https://api.venice.ai/api/v1/chat/completions');
         expect(init?.signal).toBe(signal);
         expect(init?.headers).toMatchObject({ Authorization: 'Bearer venice-secret' });
@@ -85,9 +85,9 @@ describe('VeniceProvider', () => {
             category: 'chat', systemPrompt: 'Preset instructions', temperature: 0.8,
             topP: 0.9, presencePenalty: 0.1, frequencyPenalty: 0.2, maxOutputTokens: 321,
         } as Awaited<ReturnType<typeof systemPromptRepository.getById>>);
-        vi.mocked(fetch).mockResolvedValue(completion());
+        fetchMock.mockResolvedValue(completion());
         await provider.generate({ ...request, systemPromptPreset: { presetId: 'custom', category: 'chat' } });
-        const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+        const payload = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
         expect(payload).toMatchObject({
             temperature: 0.8, top_p: 0.9, presence_penalty: 0.1, frequency_penalty: 0.2,
             max_tokens: 321, venice_parameters: { include_venice_system_prompt: false },
@@ -96,18 +96,18 @@ describe('VeniceProvider', () => {
     });
 
     it.each(['low', 'medium', 'high', undefined] as const)('sends supported effort %s', async (effort) => {
-        vi.mocked(fetch).mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completion());
+        fetchMock.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completion());
         await provider.generate({ ...request, reasoningMode: true, reasoningEffort: effort });
-        const payload = JSON.parse(vi.mocked(fetch).mock.calls[1][1]?.body as string);
+        const payload = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
         expect(payload.reasoning_effort).toBe(effort ?? 'medium');
         expect(payload).not.toHaveProperty('reasoning');
     });
 
     it('allows native reasoning without sending effort for models without effort control', async () => {
-        vi.mocked(fetch).mockResolvedValueOnce(modelResponse([model({ effort: false })]))
+        fetchMock.mockResolvedValueOnce(modelResponse([model({ effort: false })]))
             .mockResolvedValueOnce(completion());
         await provider.generate({ ...request, reasoningMode: true });
-        const payload = JSON.parse(vi.mocked(fetch).mock.calls[1][1]?.body as string);
+        const payload = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
         expect(payload).not.toHaveProperty('reasoning_effort');
         expect(payload).not.toHaveProperty('reasoning');
     });
@@ -117,25 +117,25 @@ describe('VeniceProvider', () => {
         { models: [model({ effort: false })], effort: 'high' as const, error: 'adjustable reasoning effort' },
         { models: [], effort: undefined, error: 'was not found' },
     ])('rejects $error before generation', async ({ models, effort, error }) => {
-        vi.mocked(fetch).mockResolvedValue(modelResponse(models));
+        fetchMock.mockResolvedValue(modelResponse(models));
         await expect(provider.generate({ ...request, reasoningMode: true, reasoningEffort: effort }))
             .rejects.toThrow(error);
-        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('rejects effort with reasoning disabled', async () => {
         await expect(provider.generate({ ...request, reasoningEffort: 'high' })).rejects.toThrow('reasoning mode');
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('lists only text models with separate capabilities and a timeout', async () => {
         const timeout = vi.spyOn(AbortSignal, 'timeout');
-        vi.mocked(fetch).mockResolvedValue(modelResponse([model({ effort: false }), { type: 'image' }]));
+        fetchMock.mockResolvedValue(modelResponse([model({ effort: false }), { type: 'image' }]));
         await expect(provider.listModels()).resolves.toEqual([{
             id: 'venice/test-model', name: 'Test model', provider: 'venice', providerName: 'Venice',
             source: 'direct', supportsReasoning: true, supportsReasoningEffort: false,
         }]);
-        expect(fetch).toHaveBeenCalledWith('https://api.venice.ai/api/v1/models?type=text', {
+        expect(fetchMock).toHaveBeenCalledWith('https://api.venice.ai/api/v1/models?type=text', {
             headers: { Authorization: 'Bearer venice-secret' }, signal: expect.any(AbortSignal),
         });
         expect(timeout).toHaveBeenCalledWith(10_000);
@@ -143,13 +143,13 @@ describe('VeniceProvider', () => {
 
     it.each([{}, { data: [{}] }, { data: [{ type: 'text', id: 'x', model_spec: {} }] }])(
         'rejects malformed model responses', async (body) => {
-            vi.mocked(fetch).mockResolvedValue(Response.json(body));
+            fetchMock.mockResolvedValue(Response.json(body));
             await expect(provider.listModels()).rejects.toThrow('malformed model list');
         },
     );
 
     it('rejects malformed JSON', async () => {
-        vi.mocked(fetch).mockResolvedValue(new Response('invalid'));
+        fetchMock.mockResolvedValue(new Response('invalid'));
         await expect(provider.listModels()).rejects.toThrow('malformed JSON');
     });
 
@@ -158,53 +158,53 @@ describe('VeniceProvider', () => {
         await expect(provider.generate(request)).rejects.toThrow('configured API key');
         await expect(provider.listModels()).rejects.toThrow('configured API key');
         await expect(provider.testConnection()).rejects.toThrow('configured API key');
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('requires an explicit model', async () => {
         await expect(provider.generate({ ...request, modelId: ' ' })).rejects.toThrow('explicitly selected model');
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('tests connections without generating text', async () => {
-        vi.mocked(fetch).mockResolvedValue(modelResponse());
+        fetchMock.mockResolvedValue(modelResponse());
         await provider.testConnection();
-        expect(fetch).toHaveBeenCalledTimes(1);
-        expect(vi.mocked(fetch).mock.calls[0][0]).toContain('/models?type=text');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toContain('/models?type=text');
     });
 
     it.each([401, 402, 429, 500])('preserves HTTP %s errors', async (status) => {
-        vi.mocked(fetch).mockResolvedValue(Response.json({ error: 'Venice detail' }, { status }));
+        fetchMock.mockResolvedValue(Response.json({ error: 'Venice detail' }, { status }));
         await expect(provider.testConnection()).rejects.toThrow(`Venice API error (${status}): Venice detail`);
     });
 
     it('preserves rejected individual effort levels without retrying', async () => {
-        vi.mocked(fetch).mockResolvedValueOnce(modelResponse())
+        fetchMock.mockResolvedValueOnce(modelResponse())
             .mockResolvedValueOnce(Response.json({ error: 'medium is not supported' }, { status: 400 }));
         await expect(provider.generate({ ...request, reasoningMode: true })).rejects.toThrow('medium is not supported');
-        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it('preserves stream errors', async () => {
-        vi.mocked(fetch).mockResolvedValue(streamResponse(['data: {"error":"Stream failed"}\n\n']));
+        fetchMock.mockResolvedValue(streamResponse(['data: {"error":"Stream failed"}\n\n']));
         await expect(provider.generate(request)).rejects.toThrow('Stream failed');
     });
 
     it('cancels the model lookup before starting generation', async () => {
         const controller = new AbortController();
-        vi.mocked(fetch).mockImplementation(async (_url, init) => {
+        fetchMock.mockImplementation(async (_url, init) => {
             controller.abort();
             init?.signal?.throwIfAborted();
             return modelResponse();
         });
         await expect(provider.generate({ ...request, reasoningMode: true, abortSignal: controller.signal }))
             .rejects.toMatchObject({ name: 'AbortError' });
-        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('propagates cancellation during streaming', async () => {
         const aborted = new DOMException('Aborted', 'AbortError');
-        vi.mocked(fetch).mockResolvedValue(new Response(new ReadableStream({
+        fetchMock.mockResolvedValue(new Response(new ReadableStream({
             start(controller) { controller.error(aborted); },
         })));
         await expect(provider.generate(request)).rejects.toBe(aborted);

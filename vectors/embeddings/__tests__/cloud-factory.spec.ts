@@ -4,6 +4,9 @@ const mocks = vi.hoisted(() => ({
     openAiConfigs: [] as any[],
     voyageConfigs: [] as any[],
     openRouterConfigs: [] as any[],
+    openAiTransports: [] as unknown[],
+    voyageTransports: [] as unknown[],
+    openRouterTransports: [] as unknown[],
     getEmbeddingModel: vi.fn(),
     getLocalEmbeddingModel: vi.fn(),
     getOpenRouterEmbeddingModel: vi.fn(),
@@ -25,17 +28,26 @@ vi.mock('../../../db/repositories/app-settings.repository', () => ({
 }));
 vi.mock('../providers/openai', () => ({
     OpenAIEmbeddingProvider: class {
-        constructor(config: unknown) { mocks.openAiConfigs.push(config); }
+        constructor(config: unknown, transport: unknown) {
+            mocks.openAiConfigs.push(config);
+            mocks.openAiTransports.push(transport);
+        }
     },
 }));
 vi.mock('../providers/voyage', () => ({
     VoyageEmbeddingProvider: class {
-        constructor(config: unknown) { mocks.voyageConfigs.push(config); }
+        constructor(config: unknown, transport: unknown) {
+            mocks.voyageConfigs.push(config);
+            mocks.voyageTransports.push(transport);
+        }
     },
 }));
 vi.mock('../providers/openrouter', () => ({
     OpenRouterEmbeddingProvider: class {
-        constructor(config: unknown) { mocks.openRouterConfigs.push(config); }
+        constructor(config: unknown, transport: unknown) {
+            mocks.openRouterConfigs.push(config);
+            mocks.openRouterTransports.push(transport);
+        }
     },
 }));
 
@@ -50,6 +62,9 @@ describe('embedding provider factory cloud credentials', () => {
         mocks.openAiConfigs.length = 0;
         mocks.voyageConfigs.length = 0;
         mocks.openRouterConfigs.length = 0;
+        mocks.openAiTransports.length = 0;
+        mocks.voyageTransports.length = 0;
+        mocks.openRouterTransports.length = 0;
         vi.clearAllMocks();
     });
 
@@ -65,6 +80,7 @@ describe('embedding provider factory cloud credentials', () => {
             dimensions: 2560,
             apiKey: 'openrouter-secret',
         }));
+        expect(mocks.openRouterTransports[0]).toEqual(expect.any(Function));
     });
 
     it('fails explicitly when OpenRouter has no credential', async () => {
@@ -100,6 +116,8 @@ describe('embedding provider factory cloud credentials', () => {
             modelName: 'voyage-3',
             apiKey: 'voyage-secret',
         }));
+        expect(mocks.openAiTransports[0]).toEqual(expect.any(Function));
+        expect(mocks.voyageTransports[0]).toEqual(expect.any(Function));
     });
 
     it('fails explicitly when the selected cloud provider has no credential', async () => {

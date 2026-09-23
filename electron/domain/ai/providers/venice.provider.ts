@@ -1,4 +1,5 @@
 import type { AiModel, AiReasoningEffort } from '../../../../shared/models/ai.model';
+import type { FetchTransport } from '../../../../shared/network/fetch-transport';
 import { apiKeyService, type ApiKeyService } from '../api-key.service';
 import { chatCompletionPayloadBuilderService } from '../chat-completion-payload-builder.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
@@ -18,7 +19,10 @@ export class VeniceProvider implements AiProvider {
     readonly id = 'venice';
     readonly name = 'Venice';
 
-    constructor(private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService) {}
+    constructor(
+        private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService,
+        private readonly fetchTransport: FetchTransport = globalThis.fetch,
+    ) {}
 
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
         const apiKey = await this.requireApiKey();
@@ -37,7 +41,7 @@ export class VeniceProvider implements AiProvider {
             venice_parameters: { include_venice_system_prompt: false, enable_web_search: 'off' },
         };
 
-        const response = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
+        const response = await this.fetchTransport(`${VENICE_BASE_URL}/chat/completions`, {
             method: 'POST',
             signal: request.abortSignal,
             headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -92,7 +96,7 @@ export class VeniceProvider implements AiProvider {
         abortSignal?: AbortSignal;
     }): Promise<VeniceModel[]> {
         const timeout = AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS);
-        const response = await fetch(`${VENICE_BASE_URL}/models?type=text`, {
+        const response = await this.fetchTransport(`${VENICE_BASE_URL}/models?type=text`, {
             signal: abortSignal ? AbortSignal.any([abortSignal, timeout]) : timeout,
             headers: { Authorization: `Bearer ${apiKey}` },
         });

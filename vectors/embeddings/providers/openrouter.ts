@@ -1,4 +1,5 @@
 import type { OpenRouterEmbeddingConfig } from '../types';
+import type { FetchTransport } from '../../../shared/network/fetch-transport';
 import { assertEmbeddingDimensions, type EmbeddingProvider } from '../types';
 import type { OpenRouterEmbeddingModelDefinition } from '../openrouter-model-definition';
 
@@ -12,7 +13,10 @@ interface OpenRouterEmbeddingProviderConfig extends OpenRouterEmbeddingConfig {
 export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
   readonly space;
 
-  constructor(private readonly config: OpenRouterEmbeddingProviderConfig) {
+  constructor(
+    private readonly config: OpenRouterEmbeddingProviderConfig,
+    private readonly fetchTransport: FetchTransport = globalThis.fetch,
+  ) {
     this.space = {
       provider: 'openRouter' as const,
       model: config.modelName,
@@ -68,7 +72,7 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
   }
 
   private send(payload: Record<string, unknown>, denyDataCollection: boolean): Promise<Response> {
-    return fetch(OPENROUTER_EMBEDDINGS_URL, {
+    return this.fetchTransport(OPENROUTER_EMBEDDINGS_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.config.apiKey}`,

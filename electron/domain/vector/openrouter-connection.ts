@@ -1,4 +1,5 @@
 import type { VectorApiKeyService } from './vector-api-key.service';
+import type { FetchTransport } from '../../../shared/network/fetch-transport';
 
 const OPENROUTER_KEY_URL = 'https://openrouter.ai/api/v1/key';
 const CONNECTION_TIMEOUT_MS = 10_000;
@@ -6,13 +7,14 @@ const CONNECTION_TIMEOUT_MS = 10_000;
 /** Validates the saved OpenRouter key without selecting an embedding model. */
 export async function testOpenRouterConnection(
   keys: VectorApiKeyService,
+  fetchTransport: FetchTransport = globalThis.fetch,
 ): Promise<void> {
   const apiKey = await keys.getApiKey('openrouter');
   if (!apiKey) {
     throw new Error('OpenRouter vector connection test requires an API key.');
   }
 
-  const response = await fetch(OPENROUTER_KEY_URL, {
+  const response = await fetchTransport(OPENROUTER_KEY_URL, {
     signal: AbortSignal.timeout(CONNECTION_TIMEOUT_MS),
     headers: { 'Authorization': `Bearer ${apiKey}` },
   });

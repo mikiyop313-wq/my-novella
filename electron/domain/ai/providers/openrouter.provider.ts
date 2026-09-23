@@ -1,4 +1,5 @@
 import type { AiModel } from '../../../../shared/models/ai.model';
+import type { FetchTransport } from '../../../../shared/network/fetch-transport';
 import { apiKeyService } from '../api-key.service';
 import type { ApiKeyService } from '../api-key.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
@@ -19,7 +20,10 @@ export class OpenRouterProvider implements AiProvider {
     readonly id = 'openrouter';
     readonly name = 'OpenRouter';
 
-    constructor(private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService) {}
+    constructor(
+        private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService,
+        private readonly fetchTransport: FetchTransport = globalThis.fetch,
+    ) {}
 
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
         const apiKey = await this.keys.getApiKey('openrouter');
@@ -44,7 +48,7 @@ export class OpenRouterProvider implements AiProvider {
                 console.log(`[OpenRouter] Message ${index} (${message.role}) content:\n${message.content}`);
             });
 
-            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            const response = await this.fetchTransport('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 signal: request.abortSignal,
                 headers: {
@@ -89,7 +93,7 @@ export class OpenRouterProvider implements AiProvider {
 
         const url = new URL('https://openrouter.ai/api/v1/models');
         url.searchParams.set('output_modalities', 'text');
-        const response = await fetch(url, {
+        const response = await this.fetchTransport(url, {
             signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
             headers: { 'Authorization': `Bearer ${apiKey}` },
         });
@@ -125,7 +129,7 @@ export class OpenRouterProvider implements AiProvider {
             throw new Error('OpenRouter connection test requires an API key configured in Settings.');
         }
 
-        const response = await fetch('https://openrouter.ai/api/v1/key', {
+        const response = await this.fetchTransport('https://openrouter.ai/api/v1/key', {
             signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
             headers: { 'Authorization': `Bearer ${apiKey}` },
         });

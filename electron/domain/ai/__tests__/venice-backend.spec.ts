@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const storage = vi.hoisted(() => new Map<string, string>());
+const netFetch = vi.hoisted(() => vi.fn());
 vi.mock('../../../../db/repositories/app-settings.repository', () => ({
     appSettingsRepository: {
         get: async (key: string) => storage.get(key) ?? null,
@@ -12,6 +13,7 @@ vi.mock('../../../../db/repositories/system-prompt.repository', () => ({
     systemPromptRepository: { getById: vi.fn() },
 }));
 vi.mock('electron', () => ({
+    net: { fetch: netFetch },
     safeStorage: {
         isEncryptionAvailable: () => true,
         encryptString: (value: string) => Buffer.from(`encrypted:${value}`),
@@ -26,9 +28,9 @@ import { streamResponse } from '../providers/__tests__/provider-test-helpers';
 describe('Venice backend integration', () => {
     beforeEach(() => {
         storage.clear();
-        vi.stubGlobal('fetch', vi.fn());
+        netFetch.mockReset();
     });
-    afterEach(() => vi.unstubAllGlobals());
+    afterEach(() => vi.restoreAllMocks());
 
     it('saves, loads, and clears encrypted Venice credentials through configuration', async () => {
         await expect(aiConfigurationService.saveApiKey('venice', '  secret-1234  ')).resolves.toEqual({
@@ -43,7 +45,7 @@ describe('Venice backend integration', () => {
 
     it('routes generation and connection tests through the default provider registration', async () => {
         await aiConfigurationService.saveApiKey('venice', 'secret');
-        vi.mocked(fetch).mockResolvedValueOnce(Response.json({ data: [] }))
+        netFetch.mockResolvedValueOnce(Response.json({ data: [] }))
             .mockResolvedValueOnce(streamResponse([
                 'data: {"choices":[{"delta":{"content":"Draft"}}]}\n\n',
                 'data: [DONE]\n\n',
@@ -51,12 +53,12 @@ describe('Venice backend integration', () => {
         await aiService.testConnection('venice');
         await expect(aiService.generatePrompt({ model: 'venice', modelId: 'test-model', prompt: 'Write.' }))
             .resolves.toEqual({ text: 'Draft', modelUsed: 'test-model' });
-        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(netFetch).toHaveBeenCalledTimes(2);
     });
 
     it('includes configured Venice models and capabilities in the shared catalog', async () => {
         await aiConfigurationService.saveApiKey('venice', 'secret');
-        vi.mocked(fetch).mockResolvedValue(Response.json({ data: [{
+        netFetch.mockResolvedValue(Response.json({ data: [{
             id: 'test-model', type: 'text',
             model_spec: { name: 'Test model', capabilities: {
                 supportsReasoning: true, supportsReasoningEffort: false,
@@ -75,12 +77,12 @@ describe('Venice backend integration', () => {
     it('includes unconfigured Venice without fetching its models', async () => {
         expect((await aiService.listModels()).find(provider => provider.id === 'venice'))
             .toEqual({ id: 'venice', name: 'Venice', state: 'unconfigured', models: [] });
-        expect(fetch).not.toHaveBeenCalled();
+        expect(netFetch).not.toHaveBeenCalled();
     });
 
     it('reports a Venice catalog error without discarding other provider groups', async () => {
         await aiConfigurationService.saveApiKey('venice', 'secret');
-        vi.mocked(fetch).mockRejectedValue(new Error('Connection failed'));
+        netFetch.mockRejectedValue(new Error('Connection failed'));
         const groups = await aiService.listModels();
         expect(groups.find(provider => provider.id === 'venice'))
             .toEqual({ id: 'venice', name: 'Venice', state: 'error', models: [] });

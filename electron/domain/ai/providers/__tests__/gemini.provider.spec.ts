@@ -13,6 +13,7 @@ import { streamResponse } from './provider-test-helpers';
 
 describe('GeminiProvider', () => {
     const getApiKey = vi.fn();
+    const fetchMock = vi.fn();
 
     beforeEach(() => {
         getApiKey.mockReset().mockResolvedValue('gemini-secret');
@@ -22,15 +23,15 @@ describe('GeminiProvider', () => {
             temperature: 0.5,
             stream: true,
         });
-        vi.stubGlobal('fetch', vi.fn());
+        fetchMock.mockReset();
     });
 
     it('uses Gemini OpenAI compatibility for streamed generation', async () => {
-        vi.mocked(fetch).mockResolvedValue(streamResponse([
+        fetchMock.mockResolvedValue(streamResponse([
             'data: {"choices":[{"delta":{"content":"Gemini"}}]}\n\n',
             'data: [DONE]\n\n',
         ]));
-        const provider = new GeminiProvider({ getApiKey } as any);
+        const provider = new GeminiProvider({ getApiKey } as any, fetchMock);
 
         await expect(provider.generate({
             model: 'gemini',
@@ -40,7 +41,7 @@ describe('GeminiProvider', () => {
             reasoningEffort: 'low',
         })).resolves.toMatchObject({ text: 'Gemini', modelUsed: 'gemini-a' });
 
-        const [url, init] = vi.mocked(fetch).mock.calls[0];
+        const [url, init] = fetchMock.mock.calls[0];
         expect(url).toBe(
             'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
         );
@@ -56,7 +57,7 @@ describe('GeminiProvider', () => {
     it('paginates native models, filters generateContent, and maps thinking', async () => {
         const timeoutSignal = new AbortController().signal;
         const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal);
-        vi.mocked(fetch)
+        fetchMock
             .mockResolvedValueOnce(new Response(JSON.stringify({
                 models: [
                     {
@@ -111,7 +112,7 @@ describe('GeminiProvider', () => {
                     thinking: false,
                 }],
             }), { status: 200 }));
-        const provider = new GeminiProvider({ getApiKey } as any);
+        const provider = new GeminiProvider({ getApiKey } as any, fetchMock);
 
         await expect(provider.listModels()).resolves.toEqual([
             expect.objectContaining({
@@ -125,8 +126,8 @@ describe('GeminiProvider', () => {
                 supportsReasoning: false,
             }),
         ]);
-        const [firstUrl, firstInit] = vi.mocked(fetch).mock.calls[0];
-        const [secondUrl] = vi.mocked(fetch).mock.calls[1];
+        const [firstUrl, firstInit] = fetchMock.mock.calls[0];
+        const [secondUrl] = fetchMock.mock.calls[1];
         expect(firstUrl.toString()).toContain('pageSize=1000');
         expect(secondUrl.toString()).toContain('pageToken=next-page');
         expect(firstInit?.headers).toEqual({ 'x-goog-api-key': 'gemini-secret' });
@@ -137,31 +138,31 @@ describe('GeminiProvider', () => {
     });
 
     it('rejects malformed model lists', async () => {
-        vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ models: [{}] }), {
+        fetchMock.mockResolvedValue(new Response(JSON.stringify({ models: [{}] }), {
             status: 200,
         }));
-        const provider = new GeminiProvider({ getApiKey } as any);
+        const provider = new GeminiProvider({ getApiKey } as any, fetchMock);
         await expect(provider.listModels()).rejects.toThrow('malformed model list');
     });
 
     it('accepts an authenticated connection with zero models', async () => {
-        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ models: [] }), {
+        fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ models: [] }), {
             status: 200,
         }));
-        const provider = new GeminiProvider({ getApiKey } as any);
+        const provider = new GeminiProvider({ getApiKey } as any, fetchMock);
 
         await expect(provider.testConnection()).resolves.toBeUndefined();
-        expect(fetch).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledOnce();
     });
 
     it('does not list without a key and reports HTTP failures', async () => {
-        const provider = new GeminiProvider({ getApiKey } as any);
+        const provider = new GeminiProvider({ getApiKey } as any, fetchMock);
         getApiKey.mockResolvedValueOnce(null);
         await expect(provider.listModels()).resolves.toEqual([]);
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
 
         getApiKey.mockResolvedValueOnce('gemini-secret');
-        vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 429 }));
+        fetchMock.mockResolvedValueOnce(new Response('', { status: 429 }));
         await expect(provider.listModels()).rejects.toThrow(
             'Google Gemini API error (429)',
         );

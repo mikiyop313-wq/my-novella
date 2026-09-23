@@ -13,6 +13,7 @@ import { streamResponse } from './provider-test-helpers';
 
 describe('OpenAiProvider', () => {
     const getApiKey = vi.fn();
+    const fetchMock = vi.fn();
 
     beforeEach(() => {
         getApiKey.mockReset().mockResolvedValue('openai-secret');
@@ -23,17 +24,17 @@ describe('OpenAiProvider', () => {
             stream: true,
             reasoning: { enabled: true, effort: 'medium' },
         });
-        vi.stubGlobal('fetch', vi.fn());
+        fetchMock.mockReset();
     });
 
     it('streams generation with the saved key, exact model, reasoning, and usage', async () => {
-        vi.mocked(fetch).mockResolvedValue(streamResponse([
+        fetchMock.mockResolvedValue(streamResponse([
             'data: {"choices":[{"delta":{"content":"Draft"}}]}\n\n',
             'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}\n\n',
             'data: [DONE]\n\n',
         ]));
         const onToken = vi.fn();
-        const provider = new OpenAiProvider({ getApiKey } as any);
+        const provider = new OpenAiProvider({ getApiKey } as any, fetchMock);
 
         await expect(provider.generate({
             model: 'openai',
@@ -48,7 +49,7 @@ describe('OpenAiProvider', () => {
             usage: { promptTokens: 4, completionTokens: 2, totalTokens: 6 },
         });
 
-        const [url, init] = vi.mocked(fetch).mock.calls[0];
+        const [url, init] = fetchMock.mock.calls[0];
         expect(url).toBe('https://api.openai.com/v1/chat/completions');
         expect(init?.headers).toEqual(expect.objectContaining({
             Authorization: 'Bearer openai-secret',
@@ -63,7 +64,7 @@ describe('OpenAiProvider', () => {
     });
 
     it('requires a configured key and explicit model without making a request', async () => {
-        const provider = new OpenAiProvider({ getApiKey } as any);
+        const provider = new OpenAiProvider({ getApiKey } as any, fetchMock);
         getApiKey.mockResolvedValueOnce(null);
         await expect(provider.generate({ model: 'openai', modelId: 'gpt', prompt: 'Write.' }))
             .rejects.toThrow('API key configured');
@@ -71,13 +72,13 @@ describe('OpenAiProvider', () => {
         getApiKey.mockResolvedValueOnce('key');
         await expect(provider.generate({ model: 'openai', prompt: 'Write.' }))
             .rejects.toThrow('explicitly selected model');
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('lists text models while filtering known non-text families', async () => {
         const timeoutSignal = new AbortController().signal;
         const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal);
-        vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+        fetchMock.mockResolvedValue(new Response(JSON.stringify({
             data: [
                 { id: 'gpt-a' },
                 { id: 'ft:gpt-custom:owner:name' },
@@ -90,7 +91,7 @@ describe('OpenAiProvider', () => {
                 { id: 'whisper-1' },
             ],
         }), { status: 200 }));
-        const provider = new OpenAiProvider({ getApiKey } as any);
+        const provider = new OpenAiProvider({ getApiKey } as any, fetchMock);
 
         await expect(provider.listModels()).resolves.toEqual([
             {
@@ -103,34 +104,34 @@ describe('OpenAiProvider', () => {
             },
             expect.objectContaining({ id: 'openai/ft:gpt-custom:owner:name' }),
         ]);
-        expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toEqual({
+        expect(fetchMock.mock.calls[0][1]?.headers).toEqual({
             Authorization: 'Bearer openai-secret',
         });
         expect(timeout).toHaveBeenCalledWith(10_000);
-        expect(vi.mocked(fetch).mock.calls[0][1]?.signal).toBe(timeoutSignal);
+        expect(fetchMock.mock.calls[0][1]?.signal).toBe(timeoutSignal);
         timeout.mockRestore();
     });
 
     it('does not list models without a saved key', async () => {
         getApiKey.mockResolvedValue(null);
-        const provider = new OpenAiProvider({ getApiKey } as any);
+        const provider = new OpenAiProvider({ getApiKey } as any, fetchMock);
         await expect(provider.listModels()).resolves.toEqual([]);
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('accepts an authenticated connection with zero models', async () => {
-        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), {
+        fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), {
             status: 200,
         }));
-        const provider = new OpenAiProvider({ getApiKey } as any);
+        const provider = new OpenAiProvider({ getApiKey } as any, fetchMock);
 
         await expect(provider.testConnection()).resolves.toBeUndefined();
-        expect(fetch).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledOnce();
     });
 
     it('reports safe HTTP failures and preserves generation aborts', async () => {
-        const provider = new OpenAiProvider({ getApiKey } as any);
-        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+        const provider = new OpenAiProvider({ getApiKey } as any, fetchMock);
+        fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
             error: { message: 'Access denied.' },
         }), { status: 401 }));
         await expect(provider.listModels()).rejects.toThrow(
@@ -139,10 +140,10 @@ describe('OpenAiProvider', () => {
 
         const controller = new AbortController();
         const abortError = new DOMException('Stopped', 'AbortError');
-        vi.mocked(fetch).mockRejectedValueOnce(abortError);
+        fetchMock.mockRejectedValueOnce(abortError);
         await expect(provider.generate({
             model: 'openai', modelId: 'gpt-model', prompt: 'Write.', abortSignal: controller.signal,
         })).rejects.toBe(abortError);
-        expect(vi.mocked(fetch).mock.calls[1][1]?.signal).toBe(controller.signal);
+        expect(fetchMock.mock.calls[1][1]?.signal).toBe(controller.signal);
     });
 });

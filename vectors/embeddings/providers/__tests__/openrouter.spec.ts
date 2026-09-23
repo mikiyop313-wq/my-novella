@@ -7,12 +7,11 @@ import {
 } from '../../openrouter-model-definition';
 import { OpenRouterEmbeddingProvider } from '../openrouter';
 
-describe('OpenRouterEmbeddingProvider', () => {
-  const fetchMock = vi.fn();
+const fetchMock = vi.fn();
 
+describe('OpenRouterEmbeddingProvider', () => {
   beforeEach(() => {
     fetchMock.mockReset();
-    vi.stubGlobal('fetch', fetchMock);
   });
 
   it('defines exactly the ten curated native embedding spaces', () => {
@@ -204,7 +203,7 @@ function createProvider(modelName: OpenRouterEmbeddingModelName): OpenRouterEmbe
     dimensions: definition.dimensions,
     apiKey: 'openrouter-secret',
     definition,
-  });
+  }, fetchMock);
 }
 
 function okResponse(dimensions: number, count: number): Response {

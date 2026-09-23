@@ -1,9 +1,13 @@
 import { EmbeddingProvider, OpenAIEmbeddingConfig } from '../types';
+import type { FetchTransport } from '../../../shared/network/fetch-transport';
 
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     public readonly space;
 
-    constructor(private config: OpenAIEmbeddingConfig) {
+    constructor(
+        private config: OpenAIEmbeddingConfig,
+        private readonly fetchTransport: FetchTransport = globalThis.fetch,
+    ) {
         this.space = {
             provider: 'openAI' as const,
             model: config.modelName,
@@ -47,7 +51,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
             payload.dimensions = this.space.dimensions;
         }
 
-        const response = await fetch(url, {
+        const response = await this.fetchTransport(url, {
             method: 'POST',
             headers: this.getHeaders(),
             body: JSON.stringify(payload),

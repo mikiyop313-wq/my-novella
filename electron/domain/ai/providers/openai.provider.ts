@@ -1,4 +1,5 @@
 import type { AiModel } from '../../../../shared/models/ai.model';
+import type { FetchTransport } from '../../../../shared/network/fetch-transport';
 import { apiKeyService } from '../api-key.service';
 import type { ApiKeyService } from '../api-key.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
@@ -23,7 +24,10 @@ export class OpenAiProvider implements AiProvider {
     readonly id = 'openai';
     readonly name = 'OpenAI';
 
-    constructor(private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService) {}
+    constructor(
+        private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService,
+        private readonly fetchTransport: FetchTransport = globalThis.fetch,
+    ) {}
 
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
         const apiKey = await this.requireApiKey();
@@ -37,7 +41,7 @@ export class OpenAiProvider implements AiProvider {
             request.reasoningMode ? request.reasoningEffort ?? 'medium' : undefined,
         );
 
-        const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+        const response = await this.fetchTransport(`${OPENAI_BASE_URL}/chat/completions`, {
             method: 'POST',
             signal: request.abortSignal,
             headers: {
@@ -58,7 +62,7 @@ export class OpenAiProvider implements AiProvider {
         const apiKey = await this.keys.getApiKey('openai');
         if (!apiKey) return [];
 
-        const response = await fetch(`${OPENAI_BASE_URL}/models`, {
+        const response = await this.fetchTransport(`${OPENAI_BASE_URL}/models`, {
             signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
             headers: { 'Authorization': `Bearer ${apiKey}` },
         });

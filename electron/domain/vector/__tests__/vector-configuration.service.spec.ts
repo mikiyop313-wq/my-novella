@@ -49,7 +49,7 @@ describe('VectorConfigurationService', () => {
 
         await expect(service.testConnection('openrouter')).resolves.toBeUndefined();
 
-        expect(mocks.testOpenRouterConnection).toHaveBeenCalledWith(keys);
+        expect(mocks.testOpenRouterConnection).toHaveBeenCalledWith(keys, expect.any(Function));
         expect(mocks.getCloudEmbeddingProvider).not.toHaveBeenCalled();
     });
 

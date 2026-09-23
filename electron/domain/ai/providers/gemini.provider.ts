@@ -1,4 +1,5 @@
 import type { AiModel } from '../../../../shared/models/ai.model';
+import type { FetchTransport } from '../../../../shared/network/fetch-transport';
 import { apiKeyService } from '../api-key.service';
 import type { ApiKeyService } from '../api-key.service';
 import type { AiPromptRequest, AiPromptResponse } from '../models';
@@ -24,7 +25,10 @@ export class GeminiProvider implements AiProvider {
     readonly id = 'gemini';
     readonly name = 'Google Gemini';
 
-    constructor(private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService) {}
+    constructor(
+        private readonly keys: Pick<ApiKeyService, 'getApiKey'> = apiKeyService,
+        private readonly fetchTransport: FetchTransport = globalThis.fetch,
+    ) {}
 
     async generate(request: AiPromptRequest): Promise<AiPromptResponse> {
         const apiKey = await this.requireApiKey();
@@ -38,7 +42,7 @@ export class GeminiProvider implements AiProvider {
             request.reasoningMode ? request.reasoningEffort ?? 'medium' : undefined,
         );
 
-        const response = await fetch(`${GEMINI_OPENAI_BASE_URL}/chat/completions`, {
+        const response = await this.fetchTransport(`${GEMINI_OPENAI_BASE_URL}/chat/completions`, {
             method: 'POST',
             signal: request.abortSignal,
             headers: {
@@ -68,7 +72,7 @@ export class GeminiProvider implements AiProvider {
             url.searchParams.set('pageSize', '1000');
             if (pageToken) url.searchParams.set('pageToken', pageToken);
 
-            const response = await fetch(url, {
+            const response = await this.fetchTransport(url, {
                 signal,
                 headers: { 'x-goog-api-key': apiKey },
             });

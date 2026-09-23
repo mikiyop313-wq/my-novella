@@ -1,9 +1,13 @@
 import { EmbeddingProvider, VoyageEmbeddingConfig } from '../types';
+import type { FetchTransport } from '../../../shared/network/fetch-transport';
 
 export class VoyageEmbeddingProvider implements EmbeddingProvider {
     public readonly space;
 
-    constructor(private config: VoyageEmbeddingConfig) {
+    constructor(
+        private config: VoyageEmbeddingConfig,
+        private readonly fetchTransport: FetchTransport = globalThis.fetch,
+    ) {
         this.space = {
             provider: 'voyage' as const,
             model: config.modelName,
@@ -33,7 +37,7 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
 
         payload.input_type = inputType;
 
-        const response = await fetch(url, {
+        const response = await this.fetchTransport(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${this.config.apiKey}`,
