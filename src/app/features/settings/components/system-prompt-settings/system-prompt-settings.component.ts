@@ -166,12 +166,14 @@ export class SystemPromptSettingsComponent implements OnInit, OnDestroy {
   readonly promptCopied = signal(false);
   private readonly expandedPromptSavedPresetId = signal<string | null>(null);
   readonly filteredPresets = computed(() =>
-    this.presets().filter(
-      (preset) =>
-        preset.category === this.selectedCategory() &&
-        preset.scope === this.selectedScope() &&
-        (preset.scope === 'global' || preset.bookId === this.bookId()),
-    ),
+    this.presets()
+      .filter(
+        (preset) =>
+          preset.category === this.selectedCategory() &&
+          preset.scope === this.selectedScope() &&
+          (preset.scope === 'global' || preset.bookId === this.bookId()),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'accent' })),
   );
   readonly selectedScopeLabel = computed(() =>
     this.selectedScope() === 'global' ? 'Global' : 'Book',

@@ -196,6 +196,44 @@ describe('SystemPromptSettingsComponent', () => {
     expect(component.filteredPresets().some((preset) => preset.isBuiltIn)).toBe(false);
   });
 
+  it.each(['global', 'book'] as const)(
+    'keeps %s presets alphabetical after creation and renaming without losing selection',
+    async (scope) => {
+      vi.useFakeTimers();
+      changeScope(scope);
+      const ownership = { scope, bookId: scope === 'global' ? null : 'book-1' };
+      const zebra = presetDto({ ...ownership, id: 'zebra', name: 'Zebra' });
+      const alpha = presetDto({ ...ownership, id: 'alpha', name: 'alpha' });
+      create.mockResolvedValueOnce(zebra).mockResolvedValueOnce(alpha);
+
+      await component.addPreset();
+      await component.addPreset();
+      fixture.detectChanges();
+
+      const expectedIds = scope === 'global'
+        ? ['alpha', 'default-assistant', 'global-chat', 'zebra']
+        : ['alpha', 'zebra'];
+      expect(component.filteredPresets().map((preset) => preset.id)).toEqual(expectedIds);
+      expect(component.selectedPresetId()).toBe('alpha');
+
+      update.mockResolvedValueOnce({ ...alpha, name: 'zz last' });
+      updateInput('#preset-name', 'zz last');
+      await vi.advanceTimersByTimeAsync(500);
+      fixture.detectChanges();
+
+      expect(component.filteredPresets().map((preset) => preset.id)).toEqual([
+        ...expectedIds.slice(1), 'alpha',
+      ]);
+      expect(component.selectedPresetId()).toBe('alpha');
+      expect(component.selectedPreset()?.name).toBe('zz last');
+      const renderedNames = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('.preset-option .preset-name'),
+        (element) => element.textContent?.trim(),
+      );
+      expect(renderedNames).toEqual(component.filteredPresets().map((preset) => preset.name));
+    },
+  );
+
   it('loads authoritative active IDs and hides the Chat Title category', () => {
     expect(getActivePresetIds).toHaveBeenCalledWith('book-1');
     expect(component.activePresetIds()).toEqual({
