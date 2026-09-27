@@ -197,7 +197,7 @@ describe('SystemPromptSettingsComponent', () => {
   });
 
   it.each(['global', 'book'] as const)(
-    'keeps %s presets alphabetical after creation and renaming without losing selection',
+    'keeps the default first and %s custom presets alphabetical after creation and renaming without losing selection',
     async (scope) => {
       vi.useFakeTimers();
       changeScope(scope);
@@ -211,7 +211,7 @@ describe('SystemPromptSettingsComponent', () => {
       fixture.detectChanges();
 
       const expectedIds = scope === 'global'
-        ? ['alpha', 'default-assistant', 'global-chat', 'zebra']
+        ? ['default-assistant', 'alpha', 'global-chat', 'zebra']
         : ['alpha', 'zebra'];
       expect(component.filteredPresets().map((preset) => preset.id)).toEqual(expectedIds);
       expect(component.selectedPresetId()).toBe('alpha');
@@ -222,7 +222,7 @@ describe('SystemPromptSettingsComponent', () => {
       fixture.detectChanges();
 
       expect(component.filteredPresets().map((preset) => preset.id)).toEqual([
-        ...expectedIds.slice(1), 'alpha',
+        ...expectedIds.filter((id) => id !== 'alpha'), 'alpha',
       ]);
       expect(component.selectedPresetId()).toBe('alpha');
       expect(component.selectedPreset()?.name).toBe('zz last');
