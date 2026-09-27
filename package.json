@@ -1,6 +1,6 @@
 {
   "name": "my-novella",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "productName": "My Novella",
   "main": "dist-electron/main.js",
   "scripts": {
